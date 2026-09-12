@@ -107,6 +107,25 @@ while true; do
   cursor="$end_cursor"
 done
 
+# Revalidate the PR head immediately before applying any dismissal. The head can
+# move between the paginated read above and the mutation loop below — e.g. a
+# force-push that restores a previously reviewed commit. Our supersede decisions
+# were computed against the cached head_oid, so a bot review that now sits on the
+# *current* head could satisfy review_oid != head_oid and be wrongly dismissed
+# even though it is no longer stale. Re-read the head and no-op the whole run if
+# it changed; the synchronize/submitted event for the new head re-runs us against
+# the settled state (#1116).
+recheck="$(gh api graphql \
+  -f query='query($owner:String!, $name:String!, $number:Int!) {
+    repository(owner:$owner, name:$name) { pullRequest(number:$number) { headRefOid } }
+  }' \
+  -f owner="$OWNER" -f name="$NAME" -F number="$PR")"
+current_head="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$recheck")"
+if [ "$current_head" != "$head_oid" ]; then
+  echo "::warning::PR head moved from ${head_oid} to ${current_head:-<unresolved>} during the review read for ${OWNER}/${NAME}#${PR}; skipping dismissals this run to avoid clearing a review on the new head"
+  exit 0
+fi
+
 dismissed=0 examined=0
 while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   [ -n "$review_id" ] || continue
@@ -120,13 +139,27 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
     dismissed=$((dismissed + 1))
     continue
   fi
-  gh api graphql \
+  mutation_resp="$(gh api graphql \
     -f query='mutation($id:ID!, $msg:String!) {
       dismissPullRequestReview(input:{pullRequestReviewId:$id, message:$msg}) {
         pullRequestReview { id state }
       }
     }' \
-    -f id="$review_id" -f msg="$msg" >/dev/null
+    -f id="$review_id" -f msg="$msg")"
+  # GitHub GraphQL can return HTTP 200 with an `errors` envelope (e.g. the review
+  # was already dismissed by another actor), and `gh` exits 0 in that case. Count
+  # a dismissal as successful ONLY when there is no errors envelope AND the review
+  # comes back in the DISMISSED state; otherwise it may still block the PR, so warn
+  # and leave the count untouched rather than reporting a phantom dismissal (#1116).
+  if jq -e '(.errors // []) | length > 0' <<<"$mutation_resp" >/dev/null 2>&1; then
+    echo "::warning::dismissal of review ${review_id} by ${login} returned a GraphQL errors envelope; leaving it in place"
+    continue
+  fi
+  new_state="$(jq -r '.data.dismissPullRequestReview.pullRequestReview.state // ""' <<<"$mutation_resp")"
+  if [ "$new_state" != "DISMISSED" ]; then
+    echo "::warning::dismissal of review ${review_id} by ${login} was not confirmed (state='${new_state:-<none>}'); leaving it in place"
+    continue
+  fi
   echo "Dismissed stale review ${review_id} by ${login} (was on ${commit_oid}, head ${head_oid})"
   dismissed=$((dismissed + 1))
 done <<<"$reviews"

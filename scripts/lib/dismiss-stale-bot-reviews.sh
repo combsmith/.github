@@ -63,11 +63,16 @@ dsbr_resolve_allowlist() {
 dsbr_is_allowlisted_bot() {
   local login="$1" author_type="$2" csv="${3:-}"
   [ "$author_type" = "Bot" ] || return 1
+  # Pre-parse the resolved allow-list once into a local associative array so the
+  # membership test is a native in-process lookup rather than a per-entry string
+  # compare. All loop-scoped names are declared local so nothing leaks to global
+  # scope when this is sourced.
+  local -A allowed_bots=()
   local allowed
   while IFS= read -r allowed; do
-    [ "$allowed" = "$login" ] && return 0
+    allowed_bots["$allowed"]=1
   done < <(dsbr_resolve_allowlist "$csv")
-  return 1
+  [ -n "${allowed_bots[$login]:-}" ]
 }
 
 # dsbr_should_dismiss <state> <review_oid> <head_oid> <login> <author_type> [allowlist_csv]

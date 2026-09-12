@@ -51,21 +51,34 @@ teardown() { rm -rf "${TT_TMP:-/nonexistent}"; }
 @test "dismisses ONLY the stale allow-listed bot review; leaves head/human/approved" {
   run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
   [ "$status" -eq 0 ]
+  # Assert the script's summary output before the log-inspecting `run grep` calls
+  # below overwrite bats's $output.
+  echo "$output" | grep -q 'dismissed 1 stale bot review'
   # exactly one dismissal, and it is the superseded bot review
   [ "$(grep -c '^DISMISS ' "$GH_LOG")" -eq 1 ]
   grep -qx 'DISMISS PRR_stale' "$GH_LOG"
-  # the still-valid head review, the human review, and the approve are untouched
-  ! grep -q 'DISMISS PRR_head' "$GH_LOG"
-  ! grep -q 'DISMISS PRR_human' "$GH_LOG"
-  ! grep -q 'DISMISS PRR_approved' "$GH_LOG"
-  echo "$output" | grep -q 'dismissed 1 stale bot review'
+  # the still-valid head review, the human review, and the approve are untouched.
+  # Assert grep's exact "no match" status (1), not any non-zero: a status of 2
+  # (e.g. a missing log file) would otherwise pass this negative check falsely.
+  run grep -q 'DISMISS PRR_head' "$GH_LOG"
+  [ "$status" -eq 1 ]
+  run grep -q 'DISMISS PRR_human' "$GH_LOG"
+  [ "$status" -eq 1 ]
+  run grep -q 'DISMISS PRR_approved' "$GH_LOG"
+  [ "$status" -eq 1 ]
 }
 
 @test "dry-run examines but dismisses nothing (no mutation)" {
   run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094 --dry-run
   [ "$status" -eq 0 ]
-  [ ! -s "$GH_LOG" ] || ! grep -q '^DISMISS ' "$GH_LOG"
+  # Assert the dry-run output before the `run grep` below overwrites $output.
   echo "$output" | grep -q '\[dry-run\] would dismiss review PRR_stale'
+  # No mutation ran, so the log may not exist; touch it to guarantee the target
+  # is present, then assert grep's exact "no match" status (1) — not a status of
+  # 2 from a missing file, which would let a real dismissal slip through.
+  touch "$GH_LOG"
+  run grep -q '^DISMISS ' "$GH_LOG"
+  [ "$status" -eq 1 ]
 }
 
 @test "pages latestReviews: dismisses a stale bot review found only on page 2" {
@@ -116,11 +129,64 @@ STUB
 
   run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
   [ "$status" -eq 0 ]
+  # Assert the paginated summary before the `run grep` below overwrites $output.
+  echo "$output" | grep -q 'examined 2 effective review(s), dismissed 1 stale bot review'
   # the page-2 stale review is dismissed; the page-1 head review is left alone
   [ "$(grep -c '^DISMISS ' "$GH_LOG")" -eq 1 ]
   grep -qx 'DISMISS PRR_stale_p2' "$GH_LOG"
-  ! grep -q 'DISMISS PRR_head_p1' "$GH_LOG"
-  echo "$output" | grep -q 'examined 2 effective review(s), dismissed 1 stale bot review'
+  run grep -q 'DISMISS PRR_head_p1' "$GH_LOG"
+  [ "$status" -eq 1 ]
+}
+
+@test "no-op when the PR head moves between the read and the dismissal loop" {
+  # The paginated read sees head 8e5bc8db with a stale allow-listed bot review on
+  # the superseded aca48dc4, but a force-push moves the head before the mutation
+  # loop. The revalidation re-read returns the new head, so the run must dismiss
+  # nothing rather than clear a review that may sit on the new head (#1116).
+  cat > "${TT_TMP}/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+if printf '%s\0' "$@" | grep -qz 'dismissPullRequestReview'; then
+  for a in "$@"; do case "$a" in id=*) printf 'DISMISS %s\n' "${a#id=}" >> "$GH_LOG" ;; esac; done
+  printf '{"data":{"dismissPullRequestReview":{"pullRequestReview":{"id":"x","state":"DISMISSED"}}}}'
+  exit 0
+fi
+# The paginated read requests latestReviews; the revalidation re-read does not.
+if printf '%s\0' "$@" | grep -qz 'latestReviews'; then
+  printf '%s' '{"data":{"repository":{"pullRequest":{"headRefOid":"8e5bc8db","latestReviews":{"nodes":[{"id":"PRR_stale","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}]}}}}}'
+  exit 0
+fi
+printf '%s' '{"data":{"repository":{"pullRequest":{"headRefOid":"deadbeef"}}}}'
+STUB
+  chmod +x "${TT_TMP}/bin/gh"
+
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'PR head moved from 8e5bc8db to deadbeef'
+  # nothing was dismissed
+  touch "$GH_LOG"
+  run grep -q '^DISMISS ' "$GH_LOG"
+  [ "$status" -eq 1 ]
+}
+
+@test "does not report a dismissal when the mutation returns a GraphQL errors envelope" {
+  # GitHub can return HTTP 200 with an `errors` envelope (e.g. the review was
+  # already dismissed by another actor) and gh exits 0. The glue must not count
+  # that as a dismissal or the review may still block the PR (#1116).
+  cat > "${TT_TMP}/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+if printf '%s\0' "$@" | grep -qz 'dismissPullRequestReview'; then
+  printf '%s' '{"errors":[{"message":"review already dismissed"}]}'
+  exit 0
+fi
+cat "$DSBR_RESPONSE"
+STUB
+  chmod +x "${TT_TMP}/bin/gh"
+
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'returned a GraphQL errors envelope'
+  # the phantom dismissal is not counted
+  echo "$output" | grep -q 'dismissed 0 stale bot review'
 }
 
 @test "requires --owner, --name and --pr" {
