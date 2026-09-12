@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/dismiss-stale-bot-reviews.yml
+# Standard:        petry-projects/.github/standards/ci-standards.md
+# Decision core:   petry-projects/.github/scripts/lib/dismiss-stale-bot-reviews.sh
+#                  petry-projects/.github/scripts/dismiss-stale-bot-reviews.sh
+#
+# AGENTS — READ BEFORE EDITING:
+#   • This file is a SELF-CONTAINED verbatim stub (the initiative-driver class),
+#     NOT a thin caller for a reusable. A bot's CHANGES_REQUESTED review is NOT
+#     cleared by GitHub's dismiss_stale_reviews_on_push (that only dismisses stale
+#     *approvals*), so it persists on a superseded commit and blocks reviewDecision
+#     forever (#617 blocker 3). This workflow dismisses such reviews once a NEWER
+#     commit has been pushed.
+#   • All dismiss/keep decision logic lives in the decision core above, which is
+#     unit-tested by bats in petry-projects/.github. This stub fetches that core
+#     from petry-projects/.github@v1 at runtime and runs it — the same runtime
+#     tooling-checkout pattern initiative-driver uses for the rate-limit gate.
+#   • You MUST NOT change: the trigger event types (synchronize + submitted), the
+#     fork guard, or the job-level `permissions:` block (pull-requests: write is
+#     required to dismiss a review; removing it breaks the dismissal).
+#   • BOT-ONLY by design: human reviews are never dismissed. To change the bot
+#     allow-list, set the DSBR_BOT_ALLOWLIST repo/org variable (comma-separated
+#     logins) — it REPLACES the default list. Do not fork the decision logic here.
+#   • If you need different behaviour, open a PR against the decision core in
+#     petry-projects/.github — the change propagates everywhere on next run.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Dismiss stale bot reviews — self-contained org-standard workflow.
+# To adopt: copy this file verbatim to .github/workflows/dismiss-stale-bot-reviews.yml.
+# No secrets required — uses GITHUB_TOKEN only (pull-requests: write).
+name: Dismiss stale bot reviews
+
+on:
+  # A new push advances the head; a bot's CHANGES_REQUESTED now sits on a
+  # superseded commit and must be cleared.
+  pull_request:
+    types: [synchronize]
+  # A bot may also submit a review on an already-superseded commit (race); the
+  # decision core keeps it only when it is on the current head.
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+concurrency:
+  # One lane per PR so a push burst does not fan out duplicate dismissals; the
+  # latest head wins.
+  group: dismiss-stale-bot-reviews-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dismiss:
+    # Same-repo PRs only: a fork PR's GITHUB_TOKEN is read-only, so the dismissal
+    # mutation would fail. Forked-PR stale reviews are left for human handling.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write   # dismissPullRequestReview via GITHUB_TOKEN
+      contents: read         # checkout
+    steps:
+      - name: Checkout decision-core tooling from petry-projects/.github
+        # The decision core lives in petry-projects/.github; a consumer repo does
+        # not carry it, so fetch it read-only at the pinned v1 tag into a scratch
+        # path. petry-projects/.github is public, so GITHUB_TOKEN suffices.
+        # continue-on-error: a tooling-checkout outage must never fail the PR — the
+        # run step then finds no script and no-ops (fail-closed: nothing dismissed).
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: petry-projects/.github
+          ref: v1
+          path: .dsbr-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Dismiss stale allow-listed bot reviews on superseded commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Optional wholesale override of the bot allow-list (comma-separated
+          # logins). Unset → the decision core's built-in CodeRabbit/Copilot list.
+          DSBR_BOT_ALLOWLIST: ${{ vars.DSBR_BOT_ALLOWLIST }}
+        run: |
+          set -euo pipefail
+          core=".dsbr-tooling/scripts/dismiss-stale-bot-reviews.sh"
+          if [ ! -f "$core" ]; then
+            echo "::warning::decision-core tooling unavailable (checkout failed); skipping — nothing dismissed"
+            exit 0
+          fi
+          bash "$core" \
+            --owner "${{ github.repository_owner }}" \
+            --name "${{ github.event.repository.name }}" \
+            --pr "${{ github.event.pull_request.number }}"
