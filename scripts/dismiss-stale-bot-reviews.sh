@@ -42,13 +42,19 @@ fi
 
 # Fetch the PR head oid plus the EFFECTIVE (latest-per-reviewer) reviews — the
 # exact set GitHub uses to compute reviewDecision — so we never dismiss an older
-# review that a newer APPROVE already superseded.
+# review that a newer APPROVE already superseded. latestReviews is a paginated
+# connection capped at 100 nodes per page: a single unpaginated page would
+# silently drop every effective review past the first 100 distinct reviewers, so
+# a stale bot CHANGES_REQUESTED beyond that cut-off would survive while the script
+# reported success (fail-open, #1116). Page through the whole connection so the
+# decision core sees the complete effective set.
 read -r -d '' QUERY <<'GRAPHQL' || true
-query($owner:String!, $name:String!, $number:Int!) {
+query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
   repository(owner:$owner, name:$name) {
     pullRequest(number:$number) {
       headRefOid
-      latestReviews(first: 100) {
+      latestReviews(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
         nodes {
           id
           state
@@ -63,22 +69,43 @@ GRAPHQL
 
 # owner/name are passed as raw strings (-f) so a repo named like a number/bool is
 # never type-coerced; number must be -F so it resolves to the GraphQL Int!.
-response="$(gh api graphql \
-  -f query="$QUERY" \
-  -f owner="$OWNER" -f name="$NAME" -F number="$PR")"
+head_oid="" reviews="" cursor="" first=true
+while true; do
+  # cursor="" => first page (pass JSON null, -F); otherwise pass the string (-f).
+  if [ -z "$cursor" ]; then
+    cursor_arg=(-F cursor=null)
+  else
+    cursor_arg=(-f "cursor=$cursor")
+  fi
+  response="$(gh api graphql \
+    -f query="$QUERY" \
+    "${cursor_arg[@]}" \
+    -f owner="$OWNER" -f name="$NAME" -F number="$PR")"
 
-head_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$response")"
-if [ -z "$head_oid" ]; then
-  echo "::warning::could not resolve head oid for ${OWNER}/${NAME}#${PR}; nothing to do"
-  exit 0
-fi
+  # Resolve the head oid once, from the first page, and fail-loud-then-noop if the
+  # PR cannot be resolved — before examining any reviews.
+  if [ "$first" = "true" ]; then
+    head_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$response")"
+    if [ -z "$head_oid" ]; then
+      echo "::warning::could not resolve head oid for ${OWNER}/${NAME}#${PR}; nothing to do"
+      exit 0
+    fi
+    first=false
+  fi
 
-# Emit one TAB-separated record per review: id, state, commit_oid, login, type.
-reviews="$(jq -r '
-  .data.repository.pullRequest.latestReviews.nodes[]
-  | [ .id, .state, (.commit.oid // ""), (.author.login // ""), (.author.__typename // "") ]
-  | @tsv
-' <<<"$response")"
+  # Emit one TAB-separated record per review: id, state, commit_oid, login, type.
+  page_reviews="$(jq -r '
+    .data.repository.pullRequest.latestReviews.nodes[]
+    | [ .id, .state, (.commit.oid // ""), (.author.login // ""), (.author.__typename // "") ]
+    | @tsv
+  ' <<<"$response")"
+  [ -n "$page_reviews" ] && reviews+="${page_reviews}"$'\n'
+
+  has_next="$(jq -r '.data.repository.pullRequest.latestReviews.pageInfo.hasNextPage // false' <<<"$response")"
+  end_cursor="$(jq -r '.data.repository.pullRequest.latestReviews.pageInfo.endCursor // ""' <<<"$response")"
+  [ "$has_next" = "true" ] && [ -n "$end_cursor" ] || break
+  cursor="$end_cursor"
+done
 
 dismissed=0 examined=0
 while IFS=$'\t' read -r review_id state commit_oid login author_type; do

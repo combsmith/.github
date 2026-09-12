@@ -68,6 +68,61 @@ teardown() { rm -rf "${TT_TMP:-/nonexistent}"; }
   echo "$output" | grep -q '\[dry-run\] would dismiss review PRR_stale'
 }
 
+@test "pages latestReviews: dismisses a stale bot review found only on page 2" {
+  # A stale allow-listed bot CHANGES_REQUESTED sits beyond the first 100-review
+  # page. A single unpaginated read would drop it (fail-open, #1116); the glue
+  # must follow pageInfo.endCursor and still dismiss it.
+  DSBR_PAGE1="${TT_TMP}/page1.json"; export DSBR_PAGE1
+  DSBR_PAGE2="${TT_TMP}/page2.json"; export DSBR_PAGE2
+  cat > "$DSBR_PAGE1" <<'JSON'
+{"data":{"repository":{"pullRequest":{
+  "headRefOid":"8e5bc8db",
+  "latestReviews":{
+    "pageInfo":{"hasNextPage":true,"endCursor":"CURSOR2"},
+    "nodes":[
+      {"id":"PRR_head_p1","state":"CHANGES_REQUESTED","commit":{"oid":"8e5bc8db"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}
+    ]
+  }
+}}}}
+JSON
+  cat > "$DSBR_PAGE2" <<'JSON'
+{"data":{"repository":{"pullRequest":{
+  "headRefOid":"8e5bc8db",
+  "latestReviews":{
+    "pageInfo":{"hasNextPage":false,"endCursor":null},
+    "nodes":[
+      {"id":"PRR_stale_p2","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}
+    ]
+  }
+}}}}
+JSON
+  # Fake gh: dismissal logs the id; a read returns page 2 when the endCursor is
+  # presented, else page 1.
+  cat > "${TT_TMP}/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+if printf '%s\0' "$@" | grep -qz 'dismissPullRequestReview'; then
+  for a in "$@"; do
+    case "$a" in id=*) printf 'DISMISS %s\n' "${a#id=}" >> "$GH_LOG" ;; esac
+  done
+  printf '{"data":{"dismissPullRequestReview":{"pullRequestReview":{"id":"x","state":"DISMISSED"}}}}'
+  exit 0
+fi
+for a in "$@"; do
+  case "$a" in cursor=CURSOR2) cat "$DSBR_PAGE2"; exit 0 ;; esac
+done
+cat "$DSBR_PAGE1"
+STUB
+  chmod +x "${TT_TMP}/bin/gh"
+
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
+  [ "$status" -eq 0 ]
+  # the page-2 stale review is dismissed; the page-1 head review is left alone
+  [ "$(grep -c '^DISMISS ' "$GH_LOG")" -eq 1 ]
+  grep -qx 'DISMISS PRR_stale_p2' "$GH_LOG"
+  ! grep -q 'DISMISS PRR_head_p1' "$GH_LOG"
+  echo "$output" | grep -q 'examined 2 effective review(s), dismissed 1 stale bot review'
+}
+
 @test "requires --owner, --name and --pr" {
   run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github
   [ "$status" -ne 0 ]
