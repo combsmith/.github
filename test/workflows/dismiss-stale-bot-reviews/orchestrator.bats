@@ -20,7 +20,7 @@ setup() {
   cat > "$DSBR_RESPONSE" <<'JSON'
 {"data":{"repository":{"pullRequest":{
   "headRefOid":"8e5bc8db",
-  "latestReviews":{"nodes":[
+  "latestOpinionatedReviews":{"nodes":[
     {"id":"PRR_stale","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}},
     {"id":"PRR_head","state":"CHANGES_REQUESTED","commit":{"oid":"8e5bc8db"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}},
     {"id":"PRR_human","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"don-petry","__typename":"User"}},
@@ -73,6 +73,14 @@ teardown() { rm -rf "${TT_TMP:-/nonexistent}"; }
   [ "$status" -eq 0 ]
   # Assert the dry-run output before the `run grep` below overwrites $output.
   echo "$output" | grep -q '\[dry-run\] would dismiss review PRR_stale'
+  # The dry-run summary must report the candidate as WOULD-dismiss, never as an
+  # actual dismissal — a candidate that was not mutated must stay out of the
+  # dismissed count so operators/automation consuming the summary are not misled
+  # (#1116). Assert the would-dismiss phrasing and that "dismissed 1" never appears.
+  echo "$output" | grep -q 'would dismiss 1 stale bot review'
+  echo "$output" | grep -q 'no reviews were dismissed'
+  run grep -q 'dismissed 1 stale bot review' <<<"$output"
+  [ "$status" -eq 1 ]
   # No mutation ran, so the log may not exist; touch it to guarantee the target
   # is present, then assert grep's exact "no match" status (1) — not a status of
   # 2 from a missing file, which would let a real dismissal slip through.
@@ -81,7 +89,33 @@ teardown() { rm -rf "${TT_TMP:-/nonexistent}"; }
   [ "$status" -eq 1 ]
 }
 
-@test "pages latestReviews: dismisses a stale bot review found only on page 2" {
+@test "queries latestOpinionatedReviews so a trailing COMMENTED cannot mask a stale CHANGES_REQUESTED" {
+  # Regression for #1116: latestReviews returns each reviewer's most-recent review
+  # of ANY kind, so a bot COMMENTED submitted after its CHANGES_REQUESTED would
+  # hide the still-blocking change request and it would never be dismissed. The
+  # glue must query latestOpinionatedReviews (each reviewer's latest APPROVED/
+  # CHANGES_REQUESTED). Capture the GraphQL query text and assert the field used.
+  local qlog="${TT_TMP}/query.log"
+  cat > "${TT_TMP}/bin/gh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "${qlog}"
+if printf '%s\0' "\$@" | grep -qz 'dismissPullRequestReview'; then
+  printf '{"data":{"dismissPullRequestReview":{"pullRequestReview":{"id":"x","state":"DISMISSED"}}}}'
+  exit 0
+fi
+cat "\$DSBR_RESPONSE"
+STUB
+  chmod +x "${TT_TMP}/bin/gh"
+
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
+  [ "$status" -eq 0 ]
+  # The read query pins the opinionated connection and never the plain one.
+  grep -q 'latestOpinionatedReviews' "$qlog"
+  run grep -qE 'latestReviews\b' "$qlog"
+  [ "$status" -eq 1 ]
+}
+
+@test "pages latestOpinionatedReviews: dismisses a stale bot review found only on page 2" {
   # A stale allow-listed bot CHANGES_REQUESTED sits beyond the first 100-review
   # page. A single unpaginated read would drop it (fail-open, #1116); the glue
   # must follow pageInfo.endCursor and still dismiss it.
@@ -90,7 +124,7 @@ teardown() { rm -rf "${TT_TMP:-/nonexistent}"; }
   cat > "$DSBR_PAGE1" <<'JSON'
 {"data":{"repository":{"pullRequest":{
   "headRefOid":"8e5bc8db",
-  "latestReviews":{
+  "latestOpinionatedReviews":{
     "pageInfo":{"hasNextPage":true,"endCursor":"CURSOR2"},
     "nodes":[
       {"id":"PRR_head_p1","state":"CHANGES_REQUESTED","commit":{"oid":"8e5bc8db"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}
@@ -101,7 +135,7 @@ JSON
   cat > "$DSBR_PAGE2" <<'JSON'
 {"data":{"repository":{"pullRequest":{
   "headRefOid":"8e5bc8db",
-  "latestReviews":{
+  "latestOpinionatedReviews":{
     "pageInfo":{"hasNextPage":false,"endCursor":null},
     "nodes":[
       {"id":"PRR_stale_p2","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}
@@ -150,9 +184,9 @@ if printf '%s\0' "$@" | grep -qz 'dismissPullRequestReview'; then
   printf '{"data":{"dismissPullRequestReview":{"pullRequestReview":{"id":"x","state":"DISMISSED"}}}}'
   exit 0
 fi
-# The paginated read requests latestReviews; the revalidation re-read does not.
-if printf '%s\0' "$@" | grep -qz 'latestReviews'; then
-  printf '%s' '{"data":{"repository":{"pullRequest":{"headRefOid":"8e5bc8db","latestReviews":{"nodes":[{"id":"PRR_stale","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}]}}}}}'
+# The paginated read requests latestOpinionatedReviews; the revalidation re-read does not.
+if printf '%s\0' "$@" | grep -qz 'latestOpinionatedReviews'; then
+  printf '%s' '{"data":{"repository":{"pullRequest":{"headRefOid":"8e5bc8db","latestOpinionatedReviews":{"nodes":[{"id":"PRR_stale","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}]}}}}}'
   exit 0
 fi
 printf '%s' '{"data":{"repository":{"pullRequest":{"headRefOid":"deadbeef"}}}}'

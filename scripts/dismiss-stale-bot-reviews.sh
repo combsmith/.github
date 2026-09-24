@@ -40,20 +40,29 @@ if [ -z "$OWNER" ] || [ -z "$NAME" ] || [ -z "$PR" ]; then
   exit 1
 fi
 
-# Fetch the PR head oid plus the EFFECTIVE (latest-per-reviewer) reviews — the
-# exact set GitHub uses to compute reviewDecision — so we never dismiss an older
-# review that a newer APPROVE already superseded. latestReviews is a paginated
-# connection capped at 100 nodes per page: a single unpaginated page would
-# silently drop every effective review past the first 100 distinct reviewers, so
-# a stale bot CHANGES_REQUESTED beyond that cut-off would survive while the script
-# reported success (fail-open, #1116). Page through the whole connection so the
-# decision core sees the complete effective set.
+# Fetch the PR head oid plus the EFFECTIVE, OPINIONATED (latest-per-reviewer)
+# reviews — the exact set GitHub uses to compute reviewDecision — so we never
+# dismiss an older review that a newer APPROVE already superseded. We query
+# latestOpinionatedReviews, NOT latestReviews: latestReviews returns each
+# reviewer's single most-recent review of ANY kind, so when an allow-listed bot
+# posts a COMMENTED review after its earlier CHANGES_REQUESTED, latestReviews
+# surfaces only the COMMENTED one — even though a comment does not clear the
+# change request and reviewDecision stays blocked. The loop would then see
+# COMMENTED, never dismiss the still-blocking CHANGES_REQUESTED, and the PR would
+# remain blocked forever (#1116). latestOpinionatedReviews returns each
+# reviewer's latest APPROVED/CHANGES_REQUESTED review — the review that actually
+# drives reviewDecision — so a trailing COMMENTED can no longer mask a stale
+# change request. It is a paginated connection capped at 100 nodes per page: a
+# single unpaginated page would silently drop every effective review past the
+# first 100 distinct reviewers, so a stale bot CHANGES_REQUESTED beyond that
+# cut-off would survive while the script reported success (fail-open, #1116).
+# Page through the whole connection so the decision core sees the complete set.
 read -r -d '' QUERY <<'GRAPHQL' || true
 query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
   repository(owner:$owner, name:$name) {
     pullRequest(number:$number) {
       headRefOid
-      latestReviews(first: 100, after: $cursor) {
+      latestOpinionatedReviews(first: 100, after: $cursor) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id
@@ -95,14 +104,14 @@ while true; do
 
   # Emit one TAB-separated record per review: id, state, commit_oid, login, type.
   page_reviews="$(jq -r '
-    .data.repository.pullRequest.latestReviews.nodes[]
+    .data.repository.pullRequest.latestOpinionatedReviews.nodes[]
     | [ .id, .state, (.commit.oid // ""), (.author.login // ""), (.author.__typename // "") ]
     | @tsv
   ' <<<"$response")"
   [ -n "$page_reviews" ] && reviews+="${page_reviews}"$'\n'
 
-  has_next="$(jq -r '.data.repository.pullRequest.latestReviews.pageInfo.hasNextPage // false' <<<"$response")"
-  end_cursor="$(jq -r '.data.repository.pullRequest.latestReviews.pageInfo.endCursor // ""' <<<"$response")"
+  has_next="$(jq -r '.data.repository.pullRequest.latestOpinionatedReviews.pageInfo.hasNextPage // false' <<<"$response")"
+  end_cursor="$(jq -r '.data.repository.pullRequest.latestOpinionatedReviews.pageInfo.endCursor // ""' <<<"$response")"
   [ "$has_next" = "true" ] && [ -n "$end_cursor" ] || break
   cursor="$end_cursor"
 done
@@ -126,7 +135,7 @@ if [ "$current_head" != "$head_oid" ]; then
   exit 0
 fi
 
-dismissed=0 examined=0
+dismissed=0 would_dismiss=0 examined=0
 while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   [ -n "$review_id" ] || continue
   examined=$((examined + 1))
@@ -135,8 +144,12 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   fi
   msg="Superseded: dismissed by dismiss-stale-bot-reviews because ${login}'s CHANGES_REQUESTED review was on ${commit_oid} but the PR head is now ${head_oid}. A still-valid finding returns as a fresh review on the new commit."
   if [ "$DRY_RUN" = "true" ]; then
+    # Dry-run performs NO mutation, so a candidate must NOT be counted as
+    # dismissed — track it in a separate would-dismiss tally instead, or the
+    # summary would report reviews as dismissed that are still in place,
+    # misleading any operator/automation consuming the output (#1116).
     echo "[dry-run] would dismiss review ${review_id} by ${login} (on ${commit_oid}, head ${head_oid})"
-    dismissed=$((dismissed + 1))
+    would_dismiss=$((would_dismiss + 1))
     continue
   fi
   mutation_resp="$(gh api graphql \
@@ -164,4 +177,8 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   dismissed=$((dismissed + 1))
 done <<<"$reviews"
 
-echo "dismiss-stale-bot-reviews: examined ${examined} effective review(s), dismissed ${dismissed} stale bot review(s) on ${OWNER}/${NAME}#${PR} (head ${head_oid})"
+if [ "$DRY_RUN" = "true" ]; then
+  echo "dismiss-stale-bot-reviews [dry-run]: examined ${examined} effective review(s), would dismiss ${would_dismiss} stale bot review(s) on ${OWNER}/${NAME}#${PR} (head ${head_oid}); no reviews were dismissed"
+else
+  echo "dismiss-stale-bot-reviews: examined ${examined} effective review(s), dismissed ${dismissed} stale bot review(s) on ${OWNER}/${NAME}#${PR} (head ${head_oid})"
+fi
