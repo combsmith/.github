@@ -44,7 +44,7 @@ dl_dev_lead_active() {
     return 0
   fi
   pr_count=$(echo "$pr_raw" | awk '{s+=$1} END {print s+0}')
-  [ "${pr_count:-0}" -gt 0 ] && return 0
+  [[ "${pr_count:-0}" -gt 0 ]] && return 0
 
   # An agent currently mid-run marks the issue `in-progress` before it pushes a
   # PR — respect that window, but cap it at IN_PROGRESS_MAX_HOURS so a crashed or
@@ -57,7 +57,7 @@ dl_dev_lead_active() {
     return 0
   fi
 
-  if [ -n "$in_progress" ]; then
+  if [[ -n "$in_progress" ]]; then
     local in_progress_max_hours="${IN_PROGRESS_MAX_HOURS:-4}"
     local labeled_at
     labeled_at=$(gh api "repos/$org/$repo/issues/$issue/events?per_page=100" \
@@ -65,7 +65,7 @@ dl_dev_lead_active() {
       --jq '.[] | select(.event == "labeled" and .label.name == "in-progress") | .created_at' \
       2>/dev/null | head -1 || echo "")
 
-    if [ -z "$labeled_at" ] || [ "$labeled_at" = "null" ]; then
+    if [[ -z "$labeled_at" ]] || [[ "$labeled_at" = "null" ]]; then
       # Cannot determine when the label was applied; trust it conservatively.
       return 0
     fi
@@ -78,18 +78,18 @@ dl_dev_lead_active() {
                      print(int(datetime.datetime.fromisoformat(ts).timestamp()))" 2>/dev/null \
       <<< "$labeled_at" || echo "")
 
-    if [ -z "$labeled_epoch" ]; then
+    if [[ -z "$labeled_epoch" ]]; then
       return 0
     fi
     elapsed_hours=$(( (now_epoch - labeled_epoch) / 3600 ))
 
-    [ "$elapsed_hours" -le "$in_progress_max_hours" ] && return 0
+    [[ "$elapsed_hours" -le "$in_progress_max_hours" ]] && return 0
     # in-progress label is stale (agent likely crashed). Remove it before
     # returning inactive: AGENTS.md's claim protocol requires any agent to skip
     # an issue that still carries in-progress, so leaving the label in place
     # means the next dev-lead run will immediately skip the issue even after the
     # trigger label is cycled, leaving the crash unrecovered.
-    if [ "${DRY_RUN:-false}" = "true" ]; then
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
       echo "[dry-run] would remove stale 'in-progress' from $org/$repo#$issue" >&2
     else
       gh api -X DELETE "repos/$org/$repo/issues/$issue/labels/in-progress" \
@@ -112,7 +112,7 @@ dl_dev_lead_active() {
 dl_cycle_trigger_label() {
   local org="$1" repo="$2" issue="$3" label="$4" dry_run="${5:-false}"
 
-  if [ "$dry_run" = "true" ]; then
+  if [[ "$dry_run" = "true" ]]; then
     echo "[dry-run] would cycle '$label' on $org/$repo#$issue" >&2
     return 0
   fi

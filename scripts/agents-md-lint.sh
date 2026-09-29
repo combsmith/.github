@@ -74,25 +74,25 @@ amdl_extract_headings() {
   local file="$1"
   local lineno=0 in_fence=0 fence_char="" fence_len=0 line trimmed hashes text level
   local _fc _flen
-  while IFS= read -r line || [ -n "$line" ]; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     lineno=$((lineno + 1))
     trimmed="${line#"${line%%[![:space:]]*}"}"
     if [[ "$trimmed" =~ ^(\`{3,}|~{3,}) ]]; then
       _fc="${BASH_REMATCH[1]:0:1}"
       _flen="${#BASH_REMATCH[1]}"
-      if [ "$in_fence" -eq 0 ]; then
+      if [[ "$in_fence" -eq 0 ]]; then
         in_fence=1
         fence_char="$_fc"
         fence_len="$_flen"
       elif [[ "$trimmed" =~ ^(\`{3,}|~{3,})[[:space:]]*$ ]] && \
-           [ "$_fc" = "$fence_char" ] && [ "$_flen" -ge "$fence_len" ]; then
+           [[ "$_fc" = "$fence_char" ]] && [[ "$_flen" -ge "$fence_len" ]]; then
         in_fence=0
         fence_char=""
         fence_len=0
       fi
       continue
     fi
-    [ "$in_fence" -eq 0 ] || continue
+    [[ "$in_fence" -eq 0 ]] || continue
     if [[ "$line" =~ ^(#{1,6})[[:space:]]+(.*)$ ]]; then
       hashes="${BASH_REMATCH[1]}"
       text="${BASH_REMATCH[2]}"
@@ -118,18 +118,18 @@ amdl_check_single_h1() {
   headings="$(amdl_extract_headings "$file")"
   h1_lines="$(printf '%s\n' "$headings" | awk -F'\t' '$1==1{print $2}')"
   count="$(printf '%s\n' "$headings" | awk -F'\t' 'BEGIN{c=0} $1==1{c++} END{print c}')"
-  if [ "$count" -eq 0 ]; then
+  if [[ "$count" -eq 0 ]]; then
     printf '1\tno level-1 (H1) heading found; exactly one is required\n'
     return 0
   fi
-  if [ "$count" -gt 1 ]; then
+  if [[ "$count" -gt 1 ]]; then
     extra="$(printf '%s\n' "$h1_lines" | sed -n '2p')"
     printf '%s\tmultiple H1 headings found (%s); exactly one is required\n' "$extra" "$count"
     return 0
   fi
   first_line="$(printf '%s\n' "$headings" | sed -n '1p' | awk -F'\t' '{print $2}')"
   h1_line="$(amdl_trim "$h1_lines")"
-  if [ "$first_line" != "$h1_line" ]; then
+  if [[ "$first_line" != "$h1_line" ]]; then
     printf '%s\tthe single H1 heading is not the first heading in the file\n' "$h1_line"
   fi
   return 0
@@ -161,26 +161,26 @@ amdl_check_fenced_code_closure() {
   local file="$1"
   local lineno=0 in_fence=0 fence_char="" fence_len=0 open_line=0 line trimmed
   local _fc _flen
-  while IFS= read -r line || [ -n "$line" ]; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     lineno=$((lineno + 1))
     trimmed="${line#"${line%%[![:space:]]*}"}"
     if [[ "$trimmed" =~ ^(\`{3,}|~{3,}) ]]; then
       _fc="${BASH_REMATCH[1]:0:1}"
       _flen="${#BASH_REMATCH[1]}"
-      if [ "$in_fence" -eq 0 ]; then
+      if [[ "$in_fence" -eq 0 ]]; then
         in_fence=1
         fence_char="$_fc"
         fence_len="$_flen"
         open_line="$lineno"
       elif [[ "$trimmed" =~ ^(\`{3,}|~{3,})[[:space:]]*$ ]] && \
-           [ "$_fc" = "$fence_char" ] && [ "$_flen" -ge "$fence_len" ]; then
+           [[ "$_fc" = "$fence_char" ]] && [[ "$_flen" -ge "$fence_len" ]]; then
         in_fence=0
         fence_char=""
         fence_len=0
       fi
     fi
   done < "$file"
-  if [ "$in_fence" -ne 0 ]; then
+  if [[ "$in_fence" -ne 0 ]]; then
     printf '%s\tfenced code block opened here is never closed\n' "$open_line"
   fi
   return 0
@@ -210,7 +210,7 @@ amdl_classify_reference() {
   target="${target%%[[:space:]]*}"   # drop any link title after the URL
   target="${target#<}"
   target="${target%>}"
-  [ -n "$target" ] || return 0
+  [[ -n "$target" ]] || return 0
   if [[ "$target" =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]] || [[ "$target" == //* ]]; then
     return 0
   fi
@@ -225,8 +225,8 @@ amdl_classify_reference() {
   fi
   path="${target%%#*}"
   path="${path%%\?*}"
-  [ -n "$path" ] || return 0
-  if [ ! -e "$base/$path" ]; then
+  [[ -n "$path" ]] || return 0
+  if [[ ! -e "$base/$path" ]]; then
     printf '%s\trelative reference "%s" does not resolve to an existing path\n' "$lineno" "$path"
   fi
   return 0
@@ -244,11 +244,11 @@ amdl_check_cross_references() {
   declare -A slug_count
   while IFS=$'\t' read -r lvl ln text; do
     : "${lvl:-}" "${ln:-}"
-    [ -n "$text" ] || continue
+    [[ -n "$text" ]] || continue
     slug="$(amdl_slugify "$text")"
     n="${slug_count["$slug"]:-0}"
     slug_count["$slug"]=$((n + 1))
-    if [ "$n" -eq 0 ]; then
+    if [[ "$n" -eq 0 ]]; then
       slugs+="$slug"$'\n'
     else
       slugs+="${slug}-${n}"$'\n'
@@ -259,25 +259,25 @@ amdl_check_cross_references() {
   local _fc _flen
   local inline_regex='(.*)\]\(([^)]*)\)(.*)'
   local ref_regex='^[[:space:]]*\[[^]]+\]:[[:space:]]*(.*)'
-  while IFS= read -r line || [ -n "$line" ]; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     lineno=$((lineno + 1))
     trimmed="${line#"${line%%[![:space:]]*}"}"
     if [[ "$trimmed" =~ ^(\`{3,}|~{3,}) ]]; then
       _fc="${BASH_REMATCH[1]:0:1}"
       _flen="${#BASH_REMATCH[1]}"
-      if [ "$in_fence" -eq 0 ]; then
+      if [[ "$in_fence" -eq 0 ]]; then
         in_fence=1
         fence_char="$_fc"
         fence_len="$_flen"
       elif [[ "$trimmed" =~ ^(\`{3,}|~{3,})[[:space:]]*$ ]] && \
-           [ "$_fc" = "$fence_char" ] && [ "$_flen" -ge "$fence_len" ]; then
+           [[ "$_fc" = "$fence_char" ]] && [[ "$_flen" -ge "$fence_len" ]]; then
         in_fence=0
         fence_char=""
         fence_len=0
       fi
       continue
     fi
-    [ "$in_fence" -eq 0 ] || continue
+    [[ "$in_fence" -eq 0 ]] || continue
 
     # Extract inline links: [text](target)
     temp_line="$line"
@@ -367,13 +367,13 @@ amdl_lint() {
   fi
   while IFS=$'\t' read -r id level applies element; do
     : "${element:-}"
-    if [ "$applies" != "all" ] && [ "$applies" != "$scope" ]; then
+    if [[ "$applies" != "all" ]] && [[ "$applies" != "$scope" ]]; then
       continue
     fi
     check_out="$(amdl_dispatch_rule "$id" "$file")"
-    [ -n "$check_out" ] || continue
+    [[ -n "$check_out" ]] || continue
     while IFS= read -r finding; do
-      [ -n "$finding" ] || continue
+      [[ -n "$finding" ]] || continue
       printf '%s\t%s\t%s\n' "$level" "$id" "$finding"
     done < <(printf '%s\n' "$check_out")
   done < <(jq -r '.rules[] | [.id, .level, .applies_to, .element] | @tsv' "$rules")
@@ -400,7 +400,7 @@ USAGE
 # ---------------------------------------------------------------------------
 amdl_main() {
   local mode="informational" scope="canonical" rules="$AMDL_DEFAULT_RULES" target=""
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       --mode) mode="${2:-}"; shift 2 ;;
       --mode=*) mode="${1#*=}"; shift ;;
@@ -427,27 +427,27 @@ amdl_main() {
     printf 'agents-md-lint: jq is required but was not found on PATH\n' >&2
     return 2
   fi
-  if [ -z "$target" ]; then
+  if [[ -z "$target" ]]; then
     printf 'agents-md-lint: no AGENTS.md path given\n\n' >&2
     amdl_usage >&2
     return 2
   fi
-  if [ ! -f "$rules" ]; then
+  if [[ ! -f "$rules" ]]; then
     printf 'agents-md-lint: rule-set file not found: %s\n' "$rules" >&2
     return 2
   fi
-  if [ ! -f "$target" ]; then
+  if [[ ! -f "$target" ]]; then
     printf 'agents-md-lint: target AGENTS.md not found: %s\n' "$target" >&2
     return 2
   fi
 
   local findings
   findings="$(amdl_lint "$target" "$rules" "$scope")"
-  if [ -n "$findings" ]; then
+  if [[ -n "$findings" ]]; then
     printf '%s\n' "$findings"
   fi
 
-  if [ "$mode" = "failing" ] && printf '%s\n' "$findings" | grep -q "^required$(printf '\t')"; then
+  if [[ "$mode" = "failing" ]] && printf '%s\n' "$findings" | grep -q "^required$(printf '\t')"; then
     return 1
   fi
   return 0
@@ -455,7 +455,7 @@ amdl_main() {
 
 # Run the CLI only when executed directly, not when sourced by the bats tests
 # that exercise the pure helper functions above.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   set -euo pipefail
   amdl_main "$@"
 fi

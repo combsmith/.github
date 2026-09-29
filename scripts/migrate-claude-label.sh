@@ -65,7 +65,7 @@ issue_has_label() {
   local present
   present=$(gh api "repos/$ORG/$1/issues/$2" \
     --jq "[.labels[].name] | index(\"$3\") // empty" 2>/dev/null || echo "")
-  [ -n "$present" ]
+  [[ -n "$present" ]]
 }
 
 migrate_repo() {
@@ -78,7 +78,7 @@ migrate_repo() {
   info "Repo $repo has '$OLD_LABEL' label — migrating"
 
   # 1. Ensure the new label exists.
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     info "[dry-run] would ensure label '$NEW_LABEL' exists in $repo"
   else
     gh label create "$NEW_LABEL" --repo "$ORG/$repo" \
@@ -104,7 +104,7 @@ migrate_repo() {
     issues=""
   fi
   while IFS= read -r num; do
-    [ -z "$num" ] && continue
+    [[ -z "$num" ]] && continue
     if issue_has_label "$repo" "$num" "$NEW_LABEL"; then
       info "  #$num already has '$NEW_LABEL' — skipping"
       ISSUES_SKIPPED=$((ISSUES_SKIPPED + 1))
@@ -122,7 +122,7 @@ migrate_repo() {
       repo_failed=1
       continue
     fi
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       info "[dry-run] would add '$NEW_LABEL' to $repo#$num"
       LABELS_ADDED=$((LABELS_ADDED + 1))
     else
@@ -137,15 +137,15 @@ migrate_repo() {
   done <<< "$issues"
 
   # 3. Delete the old label object (strips it from all issues/PRs).
-  if [ "$DELETE_OLD_LABEL" = "true" ] && [ "$repo_failed" -eq 0 ]; then
-    if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DELETE_OLD_LABEL" = "true" ]] && [[ "$repo_failed" -eq 0 ]]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       info "[dry-run] would DELETE label '$OLD_LABEL' from $repo"
     else
       gh api -X DELETE "repos/$ORG/$repo/labels/$OLD_LABEL" >/dev/null 2>&1 \
         && { info "  deleted '$OLD_LABEL' label from $repo"; LABELS_DELETED=$((LABELS_DELETED + 1)); } \
         || warn "  failed to delete '$OLD_LABEL' label from $repo"
     fi
-  elif [ "$repo_failed" -ne 0 ]; then
+  elif [[ "$repo_failed" -ne 0 ]]; then
     warn "  keeping '$OLD_LABEL' on $repo — one or more re-labels failed"
   fi
 }
@@ -154,7 +154,7 @@ main() {
   info "migrate-claude-label starting (org=$ORG, $OLD_LABEL -> $NEW_LABEL, dry_run=$DRY_RUN, delete_old=$DELETE_OLD_LABEL)"
 
   local repos
-  if [ -n "$TARGET_REPO" ]; then
+  if [[ -n "$TARGET_REPO" ]]; then
     repos="${TARGET_REPO#"$ORG/"}"
   else
     repos=$(gh repo list "$ORG" --no-archived --limit 1000 --json name -q '.[].name')
@@ -175,7 +175,7 @@ main() {
   echo "  Old labels deleted  : $LABELS_DELETED"
   echo "=========================================="
 
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     {
       echo "## claude → dev-lead label migration"
       echo ""
