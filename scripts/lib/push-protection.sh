@@ -363,6 +363,12 @@ pp_check_secret_scan_ci_job() {
   ci_content=$(echo "$ci_b64" | tr -d '\n ' | base64 -d 2>/dev/null || echo "")
 
   if [[ -z "$ci_content" ]]; then
+    # ci.yml exists (we had base64 above) but is empty or could not be decoded.
+    # Fail closed: an unreadable workflow must never be conflated with "the
+    # gitleaks job is present" — that would let a missing security check pass.
+    add_finding "$repo" "push-protection" "secret_scan_ci_job_present" "error" \
+      "\`.github/workflows/ci.yml\` is present but empty or could not be decoded — cannot verify the required \`secret-scan\` gitleaks job" \
+      "$PP_STANDARD_REF#layer-3--ci-secret-scanning-secondary-defense"
     return
   fi
 
