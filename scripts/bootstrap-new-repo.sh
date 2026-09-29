@@ -465,7 +465,13 @@ main() {
       *)         if [[ -z "$repo" ]]; then repo="$1"; else echo "::error::unexpected argument: $1" >&2; return 2; fi; shift ;;
     esac
   done
-  if [[ -z "$repo" ]] && [[ $# -gt 0 ]]; then repo="$1"; fi
+  # Consume the first positional after `--` as the repo, but never silently
+  # discard extra operands: a command with leftover arguments is a usage error,
+  # not a success that drops them.
+  if [[ $# -gt 0 ]]; then
+    if [[ -z "$repo" ]]; then repo="$1"; shift; fi
+    if [[ $# -gt 0 ]]; then echo "::error::unexpected argument: $1" >&2; return 2; fi
+  fi
   if [[ -z "$repo" ]]; then
     echo "::error::usage: $0 [--ring <ring>] [--agent <agent>] owner/new-repo   (DRY_RUN=true for a no-write preview)" >&2
     return 2

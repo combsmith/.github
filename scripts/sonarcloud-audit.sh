@@ -200,7 +200,11 @@ sonar_project_issues() {
 scan() {
   local target_name=""
   if [[ -n "$TARGET_REPO" ]]; then
-    target_name="${TARGET_REPO#"$ORG/"}"
+    # Compare on the bare repo name. sonar_project_to_repo yields just "name", so
+    # strip any "owner/" prefix — not only "$ORG/" — otherwise a TARGET_REPO whose
+    # owner differs from $ORG keeps its slash and never matches, skipping every
+    # project.
+    target_name="${TARGET_REPO##*/}"
   fi
 
   local ndjson_file="$REPORT_DIR/findings.ndjson"
