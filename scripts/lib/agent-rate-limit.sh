@@ -1108,10 +1108,13 @@ arl_token_iso_to_epoch() {
   fi
   epoch="$(date -d "$iso" +%s 2>/dev/null || printf '')"
   [[ "$epoch" =~ ^[0-9]+$ ]] || return 0
-  # Round-trip: if date normalised an invalid calendar date (e.g. Feb 30 → Mar 2)
-  # the reconstructed YYYY-MM-DD will not match the input prefix — reject it.
+  # Reject an invalid calendar date (e.g. Feb 30, which `date` would normalise to
+  # Mar 2) by round-tripping the DATE PORTION of the input directly. Using the
+  # date part — not the epoch reconstructed in UTC — keeps this timezone-neutral:
+  # a valid non-UTC timestamp near midnight (whose UTC date rolls to an adjacent
+  # day) must not be rejected just because it carries an offset.
   local reconstructed_date
-  reconstructed_date="$(date -u -d "@$epoch" +%Y-%m-%d 2>/dev/null || printf '')"
+  reconstructed_date="$(date -d "${iso:0:10}" +%Y-%m-%d 2>/dev/null || printf '')"
   [[ "$reconstructed_date" = "${iso:0:10}" ]] || return 0
   printf '%s' "$epoch"
 }

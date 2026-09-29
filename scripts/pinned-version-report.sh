@@ -35,12 +35,16 @@ declare -A HOST_LOADED      # host -> 1
 load_host_tags() {
   local host="$1"
   [[ -n "${HOST_LOADED[$host]:-}" ]] && return 0
-  HOST_LOADED[$host]=1
-  local name sha
+  local name sha loaded=0
   while IFS=$'\t' read -r name sha || [[ -n "$name" ]]; do
-    [[ -n "$name" ]] && TAG_SHA["$host"$'\t'"$name"]="$sha"
+    [[ -n "$name" ]] && { TAG_SHA["$host"$'\t'"$name"]="$sha"; loaded=1; }
   done < <(gh api --paginate "repos/$ORG/$host/tags" \
              --jq '.[] | [.name, .commit.sha] | @tsv' 2>/dev/null | tr -d '\r' || true)
+  # Only mark the host cached once at least one tag actually came back. A failed
+  # tag fetch (network/permissions) yields zero rows; leaving HOST_LOADED unset
+  # lets a later lookup retry rather than caching the failure and reporting every
+  # channel for that host as unresolved.
+  [[ "$loaded" = 1 ]] && HOST_LOADED[$host]=1
 }
 
 # resolve_version <host> <agent> <channel-ref> -> "vX.Y.Z" | "?" (unresolved)

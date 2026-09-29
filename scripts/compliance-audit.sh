@@ -1135,7 +1135,15 @@ check_ruleset_bypass_actors() {
   for rs_id in $ids; do
     local rs
     rs=$(gh_api "repos/$ORG/$repo/rulesets/$rs_id" 2>/dev/null || echo "")
-    [[ -z "$rs" ]] && continue
+    if [[ -z "$rs" ]] || ! echo "$rs" | jq empty >/dev/null 2>&1; then
+      # Fail closed (consistent with _ruleset_contents_one): a ruleset we cannot
+      # fetch/parse must never read as "no finding" — that would let an
+      # incomplete audit silently pass and close existing bypass-actor findings.
+      add_finding "$repo" "rulesets" "ruleset-bypass-unfetchable-$rs_id" "error" \
+        "Could not fetch or parse ruleset id $rs_id to verify its required bypass actors. Treating as a finding rather than a pass (fail closed): an error must never be conflated with a compliant ruleset. Re-run the audit with a token that can read rulesets." \
+        "$std_ref"
+      continue
+    fi
 
     # Does this ruleset target the default branch? Match the GitHub aliases
     # (~DEFAULT_BRANCH, ~ALL) or an explicit refs/heads/<default> include.
