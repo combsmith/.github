@@ -26,7 +26,7 @@
 set -euo pipefail
 
 compose_signals() {
-  if [ "$#" -ne 11 ]; then
+  if [[ "$#" -ne 11 ]]; then
     printf '[compose-signals] expected 11 args, got %d\n' "$#" >&2
     return 64  # EX_USAGE
   fi

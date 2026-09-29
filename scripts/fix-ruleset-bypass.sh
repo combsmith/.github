@@ -141,14 +141,14 @@ fix_repo() {
 
   local default_branch
   default_branch=$(gh api "repos/$ORG/$repo" --jq '.default_branch // "main"' 2>/dev/null || echo "main")
-  [ -z "$default_branch" ] || [ "$default_branch" = "null" ] && default_branch="main"
+  [[ -z "$default_branch" ]] || [[ "$default_branch" = "null" ]] && default_branch="main"
 
   local rulesets
   rulesets=$(gh api "repos/$ORG/$repo/rulesets" 2>/dev/null || echo "[]")
 
   local ids
   ids=$(echo "$rulesets" | jq -r '.[].id' 2>/dev/null || echo "")
-  if [ -z "$ids" ]; then
+  if [[ -z "$ids" ]]; then
     skip "  No rulesets on $ORG/$repo"
     return 0
   fi
@@ -157,14 +157,14 @@ fix_repo() {
   for rs_id in $ids; do
     local rs
     rs=$(gh api "repos/$ORG/$repo/rulesets/$rs_id" 2>/dev/null || echo "")
-    [ -z "$rs" ] && continue
+    [[ -z "$rs" ]] && continue
 
     targets_default_branch "$rs" "$default_branch" || continue
 
     local name slug
     name=$(echo "$rs" | jq -r '.name')
     slug=$(printf '%s' "$name" | tr '[:upper:] /' '[:lower:]--' | tr -cd 'a-z0-9_-')
-    [ -z "$slug" ] && slug="$rs_id"
+    [[ -z "$slug" ]] && slug="$rs_id"
 
     if is_compliant "$rs"; then
       skip "  $name (id=$rs_id) already compliant"
@@ -179,7 +179,7 @@ fix_repo() {
     before=$(echo "$rs"      | jq -c '[.bypass_actors[]? | {t: .actor_type, id: .actor_id, m: .bypass_mode}]')
     after=$(echo "$payload"  | jq -c '[.bypass_actors[]  | {t: .actor_type, id: .actor_id, m: .bypass_mode}]')
 
-    if [ "$DRY_RUN" = true ]; then
+    if [[ "$DRY_RUN" = true ]]; then
       mkdir -p "$OUT_DIR"
       local out="$OUT_DIR/${repo}__${slug}.json"
       echo "$payload" | jq '.' > "$out"
@@ -198,11 +198,11 @@ fix_repo() {
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
-if [ $# -eq 0 ]; then
+if [[ $# -eq 0 ]]; then
   usage
 fi
 
-if [ -z "${GH_TOKEN:-}" ]; then
+if [[ -z "${GH_TOKEN:-}" ]]; then
   err "GH_TOKEN is required — provide a token with administration:write scope"
   exit 1
 fi
@@ -218,26 +218,26 @@ for arg in "$@"; do
   esac
 done
 
-[ -z "$TARGET" ] && usage
+[[ -z "$TARGET" ]] && usage
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-if [ "$TARGET" = "--all" ]; then
+if [[ "$TARGET" = "--all" ]]; then
   info "Fetching all non-archived repos in $ORG ..."
   repos=$(gh repo list "$ORG" --no-archived --json name -q '.[].name' --limit 500)
-  [ -z "$repos" ] && { err "No repositories found in $ORG — check GH_TOKEN permissions"; exit 1; }
+  [[ -z "$repos" ]] && { err "No repositories found in $ORG — check GH_TOKEN permissions"; exit 1; }
 
   failed=0
   for repo in $repos; do
     fix_repo "$repo" || failed=$((failed + 1))
   done
-  [ "$failed" -gt 0 ] && { err "$failed repo(s) had errors"; exit 1; }
+  [[ "$failed" -gt 0 ]] && { err "$failed repo(s) had errors"; exit 1; }
 else
   fix_repo "$TARGET"
 fi
 
-if [ "$DRY_RUN" = true ]; then
+if [[ "$DRY_RUN" = true ]]; then
   info "Dry run complete. Payloads written under $OUT_DIR/"
   info "Apply one with: gh api -X PUT repos/$ORG/<repo>/rulesets/<id> --input <payload.json>"
 fi

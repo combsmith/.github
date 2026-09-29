@@ -93,7 +93,7 @@ argate_log() { printf 'agent-rate-limit-gate: %s\n' "$*" >&2; }
 # ---------------------------------------------------------------------------
 argate_iso_to_epoch() {
   local iso="${1:-}" epoch
-  [ -z "$iso" ] && return 0
+  [[ -z "$iso" ]] && return 0
   epoch="$(date -u -d "$iso" +%s 2>/dev/null || printf '')"
   [[ "$epoch" =~ ^[0-9]+$ ]] && printf '%s' "$epoch"
 }
@@ -135,7 +135,7 @@ argate_daily_count() {
   local runs="${1:-[]}" now threshold_iso n current_run_id="${GITHUB_RUN_ID:-}"
   now="$(arl_sanitize_int "${2:-}")"
   threshold_iso="$(date -u -d "@$(( now - ARGATE_DAILY_WINDOW_SECONDS ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')"
-  if [ -z "$threshold_iso" ]; then
+  if [[ -z "$threshold_iso" ]]; then
     printf '0'
     return 0
   fi
@@ -156,11 +156,11 @@ argate_daily_count() {
 argate_consecutive_failures() {
   local runs="${1:-[]}" concl streak=0
   while IFS= read -r concl; do
-    [ -z "$concl" ] && continue
+    [[ -z "$concl" ]] && continue
     case " $ARGATE_FAILURE_CONCLUSIONS " in
       *" $concl "*) streak=$(( streak + 1 )) ;;
       *)
-        if [ "$concl" = "success" ]; then
+        if [[ "$concl" = "success" ]]; then
           break
         fi
         # cancelled / skipped / neutral / action_required: ignore, keep scanning.
@@ -248,13 +248,13 @@ argate_escalate() {
   marker="$(arl_breaker_marker "$agent_type")"
   label="$(arl_breaker_label)"
 
-  if [ -z "$tracking_issue" ]; then
+  if [[ -z "$tracking_issue" ]]; then
     argate_log "breaker OPEN for '${agent_type}' but no --tracking-issue configured — not posting; marker would be: ${marker}"
     return 0
   fi
 
   local repo_args=()
-  [ -n "$tracking_repo" ] && repo_args=(--repo "$tracking_repo")
+  [[ -n "$tracking_repo" ]] && repo_args=(--repo "$tracking_repo")
 
   body="$(gh issue view "$tracking_issue" "${repo_args[@]}" --json body --jq '.body' 2>/dev/null || printf '')"
   if ! arl_should_escalate "$body" "$agent_type"; then
@@ -295,13 +295,13 @@ argate_token_escalate() {
   marker="$(arl_token_breaker_marker "$window")"
   label="$(arl_breaker_label)"
 
-  if [ -z "$tracking_issue" ]; then
+  if [[ -z "$tracking_issue" ]]; then
     argate_log "token-budget[${window}] breaker OPEN but no --tracking-issue configured — not posting; marker would be: ${marker}"
     return 0
   fi
 
   local repo_args=()
-  [ -n "$tracking_repo" ] && repo_args=(--repo "$tracking_repo")
+  [[ -n "$tracking_repo" ]] && repo_args=(--repo "$tracking_repo")
 
   body="$(gh issue view "$tracking_issue" "${repo_args[@]}" \
     --json body,comments \
@@ -366,9 +366,9 @@ argate_token_budget() {
   s_percent="$(arl_token_extract_percent "$body" session)"
   w_percent="$(arl_token_extract_percent "$body" weekly_all)"
 
-  if [ "$status" -eq 200 ] && { [ -n "$s_percent" ] || [ -n "$w_percent" ]; }; then
+  if [[ "$status" -eq 200 ]] && { [[ -n "$s_percent" ]] || [[ -n "$w_percent" ]]; }; then
     argate_log "token-budget: telemetry OBTAINED (status=200) — evaluating pause-worthy account windows (session, weekly_all)"
-  elif [ "$status" -eq 200 ]; then
+  elif [[ "$status" -eq 200 ]]; then
     argate_log "token-budget: telemetry status=200 but NO usable window data (empty/malformed body) — the breaker fails open; any allow below is DEGRADED, not a genuine under-threshold allow"
   else
     argate_log "token-budget: telemetry NOT obtained (status=${status}) — the breaker fails open; any allow below is DEGRADED, not a genuine under-threshold allow"
@@ -379,7 +379,7 @@ argate_token_budget() {
   s_threshold="$(arl_token_pause_threshold session)"
   argate_log "token-budget[session]: percent=${s_percent:-<none>} threshold=${s_threshold:-<none>}%"
   s_decision="$(arl_token_budget_gate session "$envelope")" || true
-  if [ "$s_decision" = "decision=defer" ]; then
+  if [[ "$s_decision" = "decision=defer" ]]; then
     decision="defer"
     tripped+=(session)
     argate_log "token-budget[session] TRIP — escalation marker: $(arl_token_breaker_marker session)"
@@ -390,14 +390,14 @@ argate_token_budget() {
   local w_decision
   argate_log "token-budget[weekly_all]: percent=${w_percent:-<none>} threshold=glide-path (config-enabled=$(arl_token_glide_enabled))"
   w_decision="$(arl_token_weekly_glide_gate "$envelope")" || true
-  if [ "$w_decision" = "decision=defer" ]; then
+  if [[ "$w_decision" = "decision=defer" ]]; then
     decision="defer"
     tripped+=(weekly_all)
     argate_log "token-budget[weekly_all] TRIP — escalation marker: $(arl_token_breaker_marker weekly_all)"
   fi
 
   printf '%s' "$decision"
-  [ "${#tripped[@]}" -gt 0 ] && printf ' %s' "${tripped[@]}"
+  [[ "${#tripped[@]}" -gt 0 ]] && printf ' %s' "${tripped[@]}"
 }
 
 # ---------------------------------------------------------------------------
@@ -408,7 +408,7 @@ argate_token_budget() {
 argate_emit() {
   local decision="$1"
   printf 'decision=%s\n' "$decision"
-  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'decision=%s\n' "$decision" >>"$GITHUB_OUTPUT"
   fi
 }
@@ -425,10 +425,10 @@ argate_gate() {
   local tracking_repo="" tracking_issue="" history_limit="100"
 
   # First positional is the agent type; the rest are flags.
-  if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then
+  if [[ $# -gt 0 ]] && [[ "${1#-}" = "$1" ]]; then
     agent_type="$1"; shift
   fi
-  while [ $# -gt 0 ]; do
+  while [[ $# -gt 0 ]]; do
     case "$1" in
       --mode) mode="${2:-}"; shift 2 ;;
       --workflow) workflow="${2:-}"; shift 2 ;;
@@ -442,17 +442,17 @@ argate_gate() {
     esac
   done
 
-  if [ -z "$agent_type" ]; then
+  if [[ -z "$agent_type" ]]; then
     argate_log "error: an <agent_type> argument is required"
     argate_emit "allow"   # fail-open: a usage error must not block the fleet
     return 0
   fi
-  [ -z "$workflow" ] && workflow="$agent_type"
+  [[ -z "$workflow" ]] && workflow="$agent_type"
 
   # Config unreadable → allow (never block the fleet on a config outage; AC #1).
   local config
   config="$(arl_config_path)"
-  if [ ! -f "$config" ] || ! jq -e . "$config" >/dev/null 2>&1; then
+  if [[ ! -f "$config" ]] || ! jq -e . "$config" >/dev/null 2>&1; then
     argate_log "warning: config at '$config' is missing or malformed — allowing dispatch (degraded)"
     argate_emit "allow"
     return 0
@@ -460,12 +460,12 @@ argate_gate() {
 
   # Exempt actors / labels are never blocked and never counted (same policy as
   # the library and the PR-limit gate).
-  if [ -n "$actor" ] && arl_is_exempt_actor "$actor"; then
+  if [[ -n "$actor" ]] && arl_is_exempt_actor "$actor"; then
     argate_log "actor '${actor}' is exempt — allowing (not subject to the limits)"
     argate_emit "allow"
     return 0
   fi
-  if [ -n "$labels" ] && arl_is_exempt_label "$labels"; then
+  if [[ -n "$labels" ]] && arl_is_exempt_label "$labels"; then
     argate_log "run carries an exempt label — allowing (not subject to the limits)"
     argate_emit "allow"
     return 0
@@ -491,15 +491,15 @@ argate_gate() {
   # decision rides on captured stdout and a defer returns non-zero.
   local decision="allow" breaker_open=0 breaker admission
   breaker="$(arl_breaker_decision "$agent_type" "$failures" "$last_failure" "$now")" || true
-  if [ "$breaker" != "decision=allow" ]; then
+  if [[ "$breaker" != "decision=allow" ]]; then
     decision="defer"
     breaker_open=1
   fi
 
   # Admission — concurrency / cooldown / daily budget (only if the breaker is closed).
-  if [ "$decision" = "allow" ]; then
+  if [[ "$decision" = "allow" ]]; then
     admission="$(arl_admission_decision "$agent_type" "$concurrent" "$last_run" "$daily_count" "$now")" || true
-    [ "$admission" != "decision=allow" ] && decision="defer"
+    [[ "$admission" != "decision=allow" ]] && decision="defer"
   fi
 
   # Unresolved run history (#1226): no per-role workflow and no agent-ingress.yml
@@ -518,13 +518,13 @@ argate_gate() {
   # of whether a per-agent limit already deferred, so the observability log always
   # records the budget state (AC #1/#5).
   local -a tripped_token_windows=()
-  if [ "${AGENT_TOKEN_BUDGET_ENABLED:-false}" = "true" ]; then
+  if [[ "${AGENT_TOKEN_BUDGET_ENABLED:-false}" = "true" ]]; then
     local -a token_fields=()
     local token_decision
     read -r -a token_fields < <(argate_token_budget)
     token_decision="${token_fields[0]:-allow}"
     tripped_token_windows=("${token_fields[@]:1}")
-    if [ "$token_decision" = "defer" ]; then
+    if [[ "$token_decision" = "defer" ]]; then
       argate_log "token-budget breaker deferred dispatch for '${agent_type}' (org-wide account budget over threshold)"
       decision="defer"
     fi
@@ -538,7 +538,7 @@ argate_gate() {
   fi
 
   # Log-only canary split: compute + log, but never act (AC #5).
-  if [ "$mode" != "enforce" ]; then
+  if [[ "$mode" != "enforce" ]]; then
     argate_log "log-only mode for '${agent_type}' — computed decision=${decision} but NOT acting (emitting allow)"
     argate_emit "allow"
     return 0
@@ -547,7 +547,7 @@ argate_gate() {
   # Enforcing. Escalate an open breaker exactly once (AC #4), then emit the
   # computed decision. A defer is a clean no-op — the caller simply skips
   # dispatch; it is never a job failure.
-  if [ "$breaker_open" -eq 1 ]; then
+  if [[ "$breaker_open" -eq 1 ]]; then
     argate_escalate "$agent_type" "$tracking_repo" "$tracking_issue"
   fi
   # Escalate each tripped org-wide token-budget window the same way (dedup marker +
@@ -563,6 +563,6 @@ argate_gate() {
 }
 
 # Run main unless sourced for unit testing (ARGATE_LIB_ONLY=1) or dot-sourced.
-if [ -z "${ARGATE_LIB_ONLY:-}" ] && [ "${BASH_SOURCE[0]:-$0}" = "${0}" ]; then
+if [[ -z "${ARGATE_LIB_ONLY:-}" ]] && [[ "${BASH_SOURCE[0]:-$0}" = "${0}" ]]; then
   argate_gate "$@"
 fi

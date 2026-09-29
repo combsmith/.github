@@ -102,7 +102,7 @@ pp_apply_security_and_analysis() {
   local current
   current=$(gh api "repos/$ORG/$repo" --jq '.security_and_analysis // {}' 2>/dev/null || echo "{}")
 
-  if [ "$current" = "{}" ] || [ -z "$current" ]; then
+  if [[ "$current" = "{}" ]] || [[ -z "$current" ]]; then
     # Cannot read the current security_and_analysis state — the token may lack
     # admin or security_events scope, or the settings have not yet been
     # configured.  Apply all required settings unconditionally: every required
@@ -118,7 +118,7 @@ pp_apply_security_and_analysis() {
     IFS=':' read -r key expected _ _ <<< "$entry"
     actual=$(echo "$current" | jq -r ".\"$key\".status // \"null\"")
 
-    if [ "$actual" != "$expected" ]; then
+    if [[ "$actual" != "$expected" ]]; then
       info "  $key: $actual → $expected"
       needs_patch=true
       payload=$(echo "$payload" | jq --arg k "$key" --arg v "$expected" '. + {($k): {status: $v}}')
@@ -127,12 +127,12 @@ pp_apply_security_and_analysis() {
     fi
   done
 
-  if [ "$needs_patch" = false ]; then
+  if [[ "$needs_patch" = false ]]; then
     ok "$ORG/$repo security_and_analysis already fully compliant — no changes needed"
     return 0
   fi
 
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     skip "DRY_RUN=true — skipping security_and_analysis PATCH for $ORG/$repo"
     return 0
   fi
@@ -156,7 +156,7 @@ pp_apply_security_and_analysis() {
 
     local -A actuals
     while IFS=':' read -r k v; do
-      if [ -n "$k" ]; then
+      if [[ -n "$k" ]]; then
         actuals["$k"]="$v"
       fi
     done <<< "$post_actuals"
@@ -180,13 +180,13 @@ pp_apply_security_and_analysis() {
       post_expected="${post_entry#*:}"
       post_expected="${post_expected%%:*}"
       post_actual="${actuals[$post_key]:-null}"
-      if [ "$post_actual" = "$post_expected" ]; then
+      if [[ "$post_actual" = "$post_expected" ]]; then
         ok "  $post_key: $post_actual (verified)"
         continue
       fi
       is_plan_gated=false
       for plan_key in "${PP_PLAN_GATED_KEYS[@]}"; do
-        if [ "$post_key" = "$plan_key" ]; then
+        if [[ "$post_key" = "$plan_key" ]]; then
           is_plan_gated=true
           break
         fi
@@ -194,7 +194,7 @@ pp_apply_security_and_analysis() {
       # Plan-gated keys are only skipped when their status is null (unavailable
       # on this org plan). If a plan-gated key is "disabled" (present, not null),
       # that is a failure — the key exists but was not enabled.
-      if [ "$is_plan_gated" = true ] && [ "$post_actual" = "null" ]; then
+      if [[ "$is_plan_gated" = true ]] && [[ "$post_actual" = "null" ]]; then
         skip "  $post_key still null after PATCH — unsupported on this org plan, skipping"
         continue
       fi
@@ -203,12 +203,12 @@ pp_apply_security_and_analysis() {
       # secret_scanning_non_provider_patterns exception via this check.
       is_ghas_gated=false
       for ghas_key in "${PP_GHAS_GATED_KEYS[@]}"; do
-        if [ "$post_key" = "$ghas_key" ]; then
+        if [[ "$post_key" = "$ghas_key" ]]; then
           is_ghas_gated=true
           break
         fi
       done
-      if [ "$is_ghas_gated" = true ] && [ "$post_ghas_status" != "enabled" ]; then
+      if [[ "$is_ghas_gated" = true ]] && [[ "$post_ghas_status" != "enabled" ]]; then
         skip "  $post_key still $post_actual after PATCH — GitHub Advanced Security not enabled, skipping"
         continue
       fi
@@ -216,7 +216,7 @@ pp_apply_security_and_analysis() {
       err "  $post_key still $post_actual after PATCH (expected $post_expected) — the security-critical setting did not take"
       verify_failed=true
     done
-    if [ "$verify_failed" = true ]; then
+    if [[ "$verify_failed" = true ]]; then
       return 1
     fi
   else
@@ -236,7 +236,7 @@ pp_check_security_and_analysis() {
   local sa
   sa=$(gh_api "repos/$ORG/$repo" --jq '.security_and_analysis // {}' 2>/dev/null || echo "{}")
 
-  if [ "$sa" = "{}" ] || [ -z "$sa" ]; then
+  if [[ "$sa" = "{}" ]] || [[ -z "$sa" ]]; then
     # security_and_analysis is not readable via the current token (requires
     # admin permissions on the repository).  Use the secret-scanning alerts
     # endpoint as a proxy: an admin with the security_events scope (but not
@@ -279,7 +279,7 @@ pp_check_security_and_analysis() {
   for entry in "${PP_REQUIRED_SA_SETTINGS[@]}"; do
     IFS=':' read -r key expected severity detail <<< "$entry"
     actual=$(echo "$sa" | jq -r ".\"$key\".status // \"null\"")
-    if [ "$actual" = "$expected" ]; then
+    if [[ "$actual" = "$expected" ]]; then
       continue
     fi
     # A null/absent status for a plan-gated key means the feature is unavailable
@@ -287,12 +287,12 @@ pp_check_security_and_analysis() {
     # compliance finding that cannot be remediated without a plan upgrade.
     is_plan_gated=false
     for plan_key in "${PP_PLAN_GATED_KEYS[@]}"; do
-      if [ "$key" = "$plan_key" ]; then
+      if [[ "$key" = "$plan_key" ]]; then
         is_plan_gated=true
         break
       fi
     done
-    if [ "$is_plan_gated" = true ] && [ "$actual" = "null" ]; then
+    if [[ "$is_plan_gated" = true ]] && [[ "$actual" = "null" ]]; then
       continue
     fi
     # A GHAS-gated key reported as anything other than "enabled" (including
@@ -301,12 +301,12 @@ pp_check_security_and_analysis() {
     # produce a recurring finding that can never be remediated on this plan.
     is_ghas_gated=false
     for ghas_key in "${PP_GHAS_GATED_KEYS[@]}"; do
-      if [ "$key" = "$ghas_key" ]; then
+      if [[ "$key" = "$ghas_key" ]]; then
         is_ghas_gated=true
         break
       fi
     done
-    if [ "$is_ghas_gated" = true ] && [ "$ghas_status" != "enabled" ]; then
+    if [[ "$is_ghas_gated" = true ]] && [[ "$ghas_status" != "enabled" ]]; then
       continue
     fi
     add_finding "$repo" "push-protection" "$key" "$severity" \
@@ -335,7 +335,7 @@ pp_check_open_secret_alerts() {
   local count
   count=$(echo "$alerts" | jq 'length')
 
-  if [ "$count" -gt 0 ]; then
+  if [[ "$count" -gt 0 ]]; then
     add_finding "$repo" "push-protection" "open_secret_alerts" "error" \
       "$count open secret-scanning alert(s) — rotate the leaked credentials before resolving" \
       "$PP_STANDARD_REF#incident-response"
@@ -351,7 +351,7 @@ pp_check_secret_scan_ci_job() {
   local ci_b64
   ci_b64=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/ci.yml" --jq '.content // ""' 2>/dev/null || echo "")
 
-  if [ -z "$ci_b64" ]; then
+  if [[ -z "$ci_b64" ]]; then
     add_finding "$repo" "push-protection" "secret_scan_ci_job_present" "error" \
       "No \`.github/workflows/ci.yml\` found — cannot verify the required \`secret-scan\` gitleaks job" \
       "$PP_STANDARD_REF#layer-3--ci-secret-scanning-secondary-defense"
@@ -362,7 +362,7 @@ pp_check_secret_scan_ci_job() {
   # GitHub returns content base64-encoded, line-wrapped at 60 chars
   ci_content=$(echo "$ci_b64" | tr -d '\n ' | base64 -d 2>/dev/null || echo "")
 
-  if [ -z "$ci_content" ]; then
+  if [[ -z "$ci_content" ]]; then
     return
   fi
 
@@ -409,10 +409,10 @@ pp_check_gitignore_baseline() {
   # against a missing/unreadable canonical so a broken baseline can't silently
   # pass every repo.
   local canonical_block="" canonical_hash
-  if [ -r "$PP_CANONICAL_GITIGNORE" ]; then
+  if [[ -r "$PP_CANONICAL_GITIGNORE" ]]; then
     canonical_block=$(pp_extract_baseline_block < "$PP_CANONICAL_GITIGNORE" 2>/dev/null) || canonical_block=""
   fi
-  if [ -z "$canonical_block" ]; then
+  if [[ -z "$canonical_block" ]]; then
     add_finding "$repo" "push-protection" "gitignore_baseline" "error" \
       "Could not read the canonical secrets-baseline block from the org \`.gitignore\` — the audit cannot verify baseline drift" \
       "$PP_GITIGNORE_STANDARD_REF#managed-block-markers"
@@ -423,7 +423,7 @@ pp_check_gitignore_baseline() {
   local gi_b64
   gi_b64=$(gh_api "repos/$ORG/$repo/contents/.gitignore" --jq '.content // ""' 2>/dev/null || echo "")
 
-  if [ -z "$gi_b64" ]; then
+  if [[ -z "$gi_b64" ]]; then
     add_finding "$repo" "push-protection" "gitignore_baseline" "error" \
       "No \`.gitignore\` at repo root — copy the secrets-baseline block verbatim from the org \`/.gitignore\`" \
       "$PP_GITIGNORE_STANDARD_REF#application-to-a-repository"
@@ -436,7 +436,7 @@ pp_check_gitignore_baseline() {
   fi
   gi_content=$(echo "$gi_b64" | tr -d '\n ' | base64 "$b64_flag" 2>/dev/null || echo "")
 
-  if [ -z "$gi_content" ]; then
+  if [[ -z "$gi_content" ]]; then
     add_finding "$repo" "push-protection" "gitignore_baseline" "error" \
       "\`.gitignore\` content could not be decoded or is empty — copy the secrets-baseline block verbatim from the org \`/.gitignore\`" \
       "$PP_GITIGNORE_STANDARD_REF#managed-block-markers"
@@ -446,7 +446,7 @@ pp_check_gitignore_baseline() {
   local repo_block
   repo_block=$(printf '%s\n' "$gi_content" | pp_extract_baseline_block) || repo_block=""
 
-  if [ -z "$repo_block" ]; then
+  if [[ -z "$repo_block" ]]; then
     add_finding "$repo" "push-protection" "gitignore_baseline" "error" \
       "\`.gitignore\` is missing the \`BEGIN … END petry-projects secrets baseline\` block — copy it verbatim from the org \`/.gitignore\`" \
       "$PP_GITIGNORE_STANDARD_REF#managed-block-markers"
@@ -456,7 +456,7 @@ pp_check_gitignore_baseline() {
   local repo_hash
   repo_hash=$(printf '%s' "$repo_block" | pp_sha256)
 
-  if [ "$repo_hash" != "$canonical_hash" ]; then
+  if [[ "$repo_hash" != "$canonical_hash" ]]; then
     add_finding "$repo" "push-protection" "gitignore_baseline" "error" \
       "\`.gitignore\` secrets-baseline block has drifted from the org canonical block (hash mismatch) — re-copy it verbatim; never edit inside the markers" \
       "$PP_GITIGNORE_STANDARD_REF#l1--secrets-baseline-org-managed-verbatim-required"
@@ -490,7 +490,7 @@ pp_check_push_protection_bypasses() {
     cutoff=$(date -u -v-"${PP_BYPASS_LOOKBACK_DAYS}d" "+%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
   fi
 
-  if [ -z "$cutoff" ]; then
+  if [[ -z "$cutoff" ]]; then
     return
   fi
 
@@ -503,7 +503,7 @@ pp_check_push_protection_bypasses() {
     )] | length
   ' 2>/dev/null || echo "0")
 
-  if [ "$recent_bypasses" -gt 0 ]; then
+  if [[ "$recent_bypasses" -gt 0 ]]; then
     add_finding "$repo" "push-protection" "push_protection_bypasses_recent" "warning" \
       "$recent_bypasses push-protection bypass(es) in the last $PP_BYPASS_LOOKBACK_DAYS days — verify each had a documented justification" \
       "$PP_STANDARD_REF#bypass-policy"

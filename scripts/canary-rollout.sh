@@ -77,7 +77,7 @@ THIS_REPO="${GITHUB_REPOSITORY:-petry-projects/.github}"
 # is treated as UNRESOLVABLE and fails safe to a major bump (#1023 defect 1b), never silently to
 # patch. 50 pages = 5000 commits — far beyond any real inter-cut range.
 CANARY_MAX_COMMIT_PAGES="${CANARY_MAX_COMMIT_PAGES:-50}"
-if ! [[ "$CANARY_MAX_COMMIT_PAGES" =~ ^[0-9]+$ ]] || [ "$CANARY_MAX_COMMIT_PAGES" -le 0 ]; then
+if ! [[ "$CANARY_MAX_COMMIT_PAGES" =~ ^[0-9]+$ ]] || [[ "$CANARY_MAX_COMMIT_PAGES" -le 0 ]]; then
   CANARY_MAX_COMMIT_PAGES=50
 fi
 
@@ -188,12 +188,12 @@ resolve_members() {
   local agent="$1" channel="$2" host t r
   host="$(_agent_field "$agent" host)"
   while IFS= read -r t; do
-    [ -z "$t" ] && continue
+    [[ -z "$t" ]] && continue
     case "$t" in
       '$host') printf '%s\n' "$host" ;;
       '$org_infra')
         while IFS= read -r r; do
-          if [ "$r" != "$host" ]; then printf '%s\n' "$r"; fi
+          if [[ "$r" != "$host" ]]; then printf '%s\n' "$r"; fi
         done < <(_jq -r '.org_infra_repos[]') ;;
       '*') printf '%s\n' '*' ;;
       *) printf '%s\n' "$t" ;;
@@ -227,7 +227,7 @@ _gh_tag_commit() {
   local repo="$1" tag="$2" ref_info obj type err rc=0 commit _tag_unrecorded=0
   err="$(mktemp 2>/dev/null || echo /dev/null)"
   ref_info="$(gh api "repos/$repo/git/ref/tags/$tag" --jq '[(.object?.sha // "" | tostring), (.object?.type // "" | tostring)] | @tsv' 2>"$err")" || rc=$?
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     # Absence is an explicit HTTP 404 ONLY; any other failure is a lookup error. A 404 is also what
     # GitHub returns for a repo the App cannot access, so confirm the host stays readable before
     # accepting it as an absent tag (otherwise an inaccessible host reads as "every ring empty").
@@ -236,14 +236,14 @@ _gh_tag_commit() {
     elif ! _repo_readable "$repo"; then
       _tag_lookup_failed "$repo" "$tag" "404 but host repository is not readable (access lost?)" || _tag_unrecorded=1
     fi
-    [ "$err" != /dev/null ] && rm -f "$err"
-    [ "$_tag_unrecorded" -eq 1 ] && printf '%s\n' "$_TAG_LOOKUP_UNRECORDED"
+    [[ "$err" != /dev/null ]] && rm -f "$err"
+    [[ "$_tag_unrecorded" -eq 1 ]] && printf '%s\n' "$_TAG_LOOKUP_UNRECORDED"
     return 0
   fi
-  [ "$err" != /dev/null ] && rm -f "$err"
-  [ -z "$ref_info" ] && return 0
+  [[ "$err" != /dev/null ]] && rm -f "$err"
+  [[ -z "$ref_info" ]] && return 0
   read -r obj type <<< "$ref_info"
-  if [ "$type" = "tag" ]; then
+  if [[ "$type" = "tag" ]]; then
     # The ref EXISTS, so a failed deref is an error, never "absent".
     if commit="$(gh api "repos/$repo/git/tags/$obj" --jq '(.object?.sha // "" | tostring)' 2>/dev/null)"; then
       printf '%s\n' "$commit"
@@ -281,7 +281,7 @@ _tag_lookup_failed() {
 # stable-tier enumeration). Absent CANARY_WRITE_TOKEN (e.g. unit tests / local runs) it is a
 # transparent pass-through, so every existing GH_TOKEN-only path is unchanged.
 _gh_write() {
-  if [ -n "${CANARY_WRITE_TOKEN:-}" ]; then
+  if [[ -n "${CANARY_WRITE_TOKEN:-}" ]]; then
     GH_TOKEN="$CANARY_WRITE_TOKEN" gh "$@"
   else
     gh "$@"
@@ -302,7 +302,7 @@ _gh_write() {
 # PATCH is a genuine 404/"not found" (the ref does not yet exist) — for any OTHER failure a
 # POST would 422 "Reference already exists" and MASK the real rejection, so we stop and report.
 _gh_move_tag() {
-  [ $# -lt 3 ] && return 1
+  [[ $# -lt 3 ]] && return 1
   local repo="$1" tag="$2" sha="$3" out rc
   out="$(_gh_write api -X PATCH "repos/$repo/git/refs/tags/$tag" \
       -f sha="$sha" -F force=true 2>&1)" && return 0
@@ -349,24 +349,24 @@ _gh_move_tag() {
 _gh_403_diag() {
   local repo="$1" hdr inst count=""
   echo "::group::_gh_move_tag 403 effective-permission diagnostic (#749)"
-  if [ -n "${CANARY_WRITE_TOKEN:-}" ]; then
+  if [[ -n "${CANARY_WRITE_TOKEN:-}" ]]; then
     echo "diag: introspecting with CANARY_WRITE_TOKEN (repo-scoped write token)"
   else
     echo "diag: introspecting with ambient GH_TOKEN (no CANARY_WRITE_TOKEN set)"
   fi
   # (1) What permission does the API advertise for this repo endpoint?
   hdr="$(_gh_write api -i "repos/$repo" 2>/dev/null | grep -i '^x-accepted-github-permissions:' || true)"
-  if [ -n "$hdr" ]; then
+  if [[ -n "$hdr" ]]; then
     printf 'diag: %s\n' "${hdr%$'\r'}"
   else
     echo "diag: X-Accepted-GitHub-Permissions header not present on repos/$repo response"
   fi
   # (2) How many repositories does the installation token cover?
   inst="$(_gh_write api /installation/repositories 2>/dev/null || true)"
-  if [ -n "$inst" ]; then
+  if [[ -n "$inst" ]]; then
     count="$(jq -r '.total_count? // empty' <<<"$inst" 2>/dev/null || true)"
   fi
-  if [ -n "$count" ]; then
+  if [[ -n "$count" ]]; then
     echo "diag: installation/repositories total_count=${count}"
   else
     echo "diag: installation/repositories total_count=<unreadable>"
@@ -385,12 +385,12 @@ _gh_403_diag() {
 # dev-lead agent whose reusable lives in .github-private, #613 relocation). Returns non-zero
 # on API failure so the caller can degrade best-effort.
 _gh_create_annotated_tag() {
-  [ $# -lt 4 ] && return 1
+  [[ $# -lt 4 ]] && return 1
   local repo="$1" tag="$2" sha="$3" message="$4" obj
   obj="$(_gh_write api -X POST "repos/$repo/git/tags" \
       -f tag="$tag" -f message="$message" -f object="$sha" -f type=commit \
       --jq '.sha // empty')"
-  if [ $? -ne 0 ] || [ -z "$obj" ]; then
+  if [[ $? -ne 0 ]] || [[ -z "$obj" ]]; then
       echo "::error::_gh_create_annotated_tag: could not create the annotated release tag on $repo or read back its object SHA" >&2
       return 1
   fi
@@ -420,7 +420,7 @@ _agent_current_major() {
   versions="$(_host_release_versions "$agent")"
   # shellcheck disable=SC2086
   highest="$(max_semver $versions)"
-  if [ -n "$highest" ]; then
+  if [[ -n "$highest" ]]; then
     major="$(major_component "$highest")"
   fi
   _AGENT_MAJOR_CACHE["$agent"]="$major"
@@ -440,7 +440,7 @@ _channel_tag_commit() {
   fi
   local commit=""
   host="$(_agent_field "$agent" host)"
-  if [ -n "$host" ] && [ "$host" != "$THIS_REPO" ]; then
+  if [[ -n "$host" ]] && [[ "$host" != "$THIS_REPO" ]]; then
     commit="$(_gh_tag_commit "$host" "$agent/$suffix")"
   else
     commit="$(git rev-parse -q --verify "refs/tags/$agent/$suffix^{commit}" 2>/dev/null \
@@ -459,7 +459,7 @@ _channel_tag_commit() {
 # or <major> is empty, so resolution for such agents stays byte-identical to pre-F4.
 _agent_has_channel_major() {
   local agent="$1" major="$2"
-  [ -n "$major" ] || return 1
+  [[ -n "$major" ]] || return 1
   _looks_like_oid "$(_channel_tag_commit "$agent" "v${major}-next")"
 }
 
@@ -575,7 +575,7 @@ _iso_now_minus_days() {
     || date -u -v"-${1}d" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo ""
 }
 _to_z() {   # normalise any parseable timestamp to ISO-8601 Zulu (empty passes through)
-  [ -z "${1:-}" ] && { echo ""; return 0; }
+  [[ -z "${1:-}" ]] && { echo ""; return 0; }
   date -u -d "$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
     || date -u -v "$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
     || echo "$1"
@@ -601,15 +601,15 @@ _epoch() {
 _gh_candidate_cut_date() {
   local repo="$1" agent="$2" commit="$3" ref obj type csha cdate
   while IFS=$'\t' read -r ref obj type; do
-    [ -z "$obj" ] && continue
+    [[ -z "$obj" ]] && continue
     _is_release_tag_suffix "${ref#refs/tags/"$agent"/}" || continue
-    if [ "$type" = "tag" ]; then
+    if [[ "$type" = "tag" ]]; then
       IFS=$'\t' read -r csha cdate < <(gh api "repos/$repo/git/tags/$obj" \
         --jq '[(.object?.sha // "" | tostring), (.tagger?.date // "" | tostring)] | @tsv' 2>/dev/null) || true
     else
       csha="$obj"; cdate=""
     fi
-    if [ "$csha" = "$commit" ]; then _to_z "$cdate"; return 0; fi
+    if [[ "$csha" = "$commit" ]]; then _to_z "$cdate"; return 0; fi
   done < <(gh api "repos/$repo/git/matching-refs/tags/$agent/v" \
              --paginate \
              --jq '.[]? | [.ref, (.object?.sha // "" | tostring), (.object?.type // "" | tostring)] | @tsv' 2>/dev/null)
@@ -634,14 +634,14 @@ _gh_candidate_cut_date() {
 candidate_cut_date() {
   local agent="$1" commit="$2" host ref deref cdate
   host="$(_agent_field "$agent" host)"
-  if [ -n "$host" ] && [ "$host" != "$THIS_REPO" ]; then
+  if [[ -n "$host" ]] && [[ "$host" != "$THIS_REPO" ]]; then
     _gh_candidate_cut_date "$host" "$agent" "$commit"
     return 0
   fi
   while IFS='|' read -r ref _ deref cdate; do
     _is_release_tag_suffix "${ref#refs/tags/"$agent"/}" || continue
-    [ -z "$deref" ] && continue   # lightweight release-named tag — no tagger date to trust
-    if [ "$deref" = "$commit" ]; then _to_z "$cdate"; return 0; fi
+    [[ -z "$deref" ]] && continue   # lightweight release-named tag — no tagger date to trust
+    if [[ "$deref" = "$commit" ]]; then _to_z "$cdate"; return 0; fi
   done < <(git for-each-ref \
              --format='%(refname)|%(objectname)|%(*objectname)|%(creatordate:iso-strict)' \
              "refs/tags/${agent}/v*" 2>/dev/null)
@@ -661,18 +661,18 @@ _gh_err_summary() {
   lc="${err,,}"
   if [[ "$lc" == *"secondary rate limit"* ]]; then class="secondary-rate-limit"
   elif [[ "$lc" == *"rate limit"* ]]; then class="rate-limit"
-  elif [ "$status" = "401" ] || [[ "$lc" == *"bad credentials"* ]] || [[ "$lc" == *"requires authentication"* ]]; then class="auth"
-  elif [ -n "$status" ] && [ "$status" -ge 500 ]; then class="server-error"
-  elif [ "$status" = "403" ]; then class="forbidden"
-  elif [ -n "$status" ] && [ "$status" -ge 400 ]; then class="client-error"
+  elif [[ "$status" = "401" ]] || [[ "$lc" == *"bad credentials"* ]] || [[ "$lc" == *"requires authentication"* ]]; then class="auth"
+  elif [[ -n "$status" ]] && [[ "$status" -ge 500 ]]; then class="server-error"
+  elif [[ "$status" = "403" ]]; then class="forbidden"
+  elif [[ -n "$status" ]] && [[ "$status" -ge 400 ]]; then class="client-error"
   else class="network-or-unknown"; fi
   # first non-blank line of gh's stderr, trimmed, capped so an annotation stays readable
-  while IFS= read -r line || [ -n "$line" ]; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%$'\r'}"
-    if [ -n "${line//[[:space:]]/}" ]; then reason="$line"; break; fi
+    if [[ -n "${line//[[:space:]]/}" ]]; then reason="$line"; break; fi
   done <<< "$err"
   reason="${reason:0:200}"
-  if [ -n "$status" ]; then printf 'HTTP %s %s: %s' "$status" "$class" "$reason"
+  if [[ -n "$status" ]]; then printf 'HTTP %s %s: %s' "$status" "$class" "$reason"
   else printf '%s: %s' "$class" "$reason"; fi
 }
 
@@ -686,7 +686,7 @@ _gh_retry_after() {
   if [[ "$lc" =~ retry[-\ ]?after:?[\ ]*([0-9]+) ]]; then
     secs="${BASH_REMATCH[1]}"
   elif [[ "$lc" =~ x-ratelimit-reset:?[\ ]*([0-9]+) ]]; then
-    now="$(date +%s)"; secs=$(( BASH_REMATCH[1] - now )); [ "$secs" -lt 0 ] && secs=0
+    now="$(date +%s)"; secs=$(( BASH_REMATCH[1] - now )); [[ "$secs" -lt 0 ]] && secs=0
   fi
   printf '%s' "$secs"
 }
@@ -730,20 +730,20 @@ _repo_wf_runs_cached() {
   case "$base" in ''|*[!0-9]*) base=2 ;; esac
   # Cache hit? A non-empty cache file for this (repo, workflow) — including a cached "[]"
   # for a no-runs / not-found workflow, so it is never re-queried within the sweep.
-  if [ -n "${_RUNS_CACHE_DIR:-}" ]; then
+  if [[ -n "${_RUNS_CACHE_DIR:-}" ]]; then
     # Encode the (repo, workflow, limit) key into the filename so distinct keys can never collide
     # (see _cache_name: injective, and fork-free for names that fit in a filename, #1259). A plain
     # char-substitution would map a workflow "A B" and "A/B" on one repo to the same file and
     # cross-contaminate their run history. The run limit is part of the key: a shorter list cached for
     # the default limit must never serve the ingress read that asks for more runs.
     key="${repo}//${wf}//${limit}"
-    [ -z "$from" ] || key+="//${from}"   # a date-bounded list is a different list from the unbounded one
-    [ -z "$rstatus" ] || key+="//status=${rstatus}"   # and so is a status-filtered one
+    [[ -z "$from" ]] || key+="//${from}"   # a date-bounded list is a different list from the unbounded one
+    [[ -z "$rstatus" ]] || key+="//status=${rstatus}"   # and so is a status-filtered one
     _cache_name "$key"
     cachef="$_RUNS_CACHE_DIR/${_CACHE_NAME}.json"
-    if [ -s "$cachef" ]; then
+    if [[ -s "$cachef" ]]; then
       _cat_file "$cachef"
-      [ "$strict" = "1" ] && [ -e "${cachef}.nf" ] && return 3
+      [[ "$strict" = "1" ]] && [[ -e "${cachef}.nf" ]] && return 3
       return 0
     fi
   fi
@@ -767,13 +767,13 @@ _repo_wf_runs_cached() {
       # caller" (#1244 item 15). Fall into the retry / fail-closed path below instead.
       if jq -e 'type == "array"' >/dev/null 2>&1 <<< "$out"; then
         rm -f "$errfile"
-        [ -n "${cachef:-}" ] && [ -d "$_RUNS_CACHE_DIR" ] && printf '%s' "$out" > "$cachef" 2>/dev/null || true
+        [[ -n "${cachef:-}" ]] && [[ -d "$_RUNS_CACHE_DIR" ]] && printf '%s' "$out" > "$cachef" 2>/dev/null || true
         printf '%s\n' "$out"; return 0
       fi
       printf '%s\n' "unexpected non-array run list body" > "$errfile"
     fi
     err=""
-    if [ -r "$errfile" ]; then
+    if [[ -r "$errfile" ]]; then
       err="$(<"$errfile")"
     fi
     # A workflow with no runs on this repo is NOT a fetch failure — `gh` just can't resolve
@@ -783,33 +783,33 @@ _repo_wf_runs_cached() {
       rm -f "$errfile"
       # Marker FIRST, then the cached []: a concurrent strict reader that sees the cache file is
       # guaranteed to see the .nf marker too (it never reads "workflow exists, no runs").
-      [ -n "${cachef:-}" ] && [ -d "$_RUNS_CACHE_DIR" ] && : > "${cachef}.nf" 2>/dev/null && printf '%s' '[]' > "$cachef" 2>/dev/null || true
+      [[ -n "${cachef:-}" ]] && [[ -d "$_RUNS_CACHE_DIR" ]] && : > "${cachef}.nf" 2>/dev/null && printf '%s' '[]' > "$cachef" 2>/dev/null || true
       echo '[]'
-      [ "$strict" = "1" ] && return 3
+      [[ "$strict" = "1" ]] && return 3
       return 0
     fi
     summary="$(_gh_err_summary "$err")"
-    if [ "$attempt" -ge "$attempts" ]; then
+    if [[ "$attempt" -ge "$attempts" ]]; then
       echo "::error::_run_json: failed to fetch run list for $repo (workflow=$wf) after $attempts attempt(s) — $summary" >&2
       # Record the fetch failure for the sync-issues resilience layer (#820). A sustained
       # outage does NOT cleanly abort the caller (command substitutions don't inherit errexit),
       # so _frontier_state can limp on and emit a misleadingly-clean line; a file flag survives
       # the subshell and lets _frontier_state_resilient know the data is a partial/failed fetch.
       # No-op unless sync-issues armed the flag, so every other read path is unchanged.
-      [ -n "${_CANARY_FETCH_FAIL_FLAG:-}" ] && printf '%s\n' "$repo" >> "$_CANARY_FETCH_FAIL_FLAG" 2>/dev/null || true
+      [[ -n "${_CANARY_FETCH_FAIL_FLAG:-}" ]] && printf '%s\n' "$repo" >> "$_CANARY_FETCH_FAIL_FLAG" 2>/dev/null || true
       rm -f "$errfile"; return 1
     fi
     # Prefer the server's explicit throttle hint; otherwise exponential + full jitter.
     ra="$(_gh_retry_after "$err")"
-    if [ -n "$ra" ] && [ "$ra" -gt 0 ]; then
+    if [[ -n "$ra" ]] && [[ "$ra" -gt 0 ]]; then
       delay="$ra"
-      [ "$delay" -gt "$ra_cap" ] && delay="$ra_cap"   # honor hint but cap runaway values
+      [[ "$delay" -gt "$ra_cap" ]] && delay="$ra_cap"   # honor hint but cap runaway values
     else
-      expo=$((attempt - 1)); [ "$expo" -gt 20 ] && expo=20     # guard the exponent from overflow
+      expo=$((attempt - 1)); [[ "$expo" -gt 20 ]] && expo=20     # guard the exponent from overflow
       delay=$(( base << expo ))
-      span=$(( delay - base )); [ "$span" -lt 0 ] && span=0
+      span=$(( delay - base )); [[ "$span" -lt 0 ]] && span=0
       delay=$(( base + RANDOM % (span + 1) ))                    # full jitter in [base, delay]
-      [ "$delay" -gt 30 ] && delay=30
+      [[ "$delay" -gt 30 ]] && delay=30
     fi
     echo "::warning::_run_json: transient failure fetching run list for $repo (workflow=$wf), attempt $attempt/$attempts — $summary — retrying in ${delay}s" >&2
     sleep "$delay"
@@ -824,7 +824,7 @@ _repo_wf_runs_cached() {
 # green-lights a bad promotion. Empty since = no lower bound.
 _run_json() {
   local repo="$1" wf="$2" since="$3" raw
-  if [ -z "$repo" ] || [ "$repo" = '*' ]; then echo '[]'; return 0; fi
+  if [[ -z "$repo" ]] || [[ "$repo" = '*' ]]; then echo '[]'; return 0; fi
   raw="$(_repo_wf_runs_cached "$repo" "$wf")" || return 1
   # Local since cut, inclusive — the same window the old server-side `--created ">=$since"`
   # produced. jq on an empty/garbage payload falls back to [].
@@ -1342,7 +1342,7 @@ _tier_sample() {
     json="$(_agent_run_json "$agent" "$repo" "$since")"
     executed=$(( executed + $(jq '[.[]?|select(.conclusion=="success" or .conclusion=="failure")]|length' 2>/dev/null <<< "${json:-[]}" || echo 0) ))
     e="$(jq -r '[.[]?|select(.conclusion=="success" or .conclusion=="failure")|.createdAt?]|min // empty' 2>/dev/null <<< "$json" || echo "")"
-    if [ -n "$e" ] && { [ -z "$earliest" ] || [[ "$e" < "$earliest" ]]; }; then earliest="$e"; fi
+    if [[ -n "$e" ]] && { [[ -z "$earliest" ]] || [[ "$e" < "$earliest" ]]; }; then earliest="$e"; fi
   done
   echo "$executed ${earliest:--}"
 }
@@ -1404,27 +1404,27 @@ _suspect_class_counts() {
   local repo json rid rwf rrole sig sig_rc matched=0 executed=0 incomplete=0 count
   local exec_filter='.[]?|select(.conclusion=="success" or .conclusion=="failure")'
   local fail_filter='.[]?|select(.conclusion=="failure")'
-  if [ "$before" != "-" ]; then
+  if [[ "$before" != "-" ]]; then
     exec_filter="$exec_filter|select(.createdAt < \"$before\")"
     fail_filter="$fail_filter|select(.createdAt < \"$before\")"
   fi
   for repo in "$@"; do
-    { [ -z "$repo" ] || [ "$repo" = '*' ]; } && continue
+    { [[ -z "$repo" ]] || [[ "$repo" = '*' ]]; } && continue
     json="$(_agent_run_json "$agent" "$repo" "$since")"
     count="$(jq "[${exec_filter}]|length" 2>/dev/null <<< "$json" || echo 0)"
     executed=$(( executed + ${count:-0} ))
-    while IFS=$'\t' read -r rid rwf rrole || [ -n "$rid" ]; do
+    while IFS=$'\t' read -r rid rwf rrole || [[ -n "$rid" ]]; do
       rid="${rid%$'\r'}"
       rwf="${rwf%$'\r'}"
       rrole="${rrole%$'\r'}"
-      [ -z "$rid" ] && continue
+      [[ -z "$rid" ]] && continue
       sig_rc=0
       sig="$(_run_signature "$repo" "$rid" "$rrole")" || sig_rc=$?  # || prevents set -e on lookup failure
-      if [ -z "$sig" ]; then
-        [ "$sig_rc" -ne 0 ] && incomplete=$(( incomplete + 1 ))  # lookup failed; genuine empty sig is fine
+      if [[ -z "$sig" ]]; then
+        [[ "$sig_rc" -ne 0 ]] && incomplete=$(( incomplete + 1 ))  # lookup failed; genuine empty sig is fine
         continue
       fi
-      if [ "$(benign_match "$rwf" "$sig" "$wf_re" "$step_re")" = "yes" ]; then
+      if [[ "$(benign_match "$rwf" "$sig" "$wf_re" "$step_re")" = "yes" ]]; then
         matched=$(( matched + 1 ))
       fi
     done < <(jq -r "[${fail_filter}]|.[]|[(.databaseId // \"\"|tostring),(.workflowName // \"\"),(.role // \"\")]|@tsv" 2>/dev/null <<< "$json")
@@ -1447,10 +1447,10 @@ declare -A _RUN_SIG_CACHE=()
 # The $'\x01' sentinel in the cache marks a prior lookup failure so it is not retried.
 _run_signature() {
   local repo="$1" id="$2" role="${3:-}" cache_key sig json
-  { [ -z "$repo" ] || [ "$repo" = '*' ] || [ -z "$id" ]; } && { echo ""; return 0; }
+  { [[ -z "$repo" ]] || [[ "$repo" = '*' ]] || [[ -z "$id" ]]; } && { echo ""; return 0; }
   cache_key="${repo}:${id}:${role}"
   if [[ -v _RUN_SIG_CACHE["$cache_key"] ]]; then
-    if [ "${_RUN_SIG_CACHE[$cache_key]}" = $'\x01' ]; then
+    if [[ "${_RUN_SIG_CACHE[$cache_key]}" = $'\x01' ]]; then
       echo ""; return 1  # cached lookup failure — signal to caller
     fi
     echo "${_RUN_SIG_CACHE[$cache_key]}"
@@ -1474,10 +1474,10 @@ _run_signature() {
 _failure_benign() {
   local repo="$1" rid="$2" rwf="$3" patterns="$4" role="${5:-}" sig wf_re step_re
   sig="$(_run_signature "$repo" "$rid" "$role")"
-  [ -z "$sig" ] && return 1
+  [[ -z "$sig" ]] && return 1
   while IFS=$'\t' read -r wf_re step_re; do
-    [ -z "$step_re" ] && continue
-    if [ "$(benign_match "$rwf" "$sig" "$wf_re" "$step_re")" = "yes" ]; then return 0; fi
+    [[ -z "$step_re" ]] && continue
+    if [[ "$(benign_match "$rwf" "$sig" "$wf_re" "$step_re")" = "yes" ]]; then return 0; fi
   done <<< "$patterns"
   return 1
 }
@@ -1490,12 +1490,12 @@ _failure_benign() {
 _failure_suspect() {
   local repo="$1" rid="$2" rwf="$3" patterns="$4" role="${5:-}" sig wf_re step_re
   sig="$(_run_signature "$repo" "$rid" "$role")"
-  [ -z "$sig" ] && return 1
-  while IFS=$'\t' read -r wf_re step_re || [ -n "$wf_re" ]; do
+  [[ -z "$sig" ]] && return 1
+  while IFS=$'\t' read -r wf_re step_re || [[ -n "$wf_re" ]]; do
     wf_re="${wf_re%$'\r'}"
     step_re="${step_re%$'\r'}"
-    [ -z "$step_re" ] && continue
-    if [ "$(benign_match "$rwf" "$sig" "$wf_re" "$step_re")" = "yes" ]; then return 0; fi
+    [[ -z "$step_re" ]] && continue
+    if [[ "$(benign_match "$rwf" "$sig" "$wf_re" "$step_re")" = "yes" ]]; then return 0; fi
   done <<< "$patterns"
   return 1
 }
@@ -1604,7 +1604,7 @@ _cumulative_health() {
           benign=$(( benign + 1 ))
         else
           fail=$(( fail + 1 ))
-          if [ -n "$suspect_patterns" ] && _failure_suspect "$repo" "$rid" "$rwf" "$suspect_patterns" "$rrole"; then
+          if [[ -n "$suspect_patterns" ]] && _failure_suspect "$repo" "$rid" "$rwf" "$suspect_patterns" "$rrole"; then
             suspect=$(( suspect + 1 ))
           fi
         fi
@@ -1680,9 +1680,9 @@ _baseline_daily() {
 _reusable_differs() {
   local agent="$1" cand="$2" prior="$3" reusable a b host
   reusable="$(_agent_field "$agent" reusable)"
-  [ -z "$reusable" ] || [ -z "$cand" ] || [ -z "$prior" ] && { echo 0; return 0; }
+  [[ -z "$reusable" ]] || [[ -z "$cand" ]] || [[ -z "$prior" ]] && { echo 0; return 0; }
   host="$(_agent_field "$agent" host)"; host="${host:-$THIS_REPO}"
-  if [ "$host" = "$THIS_REPO" ]; then
+  if [[ "$host" = "$THIS_REPO" ]]; then
     # This-repo agent: the reusable blob lives in the local checkout.
     a="$(git rev-parse -q --verify "${cand}:${reusable}" 2>/dev/null || echo "")"
     b="$(git rev-parse -q --verify "${prior}:${reusable}" 2>/dev/null || echo "")"
@@ -1695,8 +1695,8 @@ _reusable_differs() {
   fi
   # Fail CLOSED: an unresolvable compare counts as "changed" so the benign-failure
   # allowlist is disabled and a genuine candidate regression is never masked.
-  { [ -z "$a" ] || [ -z "$b" ]; } && { echo 1; return 0; }
-  [ "$a" != "$b" ] && { echo 1; return 0; }
+  { [[ -z "$a" ]] || [[ -z "$b" ]]; } && { echo 1; return 0; }
+  [[ "$a" != "$b" ]] && { echo 1; return 0; }
   echo 0
 }
 
@@ -1722,7 +1722,7 @@ declare -A _RUN_DECISION_CACHE=()
 # the sampler stops reading that member, and is never memoized (the next tick retries).
 _run_decision_class() {
   local repo="$1" id="$2" prefix="$3" role="${4:-}" agent="${5:-}" cache_key json cls jrc=0
-  { [ -z "$repo" ] || [ "$repo" = '*' ] || [ -z "$id" ]; } && { echo ""; return 0; }
+  { [[ -z "$repo" ]] || [[ "$repo" = '*' ]] || [[ -z "$id" ]]; } && { echo ""; return 0; }
   cache_key="${repo}:${id}:${role}"
   if [[ -v _RUN_DECISION_CACHE["$cache_key"] ]]; then
     echo "${_RUN_DECISION_CACHE[$cache_key]}"; return 0
@@ -1754,18 +1754,18 @@ _sample_decision_counts() {
   local repo json rid rrole cls sampled=0
   declare -A counts=()
   local filter='.[]?|select(.conclusion=="success" or .conclusion=="failure")'
-  [ "$before" != "-" ] && filter="$filter|select(.createdAt < \"$before\")"
+  [[ "$before" != "-" ]] && filter="$filter|select(.createdAt < \"$before\")"
   for repo in "$@"; do
-    [ "$sampled" -ge "$max_k" ] && break
-    { [ -z "$repo" ] || [ "$repo" = '*' ]; } && continue
+    [[ "$sampled" -ge "$max_k" ]] && break
+    { [[ -z "$repo" ]] || [[ "$repo" = '*' ]]; } && continue
     json="$(_agent_run_json "$agent" "$repo" "$since")"
     while IFS=$'\t' read -r rid rrole; do
-      [ -z "$rid" ] && continue
-      [ "$sampled" -ge "$max_k" ] && break
+      [[ -z "$rid" ]] && continue
+      [[ "$sampled" -ge "$max_k" ]] && break
       # A transient jobs-read failure (status 1) is recorded UNRESOLVED by _run_decision_class; stop
       # reading this member rather than burn one failing call per remaining run.
       cls="$(_run_decision_class "$repo" "$rid" "$prefix" "$rrole" "$agent")" || break
-      [ -z "$cls" ] && continue
+      [[ -z "$cls" ]] && continue
       counts["$cls"]=$(( ${counts["$cls"]:-0} + 1 ))
       sampled=$(( sampled + 1 ))
     done < <(jq -r "[${filter}]|sort_by(.createdAt)|reverse|.[]|[(.databaseId|tostring),(.role // \"\")]|@tsv" 2>/dev/null <<< "$json")
@@ -1775,7 +1775,7 @@ _sample_decision_counts() {
   local out k
   out="$(for k in "${!counts[@]}"; do printf '%s\t%s\n' "$k" "${counts[$k]}"; done \
     | jq -Rn '[inputs | split("\t") | {(.[0]): (.[1] | tonumber)}] | add // {}' 2>/dev/null)"
-  [ -n "$out" ] || out='{}'
+  [[ -n "$out" ]] || out='{}'
   echo "$out"
 }
 
@@ -1810,7 +1810,7 @@ _correctness_verdict() {
 _decision_mix_table() {
   local agent="$1" cand="$2" pair_transition="${3:-}"
   local knobs; knobs="$(_jq -c --arg a "$agent" '.agents[$a].gate.correctness // ""')"
-  [ -z "$knobs" ] || [ "$knobs" = '""' ] && return 0
+  [[ -z "$knobs" ]] || [[ "$knobs" = '""' ]] && return 0
   local chans frontier="" ch c
   chans="$(ordered_channels "$agent")"
   local transition source cut_z prefix
@@ -1829,10 +1829,10 @@ _decision_mix_table() {
   fi
   source="${transition%%->*}"
   cut_z="$(candidate_cut_date "$agent" "$cand")"
-  [ -z "$cut_z" ] && return 0
+  [[ -z "$cut_z" ]] && return 0
   prefix="$(jq -r '.decision_step_prefix // "decision: "' <<< "$knobs" 2>/dev/null || echo "decision: ")"
   local src_repos=() r
-  while IFS= read -r r; do [ -n "$r" ] && src_repos+=("$r"); done < <(resolve_members "$agent" "$source")
+  while IFS= read -r r; do [[ -n "$r" ]] && src_repos+=("$r"); done < <(resolve_members "$agent" "$source")
   local win base_since cand_counts base_counts
   win="${SOAK_WINDOW_DAYS:-$(_gate_field "$agent" baseline_window_days)}"; win="${win:-14}"
   base_since="$(_iso_now_minus_days "$win")"
@@ -1841,8 +1841,8 @@ _decision_mix_table() {
   # Guard against an empty sample string — --argjson rejects empty input.
   # (A `${var:-{}}` inline default is NOT usable: the inner `}` closes the
   #  parameter expansion, appending a stray brace and producing invalid JSON.)
-  [ -n "$cand_counts" ] || cand_counts='{}'
-  [ -n "$base_counts" ] || base_counts='{}'
+  [[ -n "$cand_counts" ]] || cand_counts='{}'
+  [[ -n "$base_counts" ]] || base_counts='{}'
   jq -nr --argjson c "$cand_counts" --argjson b "$base_counts" --arg win "$win" '
     ([$c[]?]|add // 0) as $ct | ([$b[]?]|add // 0) as $bt
     | (($c|keys) + ($b|keys) | unique) as $classes
@@ -1871,7 +1871,7 @@ _pair_state() {
   local agent="$1" source="$2" frontier="$3" cand="$4" transition="$5" chans="$6" commits_csv="$7"
   local cut_z now_epoch
   cut_z="$(candidate_cut_date "$agent" "$cand")"
-  if [ -z "$cut_z" ]; then
+  if [[ -z "$cut_z" ]]; then
     # Cannot determine the per-candidate window start — fail closed to prevent unbounded history queries.
     echo "${cand:--} $frontier $transition BLOCKED 0 0 0 0 0 0 0 - - - 0 0 0 0"; return 0
   fi
@@ -1897,7 +1897,7 @@ _pair_state() {
 
   # Source-tier repos (the tier currently running the candidate).
   local src_repos=() r
-  while IFS= read -r r; do [ -n "$r" ] && src_repos+=("$r"); done < <(resolve_members "$agent" "$source")
+  while IFS= read -r r; do [[ -n "$r" ]] && src_repos+=("$r"); done < <(resolve_members "$agent" "$source")
 
   # Sample on the source tier over the per-candidate window.
   local sample earliest
@@ -1906,10 +1906,10 @@ _pair_state() {
   # Dwell is always measured from the candidate's own cut (tagger date), per #548 spec.
   local dwell_h=0
   local cut_epoch; cut_epoch="$(_epoch "$cut_z")"
-  if [ "$cut_epoch" -gt 0 ]; then
+  if [[ "$cut_epoch" -gt 0 ]]; then
     dwell_h=$(( (now_epoch - cut_epoch) / 3600 ))
   fi
-  [ "$dwell_h" -lt 0 ] && dwell_h=0
+  [[ "$dwell_h" -lt 0 ]] && dwell_h=0
 
   # Whether the candidate changed the agent's reusable vs the prior channel on the frontier.
   # At differs=1 the known-benign allowlist narrows to classes marked version_independent
@@ -1976,9 +1976,9 @@ _pair_state() {
   # Per-transition knobs (registry-configurable; #548 defaults live in the ring SoT).
   local dwell_floor waived="false" target=0
   dwell_floor="$(_gate_knob "$agent" "$transition" dwell_hours)"; dwell_floor="${dwell_floor:-0}"
-  if [ "$(_gate_knob "$agent" "$transition" waive_sample)" = "true" ]; then
+  if [[ "$(_gate_knob "$agent" "$transition" waive_sample)" = "true" ]]; then
     waived="true"
-  elif [ -n "$(_gate_knob "$agent" "$transition" sample_min)" ]; then
+  elif [[ -n "$(_gate_knob "$agent" "$transition" sample_min)" ]]; then
     target="$(_gate_knob "$agent" "$transition" sample_min)"
   else
     local win frac cmin cmax spike_cap daily basis
@@ -1996,7 +1996,7 @@ _pair_state() {
     # A decision that printed nothing must not read as "waived" or as a zero target: hold at the minimum.
     case "$waived" in true|false) ;; *) waived="false"; basis="unknown" ;; esac
     case "$target" in ''|*[!0-9]*) target="$cmin" ;; esac
-    if [ "$basis" = "unknown" ]; then
+    if [[ "$basis" = "unknown" ]]; then
       echo "::notice::$agent $transition: the baseline is unknown (a truncated read observed nothing countable on the source tier) — sample sized at the clamp minimum ($target), not waived." >&2
     fi
   fi
@@ -2011,11 +2011,11 @@ _pair_state() {
   # ONLY from an otherwise-PROMOTE verdict — it never masks or bypasses a reliability BLOCK, and
   # it never rolls back or auto-acts (worst case: a few hours of human latency).
   local mix_shift="-"
-  if [ "$state" = "PROMOTE" ] && [ -n "$(_gate_field "$agent" correctness)" ]; then
+  if [[ "$state" = "PROMOTE" ]] && [[ -n "$(_gate_field "$agent" correctness)" ]]; then
     local src_csv verdict
     src_csv="$(IFS=,; echo "${src_repos[*]}")"
     verdict="$(_correctness_verdict "$agent" "$cand" "$cut_z" "$src_csv")"
-    if [ "$verdict" = "SHIFT" ]; then
+    if [[ "$verdict" = "SHIFT" ]]; then
       state="BLOCKED"; mix_shift="SHIFT"
     fi
   fi
@@ -2026,16 +2026,16 @@ _pair_state() {
   # auto-advances it. It is cleared only by a deliberate `promote <agent> --confirm` (the
   # dispatch IS the confirmation; no state store). The overlay fires ONLY from an otherwise-
   # PROMOTE (reliability-clean) verdict, so `--confirm` can never bypass a BLOCKED gate.
-  if [ "$state" = "PROMOTE" ] && [ "$(_gate_knob "$agent" "$transition" require_confirmation)" = "true" ]; then
+  if [[ "$state" = "PROMOTE" ]] && [[ "$(_gate_knob "$agent" "$transition" require_confirmation)" = "true" ]]; then
     state="AWAITING_CONFIRMATION"
   fi
 
   # Triage: a correctness SHIFT is SUSPECT (correctness variant, distinguished by mix_shift);
   # any other BLOCK is classified from the failure evidence.
   local triage="-"
-  if [ "$state" = "BLOCKED" ] && [ "$mix_shift" = "SHIFT" ]; then
+  if [[ "$state" = "BLOCKED" ]] && [[ "$mix_shift" = "SHIFT" ]]; then
     triage="SUSPECT"
-  elif [ "$state" = "BLOCKED" ]; then
+  elif [[ "$state" = "BLOCKED" ]]; then
     triage="$(classify_failure "$differs" "${CANARY_FAILURE_CATEGORY:-unknown}" "$cum_suspect")"
   fi
 
@@ -2048,28 +2048,28 @@ _pair_state() {
   # --allow-pre-existing); HOLD stays SUSPECT (increment-2 behaviour — worse/ambiguous/thin cases
   # keep the human). Byte-identical for a suspect class with no auto_downgrade (empty set → skip).
   local downgrade="-" dg_cand_rate=0 dg_cand_sample=0 dg_base_rate=0 dg_base_sample=0
-  if [ "$triage" = "SUSPECT" ] && [ "$mix_shift" = "-" ]; then
+  if [[ "$triage" = "SUSPECT" ]] && [[ "$mix_shift" = "-" ]]; then
     local dg_patterns; dg_patterns="$(_suspect_downgrade_patterns "$agent")"
     # Guard (Thread 1): only attempt per-class rate comparison when EVERY blocking failure
     # has been attributed to a suspect class. If any failure had no matching suspect class,
     # that unrelated failure is an independent regression and must keep the gate blocked.
-    if [ -n "$dg_patterns" ] && [ "${cum_suspect:-0}" -ge "$cum_fail" ]; then
+    if [[ -n "$dg_patterns" ]] && [[ "${cum_suspect:-0}" -ge "$cum_fail" ]]; then
       local dg_win dg_base_since dwf dsr dmin dmargin cm ce cmi bm be bei crate brate knobs decision
       dg_win="${SOAK_WINDOW_DAYS:-$(_gate_field "$agent" baseline_window_days)}"; dg_win="${dg_win:-14}"
       dg_base_since="$(_iso_now_minus_days "$dg_win")"
-      while IFS=$'\t' read -r dwf dsr dmin dmargin || [ -n "$dwf" ]; do
+      while IFS=$'\t' read -r dwf dsr dmin dmargin || [[ -n "$dwf" ]]; do
         dwf="${dwf%$'\r'}"; dsr="${dsr%$'\r'}"; dmin="${dmin%$'\r'}"; dmargin="${dmargin%$'\r'}"
-        [ -z "$dsr" ] && continue
+        [[ -z "$dsr" ]] && continue
         read -r cm ce cmi < <(_suspect_class_counts "$agent" "$cut_z" "-" "$dwf" "$dsr" "${src_repos[@]}")
         read -r bm be bei < <(_suspect_class_counts "$agent" "$dg_base_since" "$cut_z" "$dwf" "$dsr" "${src_repos[@]}")
         # Guard (Thread 2): if any signature lookup failed, baseline class evidence is
         # incomplete. A missing run could be a non-match; fail-closed and skip DOWNGRADE.
-        [ "${cmi:-0}" -gt 0 ] || [ "${bei:-0}" -gt 0 ] && continue
-        if [ "${ce:-0}" -gt 0 ]; then crate="$(round_div $(( ${cm:-0} * 1000 )) "$ce")"; else crate=0; fi
-        if [ "${be:-0}" -gt 0 ]; then brate="$(round_div $(( ${bm:-0} * 1000 )) "$be")"; else brate=0; fi
+        [[ "${cmi:-0}" -gt 0 ]] || [[ "${bei:-0}" -gt 0 ]] && continue
+        if [[ "${ce:-0}" -gt 0 ]]; then crate="$(round_div $(( ${cm:-0} * 1000 )) "$ce")"; else crate=0; fi
+        if [[ "${be:-0}" -gt 0 ]]; then brate="$(round_div $(( ${bm:-0} * 1000 )) "$be")"; else brate=0; fi
         knobs="$(printf '{"min_baseline_sample":%s,"margin_permille":%s}' "${dmin:-0}" "${dmargin:-0}")"
         decision="$(decide_suspect_downgrade "$crate" "$brate" "$be" "$knobs")"
-        if [ "$decision" = "DOWNGRADE" ]; then
+        if [[ "$decision" = "DOWNGRADE" ]]; then
           triage="PRE_EXISTING"; downgrade="DOWNGRADE"
           dg_cand_rate="$crate"; dg_cand_sample="$ce"; dg_base_rate="$brate"; dg_base_sample="$be"
           break
@@ -2186,7 +2186,7 @@ cmd_evaluate() {
   for ch in "${chan_array[@]}"; do
     local ch_tag c
     IFS=$'\t' read -r ch_tag c < <(_resolved_channel "$agent" "$ch")
-    local mark="  "; [ -n "$cand" ] && [ "$c" = "$cand" ] && mark="* "
+    local mark="  "; [[ -n "$cand" ]] && [[ "$c" = "$cand" ]] && mark="* "
     printf '  %s%-7s -> %s\n' "$mark" "${ch_tag#"$agent"/}" "${c:0:12}"
   done
   echo "----"
@@ -2203,25 +2203,25 @@ cmd_evaluate() {
     any=1
     gate_summary_line "$transition" "$state" "$dwell" "$floor" "$sample" "$target" "$cum_fail" "$cum_startup" "$cum_benign"
     echo "decision for next ring '$frontier' [$transition]: $state"
-    if [ "$state" = "BLOCKED" ]; then
-      if [ "$triage" = "REGRESSION" ]; then
+    if [[ "$state" = "BLOCKED" ]]; then
+      if [[ "$triage" = "REGRESSION" ]]; then
         echo "::error::triage=REGRESSION — candidate changed the reusable and a run failed since cut. HALT + hold; recommend rollback."
-      elif [ "$triage" = "SUSPECT" ] && [ "$mix_shift" = "SHIFT" ]; then
+      elif [[ "$triage" = "SUSPECT" ]] && [[ "$mix_shift" = "SHIFT" ]]; then
         echo "::warning::triage=SUSPECT (decision-mix shift, #668 Layer 2) — the candidate's decision distribution moved ≥ threshold vs the prior-version baseline. HOLDS the promotion; review the decision-mix table in the blocker issue. Composition drift (e.g. a draft-PR burst) is the usual false positive → promote --override to dismiss; a genuine always/never shift → roll back."
-      elif [ "$triage" = "SUSPECT" ]; then
+      elif [[ "$triage" = "SUSPECT" ]]; then
         echo "::warning::triage=SUSPECT — failure matches a suspect class (possibly candidate-caused). BLOCKS + needs a human; see the blocker issue's discriminating question, then promote --override if unrelated or roll back if a real regression."
-      elif [ "$downgrade" = "DOWNGRADE" ]; then
+      elif [[ "$downgrade" = "DOWNGRADE" ]]; then
         echo "::notice::triage=PRE_EXISTING (auto-downgraded from SUSPECT, #668 increment 6) — the candidate's suspect-class failure rate (${dg_cand_rate}‰ over ${dg_cand_sample} runs) is no worse than the prior version's (${dg_base_rate}‰ over ${dg_base_sample} runs), so the timeout is environmental, not a candidate regression. Report only; the SUSPECT hold auto-cleared (no human needed). Advances with --allow-pre-existing once dwell/sample pass."
-      elif [ "$triage" = "UNRESOLVED" ]; then
+      elif [[ "$triage" = "UNRESOLVED" ]]; then
         echo "::error::triage=UNRESOLVED — at least one ring member's runs could not be attributed or completely read (see the UNRESOLVED warnings above for the reason per member). The gate is blind there, so it holds rather than promote on incomplete evidence. For an ADR-0007 collapsed member ('$(_ingress_workflow)' present, no per-role workflow) whose role job is unresolvable, re-sync its ingress from the canonical template or correct the agent's ingress_job in the ring registry (#1224, #1247)."
-      elif [ "$triage" = "FLAG_ERROR" ]; then
+      elif [[ "$triage" = "FLAG_ERROR" ]]; then
         echo "::error::triage=FLAG_ERROR — could not create the unresolved-member flag file (TMPDIR unwritable/full). The gate fails closed and holds; fix the runner's temp dir."
-      elif [ "$triage" = "PRE_EXISTING" ]; then
+      elif [[ "$triage" = "PRE_EXISTING" ]]; then
         echo "::warning::triage=PRE_EXISTING — failure is pre-existing/environmental. Report only; do NOT rollback. Advances with --allow-pre-existing (or control.allow_pre_existing in the registry) once dwell/sample pass."
       else
         echo "::warning::state=BLOCKED (indeterminate) — could not resolve the candidate's cut date or a ring's channel tag (lookup error), so the gate fails closed and holds (not a detected failure; cum_fail=$cum_fail). Clears once the candidate's cut date/tag is resolvable."
       fi
-    elif [ "$state" = "AWAITING_CONFIRMATION" ]; then
+    elif [[ "$state" = "AWAITING_CONFIRMATION" ]]; then
       echo "::notice::state=AWAITING_CONFIRMATION — reliability PASSED; holding for an opt-in human go/no-go at $transition (#668 Layer 3). Review the canary-confirm issue, then dispatch: promote $agent --confirm  (not --override)."
     fi
   done < <(_frontier_state "$agent")
@@ -2237,12 +2237,12 @@ cmd_evaluate() {
 cmd_evaluate_all() {
   local agents rc=0 agent
   agents="$(_jq -r '.agents | keys[]' 2>/dev/null || true)"
-  if [ -z "$agents" ]; then
+  if [[ -z "$agents" ]]; then
     echo "no agents registered in $CANARY_RINGS — nothing to evaluate."; return 0
   fi
   echo "== canary-rollout evaluate-all: fleet-wide (gate standard: .github#548) =="
   while IFS= read -r agent; do
-    [ -z "$agent" ] && continue
+    [[ -z "$agent" ]] && continue
     echo "──────── agent: $agent ────────"
     cmd_evaluate "$agent" || rc=$?
   done <<< "$agents"
@@ -2261,7 +2261,7 @@ _record_promote_outcome() {
 cmd_promote() {
   local agent="$1"; shift
   local override=false dry=false allow_pre_flag=false confirm=false
-  while [ $# -gt 0 ]; do
+  while [[ $# -gt 0 ]]; do
     case "$1" in
       --override) override=true ;;
       --confirm)  confirm=true ;;
@@ -2428,7 +2428,7 @@ cmd_promote() {
 # distinct: an expected gate-block stays the canary-blocker issue's job; an unexpected tag-write
 # failure is what this log (and sync-promotion-failures) escalates. No-op when the log is unset.
 _log_promotion_failure() {
-  [ -n "${CANARY_PROMOTIONS_FAILED_LOG:-}" ] || return 0
+  [[ -n "${CANARY_PROMOTIONS_FAILED_LOG:-}" ]] || return 0
   if ! printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >> "$CANARY_PROMOTIONS_FAILED_LOG"; then
     echo "::warning::could not append failure record for $1 to ${CANARY_PROMOTIONS_FAILED_LOG} (unwritable path?); tag-write failure may not be escalated." >&2
   fi
@@ -2444,14 +2444,14 @@ _log_promotion_failure() {
 cmd_promote_all() {
   local agents rc=0 agent
   agents="$(_jq -r '.agents? | keys[]?' 2>/dev/null || true)"
-  if [ -z "$agents" ]; then
+  if [[ -z "$agents" ]]; then
     echo "no agents registered in $CANARY_RINGS — nothing to promote."; return 0
   fi
   echo "== canary-rollout promote-all: fleet-wide (gate standard: .github#548) =="
   _PROMOTE_OUTCOMES=()
   local failed=()
   while IFS= read -r agent; do
-    [ -z "$agent" ] && continue
+    [[ -z "$agent" ]] && continue
     echo "──────── agent: $agent ────────"
     cmd_promote "$agent" "$@" || { rc=$?; echo "::warning::promote of $agent returned $rc (continuing fleet)"; failed+=("$agent($rc)"); }
   done <<< "$agents"
@@ -2472,9 +2472,9 @@ cmd_promote_all() {
   local -A outcome_n=()
   local blocked=() oc oa ot od
   while IFS=$'\t' read -r oc oa ot od; do
-    [ -z "$oc" ] && continue
+    [[ -z "$oc" ]] && continue
     outcome_n[$oc]=$(( ${outcome_n[$oc]:-0} + 1 ))
-    [ "$oc" = blocked ] && blocked+=("$oa $ot${od:+ $od}")
+    [[ "$oc" = blocked ]] && blocked+=("$oa $ot${od:+ $od}")
   done <<< "$(if [ "${#_PROMOTE_OUTCOMES[@]}" -gt 0 ]; then printf '%s\n' "${_PROMOTE_OUTCOMES[@]}"; fi)"
   local tally="promoted: ${outcome_n[promoted]:-0}"
   [ "${outcome_n[would-promote]:-0}" -gt 0 ] && tally+=", would promote (dry-run): ${outcome_n[would-promote]}"
@@ -2500,17 +2500,17 @@ cmd_promote_all() {
 cmd_rollback() {
   local agent="$1" ring="$2"; shift 2
   local to="" dry=false
-  while [ $# -gt 0 ]; do
+  while [[ $# -gt 0 ]]; do
     case "$1" in
       --to)
-        if [ $# -lt 2 ]; then echo "::error::--to requires a value" >&2; return 2; fi
+        if [[ $# -lt 2 ]]; then echo "::error::--to requires a value" >&2; return 2; fi
         to="$2"; shift
         ;;
       --dry-run) dry=true ;;
       *) echo "::error::unknown rollback flag: $1" >&2; return 2 ;;
     esac; shift
   done
-  [ -z "$to" ] && { echo "::error::rollback requires --to <vX.Y.Z>" >&2; return 2; }
+  [[ -z "$to" ]] && { echo "::error::rollback requires --to <vX.Y.Z>" >&2; return 2; }
   # Consistent path (#1076), mirroring cmd_promote: the target lookup AND the move both go
   # through gh api on the agent's HOST repo for every agent — never local git. host defaults
   # to THIS_REPO for an agent whose registry entry omits it.
@@ -2519,9 +2519,9 @@ cmd_rollback() {
   host="${host:-$THIS_REPO}"
   local target
   target="$(_gh_tag_commit "$host" "$agent/$to")"
-  [ -z "$target" ] && { echo "::error::release tag $agent/$to not found on $host" >&2; return 1; }
+  [[ -z "$target" ]] && { echo "::error::release tag $agent/$to not found on $host" >&2; return 1; }
   echo "rolling back $agent/$ring -> $to (${target:0:12}) on $host"
-  if [ "$dry" = true ]; then
+  if [[ "$dry" = true ]]; then
     echo "[DRY-RUN] would: gh api PATCH repos/$host/git/refs/tags/$agent/$ring sha=$target (force)"
     return 0
   fi
@@ -2564,11 +2564,11 @@ _gh_issue_create() {
 _blocker_evidence() {
   local agent="$1" cand="$2" cut_z repo json r n=0 out=""
   cut_z="$(candidate_cut_date "$agent" "$cand")"
-  [ -z "$cut_z" ] && { printf '_(no candidate cut date resolved — cannot list failing runs)_\n'; return 0; }
+  [[ -z "$cut_z" ]] && { printf '_(no candidate cut date resolved — cannot list failing runs)_\n'; return 0; }
   local chan_array=() ch all=() seen=" " dedup=()
   IFS=, read -r -a chan_array <<< "$(ordered_channels "$agent")"
   for ch in "${chan_array[@]}"; do
-    while IFS= read -r r; do [ -n "$r" ] && [ "$r" != '*' ] && all+=("$r"); done < <(resolve_members "$agent" "$ch")
+    while IFS= read -r r; do [[ -n "$r" ]] && [[ "$r" != '*' ]] && all+=("$r"); done < <(resolve_members "$agent" "$ch")
   done
   for r in "${all[@]}"; do case "$seen" in *" $r "*) ;; *) dedup+=("$r"); seen+="$r ";; esac; done
   # Same attribution scope as _pair_state: only a repo that belongs solely to tiers provably NOT on
@@ -2596,7 +2596,7 @@ _blocker_evidence() {
       n=$((n+1))
     done < <(jq -r '.[]?|select(.conclusion=="failure" or .conclusion=="startup_failure")|[(.databaseId|tostring),.conclusion,(.role // "")]|@tsv' 2>/dev/null <<< "$json")
   done
-  [ -z "$out" ] && out="_(no failing runs in the per-candidate window — cum_fail may be startup_failures or a transient count)_"$'\n'
+  [[ -z "$out" ]] && out="_(no failing runs in the per-candidate window — cum_fail may be startup_failures or a transient count)_"$'\n'
   printf '%s' "$out"
 }
 
@@ -2642,7 +2642,7 @@ _blocker_body() {
   # Correctness variant (#668 L2): a decision-mix SHIFT holds as SUSPECT but is NOT a reliability
   # failure — the candidate exited green yet its decision distribution moved. Distinct note + a
   # candidate-vs-baseline mix table replace the failing-runs evidence (there are none).
-  if [ "$triage" = "SUSPECT" ] && [ "$mix_shift" = "SHIFT" ]; then
+  if [[ "$triage" = "SUSPECT" ]] && [[ "$mix_shift" = "SHIFT" ]]; then
     note="> ⚠️ **SUSPECT (decision-mix shift, #668 Layer 2)** — reliability PASSED (the candidate exits green), but its decision-class distribution shifted materially vs the prior version on comparable traffic. This HOLDS and needs a human (labelled \`needs-human\`): decide whether the shift is an intended behaviour change (\`promote --override\`) or a correctness regression (roll back). The gate never rolls back on its own."
     cat <<EOF
 <!-- canary-blocker:$agent -->
@@ -2665,16 +2665,16 @@ _Whole-fleet status is in the Canary Rollout workflow run's job summary (Actions
 EOF
     return 0
   fi
-  if [ "$triage" = "REGRESSION" ]; then
+  if [[ "$triage" = "REGRESSION" ]]; then
     note="> ⛔ **REGRESSION** — the candidate changed the reusable and a run failed since its cut. HALT + hold; investigate and roll back rather than \`--override\`. (labelled \`needs-human\`)"
-  elif [ "$triage" = "SUSPECT" ]; then
+  elif [[ "$triage" = "SUSPECT" ]]; then
     local guidance; guidance="$(_suspect_guidance "$agent")"
-    [ -z "$guidance" ] && guidance="- _(no per-class guidance registered)_"
+    [[ -z "$guidance" ]] && guidance="- _(no per-class guidance registered)_"
     note="> ⚠️ **SUSPECT** — the candidate changed the reusable and a run failed with a *possibly-candidate-caused* signature. This still BLOCKS and needs a human (labelled \`needs-human\`), but answer the discriminating question below to confirm fast: if unrelated to the diff, \`promote --override\`; if the candidate is materially responsible, treat it as a real regression and roll back.
 >
 > **Discriminating question:**
 $(printf '%s\n' "$guidance" | sed 's/^/> /')"
-  elif [ "$downgrade" = "DOWNGRADE" ]; then
+  elif [[ "$downgrade" = "DOWNGRADE" ]]; then
     note="> ℹ️ **PRE_EXISTING** — *auto-downgraded from SUSPECT (#668 increment 6).* This failure matched a suspect class that opts into data-driven auto-downgrade, and the candidate's failure rate for that class is **no worse** than the prior version's on comparable traffic — so it is environmental, not a candidate regression. The SUSPECT hold auto-cleared: report only, **no human needed**, and the frontier advances with \`--allow-pre-existing\` once dwell/sample pass. (A materially-worse or thin-baseline case would have stayed SUSPECT.)
 >
 > **Suspect-class failure rate (candidate vs prior-version baseline):**
@@ -2683,11 +2683,11 @@ $(printf '%s\n' "$guidance" | sed 's/^/> /')"
 > |---|---|---|
 > | candidate | \`$dg_cand_rate\` | $dg_cand_sample |
 > | baseline | \`$dg_base_rate\` | $dg_base_sample |"
-  elif [ "$triage" = "UNRESOLVED" ]; then
+  elif [[ "$triage" = "UNRESOLVED" ]]; then
     note="> ⚠️ **UNRESOLVED (gate blind on a ring member, #1224)** — this agent's runs on at least one ring member could not be attributed or completely read (the reason per member is listed below). That member is **not** counted as passing evidence, so the gate holds instead of promoting on incomplete evidence. This is **not** a detected run failure (cumulative failures: $cum_fail). For an ADR-0007 collapsed repo (its per-role workflow is gone, \`$(_ingress_workflow)\` is present) whose runs could not be attributed to the role job: the member's ingress carries no job for this role, or the registry's \`ingress_job\` does not name that job's key. Re-sync the member's ingress from the canonical \`standards/workflows/agent-ingress.yml\`, or correct \`ingress_job\` in \`standards/canary-rings.json\` (#1247). If the evidence below says job reads were capped, the ingress has more runs in the window than \`CANARY_INGRESS_JOBS_MAX\` allows: raise that knob (default 300) instead. If it names a per-role run list that reached $_LEGACY_RUN_LIMIT runs, that workflow has more failed runs since the candidate cut than one listing returns, so the gate cannot see every failure in the window (#1244): investigate the failure volume; the hold clears when the candidate is recut. This issue auto-closes once every member resolves."
-  elif [ "$triage" = "FLAG_ERROR" ]; then
+  elif [[ "$triage" = "FLAG_ERROR" ]]; then
     note="> ⚠️ **FLAG_ERROR (gate held — runner temp dir unwritable)** — the candidate's cut date resolved fine, but the gate could not create its unresolved-member flag file (\`TMPDIR\` unwritable or full), so it could not record unattributable ring members and fails closed rather than promote on possibly incomplete evidence. This is **not** a detected run failure (cumulative failures: $cum_fail). Fix: free space / make \`TMPDIR\` writable on the runner; this clears on the next tick."
-  elif [ "$triage" = "PRE_EXISTING" ]; then
+  elif [[ "$triage" = "PRE_EXISTING" ]]; then
     note="> ⚠️ **PRE_EXISTING** — the failure is pre-existing/environmental (reusable byte-identical to the prior channel). Report only; the gate will not roll back or advance. Fix-forward, and the armed timer auto-promotes once clean."
   else
     # Fail-closed hold (_frontier_state: cut_z empty) — state=BLOCKED but triage="-" and cum_fail=0.
@@ -2701,16 +2701,16 @@ $(printf '%s\n' "$guidance" | sed 's/^/> /')"
   # (before the triage note) and blank out the misleading "0" cumulative-failures cell.
   local cum_row="**$cum_fail** (startup_failures: $cum_startup)"
   local evidence_heading="Failing runs in the per-candidate window"
-  [ "$triage" = "UNRESOLVED" ] && evidence_heading="Unresolved ring members"
-  if [ "$data_gap" = "2" ]; then
+  [[ "$triage" = "UNRESOLVED" ]] && evidence_heading="Unresolved ring members"
+  if [[ "$data_gap" = "2" ]]; then
     cum_row="_unknown — channel tags unresolved this tick_"
     note="> ⚠️ **TAG LOOKUP FAILED — FAILING CLOSED.** A channel-tag lookup for this pair errored this tick (a GitHub API failure — see the workflow log — not an absent tag), so the gate cannot tell where the rings are. Rather than report a false \"fully rolled out\", it holds the promotion and keeps this issue open. This clears automatically once the tags resolve again and the gate re-evaluates (#1225)."
-  elif [ "$data_gap" = "1" ]; then
+  elif [[ "$data_gap" = "1" ]]; then
     # With both commits resolvable the triage rests on the reusable diff. With either missing (triage
     # "-", #1249) nothing was compared, so no verdict is claimed.
     local gap_verdict="the triage verdict is derived from the reusable diff alone."
-    if [ "$triage" = "-" ] || [ -z "$triage" ]; then
-      if [ -z "$cand" ] || [ "$cand" = "-" ]; then
+    if [[ "$triage" = "-" ]] || [[ -z "$triage" ]]; then
+      if [[ -z "$cand" ]] || [[ "$cand" = "-" ]]; then
         gap_verdict="there is **no triage verdict (INDETERMINATE)**: the source ring's commit is unresolvable this tick, so the reusable could not be compared with the prior channel."
       else
         gap_verdict="there is **no triage verdict (INDETERMINATE)**: the destination ring has no resolvable commit this tick, so there is no prior channel to compare the reusable with."
@@ -2755,12 +2755,12 @@ _confirm_body() {
   local agent="$1" transition="$2" cand="$3" prior="$4" host="$5" sample="$6" target="$7"
   local suspect; suspect="$(_suspect_guidance "$agent")"
   local watch=""
-  [ -n "$suspect" ] && watch="
+  [[ -n "$suspect" ]] && watch="
 
 ### Watch for (suspect classes registered for this agent)
 $suspect"
   local diff_link
-  if [ -n "$prior" ]; then
+  if [[ -n "$prior" ]]; then
     diff_link="https://github.com/$host/compare/${prior}...${cand}"
   else
     diff_link="(no prior stable release)"
@@ -2840,7 +2840,7 @@ _frontier_state_resilient() {
   local flag gapflag gaps=""
   flag="$(mktemp 2>/dev/null || echo "")"
   gapflag="$(mktemp 2>/dev/null || echo "")"
-  if [ -z "$flag" ] || [ -z "$gapflag" ]; then
+  if [[ -z "$flag" ]] || [[ -z "$gapflag" ]]; then
     # Cannot arm a failure detector at all — treat as an unreadable tick rather
     # than silently falling back to the old undetectable-outage behavior.
     fetch_failed=1
@@ -2850,7 +2850,7 @@ _frontier_state_resilient() {
     export _CANARY_FETCH_FAIL_FLAG="$flag" _CANARY_TAG_GAP_FLAG="$gapflag"
     out="$(_frontier_state "$agent")" || rc=$?
     unset _CANARY_FETCH_FAIL_FLAG _CANARY_TAG_GAP_FLAG
-    [ -s "$flag" ] && fetch_failed=1
+    [[ -s "$flag" ]] && fetch_failed=1
     gaps="$(<"$gapflag")"
   fi
   [ -n "$flag" ] && rm -f "$flag"
@@ -2872,8 +2872,8 @@ _frontier_state_resilient() {
   fi
   # Non-data-gap _frontier_state failure: the fetch succeeded but _frontier_state still failed —
   # propagate the error rather than mis-annotating it as a data gap and emitting datagap=1.
-  if [ "$fetch_failed" -eq 0 ]; then
-    [ "$rc" -ne 0 ] && return "$rc"
+  if [[ "$fetch_failed" -eq 0 ]]; then
+    [[ "$rc" -ne 0 ]] && return "$rc"
     return 1
   fi
   # Data gap: the run-history fetch failed — reconstruct the tag-only facts for EVERY pending pair
@@ -2944,11 +2944,11 @@ _confirm_issues_for_agent() {
 # totally undeterminable — a green no-op would mask a regression (#820). Reads ISSUE_REPO
 # (default THIS_REPO).
 cmd_sync_issues() {
-  local dry=false; [ "${1:-}" = "--dry-run" ] && dry=true
+  local dry=false; [[ "${1:-}" = "--dry-run" ]] && dry=true
   local agents; agents="$(_jq -r '.agents? | keys[]?' 2>/dev/null || true)"
-  [ -z "$agents" ] && { echo "no agents registered in $CANARY_RINGS — nothing to sync."; return 0; }
+  [[ -z "$agents" ]] && { echo "no agents registered in $CANARY_RINGS — nothing to sync."; return 0; }
   echo "== canary-rollout sync-issues: repo=$ISSUE_REPO dry=$dry (gate standard: .github#548) =="
-  if [ "$dry" != true ]; then
+  if [[ "$dry" != true ]]; then
     gh label create canary-blocker --repo "$ISSUE_REPO" --color ededed --description "canary-rollout automation" >/dev/null 2>&1 || true
     # Route blockers so they get ACTIONED, not left sitting: `dev-lead` (dev-lead-intent
     # treats a `dev-lead`-labelled issue as an actionable "issue" intent and picks it up —
@@ -3054,7 +3054,7 @@ cmd_sync_issues() {
       if [ -z "$num" ]; then
         if [ "$dry" = true ]; then echo "  [DRY] would OPEN blocker issue for $agent ($bl_triage)"; bl_link="(new)"; else
           num="$(_gh_issue_create "$title" "$body" "canary-blocker" || true)"
-          if [ -n "$num" ]; then
+          if [[ -n "$num" ]]; then
             gh issue edit "$num" --repo "$ISSUE_REPO" --add-label dev-lead >/dev/null 2>&1 || true
             { [ "$bl_triage" = "REGRESSION" ] || [ "$bl_triage" = "SUSPECT" ]; } && gh issue edit "$num" --repo "$ISSUE_REPO" --add-label needs-human >/dev/null 2>&1 || true
             echo "  opened blocker issue #$num for $agent"; bl_link="#$num"
@@ -3104,7 +3104,7 @@ cmd_sync_issues() {
       if [ -z "$cnum" ]; then
         if [ "$dry" = true ]; then echo "  [DRY] would OPEN confirm issue for $agent"; cf_link="(new confirm)"; else
           cnum="$(_gh_issue_create "$ctitle" "$cbody" "canary-confirm" || true)"
-          if [ -n "$cnum" ]; then
+          if [[ -n "$cnum" ]]; then
             gh issue edit "$cnum" --repo "$ISSUE_REPO" --add-label needs-human >/dev/null 2>&1 || true
             echo "  opened confirm issue #$cnum for $agent"; cf_link="#$cnum (confirm)"
           else echo "::warning::could not open confirm issue for $agent (Issues:write on the App?)"; fi
@@ -3156,7 +3156,7 @@ cmd_sync_issues() {
   local ts dmd
   ts="$(date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || echo unknown)"
   dmd="$(_dashboard_md "${rows%$'\n'}" "$ts")"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     if printf '\n%s\n' "$dmd" >> "$GITHUB_STEP_SUMMARY"; then
       echo "  wrote fleet-status table to the job summary"
     else
@@ -3168,7 +3168,7 @@ cmd_sync_issues() {
   fi
   # Fail closed (#820): if any agent's state was totally undeterminable this tick, end non-zero
   # AFTER rendering the dashboard — a green no-op would mask a possible regression.
-  [ "$hard_fail" -eq 1 ] && return 1
+  [[ "$hard_fail" -eq 1 ]] && return 1
   return 0
 }
 
@@ -3185,7 +3185,7 @@ cmd_sync_issues() {
 # empty when the path is unset or the file is missing/empty.
 _promo_log_agents() {
   local f="$1"
-  [ -n "$f" ] && [ -s "$f" ] || return 0
+  [[ -n "$f" ]] && [[ -s "$f" ]] || return 0
   cut -f1 "$f" 2>/dev/null | awk 'NF && !seen[$0]++'
 }
 
@@ -3193,14 +3193,14 @@ _promo_log_agents() {
 # <agent> (the most recent failure this run), empty if none.
 _promo_fail_latest() {
   local agent="$1" f="${CANARY_PROMOTIONS_FAILED_LOG:-}"
-  [ -n "$f" ] && [ -s "$f" ] || return 0
+  [[ -n "$f" ]] && [[ -s "$f" ]] || return 0
   awk -F'\t' -v a="$agent" '$1==a{ r=$2"\t"$3"\t"$4"\t"$5 } END{ if (r!="") print r }' "$f"
 }
 
 # _promo_fail_body <agent> <count> <threshold> <ring> <cand> <host> <reason> <escalated:0|1>
 _promo_fail_body() {
   local agent="$1" count="$2" threshold="$3" ring="$4" cand="$5" host="$6" reason="$7" escalated="$8" note
-  if [ "$escalated" = 1 ]; then
+  if [[ "$escalated" = 1 ]]; then
     note="> ⛔ **ESCALATED (needs-human).** This tag write has failed on **$count consecutive** scheduled runs (threshold $threshold) — it is not self-healing. Unlike a gate block (expected, timer-cleared), a failing WRITE means the move itself is rejected: check the release-manager App's ruleset bypass + token scopes for \`$ring\` on \`$host\`, then re-run \`promote $agent\`. This issue auto-closes on the next successful promotion."
   else
     note="> ℹ️ **Tracking a failed tag write.** The promotion move for \`$agent\` was rejected this run (not a gate block — the gate would hold *before* the write). Consecutive failures: **$count** of $threshold before escalation to \`needs-human\`. Auto-closes on the next successful promotion."
@@ -3230,19 +3230,19 @@ EOF
 # and CANARY_PROMOTIONS_LOG (successes); an agent present in neither was not attempted this run
 # and is left untouched. Reads ISSUE_REPO (default THIS_REPO).
 cmd_sync_promotion_failures() {
-  local dry=false; [ "${1:-}" = "--dry-run" ] && dry=true
+  local dry=false; [[ "${1:-}" = "--dry-run" ]] && dry=true
   local threshold="${CANARY_PROMOTION_FAILURE_ESCALATE_AFTER:-2}"
   case "$threshold" in ''|*[!0-9]*) threshold=2 ;; esac
-  [ "$threshold" -lt 1 ] && threshold=1
+  [[ "$threshold" -lt 1 ]] && threshold=1
   echo "== canary-rollout sync-promotion-failures: repo=$ISSUE_REPO dry=$dry threshold=$threshold =="
   local failed_agents ok_agents attempted
   failed_agents="$(_promo_log_agents "${CANARY_PROMOTIONS_FAILED_LOG:-}")"
   ok_agents="$(_promo_log_agents "${CANARY_PROMOTIONS_LOG:-}")"
   attempted="$(printf '%s\n%s\n' "$failed_agents" "$ok_agents" | awk 'NF && !seen[$0]++')"
-  if [ -z "$attempted" ]; then
+  if [[ -z "$attempted" ]]; then
     echo "  no promotion attempts recorded this run — nothing to reconcile."; return 0
   fi
-  if [ "$dry" != true ]; then
+  if [[ "$dry" != true ]]; then
     gh label create canary-promotion-failure --repo "$ISSUE_REPO" --color b60205 --description "canary-rollout: a promotion tag WRITE is failing (not a gate block)" >/dev/null 2>&1 || true
     gh label create dev-lead --repo "$ISSUE_REPO" --color 5319e7 --description "Route to the dev-lead agent for action" >/dev/null 2>&1 || true
     gh label create needs-human --repo "$ISSUE_REPO" --color d93f0b --description "Requires human judgement (canary regression)" >/dev/null 2>&1 || true
@@ -3264,11 +3264,11 @@ cmd_sync_promotion_failures() {
   local -A promo_failures=() unresolved=()
   local _pf_agent _pf_num _pf_state _pf_count
   while IFS=$'\t' read -r _pf_agent _pf_num _pf_state _pf_count; do
-    [ -n "$_pf_agent" ] && promo_failures["$_pf_agent"]="${_pf_num}"$'\t'"${_pf_state}"$'\t'"${_pf_count}"
+    [[ -n "$_pf_agent" ]] && promo_failures["$_pf_agent"]="${_pf_num}"$'\t'"${_pf_state}"$'\t'"${_pf_count}"
   done < <(printf '%s\n' "$issues_json" | jq -r '(sort_by(.number) // []) | .[]? | select(.body != null) | (try (.body | capture("<!-- canary-promo-fail:(?<agent>[^ ]+) -->")) catch null) as $c | select($c != null) | ([.body | match("canary-promo-fail-count:([0-9]+)") | .captures[0].string] | first // "0") as $count | "\($c.agent)\t\(.number)\t\(.state | ascii_upcase)\t\($count)"' 2>/dev/null)
   # Parse the failure log once before the per-agent loop to avoid spawning awk on every iteration.
   local -A fail_ring=() fail_cand=() fail_host=() fail_reason=()
-  if [ -n "${CANARY_PROMOTIONS_FAILED_LOG:-}" ] && [ -s "$CANARY_PROMOTIONS_FAILED_LOG" ]; then
+  if [[ -n "${CANARY_PROMOTIONS_FAILED_LOG:-}" ]] && [[ -s "$CANARY_PROMOTIONS_FAILED_LOG" ]]; then
     local lf_agent lf_ring lf_cand lf_host lf_reason
     while IFS=$'\t' read -r lf_agent lf_ring lf_cand lf_host lf_reason; do
       if [ -n "$lf_agent" ]; then
@@ -3284,18 +3284,18 @@ cmd_sync_promotion_failures() {
   fi
   local agent
   while IFS= read -r agent; do
-    [ -z "$agent" ] && continue
+    [[ -z "$agent" ]] && continue
     local outcome="ok"
     [ -n "${unresolved["$agent"]:-}" ] && outcome="failed"
     local ns num istate prior
     ns="${promo_failures["$agent"]:-}"
     num="$(printf '%s' "$ns" | cut -f1)"; istate="$(printf '%s' "$ns" | cut -f2)"; prior="$(printf '%s' "$ns" | cut -f3)"
-    [ -z "$prior" ] && prior=0
+    [[ -z "$prior" ]] && prior=0
     # A CLOSED tracking issue means the streak already ended; its stale count must not seed the
     # next streak or one transient failure would escalate on its first occurrence after recovery.
-    [ "$istate" = "CLOSED" ] && prior=0
+    [[ "$istate" = "CLOSED" ]] && prior=0
     local count; count="$(promotion_failure_next_count "$prior" "$outcome")"
-    if [ "$outcome" = "failed" ]; then
+    if [[ "$outcome" = "failed" ]]; then
       local ring cand host reason escalate body title
       ring="${fail_ring["$agent"]:-?}"
       cand="${fail_cand["$agent"]:-}"
@@ -3303,32 +3303,32 @@ cmd_sync_promotion_failures() {
       reason="${fail_reason["$agent"]:-tag write rejected}"
       escalate="$(promotion_failure_should_escalate "$count" "$threshold")"
       body="$(_promo_fail_body "$agent" "$count" "$threshold" "$ring" "$cand" "$host" "$reason" "$escalate")"
-      if [ "$escalate" = 1 ]; then
+      if [[ "$escalate" = 1 ]]; then
         title="Canary promotion FAILING: $agent (${count}× consecutive tag-write rejection)"
       else
         title="Canary promotion tag-write failed: $agent (${count}× consecutive)"
       fi
-      if [ -z "$num" ]; then
-        if [ "$dry" = true ]; then echo "  [DRY] would OPEN promotion-failure issue for $agent (count=$count, escalate=$escalate)"; else
+      if [[ -z "$num" ]]; then
+        if [[ "$dry" = true ]]; then echo "  [DRY] would OPEN promotion-failure issue for $agent (count=$count, escalate=$escalate)"; else
           num="$(_gh_issue_create "$title" "$body" "canary-promotion-failure" || true)"
-          if [ -n "$num" ]; then
-            [ "$escalate" = 1 ] && gh issue edit "$num" --repo "$ISSUE_REPO" --add-label dev-lead --add-label needs-human >/dev/null 2>&1 || true
+          if [[ -n "$num" ]]; then
+            [[ "$escalate" = 1 ]] && gh issue edit "$num" --repo "$ISSUE_REPO" --add-label dev-lead --add-label needs-human >/dev/null 2>&1 || true
             echo "  opened promotion-failure issue #$num for $agent (count=$count)"
           else echo "::warning::could not open promotion-failure issue for $agent (Issues:write on the App?)"; fi
         fi
       else
-        if [ "$dry" = true ]; then echo "  [DRY] would UPDATE promotion-failure issue #$num for $agent (count=$count, escalate=$escalate)"; else
-          [ "$istate" = "OPEN" ] || gh issue reopen "$num" --repo "$ISSUE_REPO" >/dev/null 2>&1 || true
+        if [[ "$dry" = true ]]; then echo "  [DRY] would UPDATE promotion-failure issue #$num for $agent (count=$count, escalate=$escalate)"; else
+          [[ "$istate" = "OPEN" ]] || gh issue reopen "$num" --repo "$ISSUE_REPO" >/dev/null 2>&1 || true
           gh issue edit "$num" --repo "$ISSUE_REPO" --title "$title" --body "$body" >/dev/null 2>&1 \
             || echo "::warning::could not update promotion-failure issue #$num for $agent"
-          [ "$escalate" = 1 ] && gh issue edit "$num" --repo "$ISSUE_REPO" --add-label dev-lead --add-label needs-human >/dev/null 2>&1 || true
+          [[ "$escalate" = 1 ]] && gh issue edit "$num" --repo "$ISSUE_REPO" --add-label dev-lead --add-label needs-human >/dev/null 2>&1 || true
           echo "  updated promotion-failure issue #$num for $agent (count=$count)"
         fi
       fi
     else
       # A successful write this run resets the streak → close any open tracking issue.
-      if [ -n "$num" ] && [ "$istate" = "OPEN" ]; then
-        if [ "$dry" = true ]; then echo "  [DRY] would CLOSE recovered promotion-failure issue #$num for $agent"; else
+      if [[ -n "$num" ]] && [[ "$istate" = "OPEN" ]]; then
+        if [[ "$dry" = true ]]; then echo "  [DRY] would CLOSE recovered promotion-failure issue #$num for $agent"; else
           gh issue close "$num" --repo "$ISSUE_REPO" \
             --comment "✅ Promotion succeeded — \`$agent\` tag write recovered. Closed automatically by canary-rollout." >/dev/null 2>&1 || true
           echo "  closed recovered promotion-failure issue #$num for $agent"
@@ -3390,8 +3390,8 @@ _watched_paths() {
      else "none" end' 2>/dev/null || echo none)"
   extra="$(_jq -r --arg a "$agent" \
     '(.agents[$a].agent_ref_paths // .agent_ref_paths // []) | .[]?' 2>/dev/null || true)"
-  [ -z "$extra" ] && [ "$declared" = "none" ] && extra="$_DEFAULT_AGENT_REF_PATHS"
-  { [ -n "$reusable" ] && printf '%s\n' "$reusable"; printf '%s\n' "$extra"; } \
+  [[ -z "$extra" ]] && [[ "$declared" = "none" ]] && extra="$_DEFAULT_AGENT_REF_PATHS"
+  { [[ -n "$reusable" ]] && printf '%s\n' "$reusable"; printf '%s\n' "$extra"; } \
     | awk 'NF && !seen[$0]++'
 }
 
@@ -3411,12 +3411,12 @@ _watched_paths() {
 # "unknown", not "unchanged").
 _gh_changed_files() {
   local repo="$1" base="$2" head="$3" json truncated files
-  { [ -z "$base" ] || [ -z "$head" ]; } && { echo ""; return 0; }
+  { [[ -z "$base" ]] || [[ -z "$head" ]]; } && { echo ""; return 0; }
   json="$(gh api "repos/$repo/compare/$base...$head" 2>/dev/null)" || { echo ""; return 0; }
-  [ -z "$json" ] && { echo ""; return 0; }
+  [[ -z "$json" ]] && { echo ""; return 0; }
 
   truncated="$(jq -r '.truncated // false' <<< "$json" 2>/dev/null || echo false)"
-  if [ "$truncated" != "true" ]; then
+  if [[ "$truncated" != "true" ]]; then
     jq -r '.files[]?.filename // empty' <<< "$json" 2>/dev/null || echo ""
     return 0
   fi
@@ -3427,9 +3427,9 @@ _gh_changed_files() {
   files="$(jq -r '.files[]?.filename // empty' <<< "$json" 2>/dev/null || echo "")"
   local sha commit_json
   while IFS= read -r sha; do
-    [ -z "$sha" ] && continue
+    [[ -z "$sha" ]] && continue
     commit_json="$(gh api "repos/$repo/commits/$sha" 2>/dev/null)" || continue
-    [ -z "$commit_json" ] && continue
+    [[ -z "$commit_json" ]] && continue
     files+=$'\n'"$(jq -r '.files[]?.filename // empty' <<< "$commit_json" 2>/dev/null || echo "")"
   done < <(jq -r '.commits[]?.sha // empty' <<< "$json" 2>/dev/null)
 
@@ -3442,7 +3442,7 @@ _gh_changed_files() {
 _host_release_versions() {
   local agent="$1" host
   host="$(_agent_field "$agent" host)"
-  [ -z "$host" ] && return 0
+  [[ -z "$host" ]] && return 0
   gh api "repos/$host/git/matching-refs/tags/$agent/v" --jq '.[]?.ref' 2>/dev/null \
     | sed -n "s#^refs/tags/${agent}/v##p" || true
 }
@@ -3505,10 +3505,10 @@ _autocut_commit_signals() {
   local path page json acc="[]" truncated=0 path_done
   local since; since="$(_commit_date "$host" "$next_commit")"
   while IFS= read -r path; do
-    [ -z "$path" ] && continue
+    [[ -z "$path" ]] && continue
     page=1; path_done=0
-    while [ "$page" -le "$CANARY_MAX_COMMIT_PAGES" ]; do
-      local since_args=(); [ -n "$since" ] && since_args=(-f "since=$since")
+    while [[ "$page" -le "$CANARY_MAX_COMMIT_PAGES" ]]; do
+      local since_args=(); [[ -n "$since" ]] && since_args=(-f "since=$since")
       json="$(gh api --method GET "repos/$host/commits" -f path="$path" -f sha="$mainsha" "${since_args[@]}" -F per_page=100 -F page="$page" 2>/dev/null)" || return 1
       # Parse the page and extract found, count, and pre-boundary messages in a single jq invocation
       local parsed found count pre rest
@@ -3524,17 +3524,17 @@ _autocut_commit_signals() {
       commit_page_done "$found" "${count:-0}" 100 || { path_done=1; break; }
       page=$((page + 1))
     done
-    [ "$path_done" -eq 1 ] || truncated=1
+    [[ "$path_done" -eq 1 ]] || truncated=1
   done <<< "$(_autocut_signal_paths "$agent")"
-  [ "$truncated" -eq 1 ] && return 3
-  [ "$acc" = "[]" ] && return 2
+  [[ "$truncated" -eq 1 ]] && return 3
+  [[ "$acc" = "[]" ]] && return 2
   local out
   out="$(printf '%s\n' "$acc" | jq -r '
     { b: any(.[]?; (. // "") | test("^[\\w-]+(\\([^)]*\\))?!:") or test("(^|\\n)BREAKING[ -]CHANGE:")),
       f: any(.[]?; (. // "") | test("^feat(\\([^)]*\\))?:")) }
     | "\(if .b then 1 else 0 end) \(if .f then 1 else 0 end)"
   ' 2>/dev/null)" || return 1
-  [ -z "$out" ] && return 1
+  [[ -z "$out" ]] && return 1
   printf '%s\n' "$out"
 }
 
@@ -3547,9 +3547,9 @@ _autocut_commit_signals() {
 # on any fetch/parse error so the caller stays fail-safe to patch (never auto-major on missing data).
 _autocut_range_signals() {
   local host="$1" base="$2" head="$3" json out
-  { [ -z "$base" ] || [ -z "$head" ]; } && return 1
+  { [[ -z "$base" ]] || [[ -z "$head" ]]; } && return 1
   json="$(gh api "repos/$host/compare/$base...$head" 2>/dev/null)" || return 1
-  [ -z "$json" ] && return 1
+  [[ -z "$json" ]] && return 1
   out="$(jq -r '
     if (.commits | type) != "array" then error("no commits array") else . end
     | (.commits | map(.commit.message // "")) as $msgs
@@ -3559,7 +3559,7 @@ _autocut_range_signals() {
       }
     | "\(if .b then 1 else 0 end) \(if .f then 1 else 0 end)"
   ' <<< "$json" 2>/dev/null)" || return 1
-  [ -z "$out" ] && return 1
+  [[ -z "$out" ]] && return 1
   printf '%s\n' "$out"
 }
 
@@ -3568,7 +3568,7 @@ _autocut_range_signals() {
 _gh_file_content() {
   local raw
   raw="$(gh api "repos/$1/contents/$2?ref=$3" --jq '.content // empty' 2>/dev/null)" || return 1
-  [ -z "$raw" ] && return 1
+  [[ -z "$raw" ]] && return 1
   printf '%s' "$raw" | tr -d '\n' | base64 -d 2>/dev/null || return 1
 }
 
@@ -3595,22 +3595,22 @@ _autocut_iface_break() {
 _autocut_detect_bump() {
   local agent="$1" host="$2" reusable="$3" next_commit="$4" mainsha="$5"
   local override; override="$(_autocut_bump_override "$agent")"
-  if [ -n "$override" ]; then
+  if [[ -n "$override" ]]; then
     echo "::notice::autocut $agent: bump=$override (registry override .agents[$agent].autocut.bump)" >&2
     echo "$override"; return 0
   fi
   local breaking=0 feat=0 driver="" sigs iface rc=0
   sigs="$(_autocut_commit_signals "$agent" "$host" "$next_commit" "$mainsha")" || rc=$?
-  if [ "$rc" -eq 0 ]; then
+  if [[ "$rc" -eq 0 ]]; then
     read -r breaking feat <<< "$sigs"
-  elif [ "$rc" -eq 3 ]; then
+  elif [[ "$rc" -eq 3 ]]; then
     # Unresolvable range (#1023 defect 1b): the range could not be fully enumerated, so a
     # breaking change may hide beyond the cap. FAIL SAFE TO MAJOR, loudly — never silently to
     # patch, the more dangerous direction (a breaking change shipped as a patch breaks pinned
     # consumers with no signal). A false major is at worst a spurious fresh v-line + this warning.
     echo "::warning::autocut $agent: commit range ${next_commit:0:12}..${mainsha:0:12} on $host could not be fully enumerated within $CANARY_MAX_COMMIT_PAGES pages — cannot rule out a breaking change; failing safe to bump=major (not patch). Investigate the range." >&2
     breaking=1; feat=0; driver="unresolvable commit range (fail-safe major)"
-  elif [ "$rc" -eq 2 ] && sigs="$(_autocut_range_signals "$host" "$next_commit" "$mainsha")"; then
+  elif [[ "$rc" -eq 2 ]] && sigs="$(_autocut_range_signals "$host" "$next_commit" "$mainsha")"; then
     # Reusable-path-scoped signals unavailable (a script-only change touches no reusable commit,
     # so the boundary scan finds nothing — rc=2): fall back to the compare-range commit messages
     # so a script-only feat/breaking still bumps correctly (#1019). A fetch error (rc=1) falls
@@ -3620,14 +3620,14 @@ _autocut_detect_bump() {
     echo "::notice::autocut $agent: commit-signal fetch failed — bump=patch (fail-safe)" >&2
     echo "patch"; return 0
   fi
-  [ "$breaking" = 1 ] && [ -z "$driver" ] && driver="conventional-commit breaking change"
+  [[ "$breaking" = 1 ]] && [[ -z "$driver" ]] && driver="conventional-commit breaking change"
   # An interface break escalates to major; a fetch error here is non-fatal (keep commit signals)
   # and never invents a major from missing data.
   if iface="$(_autocut_iface_break "$host" "$reusable" "$next_commit" "$mainsha")"; then
-    if [ "$iface" = 1 ]; then breaking=1; driver="workflow_call interface break"; fi
+    if [[ "$iface" = 1 ]]; then breaking=1; driver="workflow_call interface break"; fi
   fi
   local bump; bump="$(decide_bump "$breaking" "$feat" "")"
-  if [ -z "$driver" ]; then
+  if [[ -z "$driver" ]]; then
     case "$bump" in
       minor) driver="feat commit" ;;
       *)     driver="no breaking/feat signal" ;;
@@ -3644,7 +3644,7 @@ _next_release_version() {
   versions="$(_host_release_versions "$agent")"
   # shellcheck disable=SC2086
   highest="$(max_semver $versions)"
-  [ -z "$highest" ] && highest="0.0.0"
+  [[ -z "$highest" ]] && highest="0.0.0"
   bump_version "$highest" "$bump"
 }
 
@@ -3657,24 +3657,24 @@ _autocut_agent() {
   local host reusable defbranch mainsha next_commit main_blob next_blob bump newver
   host="$(_agent_field "$agent" host)"
   reusable="$(_agent_field "$agent" reusable)"
-  if [ -z "$host" ] || [ -z "$reusable" ]; then
+  if [[ -z "$host" ]] || [[ -z "$reusable" ]]; then
     echo "::warning::autocut $agent: missing host/reusable in registry — skipping"; return 0
   fi
-  defbranch="$(_gh_default_branch "$host")"; [ -z "$defbranch" ] && defbranch="main"
+  defbranch="$(_gh_default_branch "$host")"; [[ -z "$defbranch" ]] && defbranch="main"
   mainsha="$(_gh_head_sha "$host" "$defbranch")"
-  if [ -z "$mainsha" ]; then
+  if [[ -z "$mainsha" ]]; then
     echo "::warning::autocut $agent: could not resolve $host $defbranch HEAD — skipping"; return 0
   fi
   main_blob="$(_gh_blob_sha "$host" "$reusable" "$mainsha")"
-  if [ -z "$main_blob" ]; then
+  if [[ -z "$main_blob" ]]; then
     echo "::warning::autocut $agent: reusable '$reusable' not found at $host@${mainsha:0:12} — skipping"; return 0
   fi
   local next_resolved_tag
   IFS=$'\t' read -r next_resolved_tag next_commit < <(_resolved_channel "$agent" next)
   next_blob=""
-  [ -n "$next_commit" ] && next_blob="$(_gh_blob_sha "$host" "$reusable" "$next_commit")"
+  [[ -n "$next_commit" ]] && next_blob="$(_gh_blob_sha "$host" "$reusable" "$next_commit")"
   # Fast no-op: main HEAD already IS the current candidate — nothing merged since the last cut.
-  if [ "$mainsha" = "$next_commit" ]; then
+  if [[ "$mainsha" = "$next_commit" ]]; then
     echo "autocut $agent: reusable unchanged on $host (next candidate up to date) — no cut."
     return 0
   fi
@@ -3685,22 +3685,22 @@ _autocut_agent() {
   # fast path, kept byte-identical for a reusable change) OR any other registry-derived watched
   # path (via the compare API).
   local reusable_changed=0
-  if [ -z "$next_commit" ] || [ -z "$next_blob" ]; then
+  if [[ -z "$next_commit" ]] || [[ -z "$next_blob" ]]; then
     # Cannot compare the reusable blob (no candidate yet, or reusable absent at the candidate):
     # fail OPEN so a first cut / an unresolved candidate still seeds the pipeline (prior behaviour).
     reusable_changed=1
-  elif [ "$main_blob" != "$next_blob" ]; then
+  elif [[ "$main_blob" != "$next_blob" ]]; then
     reusable_changed=1
   fi
   local watched_changed=0 watched_hitlist=""
-  if [ "$reusable_changed" -eq 0 ] && [ -n "$next_commit" ]; then
+  if [[ "$reusable_changed" -eq 0 ]] && [[ -n "$next_commit" ]]; then
     local watched changed_files
     watched="$(_watched_paths "$agent")"
     changed_files="$(_gh_changed_files "$host" "$next_commit" "$mainsha")"
     watched_hitlist="$(watched_hits "$changed_files" "$watched")"
-    [ -n "$watched_hitlist" ] && watched_changed=1
+    [[ -n "$watched_hitlist" ]] && watched_changed=1
   fi
-  if [ "$reusable_changed" -eq 0 ] && [ "$watched_changed" -eq 0 ]; then
+  if [[ "$reusable_changed" -eq 0 ]] && [[ "$watched_changed" -eq 0 ]]; then
     echo "autocut $agent: no agent_ref-consumed path changed on $host (reusable + scripts/prompts/personas up to date) — no cut."
     return 0
   fi
@@ -3712,14 +3712,14 @@ _autocut_agent() {
   # major's `v<M>-next` — falling back to the legacy bare `<agent>/next` on today's bare-tier
   # fleet where no v-line exists yet, so the move stays byte-identical until F5 migrates tags.
   local next_tag newmajor; newmajor="$(major_component "$newver")"
-  if [ "$bump" = major ]; then
+  if [[ "$bump" = major ]]; then
     next_tag="$(channel_tag "$agent" next "$newmajor")"
   else
     next_tag="$next_resolved_tag"
   fi
   echo "autocut $agent: reusable changed on $host ($defbranch ${mainsha:0:12}) vs next ${next_commit:0:12} — cutting v$newver (bump=$bump), moving $next_tag."
   local relver="$agent/v$newver"
-  if [ "$dry" = true ]; then
+  if [[ "$dry" = true ]]; then
     echo "[DRY-RUN] would: cut $relver at ${mainsha:0:12} on $host + move $next_tag (gh-api, App token)"
     return 0
   fi
@@ -3731,8 +3731,8 @@ _autocut_agent() {
   # next move entirely rather than advancing next to an untagged commit.
   local existing_sha
   existing_sha="$(_gh_tag_commit "$host" "$relver")"
-  if [ -n "$existing_sha" ]; then
-    if [ "$existing_sha" != "$mainsha" ]; then
+  if [[ -n "$existing_sha" ]]; then
+    if [[ "$existing_sha" != "$mainsha" ]]; then
       echo "::warning::autocut $agent: release $relver on $host points to ${existing_sha:0:12}, not ${mainsha:0:12} — skipping next move to preserve invariant."
       return 0
     fi
@@ -3751,17 +3751,17 @@ _autocut_agent() {
 # BEFORE promote-all so a freshly cut candidate begins soaking the same tick (dwell=0 < floor
 # → it SOAKS, does not promote).
 cmd_autocut() {
-  local dry=false; [ "${1:-}" = "--dry-run" ] && dry=true
-  if [ "${CANARY_AUTO_CUT:-}" != "true" ]; then
+  local dry=false; [[ "${1:-}" = "--dry-run" ]] && dry=true
+  if [[ "${CANARY_AUTO_CUT:-}" != "true" ]]; then
     echo "== canary-rollout autocut: DISABLED (CANARY_AUTO_CUT != 'true') — no-op. =="
     return 0
   fi
   local agents agent
   agents="$(_jq -r '.agents? | keys[]?' 2>/dev/null || true)"
-  [ -z "$agents" ] && { echo "no agents registered in $CANARY_RINGS — nothing to autocut."; return 0; }
+  [[ -z "$agents" ]] && { echo "no agents registered in $CANARY_RINGS — nothing to autocut."; return 0; }
   echo "== canary-rollout autocut: fleet-wide dry=$dry (gate standard: .github#548) =="
   while IFS= read -r agent; do
-    [ -z "$agent" ] && continue
+    [[ -z "$agent" ]] && continue
     echo "──────── agent: $agent ────────"
     _autocut_agent "$agent" "$dry" || echo "::warning::autocut of $agent failed (continuing fleet)"
   done <<< "$agents"
@@ -3815,7 +3815,7 @@ _gh_list_reusables() {
   json="$(gh api "repos/$repo/contents/.github/workflows" 2>/dev/null)" || return 1
   # An empty (but exit-0) body is not a readable listing — treat it as an enumeration
   # failure so the caller skips the host rather than false-flagging every reusable gone.
-  [ -n "$json" ] || return 1
+  [[ -n "$json" ]] || return 1
   jq -e 'type=="array"' >/dev/null 2>&1 <<< "$json" || return 1
   # The array type is validated above, so iterate with `.[]` (not `.[]?`): the optional
   # operator would silently swallow an iteration error on a malformed element instead of
@@ -3905,9 +3905,9 @@ _channel_tag_major_gaps() {
   _agent_has_channel_major "$agent" "$major" || return 0
   channels="$(ordered_channels "$agent")"
   for tier in ${channels//,/ }; do
-    [ -z "$tier" ] && continue
-    [ -n "$(_channel_tag_commit "$agent" "$tier")" ] || continue          # no bare tier tag → nothing to pair
-    [ -z "$(_channel_tag_commit "$agent" "v${major}-${tier}")" ] && printf '%s\n' "$tier"
+    [[ -z "$tier" ]] && continue
+    [[ -n "$(_channel_tag_commit "$agent" "$tier")" ]] || continue          # no bare tier tag → nothing to pair
+    [[ -z "$(_channel_tag_commit "$agent" "v${major}-${tier}")" ]] && printf '%s\n' "$tier"
   done
 }
 
@@ -3916,7 +3916,7 @@ _channel_tag_major_gaps() {
 # prints a scaffold .agents[<name>] block per unregistered reusable.
 cmd_drift() {
   local emit_stub=false
-  while [ $# -gt 0 ]; do
+  while [[ $# -gt 0 ]]; do
     case "$1" in
       --emit-stub) emit_stub=true ;;
       *) echo "::error::unknown drift flag: $1" >&2; return 2 ;;
@@ -3925,11 +3925,11 @@ cmd_drift() {
   echo "== canary-rollout drift: registry vs host reusables (read-only; gate standard: .github#548) =="
   local hosts host rows="" stubs="" u_total=0 m_total=0
   hosts="$(_registered_hosts)"
-  if [ -z "$hosts" ]; then
+  if [[ -z "$hosts" ]]; then
     echo "no host repos resolved from $CANARY_RINGS — nothing to audit."; return 0
   fi
   while IFS= read -r host; do
-    [ -z "$host" ] && continue
+    [[ -z "$host" ]] && continue
     echo "──────── host: $host ────────"
     local present registered unmanaged_r unregistered missing p agents
     registered="$(_registered_reusables_for_host "$host")"
@@ -3945,23 +3945,23 @@ cmd_drift() {
     fi
     unmanaged_r="$(_unmanaged_reusables_for_host "$host")"
     local reg_arr=() pres_arr=() um_arr=() reg_str="" pres_str="" um_str=""
-    if [ -n "$registered" ]; then mapfile -t reg_arr <<< "$registered"; fi
-    if [ -n "$present" ]; then mapfile -t pres_arr <<< "$present"; fi
-    if [ -n "$unmanaged_r" ]; then mapfile -t um_arr <<< "$unmanaged_r"; fi
-    [ "${#reg_arr[@]}" -gt 0 ] && reg_str=" ${reg_arr[*]}"
-    [ "${#pres_arr[@]}" -gt 0 ] && pres_str=" ${pres_arr[*]}"
-    [ "${#um_arr[@]}" -gt 0 ] && um_str=" ${um_arr[*]}"
+    if [[ -n "$registered" ]]; then mapfile -t reg_arr <<< "$registered"; fi
+    if [[ -n "$present" ]]; then mapfile -t pres_arr <<< "$present"; fi
+    if [[ -n "$unmanaged_r" ]]; then mapfile -t um_arr <<< "$unmanaged_r"; fi
+    [[ "${#reg_arr[@]}" -gt 0 ]] && reg_str=" ${reg_arr[*]}"
+    [[ "${#pres_arr[@]}" -gt 0 ]] && pres_str=" ${pres_arr[*]}"
+    [[ "${#um_arr[@]}" -gt 0 ]] && um_str=" ${um_arr[*]}"
     echo "  registered reusables (${#reg_arr[@]}):$reg_str"
     echo "  present reusables (${#pres_arr[@]}):$pres_str"
-    [ "${#um_arr[@]}" -gt 0 ] && echo "  unmanaged (intentional, out of ring gate) (${#um_arr[@]}):$um_str"
+    [[ "${#um_arr[@]}" -gt 0 ]] && echo "  unmanaged (intentional, out of ring gate) (${#um_arr[@]}):$um_str"
     # unregistered = present on the host, minus registered agents AND intentionally-unmanaged (#651).
     unregistered="$(set_difference "$(set_difference "$present" "$registered")" "$unmanaged_r")"
     while IFS= read -r p; do
-      [ -z "$p" ] && continue
+      [[ -z "$p" ]] && continue
       echo "::warning::DRIFT[unregistered] $host: $p present on host but absent from canary-rings.json (no cut/soak/gate/dashboard until registered)"
       rows+="| \`$host\` | unregistered | \`$p\` | not in \`.agents{}\` — register it or delete the file |"$'\n'
       u_total=$((u_total + 1))
-      if [ "$emit_stub" = true ]; then stubs+="$(_drift_scaffold "$host" "$p")"$'\n'; fi
+      if [[ "$emit_stub" = true ]]; then stubs+="$(_drift_scaffold "$host" "$p")"$'\n'; fi
     done <<< "$unregistered"
     # missing-file = registered in the registry but the file is gone from the host. A registered reusable
     # that keeps a legacy non-`-reusable.yml` name (the grandfathered pr-review.yml engine, #1166) is
@@ -3969,7 +3969,7 @@ cmd_drift() {
     # correctly not flagged as missing.
     missing="$(set_difference "$registered" "$present")"
     while IFS= read -r p; do
-      [ -z "$p" ] && continue
+      [[ -z "$p" ]] && continue
       agents="$(_agents_for_reusable "$host" "$p")"
       echo "::warning::DRIFT[missing-file] $host: registry agent '${agents:-?}' -> $p not found on host (deleted/renamed reusable; stale registry entry)"
       rows+="| \`$host\` | missing-file | \`$p\` | registry agent \`${agents:-?}\` points at a file that no longer exists |"$'\n'
@@ -3980,10 +3980,10 @@ cmd_drift() {
   echo "----"
   local total=$((u_total + m_total))
   echo "drift summary: $u_total unregistered, $m_total missing-file ($total total findings)"
-  if [ "$total" -eq 0 ]; then
+  if [[ "$total" -eq 0 ]]; then
     echo "no reusable drift detected — the registry and host reusables are in sync."
   fi
-  if [ "$emit_stub" = true ] && [ -n "$stubs" ]; then
+  if [[ "$emit_stub" = true ]] && [[ -n "$stubs" ]]; then
     echo "---- scaffold .agents[<name>] stubs for unregistered reusables (--emit-stub) ----"
     echo "Paste into standards/canary-rings.json under .agents, then set run_workflow + review ring members:"
     printf '%s' "$stubs"
@@ -3993,12 +3993,12 @@ cmd_drift() {
   # back to stdout when GITHUB_STEP_SUMMARY is unset (local/manual runs).
   local ts dmd
   ts="$(date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || echo unknown)"
-  if [ "$total" -eq 0 ]; then
+  if [[ "$total" -eq 0 ]]; then
     dmd="$(printf '# Canary Rollout — reusable drift\n\nLast updated: `%s` · gate standard: .github#548.\n\n_No reusable drift — the registry and host `*-reusable.yml` are in sync._\n' "$ts")"
   else
     dmd="$(printf '# Canary Rollout — reusable drift\n\nLast updated: `%s` · gate standard: .github#548 · findings: **%s** (%s unregistered, %s missing-file).\n\n| host | class | reusable | note |\n|---|---|---|---|\n%s\n> `unregistered` ships with ZERO staged rollout until added to `.agents{}`; `missing-file` is a stale registry entry pointing at a deleted reusable. Report-only — no auto-registration.\n' "$ts" "$total" "$u_total" "$m_total" "${rows%$'\n'}")"
   fi
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     if printf '\n%s\n' "$dmd" >> "$GITHUB_STEP_SUMMARY"; then
       echo "  wrote reusable-drift table to the job summary"
     else
@@ -4017,36 +4017,36 @@ cmd_drift() {
   local agents a unshipped_total=0 ship_rows=""
   agents="$(_jq -r '.agents? | keys[]?' 2>/dev/null || true)"
   while IFS= read -r a; do
-    [ -z "$a" ] && continue
+    [[ -z "$a" ]] && continue
     local a_host a_defbranch a_main a_next hits hitcsv h changed_files watched
     a_host="$(_agent_field "$a" host)"; a_host="${a_host:-$THIS_REPO}"
     a_next="$(channel_commit "$a" next)"
-    a_defbranch="$(_gh_default_branch "$a_host")"; [ -z "$a_defbranch" ] && a_defbranch="main"
+    a_defbranch="$(_gh_default_branch "$a_host")"; [[ -z "$a_defbranch" ]] && a_defbranch="main"
     a_main="$(_gh_head_sha "$a_host" "$a_defbranch")"
-    if [ -z "$a_next" ] || [ -z "$a_main" ]; then
+    if [[ -z "$a_next" ]] || [[ -z "$a_main" ]]; then
       echo "  $a: could not resolve next/main HEAD on $a_host — skipping"
       continue
     fi
-    if [ "$a_next" = "$a_main" ]; then
+    if [[ "$a_next" = "$a_main" ]]; then
       echo "  $a: shipped — next (${a_next:0:12}) == $a_host main HEAD"
       continue
     fi
     watched="$(_watched_paths "$a")"
     changed_files="$(_gh_changed_files "$a_host" "$a_next" "$a_main")"
     hits="$(watched_hits "$changed_files" "$watched")"
-    if [ -z "$hits" ]; then
+    if [[ -z "$hits" ]]; then
       echo "  $a: shipped — next differs from main but no agent_ref-consumed path changed"
       continue
     fi
     hitcsv=""
-    while IFS= read -r h; do [ -z "$h" ] && continue; hitcsv="${hitcsv:+$hitcsv, }$h"; done <<< "$hits"
+    while IFS= read -r h; do [[ -z "$h" ]] && continue; hitcsv="${hitcsv:+$hitcsv, }$h"; done <<< "$hits"
     echo "::warning::DRIFT[unshipped] $a: $a_host main (${a_main:0:12}) has agent_ref changes not on next (${a_next:0:12}): $hitcsv"
     ship_rows+="| \`$a\` | \`$a_host\` | \`$hitcsv\` | merged to main but not on the \`next\` channel (autocut should cut) |"$'\n'
     unshipped_total=$((unshipped_total + 1))
   done <<< "$agents"
   echo "ship-drift summary: $unshipped_total agent(s) with merged-but-unshipped agent_ref changes"
 
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ "$unshipped_total" -gt 0 ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && [[ "$unshipped_total" -gt 0 ]]; then
     local smd
     smd="$(printf '# Canary Rollout — ship-drift (merged but not shipped)\n\nLast updated: `%s` · %s agent(s) whose `next` channel lags host main across agent_ref-consumed paths.\n\n| agent | host | changed paths | note |\n|---|---|---|---|\n%s\n> autocut (#1069) should cut a new candidate on the next tick; a persistent row means autocut is disabled or blocked.\n' "$ts" "$unshipped_total" "${ship_rows%$'\n'}")"
     printf '\n%s\n' "$smd" >> "$GITHUB_STEP_SUMMARY" \
@@ -4065,12 +4065,12 @@ cmd_drift() {
   echo "== channel-tag drift: bare tier tag without its v<M>-<tier> counterpart (#1065) =="
   local ct_agent ct_major ct_gaps ct_tier ct_total=0 ct_rows=""
   while IFS= read -r ct_agent; do
-    [ -z "$ct_agent" ] && continue
+    [[ -z "$ct_agent" ]] && continue
     ct_major="$(_agent_current_channel_major "$ct_agent")"
     ct_gaps="$(_channel_tag_major_gaps "$ct_agent")"
-    [ -z "$ct_gaps" ] && continue
+    [[ -z "$ct_gaps" ]] && continue
     for ct_tier in $ct_gaps; do
-      [ -z "$ct_tier" ] && continue
+      [[ -z "$ct_tier" ]] && continue
       echo "::warning::DRIFT[channel-tag] $ct_agent: has /$ct_tier but NO v${ct_major}-$ct_tier (a stub deploy to this tier would pin a nonexistent @$ct_agent/v${ct_major}-$ct_tier)"
       ct_rows+="| \`$ct_agent\` | \`$ct_tier\` | \`$ct_agent/v${ct_major}-$ct_tier\` | bare tier tag exists but its v-scoped counterpart is missing — a stub deploy pins a nonexistent ref (maintainer backfill) |"$'\n'
       ct_total=$((ct_total + 1))
@@ -4078,7 +4078,7 @@ cmd_drift() {
   done <<< "$agents"
   echo "channel-tag drift summary: $ct_total tier(s) missing a v<M>-<tier> counterpart"
 
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ "$ct_total" -gt 0 ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && [[ "$ct_total" -gt 0 ]]; then
     local ctmd
     ctmd="$(printf '# Canary Rollout — channel-tag drift (missing v<M>-<tier>)\n\nLast updated: `%s` · %s tier(s) with a bare channel tag lacking its v-scoped counterpart.\n\n| agent | tier | missing ref | note |\n|---|---|---|---|\n%s\n> A ring-promotion bootstrap gap (#1065). A stub deploy keyed on the channel major pins `<agent>/v<M>-<tier>`; if it does not exist the fleet fails at startup. A maintainer backfills the tag at its bare counterpart'"'"'s commit.\n' "$ts" "$ct_total" "${ct_rows%$'\n'}")"
     printf '\n%s\n' "$ctmd" >> "$GITHUB_STEP_SUMMARY" \
@@ -4186,9 +4186,9 @@ main() {
   # the two are in different shells and never clobber each other.
   # The timing report runs on exit either way; only a directory main created is removed.
   local _own_cache=0
-  if [ -z "${_RUNS_CACHE_DIR:-}" ]; then
+  if [[ -z "${_RUNS_CACHE_DIR:-}" ]]; then
     _RUNS_CACHE_DIR="$(mktemp -d 2>/dev/null || true)"
-    if [ -n "$_RUNS_CACHE_DIR" ]; then
+    if [[ -n "$_RUNS_CACHE_DIR" ]]; then
       export _RUNS_CACHE_DIR
       _own_cache=1
     fi
@@ -4201,12 +4201,12 @@ main() {
   local sub="${1:-}"; shift || true
   _TIMING_SUB="$sub"; _timing_start || true
   case "$sub" in
-    evaluate)     [ $# -ge 1 ] || { echo "usage: evaluate <agent>" >&2; return 2; }; cmd_evaluate "$@" ;;
+    evaluate)     [[ $# -ge 1 ]] || { echo "usage: evaluate <agent>" >&2; return 2; }; cmd_evaluate "$@" ;;
     evaluate-all) cmd_evaluate_all ;;
-    promote)      [ $# -ge 1 ] || { echo "usage: promote <agent> [--override] [--confirm] [--allow-pre-existing] [--dry-run]" >&2; return 2; }; cmd_promote "$@" ;;
+    promote)      [[ $# -ge 1 ]] || { echo "usage: promote <agent> [--override] [--confirm] [--allow-pre-existing] [--dry-run]" >&2; return 2; }; cmd_promote "$@" ;;
     promote-all)  cmd_promote_all "$@" ;;
-    rollback)     [ $# -ge 2 ] || { echo "usage: rollback <agent> <ring> --to <vX.Y.Z>" >&2; return 2; }; cmd_rollback "$@" ;;
-    resolve)      [ $# -ge 2 ] || { echo "usage: resolve <agent> <channel>" >&2; return 2; }; resolve_members "$@" ;;
+    rollback)     [[ $# -ge 2 ]] || { echo "usage: rollback <agent> <ring> --to <vX.Y.Z>" >&2; return 2; }; cmd_rollback "$@" ;;
+    resolve)      [[ $# -ge 2 ]] || { echo "usage: resolve <agent> <channel>" >&2; return 2; }; resolve_members "$@" ;;
     sync-issues)  cmd_sync_issues "$@" ;;   # upsert blocker issues + dashboard for held promotions
     sync-promotion-failures) cmd_sync_promotion_failures "$@" ;;  # escalate failing tag writes into durable issues (#1023)
     autocut)      cmd_autocut "$@" ;;       # cut a new candidate when a reusable changes on main (#1069)
@@ -4220,6 +4220,6 @@ main() {
 [ "${CANARY_PRELOAD_REGISTRY:-}" = "1" ] && { _registry_preload || true; }
 
 # Source-guard: tests source this file to exercise resolve_members etc. without running.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi

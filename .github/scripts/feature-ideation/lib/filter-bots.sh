@@ -34,7 +34,7 @@ DEFAULT_BOT_AUTHORS=(
 # Build the active bot list from defaults + env override.
 filter_bots_build_list() {
   local list=("${DEFAULT_BOT_AUTHORS[@]}")
-  if [ -n "${FEATURE_IDEATION_BOT_AUTHORS:-}" ]; then
+  if [[ -n "${FEATURE_IDEATION_BOT_AUTHORS:-}" ]]; then
     # Use `IFS=',' read` (not unquoted expansion) to avoid pathname-globbing
     # against the filesystem if any entry contains wildcard characters.
     # Caught by CodeRabbit review on PR petry-projects/.github#85.
@@ -49,7 +49,7 @@ filter_bots_build_list() {
       # Strip leading whitespace, then trailing whitespace.
       entry="${entry#"${entry%%[![:space:]]*}"}"
       entry="${entry%"${entry##*[![:space:]]}"}"
-      [ -n "$entry" ] && trimmed+=("$entry")
+      [[ -n "$entry" ]] && trimmed+=("$entry")
     done
     list+=("${trimmed[@]}")
   fi

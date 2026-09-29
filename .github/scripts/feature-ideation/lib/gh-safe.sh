@@ -35,7 +35,7 @@ _gh_safe_err() {
 # Validate that a string is well-formed JSON. Returns 0 if valid.
 gh_safe_is_json() {
   local input="$1"
-  [ -n "$input" ] || return 1
+  [[ -n "$input" ]] || return 1
   printf '%s' "$input" | jq -e . >/dev/null 2>&1
 }
 
@@ -56,14 +56,14 @@ gh_safe_rest() {
   stderr=$(cat "$tmp_err")
   rm -f "$tmp_err"
 
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     _gh_safe_err "rest-failure" "exit=$rc args=$* stderr=$stderr"
     return "$rc"
   fi
 
   # Empty stdout from a successful gh call means the result set is empty.
   # Normalize to an empty JSON array so downstream jq composition never sees "".
-  if [ -z "$stdout" ]; then
+  if [[ -z "$stdout" ]]; then
     printf '%s' "$GH_SAFE_EMPTY_ARRAY"
     return 0
   fi
@@ -91,12 +91,12 @@ gh_safe_graphql() {
   local has_jq=0
   local jq_filter=""
   local i=0
-  while [ "$i" -lt "${#args[@]}" ]; do
-    if [ "${args[$i]}" = "--jq" ]; then
+  while [[ "$i" -lt "${#args[@]}" ]]; do
+    if [[ "${args[$i]}" = "--jq" ]]; then
       # Guard bounds before dereferencing args[i+1]: under set -u an out-of-
       # bounds access aborts the shell. Caught by CodeRabbit review on PR
       # petry-projects/.github#85.
-      if [ $((i + 1)) -ge "${#args[@]}" ]; then
+      if [[ $((i + 1)) -ge "${#args[@]}" ]]; then
         _gh_safe_err "graphql-bad-args" "--jq requires a jq filter argument"
         return 64
       fi
@@ -110,8 +110,8 @@ gh_safe_graphql() {
   # Build a no-jq variant for envelope validation.
   local raw_args=()
   i=0
-  while [ "$i" -lt "${#args[@]}" ]; do
-    if [ "${args[$i]}" = "--jq" ]; then
+  while [[ "$i" -lt "${#args[@]}" ]]; do
+    if [[ "${args[$i]}" = "--jq" ]]; then
       i=$((i + 2))
       continue
     fi
@@ -128,7 +128,7 @@ gh_safe_graphql() {
   stderr=$(cat "$tmp_err")
   rm -f "$tmp_err"
 
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     _gh_safe_err "graphql-failure" "exit=$rc stderr=$stderr"
     return "$rc"
   fi
@@ -154,7 +154,7 @@ gh_safe_graphql() {
   fi
 
   # If caller asked for a jq filter, apply it now and return that.
-  if [ "$has_jq" -eq 1 ]; then
+  if [[ "$has_jq" -eq 1 ]]; then
     # NB: do NOT swallow jq errors with `|| true`. A typo or wrong path in
     # the filter must surface as a hard failure, not a silent empty result —
     # otherwise we re-introduce R1 in a different shape. Caught by Copilot
@@ -165,13 +165,13 @@ gh_safe_graphql() {
     filtered=$(printf '%s' "$raw" | jq -c "$jq_filter" 2>"$jq_err")
     jq_rc=$?
     set -e
-    if [ "$jq_rc" -ne 0 ]; then
+    if [[ "$jq_rc" -ne 0 ]]; then
       _gh_safe_err "graphql-jq-failed" "filter='$jq_filter' err=$(cat "$jq_err")"
       rm -f "$jq_err"
       return 65
     fi
     rm -f "$jq_err"
-    if [ "$filtered" = "null" ] || [ -z "$filtered" ]; then
+    if [[ "$filtered" = "null" ]] || [[ -z "$filtered" ]]; then
       # Filter resolved to JSON null (e.g. nodes path returned null) — this
       # is the documented "no results" case. Normalize to empty array.
       printf '%s' "$GH_SAFE_EMPTY_ARRAY"
@@ -195,7 +195,7 @@ gh_safe_graphql_input() {
   # Guard arg count before reading $1: under set -u a zero-arg call aborts the
   # shell instead of reaching the JSON validation. Caught by CodeRabbit review
   # on PR petry-projects/.github#85.
-  if [ "$#" -ne 1 ]; then
+  if [[ "$#" -ne 1 ]]; then
     _gh_safe_err "graphql-bad-input" "expected 1 arg: JSON request body, got $#"
     return 64
   fi
@@ -214,7 +214,7 @@ gh_safe_graphql_input() {
   stderr=$(cat "$tmp_err")
   rm -f "$tmp_err"
 
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     _gh_safe_err "graphql-failure" "exit=$rc stderr=$stderr"
     return "$rc"
   fi

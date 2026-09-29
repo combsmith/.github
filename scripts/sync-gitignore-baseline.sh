@@ -101,7 +101,7 @@ fetch_gitignore() {
   local repo="$1" raw encoded
   raw=$(gh api "repos/$ORG/$repo/contents/.gitignore" 2>/dev/null) || { printf ''; return; }
   encoded=$(printf '%s' "$raw" | jq -r '.content // empty' 2>/dev/null || true)
-  [ -n "$encoded" ] && printf '%s' "$encoded" | { base64 -d 2>/dev/null || base64 -D 2>/dev/null; } || true
+  [[ -n "$encoded" ]] && printf '%s' "$encoded" | { base64 -d 2>/dev/null || base64 -D 2>/dev/null; } || true
 }
 
 # ---------------------------------------------------------------------------

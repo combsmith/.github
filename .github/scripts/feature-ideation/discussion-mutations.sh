@@ -36,11 +36,11 @@ _dry_run_log() {
 }
 
 _is_dry_run() {
-  [ "${DRY_RUN:-0}" = "1" ]
+  [[ "${DRY_RUN:-0}" = "1" ]]
 }
 
 create_discussion() {
-  if [ "$#" -ne 4 ]; then
+  if [[ "$#" -ne 4 ]]; then
     printf '[create_discussion] expected 4 args (repo_id category_id title body), got %d\n' "$#" >&2
     return 64
   fi
@@ -85,7 +85,7 @@ GRAPHQL
 }
 
 comment_on_discussion() {
-  if [ "$#" -ne 2 ]; then
+  if [[ "$#" -ne 2 ]]; then
     printf '[comment_on_discussion] expected 2 args (discussion_id body), got %d\n' "$#" >&2
     return 64
   fi
@@ -122,7 +122,7 @@ GRAPHQL
 }
 
 add_label_to_discussion() {
-  if [ "$#" -ne 2 ]; then
+  if [[ "$#" -ne 2 ]]; then
     printf '[add_label_to_discussion] expected 2 args (discussion_id label_id), got %d\n' "$#" >&2
     return 64
   fi

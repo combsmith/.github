@@ -42,7 +42,7 @@ _atp_lib_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 . "${_atp_lib_dir}/lib.sh"
 
 evaluate_noise_gate() {
-  if [ "$#" -ne 1 ]; then
+  if [[ "$#" -ne 1 ]]; then
     printf '[evaluate_noise_gate] expected 1 arg (labels_json), got %d\n' "$#" >&2
     return 64
   fi
@@ -111,7 +111,7 @@ evaluate_noise_gate() {
 # Thin wrapper over the shared lookup: find the project item linked to a
 # given issue/PR node id (or empty string if it isn't on the board).
 find_content_item_id() {
-  if [ "$#" -ne 1 ]; then
+  if [[ "$#" -ne 1 ]]; then
     printf '[find_content_item_id] expected 1 arg (content_node_id), got %d\n' "$#" >&2
     return 64
   fi
@@ -119,7 +119,7 @@ find_content_item_id() {
 }
 
 reconcile_content_with_project() {
-  if [ "$#" -ne 3 ]; then
+  if [[ "$#" -ne 3 ]]; then
     printf '[reconcile_content_with_project] expected 3 args (content_node_id content_url labels_json), got %d\n' "$#" >&2
     return 64
   fi
@@ -155,7 +155,7 @@ reconcile_content_with_project() {
       fi
       local existing
       existing=$(find_content_item_id "${content_node_id}")
-      if [ -n "${existing}" ]; then
+      if [[ -n "${existing}" ]]; then
         printf 'Removing %s from %s (no longer qualifies: %s); item %s\n' \
           "${content_url}" "${PROJECT_URL:-the project}" "${reason}" "${existing}"
         delete_project_item "${existing}"
@@ -170,7 +170,7 @@ reconcile_content_with_project() {
   esac
 }
 
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   reconcile_content_with_project \
     "${CONTENT_NODE_ID:?CONTENT_NODE_ID is required}" \
     "${CONTENT_URL:?CONTENT_URL is required}" \

@@ -94,7 +94,7 @@ error() { echo "[error] $*" >&2; }
 # exhausted. Both overridable via env so tests can run with zero delay.
 GH_SEARCH_ATTEMPTS="${GH_SEARCH_ATTEMPTS:-3}"
 GH_API_RETRY_BASE_DELAY="${GH_API_RETRY_BASE_DELAY:-2}"
-if ! [[ "$GH_SEARCH_ATTEMPTS" =~ ^[0-9]+$ ]] || [ "$GH_SEARCH_ATTEMPTS" -lt 1 ]; then
+if ! [[ "$GH_SEARCH_ATTEMPTS" =~ ^[0-9]+$ ]] || [[ "$GH_SEARCH_ATTEMPTS" -lt 1 ]]; then
   error "GH_SEARCH_ATTEMPTS must be an integer >= 1 (got: '${GH_SEARCH_ATTEMPTS}')"
   exit 1
 fi
@@ -113,8 +113,8 @@ gh_api_search() {
   GH_API_SEARCH_OUT=""
   for ((attempt=1; attempt<=GH_SEARCH_ATTEMPTS; attempt++)); do
     GH_API_SEARCH_OUT=$(gh api "$@" 2>&1) && rc=0 || rc=$?
-    [ "$rc" -eq 0 ] && return 0
-    if [ "$attempt" -lt "$GH_SEARCH_ATTEMPTS" ]; then
+    [[ "$rc" -eq 0 ]] && return 0
+    if [[ "$attempt" -lt "$GH_SEARCH_ATTEMPTS" ]]; then
       warn "search/issues API call failed (exit $rc), attempt ${attempt}/${GH_SEARCH_ATTEMPTS} — retrying in $((attempt * GH_API_RETRY_BASE_DELAY))s"
       sleep "$((attempt * GH_API_RETRY_BASE_DELAY))"
     fi
@@ -162,7 +162,7 @@ retrigger_stale_issues() {
     && rc=0 || rc=$?
   raw="$GH_API_SEARCH_OUT"
 
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     error "search/issues API call failed (exit $rc) after ${GH_SEARCH_ATTEMPTS} attempts. Response:"
     echo "$raw" | head -5 >&2
     error "Cannot retrigger issues; aborting. Check GH_TOKEN scope — token must be able to read issues across all repos in org ${ORG}."
@@ -186,12 +186,12 @@ retrigger_stale_issues() {
   local issues
   issues=$(echo "$raw" | jq -c '.items[] | {number: .number, repo: (.repository_url | split("/") | last), created_at: .created_at, title: .title}')
 
-  if [ -z "$issues" ]; then
+  if [[ -z "$issues" ]]; then
     info "No open compliance-audit issues found with '$TRIGGER_LABEL' label."
   fi
 
   while IFS= read -r issue_json; do
-    [ -z "$issue_json" ] && continue
+    [[ -z "$issue_json" ]] && continue
     local number repo created_at title
     number=$(echo "$issue_json" | jq -r '.number')
     repo=$(echo "$issue_json" | jq -r '.repo')
@@ -207,7 +207,7 @@ retrigger_stale_issues() {
 
     # One engagement per repo per run. If this repo already got an issue
     # re-triggered (or was found active) this run, defer the rest to a later sweep.
-    if [ -n "${REPO_ENGAGED[$repo]:-}" ]; then
+    if [[ -n "${REPO_ENGAGED[$repo]:-}" ]]; then
       info "Deferring $repo#$number ($title) — $repo already engaged this run (one issue per repo per run)"
       ISSUES_DEFERRED=$((ISSUES_DEFERRED + 1))
       continue
@@ -234,7 +234,7 @@ retrigger_stale_issues() {
       warn "Failed to re-trigger dev-lead on issue #$number in $repo — attempting to restore label"
       # The label may have been deleted but the re-add failed. Restore it so the
       # issue remains visible to the next sweep's search query.
-      if [ "$DRY_RUN" != "true" ]; then
+      if [[ "$DRY_RUN" != "true" ]]; then
         gh api -X POST "repos/$ORG/$repo/issues/$number/labels" \
           --field "labels[]=$TRIGGER_LABEL" >/dev/null 2>&1 \
           && info "Restored $TRIGGER_LABEL on $repo#$number" \
@@ -250,7 +250,7 @@ retrigger_stale_issues() {
   # compliance issues with the legacy label would otherwise be invisible to the
   # main search above and never retriggered. Adding TRIGGER_LABEL to each such
   # issue both recovers the lost event and acts as a lazy per-issue migration.
-  if [ -n "${LEGACY_TRIGGER_LABEL:-}" ] && [ "$LEGACY_TRIGGER_LABEL" != "$TRIGGER_LABEL" ]; then
+  if [[ -n "${LEGACY_TRIGGER_LABEL:-}" ]] && [[ "$LEGACY_TRIGGER_LABEL" != "$TRIGGER_LABEL" ]]; then
     info "Sweeping pre-migration '$LEGACY_TRIGGER_LABEL'-labeled issues..."
     local legacy_raw legacy_issues legacy_rc
     # Exclude issues that already carry TRIGGER_LABEL — they were handled above.
@@ -261,7 +261,7 @@ retrigger_stale_issues() {
       "search/issues?q=org:${ORG}+label:${AUDIT_LABEL}+label:${LEGACY_TRIGGER_LABEL}+-label:${TRIGGER_LABEL}+state:open+is:issue&sort=created&order=asc&per_page=100" \
       && legacy_rc=0 || legacy_rc=$?
     legacy_raw="$GH_API_SEARCH_OUT"
-    if [ "$legacy_rc" -ne 0 ]; then
+    if [[ "$legacy_rc" -ne 0 ]]; then
       warn "Legacy label sweep search failed (exit $legacy_rc after ${GH_SEARCH_ATTEMPTS} attempts) — pre-migration issues not swept this run"
     elif echo "$legacy_raw" | jq -se 'any(.[]; has("message") and (.items | not))' >/dev/null 2>&1; then
       warn "Legacy label sweep search returned an error response — pre-migration issues not swept this run"
@@ -271,7 +271,7 @@ retrigger_stale_issues() {
       legacy_total=$(echo "$legacy_raw" | jq -rs '.[0].total_count // 0')
       info "Legacy sweep found ${legacy_total} matching issues"
       while IFS= read -r issue_json; do
-        [ -z "$issue_json" ] && continue
+        [[ -z "$issue_json" ]] && continue
         number=$(echo "$issue_json" | jq -r '.number')
         repo=$(echo "$issue_json" | jq -r '.repo')
         created_at=$(echo "$issue_json" | jq -r '.created_at')
@@ -282,7 +282,7 @@ retrigger_stale_issues() {
         fi
         # Honour the shared one-engagement-per-repo budget set by the primary
         # sweep, so a repo already engaged above is not also label-bumped here.
-        if [ -n "${REPO_ENGAGED[$repo]:-}" ]; then
+        if [[ -n "${REPO_ENGAGED[$repo]:-}" ]]; then
           info "Deferring legacy $repo#$number ($title) — $repo already engaged this run"
           ISSUES_DEFERRED=$((ISSUES_DEFERRED + 1))
           continue
@@ -295,7 +295,7 @@ retrigger_stale_issues() {
         fi
         REPO_ENGAGED[$repo]=1
         info "Adding '$TRIGGER_LABEL' to pre-migration issue $repo#$number: $title"
-        if [ "$DRY_RUN" = "true" ]; then
+        if [[ "$DRY_RUN" = "true" ]]; then
           info "[dry-run] would ensure '$TRIGGER_LABEL' label exists in $repo and add it to #$number"
           ISSUES_RETRIGGERED=$((ISSUES_RETRIGGERED + 1))
         else
@@ -337,7 +337,7 @@ print_summary() {
   echo "  Issues deferred     : ${ISSUES_DEFERRED} (repo already engaged this run)"
   echo "=========================================="
 
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     {
       echo "## Compliance Re-trigger Summary"
       echo ""

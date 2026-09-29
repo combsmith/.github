@@ -78,13 +78,13 @@ persona_opt_out_label_configs() {
   # "no personas" is the fail-closed signal, never a legitimate "family is empty"
   # (petry-projects/.github#755, issue #1139 AC#3). Without this a garbled listing
   # would read as "no persona labels required".
-  if [ -z "$ids" ]; then
+  if [[ -z "$ids" ]]; then
     warn "  Persona manifest listing from $PERSONA_MANIFEST_REPO was empty or unparseable — opt-out labels NOT applied"
     return 1
   fi
 
   while IFS= read -r id; do
-    [ -z "$id" ] && continue
+    [[ -z "$id" ]] && continue
     # Prefer the manifest's declared opt_out_label; fall back to the <id>:hands-off
     # convention (persona-standards.md §4 rule 4) when the field cannot be read.
     if opt_out_raw=$(gh api "repos/$PERSONA_MANIFEST_REPO/contents/personas/$id/persona.yml?ref=$PERSONA_MANIFEST_REF" \
@@ -112,14 +112,14 @@ persona_opt_out_label_configs() {
       opt_out=""
       rc=1
     fi
-    [ -z "$opt_out" ] && opt_out="$id:hands-off"
+    [[ -z "$opt_out" ]] && opt_out="$id:hands-off"
     # The label name is the FIRST pipe-delimited field of the emitted spec, so a
     # name that itself contains '|' (opt_out_label is free-form, and GitHub label
     # names may contain a pipe) would shift the color/description fields and
     # corrupt every downstream parser (std_label_spec's `${spec%%|*}`, the audit/
     # applier splits). We cannot represent such a name in this format, so reject
     # it: warn, skip it, and fail the derivation — never emit a corrupt record.
-    if [ "${opt_out#*|}" != "$opt_out" ]; then
+    if [[ "${opt_out#*|}" != "$opt_out" ]]; then
       warn "  personas/$id opt_out_label '$opt_out' contains '|' (the field delimiter) — skipping; opt-out label NOT applied"
       rc=1
       continue
@@ -147,7 +147,7 @@ std_label_spec() {
   local want="$1" spec name
   for spec in "${STANDARD_LABEL_SPECS[@]}"; do
     name="${spec%%|*}"
-    if [ "$name" = "$want" ]; then
+    if [[ "$name" = "$want" ]]; then
       printf '%s\n' "$spec"
       return 0
     fi
@@ -155,9 +155,9 @@ std_label_spec() {
   local derived
   derived=$(persona_opt_out_label_configs 2>/dev/null) || true
   while IFS= read -r spec; do
-    [ -z "$spec" ] && continue
+    [[ -z "$spec" ]] && continue
     name="${spec%%|*}"
-    if [ "$name" = "$want" ]; then
+    if [[ "$name" = "$want" ]]; then
       printf '%s\n' "$spec"
       return 0
     fi

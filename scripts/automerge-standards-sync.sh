@@ -73,7 +73,7 @@ PR_NUMBER=""
 DRY_RUN=false
 APPROVER_LOGIN=""
 
-while [ "$#" -gt 0 ]; do
+while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --repo)           REPO="${2:?--repo needs a value}"; shift 2 ;;
     --pr)             PR_NUMBER="${2:?--pr needs a value}"; shift 2 ;;
@@ -84,8 +84,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$REPO" ] || { echo "::error::--repo <owner/repo> is required" >&2; exit 2; }
-if [ "$DRY_RUN" != "true" ] && [ -z "${APPROVER_TOKEN:-}" ]; then
+[[ -n "$REPO" ]] || { echo "::error::--repo <owner/repo> is required" >&2; exit 2; }
+if [[ "$DRY_RUN" != "true" ]] && [[ -z "${APPROVER_TOKEN:-}" ]]; then
   echo "::error::APPROVER_TOKEN is required for a live run (the distinct approver's token). Use --dry-run to preview." >&2
   exit 2
 fi
@@ -96,7 +96,7 @@ in_list() {
   IFS=',' read -ra _items <<< "$hay"
   for item in "${_items[@]}"; do
     item="${item#"${item%%[![:space:]]*}"}"; item="${item%"${item##*[![:space:]]}"}"
-    [ "$item" = "$needle" ] && return 0
+    [[ "$item" = "$needle" ]] && return 0
   done
   return 1
 }
@@ -108,8 +108,8 @@ resolve_approver() {
   IFS=',' read -ra _members <<< "$ORG_LEADS_MEMBERS"
   for item in "${_members[@]}"; do
     item="${item#"${item%%[![:space:]]*}"}"; item="${item%"${item##*[![:space:]]}"}"
-    [ -z "$item" ] && continue
-    if [ "$item" != "$author" ] && [ "$item" != "$last" ]; then
+    [[ -z "$item" ]] && continue
+    if [[ "$item" != "$author" ]] && [[ "$item" != "$last" ]]; then
       printf '%s' "$item"
       return 0
     fi
@@ -133,7 +133,7 @@ process_pr() {
   url=$(jq -r '.url // empty' <<< "$pr_json")
   last=$(jq -r '.commits[-1].authors[0].login // empty' <<< "$pr_json")
   labels=$(jq -r '.labels[].name' <<< "$pr_json" 2>/dev/null || true)
-  [ -n "$url" ] || url="${REPO}#${pr}"
+  [[ -n "$url" ]] || url="${REPO}#${pr}"
 
   # --- Eligibility gates (auditable trusted source) ---
   if ! grep -qxF "$SYNC_LABEL" <<< "$labels"; then
@@ -151,12 +151,12 @@ process_pr() {
 
   # --- Resolve the distinct review identity (Option 1) ---
   local approver
-  if [ -n "$APPROVER_LOGIN" ]; then
+  if [[ -n "$APPROVER_LOGIN" ]]; then
     if ! in_list "$APPROVER_LOGIN" "$ORG_LEADS_MEMBERS"; then
       echo "::error::approver '${APPROVER_LOGIN}' is not an org-leads code-owner (${ORG_LEADS_MEMBERS})" >&2
       return 1
     fi
-    if [ "$APPROVER_LOGIN" = "$author" ] || [ "$APPROVER_LOGIN" = "$last" ]; then
+    if [[ "$APPROVER_LOGIN" = "$author" ]] || [[ "$APPROVER_LOGIN" = "$last" ]]; then
       echo "::error::${url} — pinned approver '${APPROVER_LOGIN}' is the author or last pusher; cannot satisfy require_last_push_approval / not-own-PR" >&2
       return 1
     fi
@@ -165,13 +165,13 @@ process_pr() {
     approver=$(resolve_approver "$author" "$last")
   fi
 
-  if [ -z "$approver" ]; then
+  if [[ -z "$approver" ]]; then
     echo "::error::${url} — reviewer DEADLOCK: author='${author}' and last-pusher='${last}' consume every code-owner {${ORG_LEADS_MEMBERS}}, so no distinct code-owner can approve. Resolve by giving the PR a single push identity (author == last pusher) or by adding a distinct org-leads code-owner. NOT merging via --admin." >&2
     return 1
   fi
 
   # --- Approve as the distinct identity + enable native auto-merge (Option 2) ---
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     echo "  [dry-run] ${url} — would approve as '${approver}' (distinct code-owner) and enable native auto-merge (squash); admin=none"
     echo "AUDIT pr=${url} approver=${approver} merge=native-auto-merge admin=none dry_run=true"
     return 0
@@ -183,11 +183,11 @@ process_pr() {
   # post a misattributed code-owner approval).
   local token_login
   token_login=$(GH_TOKEN="$APPROVER_TOKEN" gh api user --jq '.login' 2>/dev/null || true)
-  if [ -z "$token_login" ]; then
+  if [[ -z "$token_login" ]]; then
     echo "::error::${url} — APPROVER_TOKEN did not authenticate (gh api user failed); refusing to post an unattributable approval" >&2
     return 1
   fi
-  if [ "$token_login" != "$approver" ]; then
+  if [[ "$token_login" != "$approver" ]]; then
     echo "::error::${url} — APPROVER_TOKEN authenticates as '${token_login}', not the resolved approver '${approver}'; refusing to post a misattributed approval" >&2
     return 1
   fi
@@ -220,23 +220,23 @@ echo "  Dry run:         ${DRY_RUN}"
 echo ""
 
 rc=0
-if [ -n "$PR_NUMBER" ]; then
+if [[ -n "$PR_NUMBER" ]]; then
   process_pr "$PR_NUMBER" || rc=1
 else
   numbers=$(gh pr list --repo "$REPO" --state open --label "$SYNC_LABEL" \
     --json number --jq '.[].number' 2>/dev/null || true)
-  if [ -z "$numbers" ]; then
+  if [[ -z "$numbers" ]]; then
     echo "  No open '${SYNC_LABEL}' PRs in ${REPO}."
   else
     while IFS= read -r n; do
-      [ -z "$n" ] && continue
+      [[ -z "$n" ]] && continue
       process_pr "$n" || rc=1
     done <<< "$numbers"
   fi
 fi
 
 echo ""
-if [ "$rc" -eq 0 ]; then
+if [[ "$rc" -eq 0 ]]; then
   echo "=== Done — no --admin bypass used ==="
 else
   echo "=== Completed with unresolved deadlock(s); see errors above (no --admin used) ===" >&2

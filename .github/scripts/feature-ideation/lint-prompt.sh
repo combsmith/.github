@@ -130,7 +130,7 @@ PY
 }
 
 main() {
-  if [ "$#" -eq 0 ]; then
+  if [[ "$#" -eq 0 ]]; then
     # Default: scan every workflow file.
     local repo_root
     repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -144,7 +144,7 @@ main() {
   local exit=0
   local file_rc=0
   for file in "$@"; do
-    if [ ! -f "$file" ]; then
+    if [[ ! -f "$file" ]]; then
       printf '[lint-prompt] not found: %s\n' "$file" >&2
       exit=2
       continue
@@ -159,7 +159,7 @@ main() {
     fi
     case "$file_rc" in
       0) ;;
-      1) if [ "$exit" -eq 0 ]; then exit=1; fi ;;
+      1) if [[ "$exit" -eq 0 ]]; then exit=1; fi ;;
       2) exit=2 ;;
       *) return "$file_rc" ;;
     esac

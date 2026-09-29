@@ -71,7 +71,7 @@ RING_PINS_REGISTRY="${CANARY_RINGS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 
 # in the registry) also falls back to `stable`.
 ring_tier_for_repo() {
   local agent="$1" repo="$2"
-  if [ -z "$agent" ]; then
+  if [[ -z "$agent" ]]; then
     echo "ring_tier_for_repo: missing agent argument (signature is <agent> <repo>)" >&2
     return 2
   fi
@@ -115,7 +115,7 @@ ring_tier_for_repo() {
   # masking real ring drift (#1096). Mirrors ring_host_current_channel_major's
   # fail-closed probe (#870). A read error is NOT cached, so a transient failure
   # does not poison later lookups.
-  if [ "$status" -ne 0 ]; then
+  if [[ "$status" -ne 0 ]]; then
     echo "ring_tier_for_repo: failed to read ring registry '$RING_PINS_REGISTRY' (agent=$agent repo=$repo_name)" >&2
     return 3
   fi
@@ -123,7 +123,7 @@ ring_tier_for_repo() {
   # the registry) or a repo in no explicit ring — so fall back to the broad-fleet
   # tier (the `*` ring is `stable` fleet-wide today). This is distinct from the
   # infra read error above and IS a valid, cacheable answer.
-  [ -n "$tier" ] || tier="stable"
+  [[ -n "$tier" ]] || tier="stable"
   _RING_TIER_CACHE[$cache_key]="$tier"
   printf '%s' "$tier"
   return 0
@@ -133,7 +133,7 @@ ring_tier_for_repo() {
 ring_is_ring_reusable() {
   local name="$1" r
   for r in "${RING_REUSABLES[@]}"; do
-    [ "$r" = "$name" ] && return 0
+    [[ "$r" = "$name" ]] && return 0
   done
   return 1
 }
@@ -149,7 +149,7 @@ ring_is_ring_reusable() {
 ring_reusable_file() {
   local agent="$1" path
   path="$(jq -r --arg a "$agent" '.agents[$a].reusable // empty' "$RING_PINS_REGISTRY" 2>/dev/null)"
-  if [ -n "$path" ]; then
+  if [[ -n "$path" ]]; then
     printf '%s' "${path##*/}"
   else
     printf '%s-reusable.yml' "$agent"
@@ -169,7 +169,7 @@ ring_reusable_file() {
 ring_caller_stub() {
   local agent="$1" stub
   stub="$(jq -r --arg a "$agent" '.agents[$a].caller_stub // empty' "$RING_PINS_REGISTRY" 2>/dev/null)"
-  if [ -n "$stub" ]; then
+  if [[ -n "$stub" ]]; then
     printf '%s' "$stub"
   else
     printf '.github/workflows/%s.yml' "$agent"
@@ -189,7 +189,7 @@ ring_caller_stub() {
 ring_canonical_ref() {
   local name="$1" repo="$2" major="${3:-}"
   local tier; tier="$(ring_tier_for_repo "$name" "$repo")"
-  if [ -n "$major" ]; then
+  if [[ -n "$major" ]]; then
     printf '%s/v%s-%s' "$name" "$major" "$tier"
   else
     printf '%s/%s' "$name" "$tier"
@@ -250,11 +250,11 @@ ring_highest_major() {
     v="${v#v}"
     [[ "$v" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || continue
     major="${BASH_REMATCH[1]}"
-    if [ -z "$best" ] || [ "$major" -gt "$best" ]; then
+    if [[ -z "$best" ]] || [[ "$major" -gt "$best" ]]; then
       best="$major"
     fi
   done
-  [ -n "$best" ] && printf '%s' "$best"
+  [[ -n "$best" ]] && printf '%s' "$best"
   return 0
 }
 
@@ -299,11 +299,11 @@ ring_highest_channel_major() {
   for tok in "$@"; do
     [[ "$tok" =~ ^([0-9]+)-(stable|next|ring[0-9]+)$ ]] || continue
     major="${BASH_REMATCH[1]}"
-    if [ -z "$best" ] || [ "$major" -gt "$best" ]; then
+    if [[ -z "$best" ]] || [[ "$major" -gt "$best" ]]; then
       best="$major"
     fi
   done
-  [ -n "$best" ] && printf '%s' "$best"
+  [[ -n "$best" ]] && printf '%s' "$best"
   return 0
 }
 
@@ -435,7 +435,7 @@ ring_tag_exists() {
   fi
   local out status
   out="$(gh api "repos/$1/git/ref/tags/$2" 2>&1)"; status=$?
-  if [ "$status" -ne 0 ] && ! grep -qi 'not found\|404' <<< "$out"; then
+  if [[ "$status" -ne 0 ]] && ! grep -qi 'not found\|404' <<< "$out"; then
     echo "Warning: tag-existence lookup failed for $1/$2 (not a 404): ${out}" >&2
   fi
   _RING_TAG_EXISTS_CACHE[$cache_key]="$status"

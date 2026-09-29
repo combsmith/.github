@@ -44,11 +44,11 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/lib/date-utils.sh"
 
 main() {
-  if [ -z "${REPO:-}" ]; then
+  if [[ -z "${REPO:-}" ]]; then
     printf '[collect-signals] REPO env var is required\n' >&2
     return 64
   fi
-  if [ -z "${GH_TOKEN:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
     printf '[collect-signals] GH_TOKEN env var is required\n' >&2
     return 64
   fi
@@ -103,7 +103,7 @@ main() {
   # Caught by Copilot review on PR petry-projects/.github#85.
   local raw_open_count
   raw_open_count=$(printf '%s' "$open_issues_raw" | jq 'length')
-  if [ "$raw_open_count" -ge "$issue_limit" ]; then
+  if [[ "$raw_open_count" -ge "$issue_limit" ]]; then
     truncation_warnings=$(printf '%s' "$truncation_warnings" \
       | jq --arg src "open_issues" --argjson lim "$issue_limit" \
           '. + [{source: $src, limit: $lim, message: "result count equals limit; possible truncation"}]')
@@ -144,7 +144,7 @@ GRAPHQL
     | jq -r '[.[] | select(.name == "Ideas")][0].id // empty')
 
   local ideas_discussions='[]'
-  if [ -n "$ideas_cat_id" ]; then
+  if [[ -n "$ideas_cat_id" ]]; then
     printf '[collect-signals] fetching Ideas discussions (limit=%s)\n' "$discussion_limit" >&2
     local discussions_query
     read -r -d '' discussions_query <<'GRAPHQL' || true
@@ -177,7 +177,7 @@ GRAPHQL
     local has_next_page
     has_next_page=$(printf '%s' "$discussions_full" \
       | jq -r '.data.repository.discussions.pageInfo.hasNextPage // false')
-    if [ "$has_next_page" = "true" ]; then
+    if [[ "$has_next_page" = "true" ]]; then
       truncation_warnings=$(printf '%s' "$truncation_warnings" \
         | jq --arg src "ideas_discussions" --argjson lim "$discussion_limit" \
             '. + [{source: $src, limit: $lim, message: "hasNextPage=true; results truncated"}]')
@@ -228,7 +228,7 @@ GRAPHQL
   printf '[collect-signals] wrote %s\n' "$output_path" >&2
 
   # --- Step summary (only when running inside GitHub Actions) ----------------
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     {
       printf '## Signals Collected\n\n'
       printf -- '- **Schema version:** %s\n' "$SCHEMA_VERSION"
@@ -239,7 +239,7 @@ GRAPHQL
       printf -- '- **Existing Ideas discussions:** %s\n' "$(jq '.ideas_discussions.count' "$output_path")"
       local warn_count
       warn_count=$(jq '.truncation_warnings | length' "$output_path")
-      if [ "$warn_count" -gt 0 ]; then
+      if [[ "$warn_count" -gt 0 ]]; then
         printf -- '- **⚠️ Truncation warnings:** %s\n' "$warn_count"
         jq -r '.truncation_warnings[] | "  - " + .source + " (limit " + (.limit|tostring) + "): " + .message' "$output_path"
       fi
@@ -248,6 +248,6 @@ GRAPHQL
 }
 
 # Allow `source`-ing for tests; only run main when executed directly.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

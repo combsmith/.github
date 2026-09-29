@@ -60,7 +60,7 @@ AMCL_FS=$'\037'
 # ---------------------------------------------------------------------------
 amcl_data_rows() {
   local log="$1"
-  [ -f "$log" ] || return 0
+  [[ -f "$log" ]] || return 0
   # Strip CR before splitting so a CRLF-saved log does not leave a trailing '\r'
   # on the last cell (Clean?), which would break the Clean?/fps agreement check
   # in amcl_validate_log. Returns non-zero (via awk's END exit) if a dated row is
@@ -127,7 +127,7 @@ amcl_validate_log() {
     rc=1
   fi
   while IFS="$AMCL_FS" read -r cycle findings fps details maintainer clean; do
-    [ -n "$cycle" ] || continue
+    [[ -n "$cycle" ]] || continue
     : "${details:-}"
     if ! amcl_is_uint "$findings"; then
       printf 'cycle %s: structural-findings count "%s" is not a non-negative integer\n' "$cycle" "$findings" >&2
@@ -137,7 +137,7 @@ amcl_validate_log() {
       printf 'cycle %s: confirmed-false-positive count "%s" is not a non-negative integer\n' "$cycle" "$fps" >&2
       rc=1; continue
     fi
-    if [ -z "$maintainer" ] || [ "$maintainer" = "—" ] || [ "$maintainer" = "-" ]; then
+    if [[ -z "$maintainer" ]] || [[ "$maintainer" = "—" ]] || [[ "$maintainer" = "-" ]]; then
       printf 'cycle %s: no maintainer named in "Determined by" — every determination must name a maintainer\n' "$cycle" >&2
       rc=1; continue
     fi
@@ -148,7 +148,7 @@ amcl_validate_log() {
     # Confirmed false positives are SELECTED FROM the structural findings, so the
     # count can never exceed the finding count; a row that claims otherwise is
     # malformed (both are validated as non-negative integers above).
-    if [ "$fps" -gt "$findings" ]; then
+    if [[ "$fps" -gt "$findings" ]]; then
       printf 'cycle %s: confirmed false positives (%s) cannot exceed structural findings (%s) — false positives are selected from the findings\n' \
         "$cycle" "$fps" "$findings" >&2
       rc=1; continue
@@ -156,16 +156,16 @@ amcl_validate_log() {
     # A nonzero false-positive count must record WHAT was confirmed; an empty (or
     # placeholder "—"/"-") details cell would leave the committed audit record
     # silent about the determination it claims to make.
-    if [ "$fps" -ne 0 ] && { [ -z "$details" ] || [ "$details" = "—" ] || [ "$details" = "-" ]; }; then
+    if [[ "$fps" -ne 0 ]] && { [[ -z "$details" ]] || [[ "$details" = "—" ]] || [[ "$details" = "-" ]]; }; then
       printf 'cycle %s: %s confirmed false positive(s) recorded but the "False-positive details" cell is empty — record what was confirmed\n' \
         "$cycle" "$fps" >&2
       rc=1; continue
     fi
     local expected_clean
-    if [ "$fps" -eq 0 ]; then expected_clean="yes"; else expected_clean="no"; fi
+    if [[ "$fps" -eq 0 ]]; then expected_clean="yes"; else expected_clean="no"; fi
     local clean_lc
     clean_lc=$(printf '%s' "$clean" | tr '[:upper:]' '[:lower:]')
-    if [ "$clean_lc" != "$expected_clean" ]; then
+    if [[ "$clean_lc" != "$expected_clean" ]]; then
       printf 'cycle %s: Clean? is "%s" but %s confirmed false positive(s) recorded (expected "%s")\n' \
         "$cycle" "$clean" "$fps" "$expected_clean" >&2
       rc=1; continue
@@ -210,21 +210,21 @@ amcl_clean_cycles_met() {
       }
     }' | sort)
   count="$(printf '%s' "$deduped" | grep -c . || true)"
-  if [ "$count" -lt "$required" ]; then
+  if [[ "$count" -lt "$required" ]]; then
     printf 'false'
     return 0
   fi
   recent="$(printf '%s' "$deduped" | tail -n "$required")"
   local cycle findings fps details maintainer cln
   while IFS="$AMCL_FS" read -r cycle findings fps details maintainer cln; do
-    [ -n "$cycle" ] || continue
+    [[ -n "$cycle" ]] || continue
     : "${findings:-}" "${details:-}" "${cln:-}"
-    if amcl_is_uint "$fps" && [ "$fps" -eq 0 ] && [ -n "$maintainer" ] \
-       && [ "$maintainer" != "—" ] && [ "$maintainer" != "-" ]; then
+    if amcl_is_uint "$fps" && [[ "$fps" -eq 0 ]] && [[ -n "$maintainer" ]] \
+       && [[ "$maintainer" != "—" ]] && [[ "$maintainer" != "-" ]]; then
       clean=$((clean + 1))
     fi
   done < <(printf '%s\n' "$recent")
-  if [ "$clean" -eq "$required" ]; then
+  if [[ "$clean" -eq "$required" ]]; then
     printf 'true'
   else
     printf 'false'
@@ -255,12 +255,12 @@ amcl_main() {
   case "$cmd" in
     validate)
       local log="${2:-}"
-      if [ -z "$log" ]; then
+      if [[ -z "$log" ]]; then
         printf 'agents-md-cycle-log: validate needs a <log-file>\n\n' >&2
         amcl_usage >&2
         return 2
       fi
-      if [ ! -f "$log" ]; then
+      if [[ ! -f "$log" ]]; then
         printf 'agents-md-cycle-log: log file not found: %s\n' "$log" >&2
         return 2
       fi
@@ -272,16 +272,16 @@ amcl_main() {
       ;;
     eligibility)
       local log="${2:-}" required="${3:-2}"
-      if [ -z "$log" ]; then
+      if [[ -z "$log" ]]; then
         printf 'agents-md-cycle-log: eligibility needs a <log-file>\n\n' >&2
         amcl_usage >&2
         return 2
       fi
-      if [ ! -f "$log" ]; then
+      if [[ ! -f "$log" ]]; then
         printf 'agents-md-cycle-log: log file not found: %s\n' "$log" >&2
         return 2
       fi
-      if ! amcl_is_uint "$required" || [ "$required" -lt 1 ]; then
+      if ! amcl_is_uint "$required" || [[ "$required" -lt 1 ]]; then
         printf 'agents-md-cycle-log: required-clean-cycles must be a positive integer, got "%s"\n' "$required" >&2
         return 2
       fi
@@ -295,7 +295,7 @@ amcl_main() {
       printf 'clean-cycles-met=%s\n' "$met"
       printf 'maintainer_sign_off_required=true\n'
       printf 'auto_promote=false\n'
-      if [ "$met" = "true" ]; then
+      if [[ "$met" = "true" ]]; then
         printf 'note=clean-cycle precondition met; promotion still requires explicit maintainer sign-off and a deliberate, reviewable flip — it is never automatic\n'
       else
         printf 'note=clean-cycle precondition NOT met; the check remains informational\n'
@@ -316,7 +316,7 @@ amcl_main() {
 
 # Run the CLI only when executed directly, not when sourced by the bats tests
 # that exercise the pure helper functions above.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   set -euo pipefail
   amcl_main "$@"
 fi

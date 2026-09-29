@@ -31,7 +31,7 @@ collect_classify_prs() {
   while true; do
     local result
     local -a cursor_arg
-    if [ -z "$cursor" ]; then
+    if [[ -z "$cursor" ]]; then
       cursor_arg=(-F cursor=null)   # -F = JSON-typed: passes null, not the string "null"
     else
       cursor_arg=(-f "cursor=$cursor")
@@ -65,7 +65,7 @@ collect_classify_prs() {
 
     all_nodes_ndjson+=$(jq -c '.[]' <<< "$nodes")
     all_nodes_ndjson+=$'\n'
-    [ "$has_next" = "true" ] && [ -n "$end_cursor" ] || break
+    [[ "$has_next" = "true" ]] && [[ -n "$end_cursor" ]] || break
     cursor="$end_cursor"
   done
 
@@ -106,8 +106,8 @@ ALL_PR_NDJSON=""
 for repo in $ORG_REPOS; do
   prs=$(collect_classify_prs "petry-projects" "$repo")
   count=$(jq 'length' <<< "$prs")
-  [ "$count" -gt 0 ] && echo "  petry-projects/$repo: $count open PRs" >&2
-  if [ "$count" -gt 0 ]; then
+  [[ "$count" -gt 0 ]] && echo "  petry-projects/$repo: $count open PRs" >&2
+  if [[ "$count" -gt 0 ]]; then
     ALL_PR_NDJSON+=$(jq -c '.[]' <<< "$prs")
     ALL_PR_NDJSON+=$'\n'
   fi
@@ -125,7 +125,7 @@ echo "::group::Computing behind_by per PR" >&2
 # array at the end — avoids O(n²) reparse of a growing array each iteration.
 AUGMENTED_NDJSON=""
 while IFS= read -r pr; do
-  [ -z "$pr" ] && continue
+  [[ -z "$pr" ]] && continue
   pr_repo=$(echo "$pr" | jq -r '.repo')
   pr_head=$(echo "$pr" | jq -r '.headRefName')
   pr_base=$(echo "$pr" | jq -r '.baseRefName')
@@ -212,7 +212,7 @@ for repo in $ORG_REPOS; do
   issues=$(gh issue list --repo "petry-projects/$repo" --state open \
     --json number,title,createdAt,labels,url --limit 1000 2>/dev/null || echo '[]')
   count=$(jq 'length' <<< "$issues")
-  if [ "$count" -gt 0 ]; then
+  if [[ "$count" -gt 0 ]]; then
     echo "  petry-projects/$repo: $count open issues" >&2
     ISSUES_NDJSON+=$(jq -c --arg repo "petry-projects/$repo" '{repo: $repo, count: length, issues: .}' <<< "$issues")
     ISSUES_NDJSON+=$'\n'

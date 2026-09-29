@@ -68,7 +68,7 @@ CI_THEME_FIELD_ID=""
 #   would make the `dev-lead agent` rule match every single item. Only labels
 #   that actually signal an initiative survive into the signature.
 normalize_signature() {
-  if [ "$#" -ne 3 ]; then
+  if [[ "$#" -ne 3 ]]; then
     printf '[normalize_signature] expected 3 args (title labels_json repo), got %d\n' "$#" >&2
     return 64
   fi
@@ -97,21 +97,21 @@ normalize_signature() {
 
 # classify_by_rules <signature> → first-matching Initiative name, or "".
 classify_by_rules() {
-  if [ "$#" -ne 1 ]; then
+  if [[ "$#" -ne 1 ]]; then
     printf '[classify_by_rules] expected 1 arg (signature), got %d\n' "$#" >&2
     return 64
   fi
   local sig="$1" name rx
   local rules="${RULES_FILE:-${_ci_dir}/initiative-rules.tsv}"
-  if [ ! -f "${rules}" ]; then
+  if [[ ! -f "${rules}" ]]; then
     printf '[classify_by_rules] rules file not found: %s\n' "${rules}" >&2
     return 65
   fi
-  while IFS=$'\t' read -r name rx || [ -n "${name}" ]; do
+  while IFS=$'\t' read -r name rx || [[ -n "${name}" ]]; do
     name="${name%$'\r'}"
     rx="${rx%$'\r'}"
     case "${name}" in ''|'#'*) continue ;; esac
-    [ -n "${rx}" ] || continue
+    [[ -n "${rx}" ]] || continue
     if printf '%s' "${sig}" | grep -Eiq -- "${rx}"; then
       printf '%s' "${name}"
       return 0
@@ -122,21 +122,21 @@ classify_by_rules() {
 
 # theme_for <initiative> → the Theme it rolls up to, or "".
 theme_for() {
-  if [ "$#" -ne 1 ]; then
+  if [[ "$#" -ne 1 ]]; then
     printf '[theme_for] expected 1 arg (initiative), got %d\n' "$#" >&2
     return 64
   fi
   local want="$1" init theme
   local tax="${TAXONOMY_FILE:-${_ci_dir}/initiative-taxonomy.tsv}"
-  if [ ! -f "${tax}" ]; then
+  if [[ ! -f "${tax}" ]]; then
     printf '[theme_for] taxonomy file not found: %s\n' "${tax}" >&2
     return 65
   fi
-  while IFS=$'\t' read -r init theme || [ -n "${init}" ]; do
+  while IFS=$'\t' read -r init theme || [[ -n "${init}" ]]; do
     init="${init%$'\r'}"
     theme="${theme%$'\r'}"
     case "${init}" in ''|'#'*) continue ;; esac
-    if [ "${init}" = "${want}" ]; then
+    if [[ "${init}" = "${want}" ]]; then
       printf '%s' "${theme}"
       return 0
     fi
@@ -147,13 +147,13 @@ theme_for() {
 # decide_for_signature <signature> → "<initiative>\t<theme>" (theme may be
 # empty), or "" when no rule matches.
 decide_for_signature() {
-  if [ "$#" -ne 1 ]; then
+  if [[ "$#" -ne 1 ]]; then
     printf '[decide_for_signature] expected 1 arg (signature), got %d\n' "$#" >&2
     return 64
   fi
   local sig="$1" init theme
   init=$(classify_by_rules "${sig}") || return $?
-  [ -n "${init}" ] || return 0
+  [[ -n "${init}" ]] || return 0
   theme=$(theme_for "${init}") || return $?
   printf '%s\t%s' "${init}" "${theme}"
 }
@@ -179,30 +179,30 @@ resolve_fields() {
       }
     }')
 
-  if [ "$(printf '%s' "${json}" | jq -r '.data.node?')" = "null" ]; then
+  if [[ "$(printf '%s' "${json}" | jq -r '.data.node?')" = "null" ]]; then
     printf '[resolve_fields] GraphQL returned data.node:null for PROJECT_ID=%s — token may lack access, or the project was deleted.\n' "${PROJECT_ID}" >&2
     return 75
   fi
   CI_INIT_FIELD_ID=$(printf '%s' "${json}" | jq -r '.data.node.initiative.id? // ""')
   CI_THEME_FIELD_ID=$(printf '%s' "${json}" | jq -r '.data.node.theme.id? // ""')
-  if [ -z "${CI_INIT_FIELD_ID}" ]; then
+  if [[ -z "${CI_INIT_FIELD_ID}" ]]; then
     printf '[resolve_fields] Initiative single-select field %q not found on the project.\n' "${INITIATIVE_FIELD:-Initiative}" >&2
     return 65
   fi
 
   local id name
   while IFS=$'\t' read -r id name; do
-    [ -n "${id}" ] && CI_INIT_OPT["${name}"]="${id}"
+    [[ -n "${id}" ]] && CI_INIT_OPT["${name}"]="${id}"
   done < <(printf '%s' "${json}" | jq -r '.data.node.initiative.options?[]? | "\(.id)\t\(.name)"')
   while IFS=$'\t' read -r id name; do
-    [ -n "${id}" ] && CI_THEME_OPT["${name}"]="${id}"
+    [[ -n "${id}" ]] && CI_THEME_OPT["${name}"]="${id}"
   done < <(printf '%s' "${json}" | jq -r '.data.node.theme.options?[]? | "\(.id)\t\(.name)"')
 }
 
 # _ci_report <total> <already> <matched> <unmatched> <skipped> <failed>
 _ci_report() {
   local total="$1" already="$2" matched="$3" unmatched="$4" skipped="$5" failed="${6:-0}"
-  local mode="apply"; [ "${DRY_RUN:-}" = "1" ] && mode="dry-run"
+  local mode="apply"; [[ "${DRY_RUN:-}" = "1" ]] && mode="dry-run"
   printf '\n=== classify-initiative summary (%s) ===\n' "${mode}"
   printf '  board items scanned : %d\n' "${total}"
   printf '  already associated  : %d (skipped; RECLASSIFY=all to re-evaluate)\n' "${already}"
@@ -210,7 +210,7 @@ _ci_report() {
   printf '  unmatched (blank)   : %d\n' "${unmatched}"
   printf '  option-missing skip : %d\n' "${skipped}"
   printf '  transient set fails : %d (left blank; refilled next sweep)\n' "${failed}"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     {
       printf '### classify-initiative (%s)\n\n' "${mode}"
       printf '| scanned | already | matched | unmatched | skipped | failed |\n'
@@ -257,7 +257,7 @@ sweep_project() {
   local total=0 already=0 matched=0 unmatched=0 skipped=0 failed=0
   local node
   while IFS= read -r node; do
-    [ -n "${node}" ] || continue
+    [[ -n "${node}" ]] || continue
     total=$((total + 1))
 
     local item_id cur title labels repo sig decided init theme optid
@@ -267,7 +267,7 @@ sweep_project() {
     labels=$(printf '%s' "${node}" | jq -c '.content.labels.nodes? // []')
     repo=$(printf '%s' "${node}" | jq -r '.content.repository.nameWithOwner? // ""')
 
-    if [ -n "${cur}" ] && [ "${RECLASSIFY:-}" != "all" ]; then
+    if [[ -n "${cur}" ]] && [[ "${RECLASSIFY:-}" != "all" ]]; then
       already=$((already + 1))
       continue
     fi
@@ -277,14 +277,14 @@ sweep_project() {
     init="${decided%%$'\t'*}"
     theme="${decided#*$'\t'}"
 
-    if [ -z "${init}" ]; then
+    if [[ -z "${init}" ]]; then
       unmatched=$((unmatched + 1))
       printf 'UNMATCHED  %-20s «%s»\n' "${repo:-draft}" "${title}"
       continue
     fi
 
     optid="${CI_INIT_OPT[${init}]:-}"
-    if [ -z "${optid}" ]; then
+    if [[ -z "${optid}" ]]; then
       printf '::warning::rule matched Initiative %q which is not a live project option; skipping «%s»\n' "${init}" "${title}" >&2
       skipped=$((skipped + 1))
       continue
@@ -306,9 +306,9 @@ sweep_project() {
     # Theme is best-effort: co-assign only when the field and matching option
     # both exist live. A missing Theme field/option is silently tolerated, and
     # a transient set failure is non-fatal (Initiative already landed).
-    if [ -n "${theme}" ] && [ -n "${CI_THEME_FIELD_ID}" ]; then
+    if [[ -n "${theme}" ]] && [[ -n "${CI_THEME_FIELD_ID}" ]]; then
       local topt="${CI_THEME_OPT[${theme}]:-}"
-      if [ -n "${topt}" ] && ! set_item_single_select_value "${item_id}" "${CI_THEME_FIELD_ID}" "${topt}"; then
+      if [[ -n "${topt}" ]] && ! set_item_single_select_value "${item_id}" "${CI_THEME_FIELD_ID}" "${topt}"; then
         printf '::warning::failed to set Theme %q on «%s» (transient?); retry requires RECLASSIFY=all (Initiative already set)\n' "${theme}" "${title}" >&2
       fi
     fi
@@ -317,6 +317,6 @@ sweep_project() {
   _ci_report "${total}" "${already}" "${matched}" "${unmatched}" "${skipped}" "${failed}"
 }
 
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   sweep_project
 fi
