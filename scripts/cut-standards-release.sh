@@ -102,7 +102,7 @@ _gh_tag_commit() {
   err="$(mktemp)"
   ref_info="$(gh api "repos/$repo/git/ref/tags/$tag" \
     --jq '[(.object?.sha // "" | tostring), (.object?.type // "" | tostring)] | @tsv' 2>"$err")"; rc=$?
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     if grep -qiE 'HTTP 404|not found|does not exist' "$err"; then
       rm -f "$err"; return 0   # tag genuinely absent → empty
     fi
@@ -110,9 +110,9 @@ _gh_tag_commit() {
     rm -f "$err"; return 1
   fi
   rm -f "$err"
-  [ -z "$ref_info" ] && return 0
+  [[ -z "$ref_info" ]] && return 0
   IFS=$'\t' read -r obj type <<< "$ref_info"
-  if [ "$type" = "tag" ]; then
+  if [[ "$type" = "tag" ]]; then
     gh api "repos/$repo/git/tags/$obj" --jq '(.object?.sha // "" | tostring)' 2>/dev/null || true
   else
     printf '%s\n' "$obj"
@@ -126,9 +126,9 @@ _gh_tag_commit() {
 _gh_release_versions() {
   local repo="$1" ref v
   while IFS= read -r ref; do
-    [ -z "$ref" ] && continue
+    [[ -z "$ref" ]] && continue
     v="$(sr_version_from_tag "${ref#refs/tags/}")"
-    [ -n "$v" ] && printf '%s\n' "$v"
+    [[ -n "$v" ]] && printf '%s\n' "$v"
   done < <(gh api "repos/$repo/git/matching-refs/tags/standards/v" --jq '.[].ref' 2>/dev/null || true)
 }
 
@@ -138,15 +138,15 @@ _gh_release_versions() {
 # refs (#1091 review). Channel tags dropped by sr_version_from_tag.
 _published_versions() {
   local v out=()
-  while IFS= read -r v; do [ -n "$v" ] && out+=("$v"); done < <(_gh_release_versions "$SR_REPO")
+  while IFS= read -r v; do [[ -n "$v" ]] && out+=("$v"); done < <(_gh_release_versions "$SR_REPO")
   # Numeric-desc sort via the pure comparator (repeatedly extract the max).
   local remaining=("${out[@]+"${out[@]}"}") max
-  while [ "${#remaining[@]}" -gt 0 ]; do
+  while [[ "${#remaining[@]}" -gt 0 ]]; do
     max="$(sr_max_version "${remaining[@]}")"
-    [ -z "$max" ] && break
+    [[ -z "$max" ]] && break
     printf '%s\n' "$max"
     local next=() r
-    for r in "${remaining[@]}"; do [ "$r" != "$max" ] && next+=("$r"); done
+    for r in "${remaining[@]}"; do [[ "$r" != "$max" ]] && next+=("$r"); done
     remaining=("${next[@]+"${next[@]}"}")
   done
 }
@@ -157,15 +157,15 @@ _cmd_versions() { _published_versions; }
 # _cmd_resolve — print current + N-1 published versions and their channels (AC #4).
 _cmd_resolve() {
   local versions=() v cur prev
-  while IFS= read -r v; do [ -n "$v" ] && versions+=("$v"); done < <(_published_versions)
+  while IFS= read -r v; do [[ -n "$v" ]] && versions+=("$v"); done < <(_published_versions)
   IFS=$'\t' read -r cur prev < <(sr_current_and_previous "${versions[@]+"${versions[@]}"}")
-  if [ -z "$cur" ]; then
+  if [[ -z "$cur" ]]; then
     echo "current:  (none published yet — run 'cut' to publish standards/v1.0.0)"
     echo "previous: (none)"
     return 0
   fi
   printf 'current:  standards/v%s   (channel %s)\n' "$cur" "$(sr_channel_for "$cur")"
-  if [ -n "$prev" ]; then
+  if [[ -n "$prev" ]]; then
     printf 'previous: standards/v%s   (channel %s)\n' "$prev" "$(sr_channel_for "$prev")"
   else
     echo 'previous: (none — single-version starting state; a consumer accepting'
@@ -278,10 +278,10 @@ _cmd_verify() {
 # release and move the channel.
 _cmd_cut() {
   local raw="${1:-}"; shift || true
-  [ -n "$raw" ] || _usage
+  [[ -n "$raw" ]] || _usage
   local version commit="" dry_run=0 verify=0
   version="$(_normalize_version "$raw")"
-  while [ $# -gt 0 ]; do
+  while [[ $# -gt 0 ]]; do
     case "$1" in
       --commit) commit="${2:-}"; shift 2 ;;
       --dry-run) dry_run=1; shift ;;
@@ -289,8 +289,8 @@ _cmd_cut() {
       *) echo "::error::unknown flag '$1'" >&2; _usage ;;
     esac
   done
-  [ -n "$commit" ] || commit="$(git rev-parse HEAD 2>/dev/null || true)"
-  if [ -z "$commit" ]; then
+  [[ -n "$commit" ]] || commit="$(git rev-parse HEAD 2>/dev/null || true)"
+  if [[ -z "$commit" ]]; then
     echo "::error::could not resolve a target commit (no --commit and no local HEAD)" >&2
     exit 1
   fi
@@ -325,19 +325,19 @@ _cmd_cut() {
 
   # --verify (#1173): every channel consumer must pass against the target commit
   # before anything is written. It reads only, so a dry run verifies too.
-  if [ "$verify" -eq 1 ]; then
+  if [[ "$verify" -eq 1 ]]; then
     if ! _cmd_verify "$commit"; then
       echo "::error::REFUSE to cut $release_tag: channel-consumer verification failed at ${commit:0:12}. No tags written." >&2
       exit 1
     fi
   fi
 
-  if [ "$dry_run" -eq 1 ]; then
+  if [[ "$dry_run" -eq 1 ]]; then
     echo "[dry-run] no tags written."
     return 0
   fi
 
-  if [ "$decision" = "CREATE" ]; then
+  if [[ "$decision" = "CREATE" ]]; then
     echo "creating immutable release $release_tag at ${commit:0:12}..."
     _gh_create_annotated_tag "$SR_REPO" "$release_tag" "$commit" "standards release $version"
   fi
@@ -354,11 +354,11 @@ _cmd_cut() {
   major="$(sr_major "$version")"
   local -a same_major=("$version")
   while IFS= read -r v; do
-    [ -n "$v" ] || continue
-    if [ "$(sr_major "$v" || true)" = "$major" ]; then same_major+=("$v"); fi
+    [[ -n "$v" ]] || continue
+    if [[ "$(sr_major "$v" || true)" = "$major" ]]; then same_major+=("$v"); fi
   done < <(_gh_release_versions "$SR_REPO")
   highest="$(sr_max_version "${same_major[@]}")"
-  if [ "$highest" != "$version" ]; then
+  if [[ "$highest" != "$version" ]]; then
     echo "channel $channel_tag: a newer release standards/v$highest is already published on the v$major line; leaving the channel on the newer release (skipping backward move)."
     echo "done."
     return 0
@@ -370,12 +370,12 @@ _cmd_cut() {
   # regressing the channel to an older version; the higher cut will move it forward.
   local -a check_major=("$version")
   while IFS= read -r v; do
-    [ -n "$v" ] || continue
-    if [ "$(sr_major "$v" || true)" = "$major" ]; then check_major+=("$v"); fi
+    [[ -n "$v" ]] || continue
+    if [[ "$(sr_major "$v" || true)" = "$major" ]]; then check_major+=("$v"); fi
   done < <(_gh_release_versions "$SR_REPO")
   local check_highest
   check_highest="$(sr_max_version "${check_major[@]}")"
-  if [ "$check_highest" != "$version" ]; then
+  if [[ "$check_highest" != "$version" ]]; then
     echo "channel $channel_tag: release standards/v$check_highest is now published; leaving the channel on that newer release (skipping backward move)."
     return 0
   fi
@@ -403,7 +403,7 @@ _gh_create_annotated_tag() {
       --jq '.sha // empty')" || {
     echo "::error::could not create annotated tag $tag on $repo" >&2; return 1;
   }
-  [ -n "$obj" ] || { echo "::error::annotated tag $tag created but object SHA unreadable" >&2; return 1; }
+  [[ -n "$obj" ]] || { echo "::error::annotated tag $tag created but object SHA unreadable" >&2; return 1; }
   gh api -X POST "repos/$repo/git/refs" \
       -f ref="refs/tags/$tag" -f sha="$obj" >/dev/null 2>&1 || {
     echo "::error::created tag object $obj on $repo but could not publish ref refs/tags/$tag" >&2; return 1;
@@ -434,7 +434,7 @@ _gh_move_tag() {
 }
 
 main() {
-  [ $# -ge 1 ] || _usage
+  [[ $# -ge 1 ]] || _usage
   local cmd="$1"; shift
   case "$cmd" in
     cut)      _cmd_cut "$@" ;;
