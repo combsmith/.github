@@ -23,7 +23,7 @@
 # shellcheck shell=bash
 
 # Guard against double-sourcing.
-if [ -n "${_GITIGNORE_BASELINE_SOURCED:-}" ]; then
+if [[ -n "${_GITIGNORE_BASELINE_SOURCED:-}" ]]; then
   return 0 2>/dev/null || true
 fi
 _GITIGNORE_BASELINE_SOURCED=1
@@ -39,7 +39,7 @@ GIB_END_MARKER='# <<< END combsmith secrets baseline <<<'
 # a half-open block).
 gib_extract_baseline_block() {
   local file="${1:-}"
-  [ -n "$file" ] && [ -f "$file" ] || { echo "gib: canonical gitignore not found: ${file:-<none>}" >&2; return 2; }
+  [[ -n "$file" ]] && [[ -f "$file" ]] || { echo "gib: canonical gitignore not found: ${file:-<none>}" >&2; return 2; }
   # The two -v values are single-line constants (no newline, no backslash), so
   # they are safe under every awk — see _gib_neutralize_l2 for why that matters.
   local rc=0
@@ -152,9 +152,9 @@ _gib_neutralize_l2() {
   local tail
   tail="$(_gib_negation_tail "$block" "$body")"
 
-  [ -n "$body" ] && printf '%s\n' "$body"
-  if [ -n "$tail" ]; then
-    [ -n "$body" ] && printf '\n'
+  [[ -n "$body" ]] && printf '%s\n' "$body"
+  if [[ -n "$tail" ]]; then
+    [[ -n "$body" ]] && printf '\n'
     printf '%s\n' "$tail"
   fi
 }
@@ -184,7 +184,7 @@ _gib_negation_tail() {
         ;;
     esac
   done <<< "$block"
-  [ "${#negs[@]}" -eq 0 ] && return 0
+  [[ "${#negs[@]}" -eq 0 ]] && return 0
 
   if ! command -v git >/dev/null 2>&1; then
     printf '%s\n' "${negs[@]}"
@@ -194,12 +194,12 @@ _gib_negation_tail() {
   local d; d="$(mktemp -d -t gitignore-baseline.XXXXXX)"
   {
     printf '%s\n' "$block"
-    [ -n "$body" ] && printf '%s\n' "$body"
+    [[ -n "$body" ]] && printf '%s\n' "$body"
   } > "$d/.gitignore"
   ( cd "$d" && git init -q 2>/dev/null )
   local ignored exit_code
   ignored="$(cd "$d" && git -c core.excludesfile=/dev/null check-ignore -- "${paths[@]}" 2>/dev/null)" || exit_code=$?
-  [ "${exit_code:-0}" -gt 1 ] && ignored=""
+  [[ "${exit_code:-0}" -gt 1 ]] && ignored=""
   rm -rf "$d"
 
   local i
@@ -233,7 +233,7 @@ _gib_negation_tail() {
 # Re-running on its own output is a no-op.
 upsert_gitignore_baseline() {
   local block_file="${1:-}" existing_file="${2:-}"
-  [ -n "$block_file" ] && [ -f "$block_file" ] || { echo "gib: block file not found: ${block_file:-<none>}" >&2; return 2; }
+  [[ -n "$block_file" ]] && [[ -f "$block_file" ]] || { echo "gib: block file not found: ${block_file:-<none>}" >&2; return 2; }
 
   local block
   block="$(cat "$block_file")"
@@ -243,12 +243,12 @@ upsert_gitignore_baseline() {
   fi
 
   local existing=""
-  if [ -n "$existing_file" ] && [ -f "$existing_file" ]; then
+  if [[ -n "$existing_file" ]] && [[ -f "$existing_file" ]]; then
     existing="$(cat "$existing_file")"
   fi
 
   # Brand-new file: output block only.
-  if [ -z "$existing" ]; then
+  if [[ -z "$existing" ]]; then
     printf '%s\n' "$block"
     return 0
   fi
@@ -258,18 +258,18 @@ upsert_gitignore_baseline() {
   local has_begin has_end
   printf '%s\n' "$existing" | grep -qxF "$GIB_BEGIN_MARKER" && has_begin=1 || has_begin=0
   printf '%s\n' "$existing" | grep -qxF "$GIB_END_MARKER"   && has_end=1   || has_end=0
-  if [ "$((has_begin + has_end))" -eq 1 ]; then
+  if [[ "$((has_begin + has_end))" -eq 1 ]]; then
     echo "gib: half-open marker state in ${existing_file:-<stdin>} (exactly one of BEGIN/END present); refusing to upsert" >&2
     return 2
   fi
 
   # Marker-less target: block on top, existing content becomes L2 — but neutralize
   # any L2 line that duplicates/fights the block (see _gib_neutralize_l2).
-  if [ "$has_begin" -eq 0 ]; then
+  if [[ "$has_begin" -eq 0 ]]; then
     local l2
     l2="$(_gib_neutralize_l2 "$block" <<< "$existing")" || return 1
     printf '%s\n' "$block"
-    [ -n "$l2" ] && printf '%s\n' "$l2"
+    [[ -n "$l2" ]] && printf '%s\n' "$l2"
     return 0
   fi
 
@@ -285,8 +285,8 @@ upsert_gitignore_baseline() {
     || { echo "gib: awk failed while splitting L2 below END" >&2; return 1; }
   post="$(_gib_neutralize_l2 "$block" <<< "$post")" || return 1
 
-  [ -n "$pre" ] && printf '%s\n' "$pre"
+  [[ -n "$pre" ]] && printf '%s\n' "$pre"
   printf '%s\n' "$block"
-  [ -n "$post" ] && printf '%s\n' "$post"
+  [[ -n "$post" ]] && printf '%s\n' "$post"
   return 0
 }

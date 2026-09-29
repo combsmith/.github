@@ -74,7 +74,7 @@ PR_LIST=$(gh search prs \
   --order asc \
   --limit 100 \
   --json url,isDraft 2>/dev/null || true)
-if [ -z "${PR_LIST}" ]; then
+if [[ -z "${PR_LIST}" ]]; then
   PR_LIST="[]"
 fi
 
@@ -82,10 +82,10 @@ fi
 mapfile -t CANDIDATES < <(printf '%s' "$PR_LIST" | pr_auto_review_sweep_candidates "$MAX_PER_RUN")
 
 total_open=$(printf '%s' "$PR_LIST" | jq 'if type == "array" then length else 0 end')
-[ "$DRY_RUN" = "1" ] && dry_note=" (DRY_RUN)" || dry_note=""
+[[ "$DRY_RUN" = "1" ]] && dry_note=" (DRY_RUN)" || dry_note=""
 echo "Sweep: ${total_open} open '${SWEEP_LABEL}' PR(s) in ${SEARCH_OWNER}; evaluating ${#CANDIDATES[@]} this run (MAX_PER_RUN=${MAX_PER_RUN})${dry_note}."
 
-if [ "${#CANDIDATES[@]}" -eq 0 ]; then
+if [[ "${#CANDIDATES[@]}" -eq 0 ]]; then
   echo "No candidate PRs to evaluate — nothing to do."
   exit 0
 fi
@@ -105,7 +105,7 @@ evaluate_pr() {
   # hard fetch failure emit the skip-error class and skip this PR — the sweep is
   # idempotent and re-runs every cycle, so it is retried next time (#947).
   if ! pr_meta=$(gh pr view "$pr_url" --json state,isDraft,number,reviewDecision,baseRefName 2>/dev/null) \
-     || [ -z "$pr_meta" ]; then
+     || [[ -z "$pr_meta" ]]; then
     echo "::warning::could not fetch PR metadata for ${pr_url} — skipping this cycle" >&2
     echo "skip-error"
     return 1
@@ -117,14 +117,14 @@ evaluate_pr() {
   base_branch=$(printf '%s' "$pr_meta" | jq -r '.baseRefName')
 
   checks=$(gh pr checks "$pr_url" --json bucket,name 2>/dev/null || true)
-  if [ -z "${checks}" ]; then checks="[]"; fi
+  if [[ -z "${checks}" ]]; then checks="[]"; fi
 
   if rules_json=$(gh api "/repos/${repo}/rules/branches/${base_branch}" 2>/dev/null); then
     required_json=$(printf '%s' "$rules_json" | pr_auto_review_required_contexts 2>/dev/null || echo "[]")
   else
     required_json="[]"
   fi
-  if [ -z "${required_json}" ]; then required_json="[]"; fi
+  if [[ -z "${required_json}" ]]; then required_json="[]"; fi
 
   # shellcheck disable=SC2016  # $owner/$repo/$number are GraphQL variable refs, not shell vars
   local gql='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo)'
@@ -136,7 +136,7 @@ evaluate_pr() {
     -f owner="${repo%%/*}" \
     -f repo="${repo##*/}" \
     -F number="${pr_number}" 2>/dev/null) \
-     || [ -z "$threads_json" ]; then
+     || [[ -z "$threads_json" ]]; then
     echo "::warning::could not fetch review threads for ${pr_url} — skipping this cycle" >&2
     echo "skip-error"
     return 1
@@ -182,7 +182,7 @@ dispatch_review() {
   # Stable within this retry loop: all retries send the same id so the consumer
   # can deduplicate ambiguous double-fires (accepted POST + network error).
   local dispatch_id="${RANDOM}${RANDOM}"
-  while [ "$attempt" -le "$DISPATCH_RETRIES" ]; do
+  while [[ "$attempt" -le "$DISPATCH_RETRIES" ]]; do
     if gh api \
         --method POST \
         --header "Accept: application/vnd.github+json" \
@@ -194,7 +194,7 @@ dispatch_review() {
     fi
     echo "::warning::dispatch attempt ${attempt}/${DISPATCH_RETRIES} failed for ${pr_url}" >&2
     attempt=$((attempt + 1))
-    if [ "$attempt" -le "$DISPATCH_RETRIES" ]; then
+    if [[ "$attempt" -le "$DISPATCH_RETRIES" ]]; then
       sleep "$DISPATCH_RETRY_SLEEP"
     fi
   done
@@ -204,10 +204,10 @@ dispatch_review() {
 dispatched=0
 failed=0
 for pr_url in "${CANDIDATES[@]}"; do
-  [ -z "$pr_url" ] && continue
+  [[ -z "$pr_url" ]] && continue
   echo "::group::${pr_url}"
   if decision=$(evaluate_pr "$pr_url"); then
-    if [ "$DRY_RUN" = "1" ]; then
+    if [[ "$DRY_RUN" = "1" ]]; then
       echo "[dry-run] would dispatch review agent for ${pr_url} (decision=${decision})"
       dispatched=$((dispatched + 1))
     elif dispatch_review "$pr_url"; then
@@ -226,7 +226,7 @@ for pr_url in "${CANDIDATES[@]}"; do
   echo "::endgroup::"
 done
 
-if [ "$failed" -gt 0 ]; then
+if [[ "$failed" -gt 0 ]]; then
   echo "Sweep complete — dispatched ${dispatched} of ${#CANDIDATES[@]} evaluated PR(s), ${failed} dispatch(es) failed (will retry next cycle)."
 else
   echo "Sweep complete — dispatched ${dispatched} of ${#CANDIDATES[@]} evaluated PR(s)."
