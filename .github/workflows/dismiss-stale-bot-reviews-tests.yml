@@ -55,14 +55,14 @@ jobs:
         run: |
           set -euo pipefail
           max_retries=3
-          for attempt in $(seq 1 $max_retries); do
+          for attempt in $(seq 1 "$max_retries"); do
             if sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends bats jq; then
               exit 0
             fi
-            if [ $attempt -lt $max_retries ]; then
+            if [ "$attempt" -lt "$max_retries" ]; then
               backoff=$((2 ** (attempt - 1)))
               echo "::warning::apt failed (attempt $attempt/$max_retries); retrying in ${backoff}s…" >&2
-              sleep $backoff
+              sleep "$backoff"
             fi
           done
           exit 1

@@ -161,7 +161,7 @@ cat "$DSBR_PAGE1"
 STUB
   chmod +x "${TT_TMP}/bin/gh"
 
-  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094 --apply
   [ "$status" -eq 0 ]
   # Assert the paginated summary before the `run grep` below overwrites $output.
   echo "$output" | grep -q 'examined 2 effective review(s), dismissed 1 stale bot review'
@@ -216,7 +216,7 @@ cat "$DSBR_RESPONSE"
 STUB
   chmod +x "${TT_TMP}/bin/gh"
 
-  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094 --apply
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'returned a GraphQL errors envelope'
   # the phantom dismissal is not counted
