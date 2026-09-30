@@ -49,7 +49,7 @@ STUB
 teardown() { rm -rf "${TT_TMP:-/nonexistent}"; }
 
 @test "dismisses ONLY the stale allow-listed bot review; leaves head/human/approved" {
-  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094 --apply
   [ "$status" -eq 0 ]
   # Assert the script's summary output before the log-inspecting `run grep` calls
   # below overwrite bats's $output.

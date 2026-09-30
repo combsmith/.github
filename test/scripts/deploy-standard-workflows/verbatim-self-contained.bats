@@ -37,7 +37,7 @@ setup() {
 
 @test "self-contained stub with drifted permissions is NOT compliant" {
   local drifted
-  drifted="$(sed '/^    pull-requests:/s/: write/: read/' "$TEMPLATE")"
+  drifted="$(sed '/pull-requests:/s/: write/: read/' "$TEMPLATE")"
   run is_pin_compliant "$drifted" "$TEMPLATE" "somerepo"
   [ "$status" -eq 1 ]
 }
