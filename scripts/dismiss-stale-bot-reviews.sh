@@ -7,7 +7,7 @@
 # file only performs I/O (gh GraphQL reads + the dismissal mutation).
 #
 # Usage:
-#   dismiss-stale-bot-reviews.sh --owner <owner> --name <repo> --pr <number> [--dry-run]
+#   dismiss-stale-bot-reviews.sh --owner <owner> --name <repo> --pr <number> [--apply]
 #
 # Requirements:
 #   GH_TOKEN with `pull-requests: write` on the target repo (GITHUB_TOKEN is
@@ -22,15 +22,33 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/dismiss-stale-bot-reviews.sh
 source "${SCRIPT_DIR}/lib/dismiss-stale-bot-reviews.sh"
 
-OWNER="" NAME="" PR="" DRY_RUN=false
+OWNER="" NAME="" PR="" APPLY=false
+
+# Retry helper: bounded retry with exponential backoff. Retries a command up to
+# MAX_RETRIES times with exponential backoff (1s, 2s, 4s…). Returns the exit code
+# of the command's final attempt.
+gh_api_retry() {
+  local max_retries=3 attempt=1
+  while true; do
+    "$@" && return 0
+    local exit_code=$?
+    if [ $attempt -ge $max_retries ]; then
+      return $exit_code
+    fi
+    local backoff=$((2 ** (attempt - 1)))
+    echo "::warning::gh api call failed (attempt $attempt/$max_retries); retrying in ${backoff}s…" >&2
+    sleep $backoff
+    attempt=$((attempt + 1))
+  done
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --owner)   OWNER="$2"; shift 2 ;;
-    --name)    NAME="$2";  shift 2 ;;
-    --pr)      PR="$2";    shift 2 ;;
-    --dry-run) DRY_RUN=true; shift ;;
-    -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --owner) OWNER="$2"; shift 2 ;;
+    --name)  NAME="$2";  shift 2 ;;
+    --pr)    PR="$2";    shift 2 ;;
+    --apply) APPLY=true; shift ;;
+    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "::error::unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -86,7 +104,7 @@ while true; do
   else
     cursor_arg=(-f "cursor=$cursor")
   fi
-  response="$(gh api graphql \
+  response="$(gh_api_retry gh api graphql \
     -f query="$QUERY" \
     "${cursor_arg[@]}" \
     -f owner="$OWNER" -f name="$NAME" -F number="$PR")"
@@ -94,9 +112,14 @@ while true; do
   # Resolve the head oid once, from the first page, and fail-loud-then-noop if the
   # PR cannot be resolved — before examining any reviews.
   if [ "$first" = "true" ]; then
+    # Reject errors in the response; distinguish from a not-found case.
+    if jq -e '(.errors // []) | length > 0' <<<"$response" >/dev/null 2>&1; then
+      echo "::error::GraphQL error while fetching head oid for ${OWNER}/${NAME}#${PR}: $(jq -r '.errors[0].message // "unknown error"' <<<"$response")" >&2
+      exit 1
+    fi
     head_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$response")"
     if [ -z "$head_oid" ]; then
-      echo "::warning::could not resolve head oid for ${OWNER}/${NAME}#${PR}; nothing to do"
+      echo "::warning::could not resolve head oid for ${OWNER}/${NAME}#${PR} (PR not found or not accessible); nothing to do"
       exit 0
     fi
     first=false
@@ -124,35 +147,60 @@ done
 # even though it is no longer stale. Re-read the head and no-op the whole run if
 # it changed; the synchronize/submitted event for the new head re-runs us against
 # the settled state (#1116).
-recheck="$(gh api graphql \
+recheck="$(gh_api_retry gh api graphql \
   -f query='query($owner:String!, $name:String!, $number:Int!) {
     repository(owner:$owner, name:$name) { pullRequest(number:$number) { headRefOid } }
   }' \
   -f owner="$OWNER" -f name="$NAME" -F number="$PR")"
+if jq -e '(.errors // []) | length > 0' <<<"$recheck" >/dev/null 2>&1; then
+  echo "::error::GraphQL error while rechecking head oid for ${OWNER}/${NAME}#${PR}: $(jq -r '.errors[0].message // "unknown error"' <<<"$recheck")" >&2
+  exit 1
+fi
 current_head="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$recheck")"
 if [ "$current_head" != "$head_oid" ]; then
   echo "::warning::PR head moved from ${head_oid} to ${current_head:-<unresolved>} during the review read for ${OWNER}/${NAME}#${PR}; skipping dismissals this run to avoid clearing a review on the new head"
   exit 0
 fi
 
-dismissed=0 would_dismiss=0 examined=0
+dismissed=0 would_dismiss=0 examined=0 aborted=false
 while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   [ -n "$review_id" ] || continue
   examined=$((examined + 1))
   if ! dsbr_should_dismiss "$state" "$commit_oid" "$head_oid" "$login" "$author_type"; then
     continue
   fi
+
+  # Revalidate the PR head immediately before each dismissal mutation. A
+  # force-push during the mutation loop restores a previously-reviewed commit,
+  # causing this loop's cached head_oid to become stale. We would wrongly
+  # dismiss a review now on the current head even though it is no longer
+  # superseded. Re-read the live head and stop all further mutations if it
+  # changed; the synchronize/submitted event for the new head re-runs us (#1116).
+  if [ "$aborted" = "false" ]; then
+    current_head_recheck="$(gh_api_retry gh api graphql \
+      -f query='query($owner:String!, $name:String!, $number:Int!) {
+        repository(owner:$owner, name:$name) { pullRequest(number:$number) { headRefOid } }
+      }' \
+      -f owner="$OWNER" -f name="$NAME" -F number="$PR")"
+    current_head_recheck_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$current_head_recheck")"
+    if [ "$current_head_recheck_oid" != "$head_oid" ]; then
+      echo "::warning::PR head moved from ${head_oid} to ${current_head_recheck_oid:-<unresolved>} during dismissal loop for ${OWNER}/${NAME}#${PR}; aborting remaining dismissals to avoid clearing a review on the new head"
+      aborted=true
+      continue
+    fi
+  fi
+
   msg="Superseded: dismissed by dismiss-stale-bot-reviews because ${login}'s CHANGES_REQUESTED review was on ${commit_oid} but the PR head is now ${head_oid}. A still-valid finding returns as a fresh review on the new commit."
-  if [ "$DRY_RUN" = "true" ]; then
-    # Dry-run performs NO mutation, so a candidate must NOT be counted as
-    # dismissed — track it in a separate would-dismiss tally instead, or the
-    # summary would report reviews as dismissed that are still in place,
-    # misleading any operator/automation consuming the output (#1116).
+  if [ "$APPLY" != "true" ]; then
+    # Default behavior: dry-run (report-only). A candidate is NOT mutated, so it
+    # must NOT be counted as dismissed — track it in a separate would-dismiss
+    # tally instead, or the summary would report reviews as dismissed that are
+    # still in place, misleading any operator/automation consuming the output (#1116).
     echo "[dry-run] would dismiss review ${review_id} by ${login} (on ${commit_oid}, head ${head_oid})"
     would_dismiss=$((would_dismiss + 1))
     continue
   fi
-  mutation_resp="$(gh api graphql \
+  mutation_resp="$(gh_api_retry gh api graphql \
     -f query='mutation($id:ID!, $msg:String!) {
       dismissPullRequestReview(input:{pullRequestReviewId:$id, message:$msg}) {
         pullRequestReview { id state }
@@ -177,7 +225,7 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   dismissed=$((dismissed + 1))
 done <<<"$reviews"
 
-if [ "$DRY_RUN" = "true" ]; then
+if [ "$APPLY" != "true" ]; then
   echo "dismiss-stale-bot-reviews [dry-run]: examined ${examined} effective review(s), would dismiss ${would_dismiss} stale bot review(s) on ${OWNER}/${NAME}#${PR} (head ${head_oid}); no reviews were dismissed"
 else
   echo "dismiss-stale-bot-reviews: examined ${examined} effective review(s), dismissed ${dismissed} stale bot review(s) on ${OWNER}/${NAME}#${PR} (head ${head_oid})"

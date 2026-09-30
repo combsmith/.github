@@ -37,7 +37,7 @@ setup() {
 
 @test "self-contained stub with drifted permissions is NOT compliant" {
   local drifted
-  drifted="$(sed 's/pull-requests: write/pull-requests: read/' "$TEMPLATE")"
+  drifted="$(sed '/^    pull-requests:/s/: write/: read/' "$TEMPLATE")"
   run is_pin_compliant "$drifted" "$TEMPLATE" "somerepo"
   [ "$status" -eq 1 ]
 }
@@ -46,7 +46,7 @@ setup() {
   # is_pin_compliant normalizes CR before comparing, so a stub that differs from
   # the template only by line endings must still be compliant (no churn).
   local crlf
-  crlf="$(sed 's/$/\r/' "$TEMPLATE")"
+  crlf="$(sed "s/\$/$(printf '\r')/" "$TEMPLATE")"
   run is_pin_compliant "$crlf" "$TEMPLATE" "somerepo"
   [ "$status" -eq 0 ]
 }

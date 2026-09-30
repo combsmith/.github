@@ -367,6 +367,7 @@ filename doesn't carry the `-reusable.yml` suffix (grandfathered exception:
 | [`dependabot-automerge.yml`](workflows/dependabot-automerge.yml) | 1 | Auto-approve and squash-merge eligible Dependabot PRs |
 | [`auto-rebase.yml`](workflows/auto-rebase.yml) | 1 | Keep non-Dependabot PRs up-to-date with the base branch on every push to `main` |
 | [`dependabot-rebase.yml`](workflows/dependabot-rebase.yml) | 1 | Update and auto-merge eligible Dependabot PRs on every push to `main` |
+| [`dismiss-stale-bot-reviews.yml`](workflows/dismiss-stale-bot-reviews.yml) | 1 | Automatically dismiss stale allow-listed bot reviews on superseded commits (#1115) |
 | [`dependency-audit.yml`](workflows/dependency-audit.yml) | 1 | Multi-ecosystem audit (npm, pnpm, gomod, cargo, pip) |
 | [`feature-ideation.yml`](workflows/feature-ideation.yml) | 1 | Weekly ideation pipeline — **required org-wide** (#844). Its `project_context` MUST be a real per-repo description, not the seed `TODO:`/`Example:` placeholder. |
 | [`pr-auto-review.yml`](workflows/pr-auto-review.yml) | 1 | Automated AI code review on PRs — **required org-wide** (#844) |

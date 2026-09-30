@@ -31,8 +31,7 @@ on:
       - '.github/workflows/dismiss-stale-bot-reviews*.yml'
       - 'standards/workflows/dismiss-stale-bot-reviews.yml'
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: dismiss-stale-bot-reviews-tests-${{ github.ref }}
@@ -43,6 +42,8 @@ jobs:
     name: bats
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,11 +51,21 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Install bats
+      - name: Install bats and jq
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends bats
+          max_retries=3
+          for attempt in $(seq 1 $max_retries); do
+            if sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends bats jq; then
+              exit 0
+            fi
+            if [ $attempt -lt $max_retries ]; then
+              backoff=$((2 ** (attempt - 1)))
+              echo "::warning::apt failed (attempt $attempt/$max_retries); retrying in ${backoff}s…" >&2
+              sleep $backoff
+            fi
+          done
+          exit 1
 
       - name: Run bats suite
         run: bats --print-output-on-failure test/workflows/dismiss-stale-bot-reviews/
