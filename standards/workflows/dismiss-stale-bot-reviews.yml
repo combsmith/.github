@@ -80,6 +80,8 @@ jobs:
           # Optional wholesale override of the bot allow-list (comma-separated
           # logins). Unset → the decision core's built-in CodeRabbit/Copilot list.
           DSBR_BOT_ALLOWLIST: ${{ vars.DSBR_BOT_ALLOWLIST }}
+          # Optional dry-run mode (set to "true" to preview without dismissing).
+          DSBR_DRY_RUN: ${{ vars.DSBR_DRY_RUN }}
         run: |
           set -euo pipefail
           core=".dsbr-tooling/scripts/dismiss-stale-bot-reviews.sh"
@@ -87,7 +89,12 @@ jobs:
             echo "::warning::decision-core tooling unavailable (checkout failed); skipping — nothing dismissed"
             exit 0
           fi
-          bash "$core" \
-            --owner "${{ github.repository_owner }}" \
-            --name "${{ github.event.repository.name }}" \
+          args=(
+            --owner "${{ github.repository_owner }}"
+            --name "${{ github.event.repository.name }}"
             --pr "${{ github.event.pull_request.number }}"
+          )
+          if [ "$DSBR_DRY_RUN" != "true" ]; then
+            args+=(--apply)
+          fi
+          bash "$core" "${args[@]}"
