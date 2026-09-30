@@ -1256,6 +1256,13 @@ check_ruleset_bypass_actors() {
       # Fail closed (consistent with _ruleset_contents_one): a ruleset we cannot
       # fetch/parse must never read as "no finding" — that would let an
       # incomplete audit silently pass and close existing bypass-actor findings.
+      # Mark the repo inconclusive as well: the emitted error finding alone does
+      # not stop close_resolved_issues from closing the existing
+      # ruleset-bypass-orgadmin-* / ruleset-bypass-dependabot-* issues (their
+      # check ids are absent from this partial run), and it defeats the
+      # zero-findings safeguard. Recording the repo as inconclusive keeps it from
+      # being treated as fully audited so no bypass finding is falsely resolved.
+      mark_repo_inconclusive "$repo"
       add_finding "$repo" "rulesets" "ruleset-bypass-unfetchable-$rs_id" "error" \
         "Could not fetch or parse ruleset id $rs_id to verify its required bypass actors. Treating as a finding rather than a pass (fail closed): an error must never be conflated with a compliant ruleset. Re-run the audit with a token that can read rulesets." \
         "$std_ref"

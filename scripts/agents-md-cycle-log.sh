@@ -137,6 +137,12 @@ amcl_validate_log() {
       printf 'cycle %s: confirmed-false-positive count "%s" is not a non-negative integer\n' "$cycle" "$fps" >&2
       rc=1; continue
     fi
+    # Normalize the validated counts to base 10 before any arithmetic comparison.
+    # amcl_is_uint accepts leading-zero decimals like "010"; left as-is, bash
+    # arithmetic in [[ -gt ]]/[[ -eq ]] would read "010" as OCTAL 8, so a row
+    # claiming findings=9, fps=010 (ten) would wrongly pass the fps<=findings
+    # check. `10#` forces base-10 while still accepting the leading-zero input.
+    findings=$((10#$findings)); fps=$((10#$fps))
     if [[ -z "$maintainer" ]] || [[ "$maintainer" = "—" ]] || [[ "$maintainer" = "-" ]]; then
       printf 'cycle %s: no maintainer named in "Determined by" — every determination must name a maintainer\n' "$cycle" >&2
       rc=1; continue
@@ -219,7 +225,9 @@ amcl_clean_cycles_met() {
   while IFS="$AMCL_FS" read -r cycle findings fps details maintainer cln; do
     [[ -n "$cycle" ]] || continue
     : "${findings:-}" "${details:-}" "${cln:-}"
-    if amcl_is_uint "$fps" && [[ "$fps" -eq 0 ]] && [[ -n "$maintainer" ]] \
+    # Normalize to base 10 before the `-eq 0` test so a leading-zero decimal
+    # like "00"/"010" is not misread as octal (see amcl_validate_log).
+    if amcl_is_uint "$fps" && [[ "$((10#$fps))" -eq 0 ]] && [[ -n "$maintainer" ]] \
        && [[ "$maintainer" != "—" ]] && [[ "$maintainer" != "-" ]]; then
       clean=$((clean + 1))
     fi
