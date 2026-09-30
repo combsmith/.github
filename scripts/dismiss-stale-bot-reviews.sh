@@ -48,6 +48,7 @@ while [ $# -gt 0 ]; do
     --name)  NAME="$2";  shift 2 ;;
     --pr)    PR="$2";    shift 2 ;;
     --apply) APPLY=true; shift ;;
+    --dry-run) shift ;; # dry-run is the default; flag is a no-op for explicitness
     -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "::error::unknown argument: $1" >&2; exit 1 ;;
   esac

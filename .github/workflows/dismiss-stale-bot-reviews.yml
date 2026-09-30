@@ -59,28 +59,20 @@ jobs:
       pull-requests: write   # dismissPullRequestReview via GITHUB_TOKEN
       contents: read         # checkout
     steps:
-      - name: Checkout decision-core tooling from petry-projects/.github (with retry)
+      - name: Checkout decision-core tooling from petry-projects/.github
         # The decision core lives in petry-projects/.github; a consumer repo does
         # not carry it, so fetch it read-only at the pinned v1 tag into a scratch
         # path. petry-projects/.github is public, so GITHUB_TOKEN suffices.
-        # Retry up to 3 times with exponential backoff for transient failures.
-        run: |
-          set -euo pipefail
-          max_retries=3
-          for attempt in $(seq 1 $max_retries); do
-            if gh repo clone petry-projects/.github .dsbr-tooling -- --depth=1 --branch=v1 --quiet; then
-              exit 0
-            fi
-            if [ $attempt -lt $max_retries ]; then
-              backoff=$((2 ** (attempt - 1)))
-              echo "::warning::checkout failed (attempt $attempt/$max_retries); retrying in ${backoff}s…"
-              sleep $backoff
-            fi
-          done
-          echo "::error::failed to checkout decision-core tooling after $max_retries attempts"
-          exit 1
-        env:
-          GH_TOKEN: ${{ github.token }}
+        # continue-on-error: a tooling-checkout outage must never fail the PR — the
+        # run step then finds no script and no-ops (fail-closed: nothing dismissed).
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: petry-projects/.github
+          ref: v1
+          path: .dsbr-tooling
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Dismiss stale allow-listed bot reviews on superseded commits
         env:
@@ -88,22 +80,14 @@ jobs:
           # Optional wholesale override of the bot allow-list (comma-separated
           # logins). Unset → the decision core's built-in CodeRabbit/Copilot list.
           DSBR_BOT_ALLOWLIST: ${{ vars.DSBR_BOT_ALLOWLIST }}
-          # Optional: set DSBR_DRY_RUN to "true" to preview without dismissing.
-          # Unset or "false" → perform actual dismissals (default, safe).
-          DSBR_DRY_RUN: ${{ vars.DSBR_DRY_RUN }}
         run: |
           set -euo pipefail
           core=".dsbr-tooling/scripts/dismiss-stale-bot-reviews.sh"
           if [ ! -f "$core" ]; then
-            echo "::error::decision-core tooling unavailable after checkout; cannot proceed"
-            exit 1
+            echo "::warning::decision-core tooling unavailable (checkout failed); skipping — nothing dismissed"
+            exit 0
           fi
-          args=(
-            --owner "${{ github.repository_owner }}"
-            --name "${{ github.event.repository.name }}"
+          bash "$core" \
+            --owner "${{ github.repository_owner }}" \
+            --name "${{ github.event.repository.name }}" \
             --pr "${{ github.event.pull_request.number }}"
-          )
-          if [ "$DSBR_DRY_RUN" != "true" ]; then
-            args+=(--apply)
-          fi
-          bash "$core" "${args[@]}"
