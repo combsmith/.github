@@ -259,9 +259,9 @@ _semver_gt() {
   local a1=0 a2=0 a3=0 b1=0 b2=0 b3=0
   IFS=. read -r a1 a2 a3 <<< "$1"
   IFS=. read -r b1 b2 b3 <<< "$2"
-  if [[ "$a1" -ne "$b1" ]]; then [[ "$a1" -gt "$b1" ]]; return $?; fi
-  if [[ "$a2" -ne "$b2" ]]; then [[ "$a2" -gt "$b2" ]]; return $?; fi
-  [[ "$a3" -gt "$b3" ]]
+  if [ "$a1" -ne "$b1" ]; then [ "$a1" -gt "$b1" ]; return $?; fi
+  if [ "$a2" -ne "$b2" ]; then [ "$a2" -gt "$b2" ]; return $?; fi
+  [ "$a3" -gt "$b3" ]
 }
 
 # max_semver <version...> — echo the highest strict MAJOR.MINOR.PATCH among the
