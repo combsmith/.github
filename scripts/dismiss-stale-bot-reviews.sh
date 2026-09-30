@@ -136,8 +136,11 @@ while true; do
 
   has_next="$(jq -r '.data.repository.pullRequest.latestOpinionatedReviews.pageInfo.hasNextPage // false' <<<"$response")"
   end_cursor="$(jq -r '.data.repository.pullRequest.latestOpinionatedReviews.pageInfo.endCursor // ""' <<<"$response")"
-  [ "$has_next" = "true" ] && [ -n "$end_cursor" ] || break
-  cursor="$end_cursor"
+  if [ "$has_next" = "true" ] && [ -n "$end_cursor" ]; then
+    cursor="$end_cursor"
+  else
+    break
+  fi
 done
 
 # Revalidate the PR head immediately before applying any dismissal. The head can
