@@ -37,11 +37,11 @@ SC_DESCRIPTION_SECTION_KEYS=(problem risk test-plan rollback monitoring)
 # "Tests", "Testing", "How to test" — with the "plan" segment optional, so a
 # "## Tests" heading is not mis-flagged as a missing test section.
 SC_DESCRIPTION_SECTION_PATTERNS=(
-  '(^|[^[:alnum:]])problem[[:alpha:]]*([^[:alnum:]]|$)'
-  '(^|[^[:alnum:]])risk[[:alpha:]]*([^[:alnum:]]|$)'
-  '(^|[^[:alnum:]])test(s|ing)?([[:space:]-]?plan[[:alpha:]]*)?([^[:alnum:]]|$)'
-  '(^|[^[:alnum:]])rollback[[:alpha:]]*([^[:alnum:]]|$)'
-  '(^|[^[:alnum:]])monitoring[[:alpha:]]*([^[:alnum:]]|$)'
+  '(^|[^[:alnum:]])problems?([^[:alnum:]]|$)'
+  '(^|[^[:alnum:]])risks?([^[:alnum:]]|$)'
+  '(^|[^[:alnum:]])test(s|ing)?([[:space:]-]?plan(s)?)?([^[:alnum:]]|$)'
+  '(^|[^[:alnum:]])rollback(s)?([^[:alnum:]]|$)'
+  '(^|[^[:alnum:]])monitoring([^[:alnum:]]|$)'
 )
 
 # sc_description_missing — count how many of the five canonical sections lack
