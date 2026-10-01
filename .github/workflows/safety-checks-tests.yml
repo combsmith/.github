@@ -1,0 +1,60 @@
+# Quality gate for scripts/lib/safety-checks.sh — the sourceable PR-safety
+# signal helpers backing the Layer 1 spam-pr-guard scorer (epic #1200,
+# story #1202).
+#
+# Scope: tests sc_description_missing, which replaces the naive keyword grep
+# that let an unfilled PR template score 0/5 missing — the regression that
+# allowed petry-projects/.github-private#1976 through automation.
+#
+# Pattern mirrors .github/workflows/agents-md-rules-tests.yml: pinned
+# actions/checkout, path-filtered triggers, read-only token, bats runner.
+# ShellCheck for the lib itself is covered by this workflow's bats "passes
+# shellcheck" case AND by ci.yml's org-wide ShellCheck job over scripts/**.
+
+name: Safety Checks Tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/lib/safety-checks.sh'
+      - 'tests/test_safety_checks.bats'
+      - 'tests/fixtures/safety-checks/**'
+      - '.github/workflows/safety-checks-tests.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/lib/safety-checks.sh'
+      - 'tests/test_safety_checks.bats'
+      - 'tests/fixtures/safety-checks/**'
+      - '.github/workflows/safety-checks-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safety-checks-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Validate PR-safety signal helpers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          # Read-only test job — never pushes; don't leave the token in git config.
+          persist-credentials: false
+
+      - name: Install bats and shellcheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bats shellcheck
+
+      - name: Run bats suite
+        run: |
+          bats --print-output-on-failure tests/test_safety_checks.bats
