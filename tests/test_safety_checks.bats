@@ -85,13 +85,13 @@ setup() {
   [ "$output" = "5" ]
 }
 
-@test "sc_description_missing: a keyword inside a non-section heading does NOT satisfy that section" {
-  # The word 'problem' appears inside H1 'Design Problem Statement' but no
-  # H2/H3 opens that section; the Problem section is still missing.
+@test "sc_description_missing: an H1 whose title matches a section keyword, with body text, counts as present" {
+  # ATX H1 headings open sections just like H2/H3 (one-to-six hashes per
+  # CommonMark). 'Design Problem Statement' is an H1 containing the whole word
+  # 'problem', so the prose beneath it marks the Problem section present.
   body=$'# Design Problem Statement\n\nSome prose about scope.\n\n## Risk\n\nreal content\n\n## Test Plan\n\nreal content\n\n## Rollback\n\nreal content\n\n## Monitoring\n\nreal content\n'
   run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
   [ "$status" -eq 0 ]
-  # Problem H1 opens; the prose beneath marks problem as present.
   [ "$output" = "0" ]
 }
 
@@ -111,6 +111,44 @@ setup() {
   run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
+}
+
+@test "sc_description_missing: a tab-indented '## problem' does NOT register as a heading" {
+  # CommonMark treats a leading tab as four-column indentation (an indented
+  # code block), not ATX heading indentation, so only literal spaces count.
+  # The Problem section must therefore stay missing.
+  body=$'\t## Problem\n\nx\n\n## Risk\n\nx\n\n## Test Plan\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "sc_description_missing: a run of seven '#' does NOT register as a heading" {
+  # ATX headings are limited to six hashes; seven or more is plain text, so the
+  # Problem section stays missing.
+  body=$'####### Problem\n\nx\n\n## Risk\n\nx\n\n## Test Plan\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "sc_description_missing: a combined heading opens every section it names" {
+  # '## Risk and Rollback' matches both the risk and rollback keys; the body
+  # beneath must mark BOTH present, leaving only problem/test-plan/monitoring
+  # missing (3), not 4.
+  body=$'## Risk and Rollback\n\nreal content\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "3" ]
+}
+
+@test "sc_description_missing: a bare '## Tests' heading satisfies the test-plan section" {
+  # Real PRs use plain verb forms ('Tests', 'Testing') for the test section;
+  # the test-plan key accepts them with the 'plan' segment optional.
+  body=$'## Problem\n\nx\n\n## Risk\n\nx\n\n## Tests\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
 }
 
 @test "sc_description_missing: heading variants (Rollback Plan, Test plan / verification) still match" {

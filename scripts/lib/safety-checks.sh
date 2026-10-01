@@ -33,10 +33,13 @@ SC_DESCRIPTION_SECTION_KEYS=(problem risk test-plan rollback monitoring)
 # Mitigations", "Rollback Plan", "Monitoring and alerts" — still match. The
 # trailing [[:alpha:]]* applies ONLY to heading matching; body-text classification
 # never consults these patterns, so "problematic" in prose does not confuse it.
+# The test-plan key additionally accepts the bare verb forms real PRs use —
+# "Tests", "Testing", "How to test" — with the "plan" segment optional, so a
+# "## Tests" heading is not mis-flagged as a missing test section.
 SC_DESCRIPTION_SECTION_PATTERNS=(
   '(^|[^[:alnum:]])problem[[:alpha:]]*([^[:alnum:]]|$)'
   '(^|[^[:alnum:]])risk[[:alpha:]]*([^[:alnum:]]|$)'
-  '(^|[^[:alnum:]])test[-[:space:]]?plan[[:alpha:]]*([^[:alnum:]]|$)'
+  '(^|[^[:alnum:]])test(s|ing)?([[:space:]-]?plan[[:alpha:]]*)?([^[:alnum:]]|$)'
   '(^|[^[:alnum:]])rollback[[:alpha:]]*([^[:alnum:]]|$)'
   '(^|[^[:alnum:]])monitoring[[:alpha:]]*([^[:alnum:]]|$)'
 )
@@ -66,7 +69,7 @@ sc_description_missing() {
   fi
 
   local -a found=(0 0 0 0 0)
-  local current=0           # 1-based index into SC_DESCRIPTION_SECTION_KEYS, or 0
+  local -a current=()       # 0-based indexes of sections the last heading opened
   local in_comment=0        # whether we are inside a <!-- ... --> span
   local line stripped tail
 
@@ -107,33 +110,38 @@ sc_description_missing() {
       fi
     done
 
-    # (b) Heading line? Record whether it matches any yet-unmet section key.
-    # ATX headings per CommonMark: at most three leading spaces, then a run of
-    # `#` followed by whitespace or end-of-line. Four or more leading spaces
-    # is an indented code block, so a line like `    # problem` must NOT
-    # register as a Problem heading.
-    local heading_regex='^[[:space:]]{0,3}#+([[:space:]]|$)'
+    # (b) Heading line? Record EVERY yet-unmet section key it matches. A single
+    # heading can open more than one section ("## Risk and Rollback", "## Problem
+    # / Risk"), so we collect all matching indexes rather than stopping at the
+    # first — each section is matched independently per the contract above.
+    # ATX headings per CommonMark: at most three leading SPACES (a leading tab is
+    # four-column indentation, i.e. an indented code block), then one-to-six `#`
+    # (seven or more is not a heading) followed by whitespace or end-of-line. So
+    # a line like `    # problem` or `\t## problem` must NOT register as a heading.
+    local heading_regex='^ {0,3}#{1,6}([[:space:]]|$)'
     if [[ "$stripped" =~ $heading_regex ]]; then
-      current=0
+      current=()
       # Native lowercase (bash 4+) — avoids a per-line subshell + tr fork.
       local lower="${stripped,,}"
       local i
       for i in "${!SC_DESCRIPTION_SECTION_PATTERNS[@]}"; do
         if (( found[i] )); then continue; fi
         if [[ "$lower" =~ ${SC_DESCRIPTION_SECTION_PATTERNS[i]} ]]; then
-          current=$((i + 1))
-          break
+          current+=("$i")
         fi
       done
       continue
     fi
 
-    # (c) Body text. If it's under one of the five sections AND has at least
-    # one non-whitespace character, mark that section found.
-    if (( current > 0 )); then
+    # (c) Body text. If it sits under one or more open sections AND has at least
+    # one non-whitespace character, mark every one of those sections found.
+    if (( ${#current[@]} > 0 )); then
       local non_space_regex='[^[:space:]]'
       if [[ "$stripped" =~ $non_space_regex ]]; then
-        found[current - 1]=1
+        local idx
+        for idx in "${current[@]}"; do
+          found[idx]=1
+        done
       fi
     fi
   done <<<"$body"
