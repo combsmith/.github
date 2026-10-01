@@ -108,11 +108,15 @@ sc_description_missing() {
     done
 
     # (b) Heading line? Record whether it matches any yet-unmet section key.
-    # ATX headings only: a run of `#` followed by whitespace or end-of-line.
-    if [[ "$stripped" =~ ^[[:space:]]*#+([[:space:]]|$) ]]; then
+    # ATX headings per CommonMark: at most three leading spaces, then a run of
+    # `#` followed by whitespace or end-of-line. Four or more leading spaces
+    # is an indented code block, so a line like `    # problem` must NOT
+    # register as a Problem heading.
+    local heading_regex='^[[:space:]]{0,3}#+([[:space:]]|$)'
+    if [[ "$stripped" =~ $heading_regex ]]; then
       current=0
-      local lower
-      lower="$(printf '%s' "$stripped" | tr '[:upper:]' '[:lower:]')"
+      # Native lowercase (bash 4+) — avoids a per-line subshell + tr fork.
+      local lower="${stripped,,}"
       local i
       for i in "${!SC_DESCRIPTION_SECTION_PATTERNS[@]}"; do
         if (( found[i] )); then continue; fi
@@ -127,8 +131,8 @@ sc_description_missing() {
     # (c) Body text. If it's under one of the five sections AND has at least
     # one non-whitespace character, mark that section found.
     if (( current > 0 )); then
-      local trimmed="${stripped#"${stripped%%[![:space:]]*}"}"
-      if [[ -n "$trimmed" ]]; then
+      local non_space_regex='[^[:space:]]'
+      if [[ "$stripped" =~ $non_space_regex ]]; then
         found[current - 1]=1
       fi
     fi

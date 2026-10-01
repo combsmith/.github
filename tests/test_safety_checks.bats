@@ -104,6 +104,15 @@ setup() {
   [ "$output" = "1" ]
 }
 
+@test "sc_description_missing: an indented code block containing '# problem' does NOT register as a heading" {
+  # CommonMark: four or more leading spaces turn a line into an indented code
+  # block, not an ATX heading. The Problem section should still be missing.
+  body=$'    # problem (inside a code block)\n\n## Risk\n\nx\n\n## Test Plan\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
 @test "sc_description_missing: heading variants (Rollback Plan, Test plan / verification) still match" {
   body=$'## Problem\n\nx\n\n## Risks and Mitigations\n\nx\n\n## Test plan / verification\n\nx\n\n## Rollback Plan\n\nx\n\n## Monitoring and alerts\n\nx\n'
   run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
