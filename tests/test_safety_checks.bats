@@ -158,6 +158,61 @@ setup() {
   [ "$output" = "0" ]
 }
 
+# --- non-content filters (fenced code, thematic break, placeholder forms) ---
+
+@test "sc_description_missing: a '# problem' inside a fenced code block does NOT register as a heading" {
+  # Same regression class as #1976 — a code snippet in the Test Plan section
+  # must not open the Problem section via its own code comment. The Problem
+  # section is empty beyond its heading and must still count as missing.
+  body=$'## Problem\n\n## Risk\n\nx\n\n## Test Plan\n\n```shell\n# problem: this is a code example, not a heading\necho hi\n```\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "sc_description_missing: a tilde-fenced code block is also tracked" {
+  body=$'## Problem\n\n## Risk\n\nx\n\n## Test Plan\n\n~~~\n# problem: tilde-fenced example\n~~~\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "sc_description_missing: a Markdown thematic break under an otherwise empty section does NOT count as body text" {
+  # '---' / '***' / '___' are structural rules, not content. The Problem
+  # section only carries a horizontal rule and must still count as missing.
+  body=$'## Problem\n\n---\n\n## Risk\n\nx\n\n## Test Plan\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "sc_description_missing: '_No response_' placeholder lines do NOT count as body text" {
+  # GitHub form default: when a contributor leaves an issue-form field empty,
+  # the field renders as '_No response_'. Treating it as real content turns a
+  # fully-skipped template into 0/5 missing. Three forms covered.
+  body=$'## Problem\n\n_No response_\n\n## Risk\n\n*No response*\n\n## Test Plan\n\nNo response\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "3" ]
+}
+
+# --- fail-closed contract (stdin read failure) ----------------------------
+
+@test "sc_description_missing: a failing stdin reader returns non-zero and emits no numeric score" {
+  # Fail-closed contract: if the body cannot be read, the function must exit
+  # non-zero so the caller (Phase 2's scorer) escalates to a human rather than
+  # scoring the PR 'not spam'. We simulate a hard read failure by shadowing
+  # `cat` with a shell function that always exits 1 — the shadow is inherited
+  # by the subshell that `$(cat)` spawns inside the function.
+  run bash -c "cat() { return 1; }; export -f cat; source '$LIB' && sc_description_missing"
+  # Expected: non-zero exit, no numeric stdout. (The function's own stderr
+  # message is captured in BATS stderr, not stdout, so stdout stays clean.)
+  [ "$status" -ne 0 ]
+  # output must not be a plain digit string a caller could mistake for a
+  # valid 0..5 score.
+  [[ ! "$output" =~ ^[0-9]+$ ]]
+}
+
 # --- shellcheck gate ------------------------------------------------------
 
 @test "scripts/lib/safety-checks.sh passes shellcheck" {
