@@ -359,8 +359,14 @@ pp_check_secret_scan_ci_job() {
   fi
 
   local ci_content
-  # GitHub returns content base64-encoded, line-wrapped at 60 chars
-  ci_content=$(echo "$ci_b64" | tr -d '\n ' | base64 -d 2>/dev/null || echo "")
+  # GitHub returns content base64-encoded, line-wrapped at 60 chars.
+  # Check base64's exit status: it can emit a partial prefix before failing,
+  # so || echo "" alone would preserve malformed output. Detect decode failures
+  # by checking the command's exit status.
+  ci_content=$(echo "$ci_b64" | tr -d '\n ' | base64 -d 2>/dev/null)
+  if [[ $? -ne 0 ]]; then
+    ci_content=""
+  fi
 
   if [[ -z "$ci_content" ]]; then
     # ci.yml exists (we had base64 above) but is empty or could not be decoded.

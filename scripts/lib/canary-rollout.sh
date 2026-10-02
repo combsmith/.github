@@ -167,8 +167,11 @@ promotion_failure_should_escalate() {
   local count="$1" threshold="$2"
   case "$count" in ''|*[!0-9]*) echo 0; return 0 ;; esac
   case "$threshold" in ''|*[!0-9]*) echo 0; return 0 ;; esac
+  # Normalize to base 10 before comparison so leading-zero decimals like "08"
+  # are not misread as octal.
+  threshold="$((10#$threshold))"
   [[ "$threshold" -lt 1 ]] && threshold=1
-  if [[ "$count" -ge "$threshold" ]]; then echo 1; else echo 0; fi
+  if [[ "$((10#$count))" -ge "$threshold" ]]; then echo 1; else echo 0; fi
 }
 
 # ── autocut pagination termination (#1023) ────────────────────────────────────
