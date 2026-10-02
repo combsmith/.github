@@ -250,7 +250,9 @@ ring_highest_major() {
     v="${v#v}"
     [[ "$v" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || continue
     major="${BASH_REMATCH[1]}"
-    if [[ -z "$best" ]] || [[ "$major" -gt "$best" ]]; then
+    # Normalize to base 10 before comparison so leading-zero version numbers
+    # like "09" are not misread as octal.
+    if [[ -z "$best" ]] || [[ "$((10#$major))" -gt "$((10#$best))" ]]; then
       best="$major"
     fi
   done
