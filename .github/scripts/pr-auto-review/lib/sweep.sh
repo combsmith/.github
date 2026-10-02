@@ -33,8 +33,10 @@ pr_auto_review_sweep_candidates() {
 
   # Back-pressure guard: only a positive integer bounds the run. Anything else
   # (0, negative, non-numeric) selects nothing so a misconfigured cap can never
-  # fire an unbounded dispatch burst.
-  if ! [[ "$max" =~ ^[0-9]+$ ]] || [[ "$max" -le 0 ]]; then
+  # fire an unbounded dispatch burst. Avoid arithmetic comparison for large
+  # values that exceed Bash's signed-integer range — check for zero-only strings
+  # to avoid wrap-around errors with values like "9223372036854775808" (2^63).
+  if ! [[ "$max" =~ ^[0-9]+$ ]] || [[ "$max" =~ ^0+$ ]]; then
     return 0
   fi
 
