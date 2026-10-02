@@ -110,14 +110,16 @@ while true; do
     "${cursor_arg[@]}" \
     -f owner="$OWNER" -f name="$NAME" -F number="$PR")"
 
+  # Reject an errors envelope on EVERY page (HTTP 200 can carry partial data plus
+  # errors); processing a partial page would silently omit stale reviews.
+  if jq -e '(.errors // []) | length > 0' <<<"$response" >/dev/null 2>&1; then
+    echo "::error::GraphQL error while fetching reviews for ${OWNER}/${NAME}#${PR}: $(jq -r '.errors[0].message // "unknown error"' <<<"$response")" >&2
+    exit 1
+  fi
+
   # Resolve the head oid once, from the first page, and fail-loud-then-noop if the
   # PR cannot be resolved — before examining any reviews.
   if [ "$first" = "true" ]; then
-    # Reject errors in the response; distinguish from a not-found case.
-    if jq -e '(.errors // []) | length > 0' <<<"$response" >/dev/null 2>&1; then
-      echo "::error::GraphQL error while fetching head oid for ${OWNER}/${NAME}#${PR}: $(jq -r '.errors[0].message // "unknown error"' <<<"$response")" >&2
-      exit 1
-    fi
     head_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$response")"
     if [ -z "$head_oid" ]; then
       echo "::warning::could not resolve head oid for ${OWNER}/${NAME}#${PR} (PR not found or not accessible); nothing to do"
