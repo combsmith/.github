@@ -266,15 +266,15 @@ iso_epoch() { date -d "$1" +%s; }
   # UTC date (09-09) differs from the input's date (09-08). The check must be
   # timezone-neutral and accept the valid timestamp.
   local want; want="$(date -d '2026-09-08T23:30:00-05:00' +%s 2>/dev/null || printf '')"
-  [ -z "$want" ] && skip "date -d does not support -HH:MM on this platform"
+  [[ -z "$want" ]] && skip "date -d does not support -HH:MM on this platform"
   run bash -c "source '$LIB'; arl_token_iso_to_epoch '2026-09-08T23:30:00-05:00'"
-  [ "$output" = "$want" ]
+  [[ "$output" = "$want" ]]
 }
 
 @test "arl_token_extract_resets_at reads the weekly_all limits[] entry" {
   body='{"limits":[{"kind":"weekly_all","percent":40,"resets_at":"2026-09-02T15:59:59Z"}]}'
   run bash -c "source '$LIB'; arl_token_extract_resets_at '$body' weekly_all"
-  [ "$output" = "2026-09-02T15:59:59Z" ]
+  [[ "$output" = "2026-09-02T15:59:59Z" ]]
 }
 
 @test "arl_token_extract_resets_at falls back to the flattened seven_day key" {
