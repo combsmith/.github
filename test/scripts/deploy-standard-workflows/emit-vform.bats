@@ -77,22 +77,22 @@ channel_refs() {  # <agent> <M> [extra refs...]
   return 0
 }
 
-stub_pinning() {  # <ref> → base64 of a minimal auto-rebase stub pinning the reusable at <ref>
+stub_pinning() {  # <ref> → base64 of the auto-rebase template re-pinned to <ref>
   # Carries the S7635 marker on `secrets: inherit` — the shape a converged consumer
   # holds after #875/#876, so pin-drift fixtures are not falsely tripped by the
-  # marker-drift check (#877).
-  local body="jobs:
-  auto-rebase:
-    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@$1
-    secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable"
+  # marker-drift check (#877). Derived from the template so its on:/permissions:/
+  # concurrency: surfaces match and the surface-drift check (#1236) stays clean.
+  local body
+  body="$(sed -E "s|(auto-rebase-reusable\.yml)@[^[:space:]]+|\1@$1|" \
+    "${REPO_ROOT}/standards/workflows/auto-rebase.yml")"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
 
 stub_pinning_no_marker() {  # <ref> → base64 of the SAME stub but marker-less (#857 shape)
-  local body="jobs:
-  auto-rebase:
-    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@$1
-    secrets: inherit"
+  local body
+  body="$(sed -E -e "s|(auto-rebase-reusable\.yml)@[^[:space:]]+|\1@$1|" \
+    -e 's/^([[:space:]]*secrets:[[:space:]]+inherit).*/\1/' \
+    "${REPO_ROOT}/standards/workflows/auto-rebase.yml")"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
 
