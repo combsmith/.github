@@ -182,7 +182,10 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   # dismiss a review now on the current head even though it is no longer
   # superseded. Re-read the live head and stop all further mutations if it
   # changed; the synchronize/submitted event for the new head re-runs us (#1116).
-  if [ "$aborted" = "false" ]; then
+  if [ "$aborted" = "true" ]; then
+    break
+  fi
+  {
     current_head_recheck="$(gh_api_retry gh api graphql \
       -f query='query($owner:String!, $name:String!, $number:Int!) {
         repository(owner:$owner, name:$name) { pullRequest(number:$number) { headRefOid } }
@@ -192,9 +195,9 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
     if [ "$current_head_recheck_oid" != "$head_oid" ]; then
       echo "::warning::PR head moved from ${head_oid} to ${current_head_recheck_oid:-<unresolved>} during dismissal loop for ${OWNER}/${NAME}#${PR}; aborting remaining dismissals to avoid clearing a review on the new head"
       aborted=true
-      continue
+      break
     fi
-  fi
+  }
 
   msg="Superseded: dismissed by dismiss-stale-bot-reviews because ${login}'s CHANGES_REQUESTED review was on ${commit_oid} but the PR head is now ${head_oid}. A still-valid finding returns as a fresh review on the new commit."
   if [ "$APPLY" != "true" ]; then
