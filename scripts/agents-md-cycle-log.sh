@@ -216,11 +216,13 @@ amcl_clean_cycles_met() {
       }
     }' | sort)
   count="$(printf '%s' "$deduped" | grep -c . || true)"
-  if [[ "$count" -lt "$required" ]]; then
+  # Normalize to base 10 before comparison so leading-zero decimals like "010"
+  # are not misread as octal (see amcl_validate_log).
+  if [[ "$count" -lt "$((10#$required))" ]]; then
     printf 'false'
     return 0
   fi
-  recent="$(printf '%s' "$deduped" | tail -n "$required")"
+  recent="$(printf '%s' "$deduped" | tail -n "$((10#$required))")"
   local cycle findings fps details maintainer cln
   while IFS="$AMCL_FS" read -r cycle findings fps details maintainer cln; do
     [[ -n "$cycle" ]] || continue

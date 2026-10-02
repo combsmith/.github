@@ -228,7 +228,7 @@ arl_admission_decision() {
 
   # 1. Concurrency — hard cap on simultaneous runs of this type (counted, never
   #    cancelled; ADR §5).
-  if [[ -n "$max" ]] && [[ "$max" -gt 0 ]] && [[ "$concurrent" -ge "$max" ]]; then
+  if [[ -n "$max" ]] && [[ "$((10#$max))" -gt 0 ]] && [[ "$((10#$concurrent))" -ge "$((10#$max))" ]]; then
     decision="defer"
     reason="concurrency ${concurrent}/${max} at or over max_concurrent_runs"
   fi
@@ -236,7 +236,7 @@ arl_admission_decision() {
   # 2. Cooldown — minimum quiet interval since the last run (kills dispatch
   #    races; ADR §5). Skipped when disabled (0) or when there is no last run.
   #    A future last_run (elapsed < 0) is malformed state — fail open (allow).
-  if [[ "$decision" = "allow" ]] && [[ -n "$cooldown" ]] && [[ "$cooldown" -gt 0 ]] && [[ "$last_run" -gt 0 ]]; then
+  if [[ "$decision" = "allow" ]] && [[ -n "$cooldown" ]] && [[ "$((10#$cooldown))" -gt 0 ]] && [[ "$last_run" -gt 0 ]]; then
     local elapsed=$(( now - last_run ))
     local window=$(( cooldown * 60 ))
     if [[ "$elapsed" -lt 0 ]]; then
@@ -248,7 +248,7 @@ arl_admission_decision() {
   fi
 
   # 3. Daily budget — runs (dispatches for initiative-driver) per rolling 24h.
-  if [[ "$decision" = "allow" ]] && [[ -n "$daily" ]] && [[ "$daily" -gt 0 ]] && [[ "$daily_count" -ge "$daily" ]]; then
+  if [[ "$decision" = "allow" ]] && [[ -n "$daily" ]] && [[ "$((10#$daily))" -gt 0 ]] && [[ "$((10#$daily_count))" -ge "$((10#$daily))" ]]; then
     decision="defer"
     reason="daily budget ${daily_count}/${daily} at or over daily_run_budget"
   fi
