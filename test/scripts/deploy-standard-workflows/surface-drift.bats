@@ -62,7 +62,8 @@ deployed() {
   run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo markets --workflow agent-shield.yml
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'already compliant'
-  ! echo "$output" | grep -q 'Would open PR'
+  run grep -q 'Would open PR' <<< "$output"
+  [ "$status" -eq 1 ]
 }
 
 @test "#1236: a pin-correct stub MISSING the merge_group trigger is drift (on: surface)" {
@@ -72,8 +73,10 @@ deployed() {
   install_gh_stub
   run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo markets --workflow agent-shield.yml
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q 'already compliant'
-  echo "$output" | grep -qE 'Would open PR for markets .* agent-shield.yml'
+  sweep_output="$output"
+  run grep -q 'already compliant' <<< "$sweep_output"
+  [ "$status" -eq 1 ]
+  echo "$sweep_output" | grep -qE 'Would open PR for markets .* agent-shield.yml'
 }
 
 @test "#1236: dependency-audit stub missing merge_group is drift (on: surface)" {
@@ -95,8 +98,10 @@ deployed() {
   install_gh_stub
   run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo markets --workflow auto-rebase.yml
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q 'already compliant'
-  echo "$output" | grep -qE 'Would open PR for markets .* auto-rebase.yml'
+  sweep_output="$output"
+  run grep -q 'already compliant' <<< "$sweep_output"
+  [ "$status" -eq 1 ]
+  echo "$sweep_output" | grep -qE 'Would open PR for markets .* auto-rebase.yml'
 }
 
 @test "#1236: a stub whose permissions drifted is drift (permissions: surface)" {

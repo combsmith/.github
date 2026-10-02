@@ -40,6 +40,7 @@ readonly STUB_SURFACE_SHIMS=(
   "pr-review-mention.yml:on,permissions,concurrency"
   "feature-ideation.yml:on,permissions,concurrency"
   "pr-auto-review.yml:on,permissions,concurrency"
+  "persona-mention.yml:on,permissions"
 )
 
 # stub_guarded_surfaces <workflow.yml> -> the comma-separated surfaces guarded for
@@ -80,7 +81,7 @@ stub_extract_blocks() {
 }
 
 # stub_normalize_surface — read a surface block on stdin and canonicalize it for
-# comparison: strip trailing ` #…` inline comments and whole-line comments, drop
+# comparison: strip trailing ` #…` inline comments (outside quotes) and whole-line comments, drop
 # blank lines, and collapse two documented per-repo VALUES to placeholders:
 #   • schedule cron VALUES — a repo MAY retune the cron without it counting as
 #     trigger-surface drift (see feature-ideation.yml's header).
@@ -98,9 +99,23 @@ stub_extract_blocks() {
 # stdin -> stdout.
 stub_normalize_surface() {
   tr -d '\r' \
+    | awk '
+        # Strip a YAML comment (` #…` or a whole-line `#…`) only OUTSIDE quoted
+        # scalars, so `branches: ["release #1"]` keeps its `#1`.
+        {
+          out = ""; q = ""; n = length($0)
+          for (i = 1; i <= n; i++) {
+            c = substr($0, i, 1)
+            if (q != "") { if (c == q) q = ""; out = out c; continue }
+            if (c == "\"" || c == "\047") { q = c; out = out c; continue }
+            if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[[:space:]]/)) break
+            out = out c
+          }
+          sub(/[[:space:]]+$/, "", out)
+          print out
+        }
+      ' \
     | sed -E \
-        -e 's/[[:space:]]+#.*$//' \
-        -e 's/^[[:space:]]*#.*$//' \
         -e 's/(- cron:[[:space:]]*).*/\1CRON/' \
     | awk '
         function flush() {
@@ -149,7 +164,11 @@ stub_any_surface_drift() {
   local wf="$1" canonical="$2" deployed="$3" surfaces surface
   local -a surface_list
   surfaces="$(stub_guarded_surfaces "$wf")" || return 1
-  IFS=',' read -r -a surface_list <<< "$surfaces"
+  local old_ifs="$IFS"
+  IFS=,
+  # shellcheck disable=SC2206  # intentional comma split of a fixed internal list
+  surface_list=($surfaces)
+  IFS="$old_ifs"
   for surface in "${surface_list[@]}"; do
     stub_surface_drift "$canonical" "$deployed" "$surface" && return 0
   done
