@@ -253,7 +253,7 @@ ring_highest_major() {
     # Normalize to base 10 before comparison so leading-zero version numbers
     # like "09" are not misread as octal.
     if [[ -z "$best" ]] || [[ "$((10#$major))" -gt "$((10#$best))" ]]; then
-      best="$major"
+      best="$((10#$major))"
     fi
   done
   [[ -n "$best" ]] && printf '%s' "$best"
@@ -302,7 +302,7 @@ ring_highest_channel_major() {
     [[ "$tok" =~ ^([0-9]+)-(stable|next|ring[0-9]+)$ ]] || continue
     major="${BASH_REMATCH[1]}"
     if [[ -z "$best" ]] || [[ "$major" -gt "$best" ]]; then
-      best="$major"
+      best="$((10#$major))"
     fi
   done
   [[ -n "$best" ]] && printf '%s' "$best"
