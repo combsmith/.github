@@ -62,8 +62,8 @@ deployed() {
   run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo markets --workflow agent-shield.yml
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'already compliant'
-  run grep -q 'Would open PR' <<< "$output"
-  [ "$status" -eq 1 ]
+  run ! grep -q 'Would open PR' <<< "$output"
+  [ "$status" -eq 0 ]
 }
 
 @test "#1236: a pin-correct stub MISSING the merge_group trigger is drift (on: surface)" {
@@ -74,8 +74,8 @@ deployed() {
   run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo markets --workflow agent-shield.yml
   [ "$status" -eq 0 ]
   sweep_output="$output"
-  run grep -q 'already compliant' <<< "$sweep_output"
-  [ "$status" -eq 1 ]
+  run ! grep -q 'already compliant' <<< "$sweep_output"
+  [ "$status" -eq 0 ]
   echo "$sweep_output" | grep -qE 'Would open PR for markets .* agent-shield.yml'
 }
 
@@ -99,8 +99,8 @@ deployed() {
   run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo markets --workflow auto-rebase.yml
   [ "$status" -eq 0 ]
   sweep_output="$output"
-  run grep -q 'already compliant' <<< "$sweep_output"
-  [ "$status" -eq 1 ]
+  run ! grep -q 'already compliant' <<< "$sweep_output"
+  [ "$status" -eq 0 ]
   echo "$sweep_output" | grep -qE 'Would open PR for markets .* auto-rebase.yml'
 }
 
