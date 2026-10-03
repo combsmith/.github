@@ -67,6 +67,10 @@ DEV_LEAD_HANDS_OFF_DESC="Exclude from dev-lead agent automation"
 # this label from the persona manifest; the audit ensures it locally too so a
 # finding issue can carry it on a repo the applier has not yet reconciled.
 DEV_LEAD_HANDS_OFF_COLOR="ededed"
+# Finding categories and match types
+CATEGORY_RULESETS="rulesets"
+MATCH_TYPE_CLAUDE_ISSUE="claude-issue"
+SETTING_MISSING_VALUE="missing"
 REPORT_DIR="${REPORT_DIR:-$(mktemp -d)}"
 DRY_RUN="${DRY_RUN:-false}"
 CREATE_ISSUES="${CREATE_ISSUES:-true}"
@@ -858,13 +862,13 @@ check_rulesets() {
   names=$(echo "$rulesets_json" | jq -r '.[].name' 2>/dev/null || echo "")
 
   if ! echo "$names" | grep -qx "pr-quality"; then
-    add_finding "$repo" "rulesets" "missing-pr-quality" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "missing-pr-quality" "error" \
       "Missing \`pr-quality\` repository ruleset" \
       "standards/github-settings.md#pr-quality--standard-ruleset-all-repositories"
   fi
 
   if ! echo "$names" | grep -qx "code-quality"; then
-    add_finding "$repo" "rulesets" "missing-code-quality" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "missing-code-quality" "error" \
       "Missing \`code-quality\` repository ruleset (required status checks)" \
       "standards/github-settings.md#code-quality--required-checks-ruleset-all-repositories"
   fi
@@ -969,7 +973,7 @@ _ruleset_contents_one() {
   # --- Codified source of truth (fail closed if missing/unparseable) --------
   local codified_file="$RULESETS_SRC_DIR/$name.json"
   if [[ ! -f "$codified_file" ]]; then
-    add_finding "$repo" "rulesets" "ruleset-contents-source-missing-$name" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-contents-source-missing-$name" "error" \
       "Cannot audit \`$name\` ruleset contents: codified source of truth \`standards/rulesets/$name.json\` was not found. Treating as a finding rather than a pass (fail closed) — an audit that cannot read the standard must never read as \"no drift\"." \
       "$std_ref"
     return 0
@@ -977,7 +981,7 @@ _ruleset_contents_one() {
   local exp_params
   exp_params=$(jq -c --arg t "$rtype" '[.rules[]? | select(.type==$t) | .parameters][0] // empty' "$codified_file" 2>/dev/null || echo "")
   if [[ -z "$exp_params" ]]; then
-    add_finding "$repo" "rulesets" "ruleset-contents-source-invalid-$name" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-contents-source-invalid-$name" "error" \
       "Cannot audit \`$name\` ruleset contents: codified source \`standards/rulesets/$name.json\` has no \`$rtype\` rule parameters to compare against (unparseable or malformed). Fail closed." \
       "$std_ref"
     return 0
@@ -993,7 +997,7 @@ _ruleset_contents_one() {
   local rs
   rs=$(gh_api "repos/$ORG/$repo/rulesets/$rs_id" 2>/dev/null || echo "")
   if [[ -z "$rs" ]] || ! echo "$rs" | jq empty >/dev/null 2>&1; then
-    add_finding "$repo" "rulesets" "ruleset-contents-unfetchable-$name" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-contents-unfetchable-$name" "error" \
       "Could not fetch or parse the \`$name\` ruleset (id $rs_id) to audit its contents against \`standards/rulesets/$name.json\`. Treating as drift, not a pass (fail closed): an error must never be conflated with \"no drift\"." \
       "$std_ref"
     return 0
@@ -1021,7 +1025,7 @@ _ruleset_contents_one() {
   local has_rule
   has_rule=$(echo "$rs" | jq --arg t "$rtype" 'any(.rules[]?; .type==$t)' 2>/dev/null || echo "false")
   if [[ "$has_rule" != "true" ]]; then
-    add_finding "$repo" "rulesets" "ruleset-drift-$name-missing-rule" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-drift-$name-missing-rule" "error" \
       "Ruleset \`$name\` exists but no longer carries a \`$rtype\` rule, so every codified parameter is unenforced. The codified standard (\`standards/rulesets/$name.json\`) requires it; run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
       "$std_ref"
     return 0
@@ -1034,7 +1038,7 @@ _ruleset_contents_one() {
   # --- Diff codified vs live and emit one finding per drifted parameter ------
   local drift
   if ! drift=$(jq -rn --argjson exp "$exp_params" --argjson act "$act_params" "$RULESET_DRIFT_JQ" 2>/dev/null); then
-    add_finding "$repo" "rulesets" "ruleset-contents-uncomparable-$name" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-contents-uncomparable-$name" "error" \
       "Could not compare the \`$name\` ruleset (id $rs_id) against \`standards/rulesets/$name.json\` (parameter comparison failed). Fail closed." \
       "$std_ref"
     return 0
@@ -1045,7 +1049,7 @@ _ruleset_contents_one() {
     [[ -z "$param" ]] && continue
     slug=$(printf '%s' "$param" | tr '[:upper:]' '[:lower:]' | tr ' /' '--' | tr -cd 'a-z0-9_-')
     [[ -z "$slug" ]] && slug="param"
-    add_finding "$repo" "rulesets" "ruleset-drift-$name-$slug" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-drift-$name-$slug" "error" \
       "Ruleset \`$name\` parameter \`$param\` has drifted from the codified standard: expected \`$expected\`, actual \`$actual\`. The codified JSON (\`standards/rulesets/$name.json\`) is the source of truth (#575/#580); run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
       "$std_ref"
   done <<< "$drift"
@@ -1263,7 +1267,7 @@ check_ruleset_bypass_actors() {
       # zero-findings safeguard. Recording the repo as inconclusive keeps it from
       # being treated as fully audited so no bypass finding is falsely resolved.
       mark_repo_inconclusive "$repo"
-      add_finding "$repo" "rulesets" "ruleset-bypass-unfetchable-$rs_id" "error" \
+      add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-unfetchable-$rs_id" "error" \
         "Could not fetch or parse ruleset id $rs_id to verify its required bypass actors. Treating as a finding rather than a pass (fail closed): an error must never be conflated with a compliant ruleset. Re-run the audit with a token that can read rulesets." \
         "$std_ref"
       continue
@@ -1310,15 +1314,15 @@ check_ruleset_bypass_actors() {
 
     if [[ "$oa_always" != "true" ]]; then
       if [[ "$oa_any" = "true" ]]; then
-        add_finding "$repo" "rulesets" "ruleset-bypass-orgadmin-mode-$slug" "error" \
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-orgadmin-mode-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants \`OrganizationAdmin\` bypass but not with \`bypass_mode: always\`. The standard requires \`always\` for emergency admin override on every ruleset targeting the default branch." \
           "$std_ref"
       elif [[ "$repo_admin" = "true" ]]; then
-        add_finding "$repo" "rulesets" "ruleset-bypass-orgadmin-$slug" "error" \
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-orgadmin-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants bypass to the **Repository admin** role (RepositoryRole id 5), not the **OrganizationAdmin** role required by the standard. Repository admin is repo-scoped and does not satisfy the org-wide emergency-override requirement. Add \`OrganizationAdmin\` with \`bypass_mode: always\`." \
           "$std_ref"
       else
-        add_finding "$repo" "rulesets" "ruleset-bypass-orgadmin-$slug" "error" \
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-orgadmin-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) is missing the required \`OrganizationAdmin\` bypass actor (\`bypass_mode: always\`) for emergency admin override." \
           "$std_ref"
       fi
@@ -1327,11 +1331,11 @@ check_ruleset_bypass_actors() {
     # --- dependabot-automerge-petry app -----------------------------------
     if [[ "$dep_always" != "true" ]]; then
       if [[ "$dep_any" = "true" ]]; then
-        add_finding "$repo" "rulesets" "ruleset-bypass-dependabot-mode-$slug" "error" \
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-dependabot-mode-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants the \`dependabot-automerge-petry\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass but with the wrong mode. \`pull_request\` mode only applies when the bypass actor opens the PR; Dependabot opens its own PRs, so its merge API calls are rejected. Set \`bypass_mode: always\`." \
           "$std_ref"
       else
-        add_finding "$repo" "rulesets" "ruleset-bypass-dependabot-$slug" "error" \
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-dependabot-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) is missing the required \`dependabot-automerge-petry\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass actor (\`bypass_mode: always\`). Without it, Dependabot auto-merge API calls are rejected by this ruleset — GitHub evaluates bypass per-ruleset, so it must be present on every ruleset targeting the default branch, not only \`pr-quality\`." \
           "$std_ref"
       fi
@@ -1434,7 +1438,7 @@ check_legacy_rulesets() {
       migrate_note="Every required check it carries is already required by a sanctioned ruleset, so it is **safe to delete** (e.g. \`gh api -X DELETE repos/$ORG/$repo/rulesets/$rs_id\`)."
     fi
 
-    add_finding "$repo" "rulesets" "legacy-ruleset-$slug" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "legacy-ruleset-$slug" "error" \
       "Legacy ruleset \`$rs_name\` (id $rs_id) targets the default branch. Only \`pr-quality\` and \`code-quality\` are sanctioned; classic \`protect-branches\` / ad-hoc \`main\` rulesets are deprecated and must be migrated into the two sanctioned rulesets and removed (a duplicate ruleset is a second place every bypass actor must be kept in sync). $migrate_note" \
       "$std_ref"
   done
@@ -2523,7 +2527,7 @@ check_centralized_check_names() {
   for entry in "${renames[@]}"; do
     IFS=':' read -r old new <<< "$entry"
     if echo "$contexts" | grep -qxF "$old"; then
-      add_finding "$repo" "rulesets" "stale-required-check-${old// /-}" "error" \
+      add_finding "$repo" "$CATEGORY_RULESETS" "stale-required-check-${old// /-}" "error" \
         "Required-status-check ruleset references the stale check name \`$old\`. After workflow centralization (combsmith/.github#87) this check is published as \`$new\`. Update the ruleset (and any classic branch protection) to use the new name." \
         "standards/ci-standards.md#centralization-tiers"
     fi
@@ -2543,22 +2547,22 @@ check_centralized_check_names() {
     match_type=""
     case "$context" in
       "claude")              match_type="claude" ;;
-      "claude-issue")        match_type="claude-issue" ;;
+      "$MATCH_TYPE_CLAUDE_ISSUE")        match_type="$MATCH_TYPE_CLAUDE_ISSUE" ;;
       *"/ claude")           match_type="claude" ;;
-      *"/ claude-issue")     match_type="claude-issue" ;;
+      *"/ $MATCH_TYPE_CLAUDE_ISSUE")     match_type="$MATCH_TYPE_CLAUDE_ISSUE" ;;
       *) continue ;;
     esac
 
     # Stable check id per match type so findings don't churn across
     # audit runs from variations in caller-job-id prefixes.
     local check_id
-    if [[ "$match_type" = "claude-issue" ]]; then
+    if [[ "$match_type" = "$MATCH_TYPE_CLAUDE_ISSUE" ]]; then
       check_id="required-claude-issue-check-broken"
     else
       check_id="required-claude-check-broken"
     fi
 
-    add_finding "$repo" "rulesets" "$check_id" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "$check_id" "error" \
       "Required-status-check ruleset includes \`$context\`, which is incompatible with workflow-modifying PRs. claude-code-action's GitHub App refuses to mint an OAuth token for any PR whose diff includes a workflow file, so the check fails on every workflow PR and the merge gate becomes a deadlock. **Remove \`$context\` from required status checks** — do NOT rename it. The Claude review check still runs on normal PRs and surfaces feedback without being a merge gate. See the codified \`standards/rulesets/code-quality.json\` for the canonical required-checks list." \
       "standards/ci-standards.md#centralization-tiers"
   done <<< "$contexts"
@@ -2856,10 +2860,10 @@ check_check_suite_prefs() {
   for app_id in "${CHECK_SUITE_APP_IDS[@]}"; do
     local setting
     setting=$(echo "$prefs" | jq -r --argjson id "$app_id" \
-      '.preferences.auto_trigger_checks // [] | map(select(.app_id == $id)) | first | .setting // "missing"')
+      '.preferences.auto_trigger_checks // [] | map(select(.app_id == $id)) | first | .setting // "'$SETTING_MISSING_VALUE'"')
 
-    # "missing" means the app has never run in this repo — no orphaned suite possible
-    [[ "$setting" = "missing" ]] && continue
+    # "$SETTING_MISSING_VALUE" means the app has never run in this repo — no orphaned suite possible
+    [[ "$setting" = "$SETTING_MISSING_VALUE" ]] && continue
     [[ "$setting" = "false"   ]] && continue
 
     local app_label="app_id=$app_id"
@@ -3004,7 +3008,7 @@ This finding is still open.
     # we swap the actor label to dev-lead:hands-off. The comment update above
     # already re-reported the finding (AC3) — hands-off removes the actor without
     # resolving the finding; convergence happens via apply-rulesets.sh (#1045).
-    if [[ "$category" = "rulesets" ]]; then
+    if [[ "$category" = "$CATEGORY_RULESETS" ]]; then
       # Only drop the active dev-lead route once the re-report comment above
       # actually landed. If the update failed (update_ok=false), swapping to
       # hands-off would remove dev-lead without a successful re-report, leaving
