@@ -77,8 +77,11 @@ THIS_REPO="${GITHUB_REPOSITORY:-petry-projects/.github}"
 # is treated as UNRESOLVABLE and fails safe to a major bump (#1023 defect 1b), never silently to
 # patch. 50 pages = 5000 commits — far beyond any real inter-cut range.
 CANARY_MAX_COMMIT_PAGES="${CANARY_MAX_COMMIT_PAGES:-50}"
-if ! [[ "$CANARY_MAX_COMMIT_PAGES" =~ ^[0-9]+$ ]] || [[ "$CANARY_MAX_COMMIT_PAGES" -le 0 ]]; then
+if ! [[ "$CANARY_MAX_COMMIT_PAGES" =~ ^[0-9]+$ ]] || [[ "$((10#$CANARY_MAX_COMMIT_PAGES))" -le 0 ]]; then
   CANARY_MAX_COMMIT_PAGES=50
+else
+  # Normalize to base 10 to prevent leading-zero octal misinterpretation.
+  CANARY_MAX_COMMIT_PAGES=$((10#$CANARY_MAX_COMMIT_PAGES))
 fi
 
 # CANARY_PROMOTION_FAILURE_ESCALATE_AFTER — how many CONSECUTIVE scheduled runs a tag write may
