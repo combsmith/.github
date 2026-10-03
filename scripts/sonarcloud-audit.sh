@@ -214,6 +214,8 @@ scan() {
     else
       target_name="$TARGET_REPO"
     fi
+    target_name="${target_name#"${target_name%%[![:space:]]*}"}"
+    target_name="${target_name%"${target_name##*[![:space:]]}"}"
     if [[ -z "$target_name" ]]; then
       printf 'Error: TARGET_REPO produced an empty repository name\n' >&2
       return 1
