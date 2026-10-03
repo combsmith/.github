@@ -198,7 +198,7 @@ amcl_clean_cycles_met() {
     printf 'false'
     return 0
   fi
-  if ! amcl_is_uint "$required" || [[ ${#required} -gt 19 ]]; then
+  if ! amcl_is_uint "$required" || [[ ${#required} -gt 19 ]] || [[ "$((10#$required))" -lt 1 ]]; then
     printf 'false'
     return 0
   fi
