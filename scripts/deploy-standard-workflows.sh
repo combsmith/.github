@@ -408,6 +408,22 @@ stub_has_s7635_marker() {
   grep -qE '^[[:space:]]*secrets:[[:space:]]+inherit[[:space:]].*NOSONAR\(githubactions:S7635\)'
 }
 
+# stub_has_only_surface_drift <workflow> <template> <existing_content> <repo> -> 0 if
+# the stub is pin-correct, marker-correct, but has surface drift; non-zero otherwise.
+# This distinguishes surface-drift-only failures from pin/marker issues (#1236).
+stub_has_only_surface_drift() {
+  local workflow="$1" template="$2" existing_content="$3" repo="$4"
+  # If pin is wrong, this is not a surface-drift-only case.
+  is_pin_compliant "$existing_content" "$template" "$repo" || return 1
+  # If marker is missing, this is not a surface-drift-only case.
+  if template_requires_s7635_marker "$template" \
+     && ! stub_has_s7635_marker <<< "$existing_content"; then
+    return 1
+  fi
+  # Only if both pin and marker are correct, check for surface drift.
+  stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content"
+}
+
 # is_already_compliant <existing_content> <template> <repo> -> 0 if the deployed
 # stub needs no re-deploy. A stub is compliant only when it is BOTH pin-compliant
 # (is_pin_compliant, below) AND — when its template carries a real `secrets: inherit`
@@ -709,6 +725,17 @@ deploy_repo() {
           printf '%s\n' "$existing_content" > "$repin_source"
         fi
       fi
+    elif [[ -n "$existing_sha" ]] && ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
+         && stub_has_only_surface_drift "$workflow" "$template" "$existing_content" "$repo"; then
+      # Surface drift detected but pin and marker are correct (#1236): re-pin the
+      # existing stub in place to preserve repo-specific customizations (e.g.
+      # pr-auto-review's custom workflow_run.workflows list, agent-shield's with: inputs)
+      # while updating any missing triggers/permissions/concurrency fields.
+      mode="surface-drift-repin"
+      if [[ "$DRY_RUN" != "true" ]]; then
+        repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
+        printf '%s\n' "$existing_content" > "$repin_source"
+      fi
     fi
 
     # When repin_source is a copy of existing_content (meta-repo consumer or body-
@@ -775,9 +802,10 @@ deploy_repo() {
     for (( i = 0; i < n; i++ )); do
       [[ -n "${emits[i]}" ]] && dry "$repo/${names[i]} would pin @${emits[i]}"
       case "${modes[i]}" in
-        seed)           dry "$repo/${names[i]} seed-if-absent: seeding fresh from template" ;;
-        repin-in-place) dry "$repo/${names[i]} re-pin uses in place — existing body/project_context preserved" ;;
-        replace)        dry "$repo/${names[i]} replace-if-present: replacing existing caller with the template body" ;;
+        seed)                dry "$repo/${names[i]} seed-if-absent: seeding fresh from template" ;;
+        repin-in-place)      dry "$repo/${names[i]} re-pin uses in place — existing body/project_context preserved" ;;
+        replace)             dry "$repo/${names[i]} replace-if-present: replacing existing caller with the template body" ;;
+        surface-drift-repin) dry "$repo/${names[i]} surface drift detected: re-pin existing stub to preserve repo-specific values" ;;
       esac
     done
     dry "Would open PR for $repo (branch $branch) — ${n} stub(s): $list"
