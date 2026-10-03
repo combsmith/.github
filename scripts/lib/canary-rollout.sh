@@ -24,9 +24,17 @@ clamp() {
   local v="$1" lo="$2" hi="$3"
   # Normalize to base 10 before comparisons so leading-zero decimals like "08"
   # are not misread as octal.
-  v=$((10#${v:-0}))
-  lo=$((10#${lo:-0}))
-  hi=$((10#${hi:-0}))
+  # Signs are preserved; only the magnitude is normalized.
+  local name value sign
+  for name in v lo hi; do
+    value="${!name:-0}"
+    sign=1
+    if [[ "$value" == -* ]]; then
+      sign=-1
+      value="${value#-}"
+    fi
+    printf -v "$name" "%s" "$(( sign * (10#${value:-0}) ))"
+  done
   if [[ "$v" -lt "$lo" ]]; then echo "$lo"; return 0; fi
   if [[ "$v" -gt "$hi" ]]; then echo "$hi"; return 0; fi
   echo "$v"
