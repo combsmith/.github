@@ -154,7 +154,7 @@ amcl_validate_log() {
     # Confirmed false positives are SELECTED FROM the structural findings, so the
     # count can never exceed the finding count; a row that claims otherwise is
     # malformed (both are validated as non-negative integers above).
-    if [[ "$fps" -gt "$findings" ]]; then
+    if [[ "$((10#$fps))" -gt "$((10#$findings))" ]]; then
       printf 'cycle %s: confirmed false positives (%s) cannot exceed structural findings (%s) — false positives are selected from the findings\n' \
         "$cycle" "$fps" "$findings" >&2
       rc=1; continue
@@ -162,13 +162,13 @@ amcl_validate_log() {
     # A nonzero false-positive count must record WHAT was confirmed; an empty (or
     # placeholder "—"/"-") details cell would leave the committed audit record
     # silent about the determination it claims to make.
-    if [[ "$fps" -ne 0 ]] && { [[ -z "$details" ]] || [[ "$details" = "—" ]] || [[ "$details" = "-" ]]; }; then
+    if [[ "$((10#$fps))" -ne 0 ]] && { [[ -z "$details" ]] || [[ "$details" = "—" ]] || [[ "$details" = "-" ]]; }; then
       printf 'cycle %s: %s confirmed false positive(s) recorded but the "False-positive details" cell is empty — record what was confirmed\n' \
         "$cycle" "$fps" >&2
       rc=1; continue
     fi
     local expected_clean
-    if [[ "$fps" -eq 0 ]]; then expected_clean="yes"; else expected_clean="no"; fi
+    if [[ "$((10#$fps))" -eq 0 ]]; then expected_clean="yes"; else expected_clean="no"; fi
     local clean_lc
     clean_lc=$(printf '%s' "$clean" | tr '[:upper:]' '[:lower:]')
     if [[ "$clean_lc" != "$expected_clean" ]]; then
