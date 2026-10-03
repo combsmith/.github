@@ -2337,7 +2337,7 @@ cmd_promote() {
     fi
     local advance=false via_allow_pre=false soak_unmet=false
     [ "$state" = "PROMOTE" ] && advance=true
-    [ "$pair_override" = true ] && advance=true
+    [ "$pair_override" = true ] && [ "$state" != "AWAITING_CONFIRMATION" ] && advance=true
     # allow-pre-existing is NARROW (#1177): it advances ONLY a BLOCKED pair triaged PRE_EXISTING, and
     # only once that pair's dwell floor AND sample target are met (a waived sample has target 0) —
     # it removes the environmental block, never the soak. REGRESSION/SUSPECT were refused above.
