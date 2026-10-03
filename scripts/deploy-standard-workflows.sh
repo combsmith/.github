@@ -727,15 +727,13 @@ deploy_repo() {
       fi
     elif [[ -n "$existing_sha" ]] && ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
          && stub_has_only_surface_drift "$workflow" "$template" "$existing_content" "$repo"; then
-      # Surface drift detected but pin and marker are correct (#1236): re-pin the
-      # existing stub in place to preserve repo-specific customizations (e.g.
-      # pr-auto-review's custom workflow_run.workflows list, agent-shield's with: inputs)
-      # while updating any missing triggers/permissions/concurrency fields.
+      # Surface drift detected but pin and marker are correct (#1236): use the
+      # template's canonical guarded surfaces (on:/permissions/concurrency) to fix
+      # the drift, rather than re-deploying the drifted stub in place. This ensures
+      # missing triggers/permissions/concurrency fields are added and drift-induced
+      # removals are restored.
       mode="surface-drift-repin"
-      if [[ "$DRY_RUN" != "true" ]]; then
-        repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
-        printf '%s\n' "$existing_content" > "$repin_source"
-      fi
+      repin_source="$template"
     fi
 
     # When repin_source is a copy of existing_content (meta-repo consumer or body-
