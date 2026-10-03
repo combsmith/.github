@@ -214,6 +214,10 @@ scan() {
     else
       target_name="$TARGET_REPO"
     fi
+    if [[ -z "$target_name" ]]; then
+      printf 'Error: TARGET_REPO produced an empty repository name\n' >&2
+      return 1
+    fi
   fi
 
   local ndjson_file="$REPORT_DIR/findings.ndjson"
