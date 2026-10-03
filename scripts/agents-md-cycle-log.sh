@@ -292,7 +292,7 @@ amcl_main() {
         printf 'agents-md-cycle-log: log file not found: %s\n' "$log" >&2
         return 2
       fi
-      if ! amcl_is_uint "$required" || [[ "$required" -lt 1 ]]; then
+      if ! amcl_is_uint "$required" || [[ "$((10#$required))" -lt 1 ]]; then
         printf 'agents-md-cycle-log: required-clean-cycles must be a positive integer, got "%s"\n' "$required" >&2
         return 2
       fi
