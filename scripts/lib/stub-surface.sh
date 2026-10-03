@@ -106,7 +106,12 @@ stub_normalize_surface() {
           out = ""; q = ""; n = length($0)
           for (i = 1; i <= n; i++) {
             c = substr($0, i, 1)
-            if (q != "") { if (c == q) q = ""; out = out c; continue }
+            if (q != "") {
+              # backslash escapes exist only in double-quoted YAML scalars
+              if (q == "\"" && c == "\\") { out = out c; i++; if (i <= n) out = out substr($0, i, 1); continue }
+              if (c == q) q = ""
+              out = out c; continue
+            }
             if (c == "\"" || c == "\047") { q = c; out = out c; continue }
             if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[[:space:]]/)) break
             out = out c

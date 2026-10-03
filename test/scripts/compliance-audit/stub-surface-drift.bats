@@ -423,3 +423,11 @@ EOF
   c="$(printf 'on:\n  push: # note\n    branches: [main]\n' | stub_normalize_surface)"
   [[ "$c" != *note* ]]
 }
+
+@test "normalize honors backslash-escaped quotes inside double-quoted scalars" {
+  source "${BATS_TEST_DIRNAME}/../../../scripts/lib/stub-surface.sh"
+  a="$(printf 'on:\n  push:\n    branches: ["release \\"#1\\""]\n' | stub_normalize_surface)"
+  b="$(printf 'on:\n  push:\n    branches: ["release \\"#2\\""]\n' | stub_normalize_surface)"
+  [ "$a" != "$b" ]
+  [[ "$a" == *'#1'* ]]
+}
