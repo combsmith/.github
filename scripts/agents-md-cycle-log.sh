@@ -198,6 +198,10 @@ amcl_clean_cycles_met() {
     printf 'false'
     return 0
   fi
+  if ! amcl_is_uint "$required" || [[ ${#required} -gt 19 ]]; then
+    printf 'false'
+    return 0
+  fi
   local rows deduped recent count clean=0
   rows="$(amcl_data_rows "$log")"
   # Deduplicate by cycle date: retain only the last row for each distinct cycle
@@ -292,7 +296,7 @@ amcl_main() {
         printf 'agents-md-cycle-log: log file not found: %s\n' "$log" >&2
         return 2
       fi
-      if ! amcl_is_uint "$required" || [[ "$((10#$required))" -lt 1 ]]; then
+      if ! amcl_is_uint "$required" || [[ ${#required} -gt 19 ]] || [[ "$((10#$required))" -lt 1 ]]; then
         printf 'agents-md-cycle-log: required-clean-cycles must be a positive integer, got "%s"\n' "$required" >&2
         return 2
       fi

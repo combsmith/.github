@@ -363,8 +363,9 @@ pp_check_secret_scan_ci_job() {
   # Check base64's exit status: it can emit a partial prefix before failing,
   # so || echo "" alone would preserve malformed output. Detect decode failures
   # by checking the command's exit status.
-  ci_content=$(echo "$ci_b64" | tr -d '\n ' | base64 -d 2>/dev/null)
-  if [[ $? -ne 0 ]]; then
+  if ci_content=$(echo "$ci_b64" | tr -d '\n ' | base64 -d 2>/dev/null); then
+    : # Decode succeeded
+  else
     ci_content=""
   fi
 
