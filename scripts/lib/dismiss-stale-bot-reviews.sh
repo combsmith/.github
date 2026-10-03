@@ -41,7 +41,7 @@ DSBR_DEFAULT_ALLOWLIST=(
 # "a[bot], b[bot]" resolves to "a[bot]" and "b[bot]", not "a[bot]" and " b[bot]".
 dsbr_resolve_allowlist() {
   local csv="${1:-${DSBR_BOT_ALLOWLIST:-}}"
-  if [ -z "$csv" ]; then
+  if [[ -z "$csv" ]]; then
     printf '%s\n' "${DSBR_DEFAULT_ALLOWLIST[@]}"
     return 0
   fi
@@ -51,7 +51,7 @@ dsbr_resolve_allowlist() {
   for entry in "${entries[@]}"; do
     entry="${entry#"${entry%%[![:space:]]*}"}"   # strip leading whitespace
     entry="${entry%"${entry##*[![:space:]]}"}"   # strip trailing whitespace
-    [ -n "$entry" ] && printf '%s\n' "$entry"
+    [[ -n "$entry" ]] && printf '%s\n' "$entry"
   done
 }
 
@@ -62,7 +62,7 @@ dsbr_resolve_allowlist() {
 #   even if a human login were mistakenly present in the allow-list.
 dsbr_is_allowlisted_bot() {
   local login="$1" author_type="$2" csv="${3:-}"
-  [ "$author_type" = "Bot" ] || return 1
+  [[ "$author_type" = "Bot" ]] || return 1
   # Pre-parse the resolved allow-list once into a local associative array so the
   # membership test is a native in-process lookup rather than a per-entry string
   # compare. All loop-scoped names are declared local so nothing leaks to global
@@ -72,7 +72,7 @@ dsbr_is_allowlisted_bot() {
   while IFS= read -r allowed; do
     allowed_bots["$allowed"]=1
   done < <(dsbr_resolve_allowlist "$csv")
-  [ -n "${allowed_bots[$login]:-}" ]
+  [[ -n "${allowed_bots[$login]:-}" ]]
 }
 
 # dsbr_should_dismiss <state> <review_oid> <head_oid> <login> <author_type> [allowlist_csv]
@@ -81,9 +81,9 @@ dsbr_is_allowlisted_bot() {
 #   review_oid or head_oid cannot prove the review is superseded, so it is kept.
 dsbr_should_dismiss() {
   local state="$1" review_oid="$2" head_oid="$3" login="$4" author_type="$5" csv="${6:-}"
-  [ "$state" = "CHANGES_REQUESTED" ] || return 1
-  [ -n "$review_oid" ] && [ -n "$head_oid" ] || return 1
-  [ "$review_oid" != "$head_oid" ] || return 1
+  [[ "$state" = "CHANGES_REQUESTED" ]] || return 1
+  [[ -n "$review_oid" ]] && [[ -n "$head_oid" ]] || return 1
+  [[ "$review_oid" != "$head_oid" ]] || return 1
   dsbr_is_allowlisted_bot "$login" "$author_type" "$csv" || return 1
   return 0
 }

@@ -32,7 +32,7 @@ gh_api_retry() {
   while true; do
     "$@" && return 0
     local exit_code=$?
-    if [ $attempt -ge $max_retries ]; then
+    if [[ $attempt -ge $max_retries ]]; then
       return $exit_code
     fi
     local backoff=$((2 ** (attempt - 1)))
@@ -42,7 +42,7 @@ gh_api_retry() {
   done
 }
 
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --owner) OWNER="$2"; shift 2 ;;
     --name)  NAME="$2";  shift 2 ;;
@@ -54,7 +54,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ -z "$OWNER" ] || [ -z "$NAME" ] || [ -z "$PR" ]; then
+if [[ -z "$OWNER" ]] || [[ -z "$NAME" ]] || [[ -z "$PR" ]]; then
   echo "::error::--owner, --name and --pr are required" >&2
   exit 1
 fi
@@ -100,7 +100,7 @@ GRAPHQL
 head_oid="" reviews="" cursor="" first=true
 while true; do
   # cursor="" => first page (pass JSON null, -F); otherwise pass the string (-f).
-  if [ -z "$cursor" ]; then
+  if [[ -z "$cursor" ]]; then
     cursor_arg=(-F cursor=null)
   else
     cursor_arg=(-f "cursor=$cursor")
@@ -119,9 +119,9 @@ while true; do
 
   # Resolve the head oid once, from the first page, and fail-loud-then-noop if the
   # PR cannot be resolved — before examining any reviews.
-  if [ "$first" = "true" ]; then
+  if [[ "$first" = "true" ]]; then
     head_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$response")"
-    if [ -z "$head_oid" ]; then
+    if [[ -z "$head_oid" ]]; then
       echo "::warning::could not resolve head oid for ${OWNER}/${NAME}#${PR} (PR not found or not accessible); nothing to do"
       exit 0
     fi
@@ -134,11 +134,11 @@ while true; do
     | [ .id, .state, (.commit.oid // ""), (.author.login // ""), (.author.__typename // "") ]
     | @tsv
   ' <<<"$response")"
-  [ -n "$page_reviews" ] && reviews+="${page_reviews}"$'\n'
+  [[ -n "$page_reviews" ]] && reviews+="${page_reviews}"$'\n'
 
   has_next="$(jq -r '.data.repository.pullRequest.latestOpinionatedReviews.pageInfo.hasNextPage // false' <<<"$response")"
   end_cursor="$(jq -r '.data.repository.pullRequest.latestOpinionatedReviews.pageInfo.endCursor // ""' <<<"$response")"
-  if [ "$has_next" = "true" ] && [ -n "$end_cursor" ]; then
+  if [[ "$has_next" = "true" ]] && [[ -n "$end_cursor" ]]; then
     cursor="$end_cursor"
   else
     break
@@ -163,14 +163,14 @@ if jq -e '(.errors // []) | length > 0' <<<"$recheck" >/dev/null 2>&1; then
   exit 1
 fi
 current_head="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$recheck")"
-if [ "$current_head" != "$head_oid" ]; then
+if [[ "$current_head" != "$head_oid" ]]; then
   echo "::warning::PR head moved from ${head_oid} to ${current_head:-<unresolved>} during the review read for ${OWNER}/${NAME}#${PR}; skipping dismissals this run to avoid clearing a review on the new head"
   exit 0
 fi
 
 dismissed=0 would_dismiss=0 examined=0 aborted=false
 while IFS=$'\t' read -r review_id state commit_oid login author_type; do
-  [ -n "$review_id" ] || continue
+  [[ -n "$review_id" ]] || continue
   examined=$((examined + 1))
   if ! dsbr_should_dismiss "$state" "$commit_oid" "$head_oid" "$login" "$author_type"; then
     continue
@@ -182,7 +182,7 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   # dismiss a review now on the current head even though it is no longer
   # superseded. Re-read the live head and stop all further mutations if it
   # changed; the synchronize/submitted event for the new head re-runs us (#1116).
-  if [ "$aborted" = "true" ]; then
+  if [[ "$aborted" = "true" ]]; then
     break
   fi
   {
@@ -192,7 +192,7 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
       }' \
       -f owner="$OWNER" -f name="$NAME" -F number="$PR")"
     current_head_recheck_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$current_head_recheck")"
-    if [ "$current_head_recheck_oid" != "$head_oid" ]; then
+    if [[ "$current_head_recheck_oid" != "$head_oid" ]]; then
       echo "::warning::PR head moved from ${head_oid} to ${current_head_recheck_oid:-<unresolved>} during dismissal loop for ${OWNER}/${NAME}#${PR}; aborting remaining dismissals to avoid clearing a review on the new head"
       aborted=true
       break
@@ -200,7 +200,7 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   }
 
   msg="Superseded: dismissed by dismiss-stale-bot-reviews because ${login}'s CHANGES_REQUESTED review was on ${commit_oid} but the PR head is now ${head_oid}. A still-valid finding returns as a fresh review on the new commit."
-  if [ "$APPLY" != "true" ]; then
+  if [[ "$APPLY" != "true" ]]; then
     # Default behavior: dry-run (report-only). A candidate is NOT mutated, so it
     # must NOT be counted as dismissed — track it in a separate would-dismiss
     # tally instead, or the summary would report reviews as dismissed that are
@@ -226,7 +226,7 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
     continue
   fi
   new_state="$(jq -r '.data.dismissPullRequestReview.pullRequestReview.state // ""' <<<"$mutation_resp")"
-  if [ "$new_state" != "DISMISSED" ]; then
+  if [[ "$new_state" != "DISMISSED" ]]; then
     echo "::warning::dismissal of review ${review_id} by ${login} was not confirmed (state='${new_state:-<none>}'); leaving it in place"
     continue
   fi
@@ -234,7 +234,7 @@ while IFS=$'\t' read -r review_id state commit_oid login author_type; do
   dismissed=$((dismissed + 1))
 done <<<"$reviews"
 
-if [ "$APPLY" != "true" ]; then
+if [[ "$APPLY" != "true" ]]; then
   echo "dismiss-stale-bot-reviews [dry-run]: examined ${examined} effective review(s), would dismiss ${would_dismiss} stale bot review(s) on ${OWNER}/${NAME}#${PR} (head ${head_oid}); no reviews were dismissed"
 else
   echo "dismiss-stale-bot-reviews: examined ${examined} effective review(s), dismissed ${dismissed} stale bot review(s) on ${OWNER}/${NAME}#${PR} (head ${head_oid})"
