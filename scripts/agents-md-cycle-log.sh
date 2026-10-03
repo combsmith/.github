@@ -234,7 +234,8 @@ amcl_clean_cycles_met() {
       clean=$((clean + 1))
     fi
   done < <(printf '%s\n' "$recent")
-  if [[ "$clean" -eq "$required" ]]; then
+  # Normalize to base 10 before comparison (consistent with line 221).
+  if [[ "$clean" -eq "$((10#$required))" ]]; then
     printf 'true'
   else
     printf 'false'
