@@ -22,6 +22,11 @@
 # clamp <value> <lo> <hi> — echo value bounded to [lo, hi].
 clamp() {
   local v="$1" lo="$2" hi="$3"
+  # Normalize to base 10 before comparisons so leading-zero decimals like "08"
+  # are not misread as octal.
+  v=$((10#${v:-0}))
+  lo=$((10#${lo:-0}))
+  hi=$((10#${hi:-0}))
   if [[ "$v" -lt "$lo" ]]; then echo "$lo"; return 0; fi
   if [[ "$v" -gt "$hi" ]]; then echo "$hi"; return 0; fi
   echo "$v"
@@ -31,7 +36,10 @@ clamp() {
 # Denominator must be > 0. Pure arithmetic, no bc.
 round_div() {
   local n="$1" d="$2"
-  if [[ "${d:-0}" -le 0 ]]; then echo 0; return 1; fi
+  # Normalize to base 10 before comparison so leading-zero decimals like "08"
+  # are not misread as octal.
+  d=$((10#${d:-0}))
+  if [[ "$d" -le 0 ]]; then echo 0; return 1; fi
   echo $(( (2 * n + d) / (2 * d) ))
 }
 
@@ -311,6 +319,10 @@ _looks_like_oid() { [[ "$1" =~ ^[0-9a-f]{7,64}$ ]]; }
 # least floor_hours on the source tier, else 0.
 dwell_met() {
   local dwell="${1:-0}" floor="${2:-0}"
+  # Normalize to base 10 before comparison so leading-zero decimals like "08"
+  # are not misread as octal.
+  dwell=$((10#$dwell))
+  floor=$((10#$floor))
   if [[ "$dwell" -ge "$floor" ]]; then echo 1; else echo 0; fi
 }
 
@@ -347,6 +359,12 @@ run_list_covers() {
 decide_graduated() {
   local dwell="${1:-0}" floor="${2:-0}" sample="${3:-0}" target="${4:-0}"
   local waived="${5:-false}" cum_fail="${6:-0}" cum_startup="${7:-0}"
+  # Normalize to base 10 before comparisons so leading-zero decimals like "08"
+  # are not misread as octal.
+  cum_fail=$((10#$cum_fail))
+  cum_startup=$((10#$cum_startup))
+  sample=$((10#$sample))
+  target=$((10#$target))
   if [[ "$cum_fail" -gt 0 ]] || [[ "$cum_startup" -gt 0 ]]; then
     echo "BLOCKED"; return 0
   fi
@@ -387,6 +405,10 @@ classify_failure() {
     comment-cap|rate-limit|infra|data) echo "PRE_EXISTING"; return 0 ;;
   esac
   if [[ "$differs" = "unknown" ]]; then echo "-"; return 0; fi
+  # Normalize to base 10 before comparison so leading-zero decimals like "08"
+  # are not misread as octal.
+  [[ "$differs" =~ ^[0-9]+$ ]] && differs=$((10#$differs))
+  [[ "$suspect" =~ ^[0-9]+$ ]] && suspect=$((10#$suspect))
   if [[ "$differs" != "1" ]]; then echo "PRE_EXISTING"; return 0; fi
   if [[ "$suspect" -gt 0 ]]; then echo "SUSPECT"; else echo "REGRESSION"; fi
 }
@@ -421,6 +443,13 @@ decide_suspect_downgrade() {
   margin="$(jq -r '.margin_permille // 0' <<< "$knobs" 2>/dev/null || echo 0)"
   case "$min_base" in ''|*[!0-9]*) min_base=0 ;; esac
   case "$margin" in ''|*[!0-9]*) margin=0 ;; esac
+  # Normalize to base 10 before comparisons so leading-zero decimals like "08"
+  # are not misread as octal.
+  cand=$((10#${cand:-0}))
+  base=$((10#${base:-0}))
+  base_sample=$((10#${base_sample:-0}))
+  min_base=$((10#$min_base))
+  margin=$((10#$margin))
   # Tiny-n guard first: too little baseline data → keep the human (conservative), regardless of rate.
   if [[ "$base_sample" -lt "$min_base" ]]; then echo "HOLD"; return 0; fi
   if [[ "$cand" -le $(( base + margin )) ]]; then echo "DOWNGRADE"; return 0; fi
