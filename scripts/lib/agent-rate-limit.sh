@@ -304,7 +304,7 @@ arl_breaker_decision() {
     return 0
   fi
 
-  if [[ "$failures" -lt "$threshold" ]]; then
+  if [[ "$((10#$failures))" -lt "$threshold" ]]; then
     arl_log "breaker for '${agent_type}': state=closed (${failures}/${threshold} consecutive failures)"
     printf 'decision=allow\n'
     return 0
