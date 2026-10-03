@@ -2716,8 +2716,8 @@ check_check_suite_prefs() {
 
   for app_id in "${CHECK_SUITE_APP_IDS[@]}"; do
     local setting
-    setting=$(echo "$prefs" | jq -r --argjson id "$app_id" \
-      '.preferences.auto_trigger_checks // [] | map(select(.app_id == $id)) | first | .setting // "'$SETTING_MISSING_VALUE'"')
+    setting=$(echo "$prefs" | jq -r --argjson id "$app_id" --arg missing "$SETTING_MISSING_VALUE" \
+      '.preferences.auto_trigger_checks // [] | map(select(.app_id == $id)) | first | .setting // $missing')
 
     # "$SETTING_MISSING_VALUE" means the app has never run in this repo — no orphaned suite possible
     [[ "$setting" = "$SETTING_MISSING_VALUE" ]] && continue
