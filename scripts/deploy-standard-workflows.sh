@@ -424,6 +424,54 @@ stub_has_only_surface_drift() {
   stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content"
 }
 
+# merge_guarded_surfaces <workflow> <template> <existing_content> — merge the
+# template's guarded surfaces (on:/permissions/concurrency) into the existing stub
+# while preserving repo-specific customizations. Ensures missing surfaces are added
+# and drift-induced removals are restored without losing documented liberties like
+# pr-auto-review's workflow_run.workflows list (#1242). Outputs merged content.
+merge_guarded_surfaces() {
+  local workflow="$1" template="$2" existing_content="$3"
+  local surfaces surface result extracted_surface
+  local -a surface_list
+
+  # Start with the existing content
+  result="$existing_content"
+
+  # Get guarded surfaces for this workflow
+  surfaces="$(stub_guarded_surfaces "$workflow")" || return 0
+
+  local old_ifs="$IFS"
+  IFS=,
+  # shellcheck disable=SC2206  # intentional comma split of a fixed internal list
+  surface_list=($surfaces)
+  IFS="$old_ifs"
+
+  # For each guarded surface, replace it in the result with the template version
+  for surface in "${surface_list[@]}"; do
+    extracted_surface=$(stub_extract_blocks "$template" "$surface")
+    # Remove the surface from result (all blocks with this key at any depth)
+    result=$(printf '%s\n' "$result" | awk -v key="$surface" '
+      function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
+      {
+        if (skipping) {
+          if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) next
+          if (indent($0) > keyindent) next
+          skipping = 0
+        }
+        if ($0 ~ ("^[[:space:]]*" key ":")) {
+          skipping = 1; keyindent = indent($0); next
+        }
+        print
+      }
+    ')
+    # Append the template version of the surface
+    result="$(printf '%s\n%s' "$result" "$extracted_surface")"
+  done
+
+  printf '%s' "$result"
+  return 0
+}
+
 # is_already_compliant <existing_content> <template> <repo> -> 0 if the deployed
 # stub needs no re-deploy. A stub is compliant only when it is BOTH pin-compliant
 # (is_pin_compliant, below) AND — when its template carries a real `secrets: inherit`
@@ -727,13 +775,19 @@ deploy_repo() {
       fi
     elif [[ -n "$existing_sha" ]] && ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
          && stub_has_only_surface_drift "$workflow" "$template" "$existing_content" "$repo"; then
-      # Surface drift detected but pin and marker are correct (#1236): use the
-      # template's canonical guarded surfaces (on:/permissions/concurrency) to fix
-      # the drift, rather than re-deploying the drifted stub in place. This ensures
+      # Surface drift detected but pin and marker are correct (#1236): merge the
+      # template's canonical guarded surfaces (on:/permissions/concurrency) into the
+      # existing stub to fix the drift while preserving repo-specific customizations
+      # like pr-auto-review's workflow_run.workflows list (#1242). This ensures
       # missing triggers/permissions/concurrency fields are added and drift-induced
-      # removals are restored.
+      # removals are restored without losing documented per-repo liberties.
       mode="surface-drift-repin"
-      repin_source="$template"
+      if [[ "$DRY_RUN" != "true" ]]; then
+        repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
+        merge_guarded_surfaces "$workflow" "$(< "$template")" "$existing_content" > "$repin_source"
+      else
+        repin_source="$template"
+      fi
     fi
 
     # When repin_source is a copy of existing_content (meta-repo consumer or body-
