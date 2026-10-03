@@ -183,7 +183,6 @@ EOF
   deployed=$(printf '%s\n' "$DEV_LEAD_CANONICAL" | sed '/^  issues:$/,/^    types: \[labeled\]$/d')
   # sanity: the trigger really was removed
   run ! grep -q '^  issues:$' <<< "$deployed"
-  [ "$status" -eq 0 ]
   surface_drift "$DEV_LEAD_CANONICAL" "$deployed" "on"
   [ "$status" -eq 0 ]
 }
@@ -247,7 +246,6 @@ EOF
   deployed=$(printf '%s\n' "$PR_AUTO_REVIEW_CANONICAL" | sed -E 's/^(  workflow_run:)$/\1\n    workflows:\n      - "CI Pipeline"/; /^    workflows: \["CI"\]$/d')
   # sanity: the inline form is gone and a block-sequence entry is present
   run ! grep -q 'workflows: \["CI"\]' <<< "$deployed"
-  [ "$status" -eq 0 ]
   grep -q '^      - "CI Pipeline"$' <<< "$deployed"
   surface_drift "$PR_AUTO_REVIEW_CANONICAL" "$deployed" "on"
   [ "$status" -eq 1 ]
@@ -257,7 +255,6 @@ EOF
   local deployed
   deployed=$(printf '%s\n' "$PR_AUTO_REVIEW_CANONICAL" | sed -E 's/^(  workflow_run:)$/\1\n    workflows:\n      - CI\n      - Lint/; /^    workflows: \["CI"\]$/d')
   run ! grep -q 'workflows: \["CI"\]' <<< "$deployed"
-  [ "$status" -eq 0 ]
   grep -q '^      - Lint$' <<< "$deployed"
   surface_drift "$PR_AUTO_REVIEW_CANONICAL" "$deployed" "on"
   [ "$status" -eq 1 ]
@@ -270,7 +267,6 @@ EOF
   deployed=$(printf '%s\n' "$PR_AUTO_REVIEW_CANONICAL" | sed -E 's/^(  workflow_run:)$/\1\n    workflows:\n\n      - "CI Pipeline"/; /^    workflows: \["CI"\]$/d')
   # sanity: inline form gone; blank line present between key and entry
   run ! grep -q 'workflows: \["CI"\]' <<< "$deployed"
-  [ "$status" -eq 0 ]
   grep -q '^      - "CI Pipeline"$' <<< "$deployed"
   surface_drift "$PR_AUTO_REVIEW_CANONICAL" "$deployed" "on"
   [ "$status" -eq 1 ]
@@ -281,7 +277,6 @@ EOF
   local deployed
   deployed=$(printf '%s\n' "$PR_AUTO_REVIEW_CANONICAL" | sed -E 's/^    workflows: \["CI"\]$/    workflows:/')
   run ! grep -q 'workflows: \["CI"\]' <<< "$deployed"
-  [ "$status" -eq 0 ]
   surface_drift "$PR_AUTO_REVIEW_CANONICAL" "$deployed" "on"
   [ "$status" -eq 0 ]
 }
@@ -291,7 +286,6 @@ EOF
   deployed=$(printf '%s\n' "$PR_AUTO_REVIEW_CANONICAL" | sed '/^  check_suite:$/,/^    types: \[completed\]$/d')
   # sanity: the trigger really was removed
   run ! grep -q '^  check_suite:$' <<< "$deployed"
-  [ "$status" -eq 0 ]
   surface_drift "$PR_AUTO_REVIEW_CANONICAL" "$deployed" "on"
   [ "$status" -eq 0 ]
 }
@@ -301,7 +295,6 @@ EOF
   deployed=$(printf '%s\n' "$PR_AUTO_REVIEW_CANONICAL" | sed '/^  workflow_run:$/,/^    types: \[completed\]$/d')
   # sanity: the workflow_run trigger key really was removed
   run ! grep -q '^  workflow_run:$' <<< "$deployed"
-  [ "$status" -eq 0 ]
   surface_drift "$PR_AUTO_REVIEW_CANONICAL" "$deployed" "on"
   [ "$status" -eq 0 ]
 }
