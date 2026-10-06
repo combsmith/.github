@@ -71,22 +71,17 @@ jobs:
           # objects.githubusercontent.com).
           # --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors
           # rides out the transient network/5xx blips from that redirect target
-          # that otherwise flake this suite (#739); the budget stays bounded so a
-          # genuinely-down mirror still fails the job fast.
-          curl -sSfL --proto '=https' --proto-redir '=https' --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors \
+          # that otherwise flake this suite (#739); --connect-timeout/--max-time
+          # bound each attempt so a stalled connection cannot eat the job budget.
+          curl -sSfL --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 60 \
+            --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors \
             "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
             -o /tmp/yq_linux_amd64
-          curl -sSfL --proto '=https' --proto-redir '=https' --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors \
-            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums" \
-            -o /tmp/yq_checksums
-          curl -sSfL --proto '=https' --proto-redir '=https' --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors \
-            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums_hashes_order" \
-            -o /tmp/yq_checksums_order
-          # The checksums file puts filename first; use checksums_hashes_order to
-          # find the SHA-256 column position dynamically.
-          SHA256_COL=$(( $(grep -n "^SHA-256$" /tmp/yq_checksums_order | cut -d: -f1) + 1 ))
-          EXPECTED_SHA="$(grep "^yq_linux_amd64 " /tmp/yq_checksums | awk -v col="${SHA256_COL}" '{print $col}')"
-          echo "${EXPECTED_SHA}  /tmp/yq_linux_amd64" | sha256sum -c -
+          # SHA-256 of yq_linux_amd64 for v4.44.3, hardcoded (vetted) rather than
+          # fetched from the same release, so a swapped release asset is detected.
+          # Update together with YQ_VERSION.
+          YQ_SHA256="a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7"
+          echo "${YQ_SHA256}  /tmp/yq_linux_amd64" | sha256sum -c -
           sudo install -m 755 /tmp/yq_linux_amd64 /usr/local/bin/yq
 
       - name: Install Python jsonschema and PyYAML
