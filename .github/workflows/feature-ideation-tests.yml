@@ -62,7 +62,32 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends bats shellcheck jq yq
+          sudo apt-get install -y --no-install-recommends bats shellcheck jq
+          # Install a pinned mikefarah/yq so the suite is reproducible and not
+          # dependent on whatever version ships in the runner image.
+          YQ_VERSION="v4.44.3"
+          # --proto '=https' --proto-redir '=https' enforces HTTPS on both the
+          # initial request and any redirects (GitHub releases redirect to
+          # objects.githubusercontent.com).
+          # --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors
+          # rides out the transient network/5xx blips from that redirect target
+          # that otherwise flake this suite (#739); the budget stays bounded so a
+          # genuinely-down mirror still fails the job fast.
+          curl -sSfL --proto '=https' --proto-redir '=https' --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+            -o /tmp/yq_linux_amd64
+          curl -sSfL --proto '=https' --proto-redir '=https' --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums" \
+            -o /tmp/yq_checksums
+          curl -sSfL --proto '=https' --proto-redir '=https' --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums_hashes_order" \
+            -o /tmp/yq_checksums_order
+          # The checksums file puts filename first; use checksums_hashes_order to
+          # find the SHA-256 column position dynamically.
+          SHA256_COL=$(( $(grep -n "^SHA-256$" /tmp/yq_checksums_order | cut -d: -f1) + 1 ))
+          EXPECTED_SHA="$(grep "^yq_linux_amd64 " /tmp/yq_checksums | awk -v col="${SHA256_COL}" '{print $col}')"
+          echo "${EXPECTED_SHA}  /tmp/yq_linux_amd64" | sha256sum -c -
+          sudo install -m 755 /tmp/yq_linux_amd64 /usr/local/bin/yq
 
       - name: Install pinned yq (v4.44.3)
         # The static bats guards parse workflows with yq; pin the oldest
