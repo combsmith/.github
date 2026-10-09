@@ -66,7 +66,7 @@ on:
         # The Claude Code CLI resolves the family client-side (`--model opus`
         # in the analyst step) to the current version ID — never pin a
         # version ID here. See standards/agent-standards.md.
-        description: 'Model family (`opus` recommended; `sonnet` and `haiku` also accepted, but Sonnet produces shallower adversarial passes) or an explicit model id override'
+        description: 'Model family (`opus` recommended - Sonnet produces shallower adversarial passes) or an explicit model id override'
         required: false
         default: 'opus'
         type: string
