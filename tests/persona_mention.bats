@@ -88,6 +88,41 @@ MENTION_ON='    - surface: mention
   [ "$status" -ne 0 ]
 }
 
+# pm_is_agent_authored_body is the PR-path axis 2: a PR body is AUTHORED as a
+# persona only when the marker leads it (pr_ensure_marker's convention). A marker
+# anywhere else is a quotation and must not suppress routing (#1286).
+
+@test "pm_is_agent_authored_body matches a body whose first line is the marker" {
+  run pm_is_agent_authored_body $'<!-- persona:qa-lead -->\n## Summary\nautomated PR'
+  [ "$status" -eq 0 ]
+}
+
+@test "pm_is_agent_authored_body ignores leading blank lines and indentation" {
+  run pm_is_agent_authored_body $'\n\n   \n<!-- persona:qa-lead -->\nbody'
+  [ "$status" -eq 0 ]
+  run pm_is_agent_authored_body $'  \t<!-- persona:dev-lead -->\nbody'
+  [ "$status" -eq 0 ]
+  run pm_is_agent_authored_body $'\r\n<!-- persona:dev-lead -->\r\nbody'
+  [ "$status" -eq 0 ]
+}
+
+@test "pm_is_agent_authored_body does not match a marker quoted mid-body in prose" {
+  run pm_is_agent_authored_body $'## Summary\n\nThe `<!-- persona:solution-architect -->` marker is unchanged.'
+  [ "$status" -eq 1 ]
+}
+
+@test "pm_is_agent_authored_body does not match a marker inside a later fenced code block" {
+  run pm_is_agent_authored_body $'## Summary\n\n```\n<!-- persona:qa-lead -->\n```'
+  [ "$status" -eq 1 ]
+}
+
+@test "pm_is_agent_authored_body does not match an empty or blank body" {
+  run pm_is_agent_authored_body ''
+  [ "$status" -eq 1 ]
+  run pm_is_agent_authored_body $'\n  \n'
+  [ "$status" -eq 1 ]
+}
+
 @test "pm_is_bot_actor recognises the agent identities" {
   run pm_is_bot_actor donpetry-bot
   [ "$status" -eq 0 ]
@@ -713,6 +748,16 @@ runtime:
 
 @test "pm_pr_should_route blocks a PR whose body carries the agent marker (axis 2)" {
   run pm_pr_should_route don-petry don-petry OWNER '<!-- persona:qa-lead --> automated PR'
+  [ "$status" -eq 1 ]
+}
+
+@test "pm_pr_should_route allows a trusted human's PR that QUOTES the marker on a later line (#1286)" {
+  run pm_pr_should_route don-petry don-petry OWNER $'## Summary\n\nThe `<!-- persona:solution-architect -->` marker is unchanged.'
+  [ "$status" -eq 0 ]
+}
+
+@test "pm_pr_should_route blocks a PR whose body leads with the marker after blank lines (axis 2)" {
+  run pm_pr_should_route don-petry don-petry OWNER $'\n\n<!-- persona:qa-lead -->\nautomated PR'
   [ "$status" -eq 1 ]
 }
 
