@@ -3,21 +3,37 @@
 # the branch-update logic.
 # Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
 #
-# Problem: when branch protection requires branches to be up-to-date
-# (strict status checks), merging any PR makes other open PRs fall behind.
-# Non-Dependabot PRs have no equivalent of Dependabot's scheduled rebase,
-# so they silently fall behind until a human notices.
+# Purpose: keep open PRs current with their base ONLY where being behind
+# actually blocks them. Updating a PR pushes a merge commit, which creates a new
+# head SHA and restarts every review, test and bot-review cycle on that PR — so
+# a PR that is merely behind, with nothing requiring it to be current, is left
+# alone (issue #1272).
 #
-# Solution: after every push to main (typically a merged PR), this workflow:
+# After every push to main (typically a merged PR), this workflow:
 #   1. Finds all open non-Dependabot PRs from the same repo (no fork PRs)
 #   2. Keeps only the PRs eligible under the `eligibility` input (default
 #      `all`: every behind PR, including drafts)
-#   3. Updates the remaining behind PRs using the merge method (not rebase)
+#   3. For each behind PR, updates it (merge method, not rebase) only if the
+#      base branch's EFFECTIVE rules require branches to be up to date (strict
+#      required status checks), read through the API from the rulesets and
+#      classic branch protection that apply to the PR's base — never
+#      hard-coded, so re-enabling the strict policy restores
+#      update-every-behind-PR with no code change. Merge-queue membership and
+#      auto-merge are not conditions: with strict off, being behind does not
+#      stop a PR entering the queue, and the queue builds its own merge commit.
+#      A PR in merge conflict is still attempted, so the conflict notice and
+#      dev-lead recovery below are unaffected. If the rules or PR state cannot
+#      be read (API error, missing permission), the PR is updated exactly as
+#      before the gate existed — an unreadable configuration never causes a
+#      skip. Each behind PR gets one log line:
+#        PR #N (ref) is K commit(s) behind BASE — updating branch [gate: <condition>]
+#        PR #N (ref) is K commit(s) behind BASE — skipping update [gate: none applied (...)]
 #
 # The eligibility predicate lives in
-# .github/scripts/auto-rebase/lib/eligibility.sh (unit-tested via bats) and is
-# selectable via the `eligibility` input so a future "front-of-queue N" variant
-# needs no change to this file.
+# .github/scripts/auto-rebase/lib/eligibility.sh and the update gate in
+# .github/scripts/auto-rebase/lib/update-gate.sh (both unit-tested via bats).
+# The eligibility predicate is selectable via the `eligibility` input so a
+# future "front-of-queue N" variant needs no change to this file.
 #
 # Skips Dependabot PRs — those are handled by dependabot-rebase-reusable.yml.
 # Skips fork PRs — update-branch requires push access to the head branch.
@@ -54,10 +70,8 @@ on:
         type: string
       ready_label:
         description: |
-          Deprecated — this input is accepted but silently ignored so callers
-          that were passing it (when eligibility: review-ready was supported)
-          continue to dispatch without a GitHub Actions validation error.
-          Remove it from your caller when convenient.
+          Deprecated (issue #1272 — label is no longer an update trigger).
+          Accepted for backwards compatibility but not used in the gate decision.
         required: false
         default: ''
         type: string
@@ -115,6 +129,14 @@ jobs:
           . .auto-rebase-tooling/.github/scripts/auto-rebase/lib/eligibility.sh
           # shellcheck source=/dev/null
           . .auto-rebase-tooling/.github/scripts/auto-rebase/lib/comments.sh
+          # shellcheck source=/dev/null
+          . .auto-rebase-tooling/.github/scripts/auto-rebase/lib/update-gate.sh
+          # shellcheck source=/dev/null
+          . .auto-rebase-tooling/.github/scripts/auto-rebase/lib/gate-facts.sh
+
+          # Effective strict-up-to-date policy per base branch (true|false|unknown),
+          # read once per base from its rulesets + classic protection.
+          declare -A STRICT_BY_BASE=()
 
           # Find open non-Dependabot PRs from the same repo (exclude forks)
           PRS=$(gh api "repos/$REPO/pulls?state=open&per_page=100" \
@@ -149,7 +171,21 @@ jobs:
               continue
             fi
 
-            echo "PR #$PR_NUMBER ($HEAD_REF) is $BEHIND commit(s) behind $BASE_BRANCH — updating branch"
+            # Update gate (#1272): being behind is only a reason to push when the
+            # base's rules require up-to-date branches. Conflicting PRs are still attempted (conflict notice
+            # below); an unreadable gate fails safe to updating.
+            if [[ -z "${STRICT_BY_BASE[$BASE_BRANCH]:-}" ]]; then
+              STRICT_BY_BASE[$BASE_BRANCH]=$(auto_rebase_strict_policy "$REPO" "$BASE_BRANCH")
+            fi
+            GATE_RC=0
+            GATE_REASON=$(auto_rebase_update_decision "${STRICT_BY_BASE[$BASE_BRANCH]}" \
+              "$REPO" "$PR_NUMBER") || GATE_RC=$?
+            if [[ "$GATE_RC" -ne 0 ]]; then
+              echo "PR #$PR_NUMBER ($HEAD_REF) is $BEHIND commit(s) behind $BASE_BRANCH — skipping update [gate: $GATE_REASON]"
+              continue
+            fi
+
+            echo "PR #$PR_NUMBER ($HEAD_REF) is $BEHIND commit(s) behind $BASE_BRANCH — updating branch [gate: $GATE_REASON]"
 
             # Capture both stdout and stderr; use if-then to avoid bash -e terminating
             # the step on non-zero exit before we can inspect the error message.
