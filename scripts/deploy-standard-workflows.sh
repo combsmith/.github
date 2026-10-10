@@ -163,6 +163,27 @@ is_body_preserving_workflow() {
   return 1
 }
 
+# Repos whose stubs are compared by FULL BODY, not pin-only (#1285). repo-template
+# is byte-compared against the standards channel by .github-private's
+# template_stub_drift.sh, and new repos are created from it, so a pin-correct stub
+# with a stale body must be drift here too — else the sweep reports `already
+# compliant` while `Lint / template-drift` fails. Every other repo keeps the
+# pin-only rule (no fleet-wide wave of comment-only sync PRs).
+# BODY_PRESERVING_WORKFLOWS are exempt: their per-repo body is never re-synced.
+readonly FULL_BODY_COMPARE_REPOS=(
+  repo-template
+)
+
+# is_full_body_compare_repo <repo> -> 0 if <repo> (bare or org-qualified) has its
+# stubs compared by full body.
+is_full_body_compare_repo() {
+  local repo="${1##*/}" r
+  for r in "${FULL_BODY_COMPARE_REPOS[@]}"; do
+    [[ "$repo" == "$r" ]] && return 0
+  done
+  return 1
+}
+
 # Deployable workflows the sweep only REPLACES where a caller already exists
 # (#1125). pr-review.yml is not universal: only some repos run the reviewer, so the
 # sweep never adds it to a repo that has no caller. Where one exists, it is replaced
@@ -393,15 +414,18 @@ stub_has_s7635_marker() {
 #
 # A replace-if-present workflow (#1125) must additionally match the template body
 # rendered at the repo's tier channel (stub_body_matches_template): its callers
-# predate the template and carry per-repo edits, which are drift.
+# predate the template and carry per-repo edits, which are drift. So must every stub
+# in a FULL_BODY_COMPARE_REPOS repo (repo-template, #1285) other than a
+# BODY_PRESERVING_WORKFLOWS one, whose per-repo body is never re-synced.
 is_already_compliant() {
-  local existing_content="$1" template="$2" repo="$3"
+  local existing_content="$1" template="$2" repo="$3" workflow="${2##*/}"
   is_pin_compliant "$existing_content" "$template" "$repo" || return 1
   if template_requires_s7635_marker "$template" \
      && ! stub_has_s7635_marker <<< "$existing_content"; then
     return 1
   fi
-  if is_replace_if_present_workflow "${template##*/}"; then
+  if is_replace_if_present_workflow "$workflow" \
+     || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
   fi
   return 0
