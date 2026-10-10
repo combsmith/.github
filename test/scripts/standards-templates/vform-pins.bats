@@ -24,9 +24,11 @@ channel_ref_lines() {
 
 # Extract the `@<ref>` channel from a `uses: …<workflow>.yml@<ref>  # …` line. Any workflow filename, not only
 # `*-reusable.yml`: the multi-job agent-ingress.yml template (ADR-0007) also calls the grandfathered
-# `pr-review.yml` reusable.
+# `pr-review.yml` reusable, and a grandfathered engine keeps its legacy name (pr-review's `pr-review.yml`,
+# #1127/#1125).
 ref_of() {
-  sed -E 's/.*\.yml@([^[:space:]]+).*/\1/' <<<"$1"
+  local tmp="${1#*.yml@}"
+  printf '%s' "${tmp%%[[:space:]]*}"
 }
 
 @test "every deployable template pins <agent>/v<M>-stable, never bare <agent>/stable" {

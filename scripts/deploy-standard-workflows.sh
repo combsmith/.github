@@ -62,13 +62,16 @@ STANDARDS_DIR="$REPO_ROOT/standards/workflows"
 SYNC_BRANCH_PREFIX="standards-sync"
 SYNC_LABEL="standards-sync"
 
+# Engine-host repo (self-manages its workflow fleet and hosts reusable engines).
+readonly ENGINE_HOST_REPO=".github-private"
+
 # Repos exempt from blanket standard-workflow deployment.
 #   .github         — self-host source of truth; its own callers use local refs
 #                     (e.g. add-to-project.yml pins ./.github/...), which a
 #                     channel-pinned stub must never overwrite.
 #   .github-private — self-manages its workflow fleet (dev-lead runs inline, etc).
 # A repo here may still opt into a *specific* workflow via SKIP_OVERRIDES below.
-SKIP_REPOS=(".github" ".github-private")
+SKIP_REPOS=(".github" "$ENGINE_HOST_REPO")
 
 # Per-workflow opt-ins for otherwise-skipped repos. Keyed by workflow filename;
 # value is a space-separated list of SKIP_REPOS that should still receive it.
@@ -85,8 +88,8 @@ SKIP_REPOS=(".github" ".github-private")
 # are already present (feature-ideation re-pinned in place as a channel consumer,
 # initiative-driver a verbatim self-managed stub), so only pr-auto-review opts in.
 declare -A SKIP_OVERRIDES=(
-  ["add-to-project.yml"]=".github-private"
-  ["pr-auto-review.yml"]=".github-private"
+  ["add-to-project.yml"]="$ENGINE_HOST_REPO"
+  ["pr-auto-review.yml"]="$ENGINE_HOST_REPO"
 )
 
 # Required workflows a SKIP_REPO satisfies by SELF-MANAGING the file in its own
@@ -112,7 +115,7 @@ declare -A SKIP_OVERRIDES=(
 #                   receives via the SKIP_OVERRIDES opt-in above (#847).
 declare -A SKIP_SELF_MANAGED=(
   [".github"]="dev-lead.yml dependabot-automerge.yml dependency-audit.yml agent-shield.yml pr-review-mention.yml feature-ideation.yml pr-auto-review.yml initiative-driver.yml"
-  [".github-private"]="dev-lead.yml dependabot-automerge.yml dependency-audit.yml agent-shield.yml pr-review-mention.yml feature-ideation.yml initiative-driver.yml"
+  ["$ENGINE_HOST_REPO"]="dev-lead.yml dependabot-automerge.yml dependency-audit.yml agent-shield.yml pr-review-mention.yml feature-ideation.yml initiative-driver.yml"
 )
 
 # Workflows deployable from standards/workflows/<name>.
@@ -134,6 +137,7 @@ DEPLOYABLE_WORKFLOWS=(
   initiative-driver.yml
   pr-auto-review.yml
   feature-ideation.yml
+  pr-review.yml
 )
 
 # Deployable workflows whose stub BODY carries a documented per-repo edit the
@@ -155,6 +159,46 @@ is_body_preserving_workflow() {
   local w="$1" p
   for p in "${BODY_PRESERVING_WORKFLOWS[@]}"; do
     [[ "$w" == "$p" ]] && return 0
+  done
+  return 1
+}
+
+# Deployable workflows the sweep only REPLACES where a caller already exists
+# (#1125). pr-review.yml is not universal: only some repos run the reviewer, so the
+# sweep never adds it to a repo that has no caller. Where one exists, it is replaced
+# with the template body re-pinned to the repo's tier channel, and compliance
+# compares the whole body (not just the pin), so a leftover per-repo edit such as a
+# stub-level `concurrency:` block is drift.
+readonly REPLACE_IF_PRESENT_WORKFLOWS=(
+  pr-review.yml
+)
+
+# Repos whose copy of a workflow is the reusable ENGINE itself, not a caller, keyed
+# by workflow filename (#1125). .github-private's pr-review.yml IS the pr-review
+# engine (grandfathered name, #1127; its own caller is pr-review-trigger.yml), so
+# the sweep must never read, replace or re-pin it.
+declare -A ENGINE_HOST_REPOS=(
+  ["pr-review.yml"]="$ENGINE_HOST_REPO"
+)
+
+# is_replace_if_present_workflow <name.yml> -> 0 if the workflow deploys only over
+# an existing caller and is compared by full body.
+is_replace_if_present_workflow() {
+  local w="$1" p
+  for p in "${REPLACE_IF_PRESENT_WORKFLOWS[@]}"; do
+    [[ "$w" == "$p" ]] && return 0
+  done
+  return 1
+}
+
+# is_engine_host_target <name.yml> <repo> -> 0 if <repo>'s <name.yml> is the engine
+# the workflow's callers invoke, so the sweep must never target it.
+is_engine_host_target() {
+  local w="$1" repo="${2##*/}" h
+  local -a hosts
+  read -r -a hosts <<< "${ENGINE_HOST_REPOS[$w]:-}"
+  for h in "${hosts[@]+"${hosts[@]}"}"; do
+    [[ "$repo" == "$h" ]] && return 0
   done
   return 1
 }
@@ -346,6 +390,10 @@ stub_has_s7635_marker() {
 # export, bmad-bgreat-suite, …) whose stubs merged marker-less during #857. Flagging
 # the missing marker as drift re-deploys and restores it. Kept targeted (pin + marker
 # presence), NOT a byte-compare, to avoid churn on cosmetic diffs.
+#
+# A replace-if-present workflow (#1125) must additionally match the template body
+# rendered at the repo's tier channel (stub_body_matches_template): its callers
+# predate the template and carry per-repo edits, which are drift.
 is_already_compliant() {
   local existing_content="$1" template="$2" repo="$3"
   is_pin_compliant "$existing_content" "$template" "$repo" || return 1
@@ -353,7 +401,27 @@ is_already_compliant() {
      && ! stub_has_s7635_marker <<< "$existing_content"; then
     return 1
   fi
+  if is_replace_if_present_workflow "${template##*/}"; then
+    stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
+  fi
   return 0
+}
+
+# stub_body_matches_template <existing_content> <template> <repo> -> 0 iff the
+# existing stub equals the template with its pin lines (`uses:` and `agent_ref:`)
+# re-pinned to the channel emit_ref_for computes for <repo> — i.e. exactly what the
+# sweep would deploy. CRLF- and trailing-newline-insensitive. A failed channel
+# probe is never compliant.
+stub_body_matches_template() {
+  local existing_content="$1" template="$2" repo="$3" emit base rendered
+  emit="$(emit_ref_for "$template" "$repo")" || return 1
+  if [[ -n "$emit" ]]; then
+    base="$(reusable_base_of "$template")"
+    rendered="$(ring_repin_uses "$base" "$emit" < "$template" | tr -d '\r')"
+  else
+    rendered="$(tr -d '\r' < "$template")"
+  fi
+  [[ "$(printf '%s' "$existing_content" | tr -d '\r')" == "$rendered" ]]
 }
 
 # True if the existing decoded content already has the canonical uses: reference
@@ -378,9 +446,15 @@ is_pin_compliant() {
     stub_verbatim_matches "$existing_content" "$template" && return 0 || return 1
   fi
 
-  local prefix="${expected_uses%@*}" ref_after="${expected_uses##*@}" base
-  if [[ "$prefix" =~ /([a-z0-9-]+)-reusable\.yml$ ]]; then
-    base="${BASH_REMATCH[1]}"
+  local prefix="${expected_uses%@*}" ref_after="${expected_uses##*@}" base file
+  # The base comes from the reusable filename: `<base>-reusable.yml`, or a
+  # grandfathered registry name such as the pr-review engine `pr-review.yml` (#1125).
+  # Without the latter, a pr-review caller would fall through to the substring match
+  # below and a stale pin would read as compliant (the #1277 blind spot).
+  base="$(reusable_base_of "$template")"
+  if [[ -n "$base" ]]; then
+    file="$(ring_reusable_file "$base")"
+    file="${file//./\\.}"
     # Only treat it as ring-managed if the reusable is on the ring model AND the
     # template pins a channel tag (not a frozen @vX / SHA). The template ref may be
     # the bare `<base>/<tier>` OR the major-scoped `<base>/v<M>-<tier>` form (#657
@@ -400,11 +474,11 @@ is_pin_compliant() {
       host="$(cut -d/ -f1-2 <<< "$prefix")"
       # Only a `uses:` line counts: a comment or `agent_ref:` carrying the current
       # tag must not mask a stale `uses:` pin.
-      # Strip inline YAML comments first and require the `<base>-reusable.yml@` ref,
+      # Strip inline YAML comments first and require the reusable's `<file>@` ref,
       # so a ref written in a comment or on an unrelated job's `uses:` is ignored.
       # `sed -n 1p` (not `head -1`) reads the whole stream, so no writer sees a closed pipe.
       existing_ref=$(sed -E 's/[[:space:]]+#.*$//' <<< "$existing_content" \
-        | grep -E "^[[:space:]]*(-[[:space:]]+)?uses:.*/${base}-reusable\.yml@${base}/" \
+        | grep -E "^[[:space:]]*(-[[:space:]]+)?uses:.*/${file}@${base}/" \
         | grep -oE "@${base}/[^[:space:]\"']+" | sed -n 1p || true)
       existing_ref="${existing_ref#@}"
       ring_pin_current "$host" "$base" "$repo" "$existing_ref" && return 0
@@ -424,10 +498,21 @@ reusable_uses_of() {
 }
 
 # reusable_base_of <template> -> the ring channel base (e.g. `auto-rebase`) of the
-# template's reusable, or empty if the template does not call a `-reusable.yml`.
+# template's reusable, or empty if the template does not call one. Recognises the
+# `<base>-reusable.yml` convention and a ring agent whose registry `reusable` keeps a
+# grandfathered name (the pr-review engine `pr-review.yml`, #1127/#1125).
 reusable_base_of() {
-  local prefix; prefix="$(reusable_uses_of "$1")"; prefix="${prefix%@*}"
-  [[ "$prefix" =~ /([a-z0-9-]+)-reusable\.yml$ ]] && printf '%s' "${BASH_REMATCH[1]}"
+  local prefix file stem; prefix="$(reusable_uses_of "$1")"; prefix="${prefix%@*}"
+  if [[ "$prefix" =~ /([a-z0-9-]+)-reusable\.yml$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  file="${prefix##*/}"; stem="${file%.yml}"
+  if [[ "$prefix" == */* && "$file" == *.yml && "$stem" =~ ^[a-z0-9-]+$ ]] \
+     && ring_is_ring_reusable "$stem" \
+     && [[ "$(ring_reusable_file "$stem")" == "$file" ]]; then
+    printf '%s' "$stem"
+  fi
   return 0
 }
 
@@ -508,6 +593,12 @@ deploy_repo() {
       err "No template at $template — skipping $workflow for $repo"
       continue
     fi
+    # Engine-host guard (#1125): the repo's copy is the reusable itself, not a
+    # caller. Checked before any read, and --force does not lift it.
+    if is_engine_host_target "$workflow" "$repo"; then
+      skip "$repo/$workflow (engine host — this file is the reusable itself, never a caller)"
+      continue
+    fi
     # feature-ideation.yml is outside the collapse (schedule-driven, per-repo project_context).
     if [[ "$ingress_rc" -eq 0 && "$workflow" != "feature-ideation.yml" ]]; then
       role="$(agent_ingress_role_for_workflow "$workflow")"
@@ -531,7 +622,20 @@ deploy_repo() {
     # missing stub, a non-ring reusable, or a local `./` self-host ref stays exempt
     # (opt-ins via SKIP_OVERRIDES keep their verbatim-template path unchanged).
     repin_source="$template"
-    if is_skipped_repo "$repo" && ! repo_opts_into "$repo" "$workflow"; then
+    if is_replace_if_present_workflow "$workflow"; then
+      # Replace-if-present (#1125): never seed a repo that has no caller (an
+      # unreadable file reads as absent here, which fails safe — nothing is added),
+      # and leave a SKIP_REPO's own copy alone unless it opts in.
+      if [[ -z "$existing_sha" ]]; then
+        skip "$repo/$workflow (replace-if-present: no existing caller — never seeded)"
+        continue
+      fi
+      if is_skipped_repo "$repo" && ! repo_opts_into "$repo" "$workflow"; then
+        skip "$repo/$workflow (exempt)"
+        continue
+      fi
+      mode="replace"
+    elif is_skipped_repo "$repo" && ! repo_opts_into "$repo" "$workflow"; then
       base="$(reusable_base_of "$template")"
       if [[ -z "$existing_sha" ]] || [[ -z "$base" ]] || ! ring_is_ring_reusable "$base" \
          || ring_stub_selfhosts "$base" <<< "$existing_content"; then
@@ -627,6 +731,7 @@ deploy_repo() {
       case "${modes[i]}" in
         seed)           dry "$repo/${names[i]} seed-if-absent: seeding fresh from template" ;;
         repin-in-place) dry "$repo/${names[i]} re-pin uses in place — existing body/project_context preserved" ;;
+        replace)        dry "$repo/${names[i]} replace-if-present: replacing existing caller with the template body" ;;
       esac
     done
     dry "Would open PR for $repo (branch $branch) — ${n} stub(s): $list"

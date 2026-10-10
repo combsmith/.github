@@ -412,6 +412,19 @@ open for that workflow. Deployment never edits a caller's `uses:`/`agent_ref`
 pins by hand — a release is rolled out by moving the channel tag (see
 [Reusable workflow versioning](#reusable-workflow-versioning--the-stable-channel)).
 
+**Replace-if-present stubs (`pr-review.yml`).** Not every repo runs the PR
+reviewer, so `pr-review.yml` is listed in the script's `REPLACE_IF_PRESENT_WORKFLOWS`:
+the sweep never adds it to a repo that has no `.github/workflows/pr-review.yml`, and
+never targets `petry-projects/.github-private`, whose `pr-review.yml` is the engine
+itself (`ENGINE_HOST_REPOS`). Where a caller exists, the sweep compares the whole
+file with the template rendered at the repo's tier channel. Any difference, including
+a leftover stub-level `concurrency:` block or the legacy bare `@pr-review/stable` pin,
+is drift. The caller is then replaced with the template, with `uses:` and `agent_ref`
+both pinned to the tier channel
+([#1125](https://github.com/petry-projects/.github/issues/1125)). A repo that serves
+pr-review from a `pr-review` job in `agent-ingress.yml` is skipped, the same as any
+other collapsed role.
+
 **Deploy identity (least-privilege).** The scheduled driver
 ([`standards-deploy.yml`](../.github/workflows/standards-deploy.yml)) writes stub content and
 opens PRs **across the fleet**, so it must run under a cross-repo write identity —
