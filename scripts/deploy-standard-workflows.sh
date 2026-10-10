@@ -446,26 +446,38 @@ merge_guarded_surfaces() {
   surface_list=($surfaces)
   IFS="$old_ifs"
 
-  # For each guarded surface, replace it in the result with the template version
+  # For each DRIFTED guarded surface, replace its TOP-LEVEL block with the
+  # template's. Unchanged surfaces are left alone (keeps permitted per-repo values
+  # such as pr-auto-review's workflow_run.workflows), and indented job-level
+  # `permissions:`/`concurrency:` blocks stay in their original `jobs.<id>` scope —
+  # only column-0 keys are removed or appended, so the result stays valid YAML.
   for surface in "${surface_list[@]}"; do
-    extracted_surface=$(stub_extract_blocks "$template" "$surface")
-    # Remove the surface from result (all blocks with this key at any depth)
+    stub_surface_drift "$template" "$result" "$surface" || continue
+    extracted_surface=$(printf '%s\n' "$template" | awk -v key="$surface" '
+      function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
+      {
+        if (capturing) {
+          if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/ || indent($0) > 0) { print; next }
+          capturing = 0
+        }
+        if ($0 ~ ("^" key ":")) { capturing = 1; print }
+      }
+    ')
+    # Remove only the top-level block of this key from the result
     result=$(printf '%s\n' "$result" | awk -v key="$surface" '
       function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
       {
         if (skipping) {
           if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) next
-          if (indent($0) > keyindent) next
+          if (indent($0) > 0) next
           skipping = 0
         }
-        if ($0 ~ ("^[[:space:]]*" key ":")) {
-          skipping = 1; keyindent = indent($0); next
-        }
+        if ($0 ~ ("^" key ":")) { skipping = 1; next }
         print
       }
     ')
-    # Append the template version of the surface
-    result="$(printf '%s\n%s' "$result" "$extracted_surface")"
+    # Append the template's top-level version of the surface
+    result="$(printf '%s\n\n%s' "$result" "$extracted_surface")"
   done
 
   printf '%s' "$result"

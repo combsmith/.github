@@ -106,13 +106,13 @@ devlead_stub_pinning() {  # <ref> → base64 of a .github dev-lead CONSUMER stub
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
 
-devlead_stub_pinning_with_marker() {  # <ref> → base64 of the same stub but WITH the S7635 marker (#878 post-fix shape)
-  local body="jobs:
-  dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@$1
-    with:
-      agent_ref: $1
-    secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable"
+devlead_stub_pinning_with_marker() {  # <ref> → base64 of the dev-lead template re-pinned to <ref> (WITH the S7635 marker, #878 post-fix shape)
+  # Derived from the template so its on:/permissions: surfaces match and the
+  # surface-drift check (#1236) stays clean.
+  local body
+  body="$(sed -E -e "s|(dev-lead-reusable\.yml)@[^[:space:]]+|\1@$1|" \
+    -e "s|^([[:space:]]*agent_ref:[[:space:]]*).*|\1$1|" \
+    "${REPO_ROOT}/standards/workflows/dev-lead.yml")"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
 

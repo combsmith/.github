@@ -11,6 +11,8 @@
 #
 # All runs are --dry-run against a single --repo/--workflow with a fake `gh`.
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   TT_TMP="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"
   REPO_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/../../.." && pwd)"
@@ -142,4 +144,19 @@ jobs:
   run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo .github --workflow dev-lead.yml
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'already compliant'
+}
+
+# merge_guarded_surfaces repairs only TOP-LEVEL drifted surfaces: job-level
+# permissions stay under jobs.<id>, and a clean surface keeps its per-repo value.
+@test "merge_guarded_surfaces keeps job-level blocks scoped and leaves clean surfaces alone" {
+  run bash -c '
+    source "$1" >/dev/null 2>&1
+    t=$(< "$2/auto-rebase.yml")
+    e=$(printf "%s\n" "$t" | sed "/^concurrency:/,/^\$/d")
+    out=$(merge_guarded_surfaces auto-rebase.yml "$t" "$e")
+    [ "$(printf "%s\n" "$out" | grep -c "^permissions:")" -eq "$(printf "%s\n" "$t" | grep -c "^permissions:")" ]
+    [ "$(printf "%s\n" "$out" | grep -c "^    permissions:")" -eq "$(printf "%s\n" "$t" | grep -c "^    permissions:")" ]
+    printf "%s\n" "$out" | grep -q "^concurrency:"
+  ' _ "$SCRIPT" "$STANDARDS"
+  [ "$status" -eq 0 ]
 }
