@@ -476,12 +476,25 @@ _run_workflow() {
 }
 
 @test "strict_policy: an unreadable ruleset response is 'unknown', never 'false'" {
+  # Classic protection answers "not protected", so the ONLY way to reach 'unknown'
+  # here is the unreadable ruleset. Mapping it to 'false' instead would fall
+  # through to the classic answer and print 'false', failing this test.
+  _fixture "repos/owner/repo/branches/main/protection/required_status_checks" \
+    '{"message":"Branch not protected","status":"404"}' 1
   _fixture "repos/owner/repo/rules/branches/main?per_page=100" 'not json'
   run auto_rebase_strict_policy owner/repo main
+  [ "$status" -eq 0 ]
   [ "$output" = "unknown" ]
-  _fixture "repos/owner/repo/rules/branches/main?per_page=100" ''
+  # A failed ruleset call (API error) is unreadable too.
+  _fixture "repos/owner/repo/rules/branches/main?per_page=100" \
+    '{"message":"Server Error","status":"500"}' 1
   run auto_rebase_strict_policy owner/repo main
   [ "$output" = "unknown" ]
+  # Control: a READABLE empty rule list with the same classic answer is 'false',
+  # which proves the two cases above are decided by the ruleset result.
+  _fixture "repos/owner/repo/rules/branches/main?per_page=100" '[]'
+  run auto_rebase_strict_policy owner/repo main
+  [ "$output" = "false" ]
 }
 
 @test "strict_policy: strict flag with an empty required_status_checks list is not strict" {
