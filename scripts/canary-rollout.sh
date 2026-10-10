@@ -2385,12 +2385,12 @@ cmd_promote_all() {
   # Nor may it say "all promoted" while an agent sits BLOCKED (#1177): count the per-pair outcomes
   # cmd_promote recorded and print them, naming every blocked pair and its triage.
   local -A outcome_n=()
-  local blocked=() o oc oa ot od
-  for o in "${_PROMOTE_OUTCOMES[@]}"; do
-    IFS=$'\t' read -r oc oa ot od <<< "$o"
+  local blocked=() oc oa ot od
+  while IFS=$'\t' read -r oc oa ot od; do
+    [ -z "$oc" ] && continue
     outcome_n[$oc]=$(( ${outcome_n[$oc]:-0} + 1 ))
     [ "$oc" = blocked ] && blocked+=("$oa $ot${od:+ $od}")
-  done
+  done <<< "$(printf '%s\n' "${_PROMOTE_OUTCOMES[@]}")"
   local tally="promoted: ${outcome_n[promoted]:-0}"
   [ "${outcome_n[would-promote]:-0}" -gt 0 ] && tally+=", would promote (dry-run): ${outcome_n[would-promote]}"
   tally+=", soaking: ${outcome_n[soaking]:-0}"
