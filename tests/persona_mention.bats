@@ -771,6 +771,19 @@ runtime:
   [ "$status" -eq 1 ]
 }
 
+# The workflow's route-pull-request job uses a cheap if: condition that must match
+# the authoritative pm_pr_should_route function. The condition uses startsWith for
+# the marker axis (not contains), matching pm_is_agent_authored_body's semantics:
+# a marker quoted mid-body is not considered agent-authored. These verifications
+# ensure a regression from startsWith back to contains would be caught by CI.
+@test "pull_request workflow pre-filter uses prefix matching (startsWith, not contains)" {
+  local workflow="$SCRIPT_DIR/.github/workflows/persona-mention-reusable.yml"
+  run grep -Fq -- "!startsWith(github.event.pull_request.body, '<!-- persona:')" "$workflow"
+  [ "$status" -eq 0 ]
+  run grep -Fq -- "contains(github.event.pull_request.body, '<!-- persona:')" "$workflow"
+  [ "$status" -ne 0 ]
+}
+
 # --- pm_pr_route_verdict (the composed PR gauntlet — AC #2/#4 proof) --------
 # Given a manifest that DECLARES the pull_request surface enabled and its
 # interaction contract, decide the verdict for one PR: stop-marker → write-gate
