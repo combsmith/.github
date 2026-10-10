@@ -983,8 +983,15 @@ _run_jobs_json() {
 # cuts the list at its own `since`, and the "list reached CANARY_INGRESS_RUN_LIMIT" fail-closed guard
 # is unchanged (a bounded list that hits the cap is judged exactly like an unbounded one).
 _ingress_horizon() {
-  local since="$1" tiers="${CANARY_INGRESS_HORIZON_TIERS-8 15}" s now days t
-  _INGRESS_FROM=""
+  _horizon_from "$1" "${CANARY_INGRESS_HORIZON_TIERS-8 15}"
+  _INGRESS_FROM="$_HORIZON_FROM"
+}
+
+# _horizon_from <since_z> <tiers> — the tier logic behind _ingress_horizon, sets _HORIZON_FROM (also used for the
+# per-role run lists, _agent_run_json, #1259 option B).
+_horizon_from() {
+  local since="$1" tiers="$2" s now days t
+  _HORIZON_FROM=""
   [ -n "$since" ] || return 0
   s="$(_epoch "$since")"
   case "$s" in ''|*[!0-9]*|0) return 0 ;; esac
@@ -996,7 +1003,7 @@ _ingress_horizon() {
   for t in $tiers; do
     case "$t" in ''|*[!0-9]*) continue ;; esac
     if [ "$days" -le "$t" ]; then
-      _INGRESS_FROM="$(date -u -d "-${t} days" +%Y-%m-%d 2>/dev/null || date -u -v"-${t}d" +%Y-%m-%d 2>/dev/null || true)"
+      _HORIZON_FROM="$(date -u -d "-${t} days" +%Y-%m-%d 2>/dev/null || date -u -v"-${t}d" +%Y-%m-%d 2>/dev/null || true)"
       return 0
     fi
   done
@@ -1195,7 +1202,14 @@ _agent_run_json() {
   [ -n "${_TIMING_CALLS:-}" ] && { printf . >> "$_TIMING_CALLS" 2>/dev/null || true; }   # call counter (CANARY_TIMING)
   if [ -z "$repo" ] || [ "$repo" = '*' ]; then echo '[]'; return 0; fi
   _reg_run_workflow "$agent"; wf="$_REG_VAL"
-  raw="$(_repo_wf_runs_cached "$repo" "$wf" 1)" || rc=$?
+  # Date-bound the per-role list (#1259, option B): every window the gate samples starts at most ~2 weeks back, so the
+  # newest 1000 runs of a busy workflow are mostly older than anything read. One fixed tier (CANARY_RUNS_HORIZON_TIERS,
+  # days, default "15"; EMPTY disables the bound) so every window shares ONE fetch per (repo, workflow). No fallback
+  # read is needed when the bounded list hits the 1000 cap: GitHub returns newest-first, so it is then exactly the
+  # newest-1000 the unbounded call returns (the existing truncation behavior, unchanged). A window older than the tier
+  # (a long soak) gets the unbounded list as before.
+  _horizon_from "$since" "${CANARY_RUNS_HORIZON_TIERS-15}"
+  raw="$(_repo_wf_runs_cached "$repo" "$wf" 1 1000 "$_HORIZON_FROM")" || rc=$?
   if [ "$rc" -eq 3 ]; then
     rc=0; _reg_ingress_wf; iwf="$_REG_VAL"
     iraw="$(_ingress_runs_fetch "$repo" "$iwf" "$since")" || rc=$?

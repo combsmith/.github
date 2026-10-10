@@ -445,7 +445,9 @@ ring_tag_exists() {
 # ring_repin_uses <channel-base> <newref> -> rewrite a workflow stub read on stdin
 # so its reusable `uses:` ref (and any matching `agent_ref:`/`checkout_ref:`) points
 # at <newref>. Only lines referencing THIS agent's reusable are touched; the trailing
-# comment on a rewritten line is preserved. Pure (sed only).
+# comment on a rewritten line is preserved. The reusable filename comes from the
+# registry (ring_reusable_file), so a grandfathered name such as the pr-review engine
+# `pr-review.yml` (#1127) is re-pinned too, not only `<base>-reusable.yml` (#1125).
 #
 # `checkout_ref:` is a `with:` forward that some stubs (e.g. apply-repo-settings)
 # pin to the SAME channel as `uses:` so the reusable checks out the matching version
@@ -454,9 +456,11 @@ ring_tag_exists() {
 # stub already forwards (never adds/forwards a new one), so it never introduces the
 # undeclared-input channel-skew defect (#1052).
 ring_repin_uses() {
-  local base="$1" newref="$2"
+  local base="$1" newref="$2" file
+  file="$(ring_reusable_file "$base")"
+  file="${file//./\\.}"
   sed -E \
-    -e "s#^([[:space:]]*uses:[[:space:]]*petry-projects/[^@[:space:]]*/${base}-reusable\.yml)@[^[:space:]]+#\1@${newref}#" \
+    -e "s#^([[:space:]]*uses:[[:space:]]*petry-projects/[^@[:space:]]*/${file})@[^[:space:]]+#\1@${newref}#" \
     -e "s#^([[:space:]]*agent_ref:[[:space:]]*[\"']?)${base}/[^\"'[:space:]]+#\1${newref}#" \
     -e "s#^([[:space:]]*checkout_ref:[[:space:]]*[\"']?)${base}/[^\"'[:space:]]+#\1${newref}#"
   return 0
