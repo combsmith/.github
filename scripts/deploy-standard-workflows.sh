@@ -451,20 +451,60 @@ merge_guarded_surfaces() {
   # such as pr-auto-review's workflow_run.workflows), and indented job-level
   # `permissions:`/`concurrency:` blocks stay in their original `jobs.<id>` scope —
   # only column-0 keys are removed or appended, so the result stays valid YAML.
+  # shellcheck disable=SC2016  # awk program, no shell expansion intended
+  local extract_prog='
+    function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
+    {
+      if (capturing) {
+        if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/ || indent($0) > 0) { print; next }
+        capturing = 0
+      }
+      if ($0 ~ ("^" key ":")) { capturing = 1; print }
+    }
+  '
+  local existing_surface merged_surface candidate preserved existing_line
   for surface in "${surface_list[@]}"; do
     stub_surface_drift "$template" "$result" "$surface" || continue
-    extracted_surface=$(printf '%s\n' "$template" | awk -v key="$surface" '
-      function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
-      {
-        if (capturing) {
-          if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/ || indent($0) > 0) { print; next }
-          capturing = 0
+    extracted_surface=$(printf '%s\n' "$template" | awk -v key="$surface" "$extract_prog")
+    if [[ -z "$extracted_surface" ]]; then
+      # No top-level block in the template, so a top-level repair cannot clear
+      # the drift; skip instead of looping forever.
+      echo "Skipping '$surface': no top-level block in template to repair from" >&2
+      continue
+    fi
+    existing_surface=$(printf '%s\n' "$result" | awk -v key="$surface" "$extract_prog")
+    # Keep repo-adjustable values (cron schedules, inline workflow_run.workflows)
+    # from the existing stub instead of overwriting them with template defaults.
+    merged_surface=$(printf '%s\n' "$extracted_surface" | EXISTING="$existing_surface" awk '
+      BEGIN {
+        n = split(ENVIRON["EXISTING"], lines, "\n")
+        for (i = 1; i <= n; i++) {
+          if (lines[i] ~ /^[[:space:]]*(-[[:space:]]*)?cron:/) cron[++nc] = lines[i]
+          else if (lines[i] ~ /^[[:space:]]*workflows:[[:space:]]*\[/) wf[++nw] = lines[i]
         }
-        if ($0 ~ ("^" key ":")) { capturing = 1; print }
+      }
+      {
+        if ($0 ~ /^[[:space:]]*(-[[:space:]]*)?cron:/) { if (++ic <= nc) { print cron[ic]; next } }
+        else if ($0 ~ /^[[:space:]]*workflows:[[:space:]]*\[/) { if (++iw <= nw) { print wf[iw]; next } }
+        print
       }
     ')
+    # If a per-repo value from the existing stub could not be preserved, do not repin
+    preserved=1
+    while IFS= read -r existing_line; do
+      if [[ "$existing_line" =~ ^[[:space:]]*(-[[:space:]]*)?cron: ]] || [[ "$existing_line" =~ ^[[:space:]]*workflows:[[:space:]]*\[ ]]; then
+        if ! printf '%s\n' "$merged_surface" | grep -qxF -- "$existing_line"; then
+          preserved=0
+          break
+        fi
+      fi
+    done <<< "$existing_surface"
+    if [[ "$preserved" -ne 1 ]]; then
+      echo "Skipping '$surface': cannot preserve repo-specific values while repairing" >&2
+      continue
+    fi
     # Remove only the top-level block of this key from the result
-    result=$(printf '%s\n' "$result" | awk -v key="$surface" '
+    candidate=$(printf '%s\n' "$result" | awk -v key="$surface" '
       function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
       {
         if (skipping) {
@@ -476,8 +516,15 @@ merge_guarded_surfaces() {
         print
       }
     ')
-    # Append the template's top-level version of the surface
-    result="$(printf '%s\n\n%s' "$result" "$extracted_surface")"
+    # Append the merged top-level version of the surface
+    candidate="$(printf '%s\n\n%s' "$candidate" "$merged_surface")"
+    # Only accept the repair if it actually clears the drift; otherwise the stub
+    # would stay drifted and every sweep would open a new PR
+    if stub_surface_drift "$template" "$candidate" "$surface"; then
+      echo "Skipping '$surface': top-level repair does not clear drift (likely nested drift)" >&2
+      continue
+    fi
+    result="$candidate"
   done
 
   printf '%s' "$result"
