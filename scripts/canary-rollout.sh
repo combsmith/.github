@@ -41,6 +41,12 @@ set -euo pipefail
 #   CANARY_FAILURE_CATEGORY  optional triage hint (comment-cap|rate-limit|infra|data)
 #   CANARY_AUTO_CUT     autocut kill-switch — autocut is a no-op unless this == 'true'
 #   GH_TOKEN            credential; the workflow mints a GitHub App token and passes it here
+#   GITHUB_REPOSITORY   the repo of THIS checkout (default petry-projects/.github). Agents hosted
+#                       here resolve their tags from the local checkout, so a local run needs a
+#                       checkout of that repo WITH its tags (`git fetch --tags`); agents hosted
+#                       elsewhere resolve via `gh api` and need a GH_TOKEN that can read the host.
+#                       An agent whose tags cannot be read fails loudly ("cannot read tags for
+#                       <agent> on <host>") and is held BLOCKED, never reported fully rolled out (#1177).
 
 _HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=lib/canary-rollout.sh
@@ -61,7 +67,10 @@ CANARY_RINGS="${CANARY_RINGS:-$DEFAULT_RINGS}"
 # .github) keeps its <name>/<channel> and <name>/vX.Y.Z tags on ITS host, so those tags
 # must be resolved there via `gh api` — reading local refs resolves empty and the frontier
 # falsely reports "fully rolled out" (#1049). Mirrors cut-release.sh's CROSS_REPO_TARGET.
-THIS_REPO="${GITHUB_REPOSITORY:-petry-projects/.github-private}"
+# The default is the repo this engine lives in (.github, since #613). It used to be
+# .github-private, so a LOCAL run from a .github checkout (no GITHUB_REPOSITORY) read the
+# .github-private agents' tags from the wrong checkout and reported "fully rolled out" (#1177).
+THIS_REPO="${GITHUB_REPOSITORY:-petry-projects/.github}"
 
 # CANARY_MAX_COMMIT_PAGES — pagination ceiling (100 commits/page) when autocut enumerates a
 # commit range for bump signals. A range that cannot be fully enumerated within this many pages
@@ -522,6 +531,8 @@ _ring_commits() {
   local chan_array=()
   IFS=, read -r -a chan_array <<< "$chans"
   flag="$(mktemp 2>/dev/null || true)"
+  local -a lines=()
+  local any_known=0
   for ch in "${chan_array[@]}"; do
     u=0
     if [ -n "$flag" ] && : > "$flag" 2>/dev/null; then
@@ -535,9 +546,22 @@ _ring_commits() {
       c="$(channel_commit "$agent" "$ch" || true)"; u=1
       [[ "$c" == *"$_TAG_LOOKUP_UNRECORDED"* ]] && c=""
     fi
-    printf '%s %s %s\n' "$ch" "${c:--}" "$u"
+    { [ -n "$c" ] || [ "$u" != 0 ]; } && any_known=1
+    lines+=("$ch ${c:--} $u")
   done
   [ -n "$flag" ] && rm -f "$flag"
+  # A LOCAL-git agent with EVERY ring absent AND no <agent>/* tag at all in this checkout is not
+  # "fully rolled out": the checkout simply cannot see its host's tags (e.g. a local run from the
+  # wrong repo, or a clone without tags, #1177). Fail loudly and report every ring unknown, so the
+  # frontier holds it BLOCKED (#1225 path) instead of emitting a false COMPLETE.
+  local host; host="$(_agent_field "$agent" host)"
+  if [ "$any_known" -eq 0 ] && { [ -z "$host" ] || [ "$host" = "$THIS_REPO" ]; } \
+     && [ -z "$(git for-each-ref --count=1 --format='%(refname)' "refs/tags/$agent/" 2>/dev/null || true)" ]; then
+    echo "::error::cannot read tags for $agent on ${host:-$THIS_REPO}: this checkout has no refs/tags/$agent/* (THIS_REPO=$THIS_REPO). Run from a checkout of ${host:-$THIS_REPO} with its tags fetched, or set GITHUB_REPOSITORY to the checkout's repo. Holding every ring BLOCKED (fail closed, #1177)." >&2
+    local i
+    for i in "${!lines[@]}"; do lines[i]="${lines[i]% *} 1"; done
+  fi
+  [ "${#lines[@]}" -gt 0 ] && printf '%s\n' "${lines[@]}"
   return 0
 }
 
@@ -2140,6 +2164,15 @@ cmd_evaluate_all() {
   return "$rc"
 }
 
+# _record_promote_outcome <outcome> <agent> <transition> [<detail>] — note ONE promote decision
+# for the promote-all summary (#1177): promoted | would-promote (dry-run) | soaking |
+# awaiting-confirmation | blocked | failed | current (fully rolled out). Same-shell global, so
+# cmd_promote_all can count real outcomes instead of inferring "all promoted" from exit codes.
+_PROMOTE_OUTCOMES=()
+_record_promote_outcome() {
+  _PROMOTE_OUTCOMES+=("$1"$'\t'"$2"$'\t'"${3:--}"$'\t'"${4:-}")
+}
+
 cmd_promote() {
   local agent="$1"; shift
   local override=false dry=false allow_pre_flag=false confirm=false
@@ -2176,9 +2209,9 @@ cmd_promote() {
   fi
   # allow_pre: advance a BLOCKED pair ONLY when triage=PRE_EXISTING (never REGRESSION). Sourced
   # from the per-reusable control block or the --allow-pre-existing flag (#1025 P2). Computed once.
-  local allow_pre
+  local allow_pre allow_pre_src="registry control.allow_pre_existing"
   allow_pre="$(_jq -r --arg a "$agent" '.agents[$a].gate?.control?.allow_pre_existing // false')"
-  [ "$allow_pre_flag" = true ] && allow_pre=true
+  [ "$allow_pre_flag" = true ] && { allow_pre=true; allow_pre_src="--allow-pre-existing flag"; }
   # Consistent move (#1076): EVERY agent moves its channel tag via `gh api` on its HOST repo —
   # never a local `git push`. host defaults to THIS_REPO when the registry entry omits it.
   local host
@@ -2201,10 +2234,12 @@ cmd_promote() {
     # move a tag to. It stays held BLOCKED (fail closed) until the source ring's tag resolves.
     if [ -n "$_gap_transitions" ] && grep -qxF -- "$transition" <<< "$_gap_transitions"; then
       echo "::error::gate=$state for '$frontier' [$transition] — a ring tag lookup errored; not promoting (even with --override). Clears once the tags resolve (#1225)." >&2
+      _record_promote_outcome blocked "$agent" "$transition" "TAG_LOOKUP"
       continue
     fi
     if [ "$cand" = "-" ]; then
       echo "::error::gate=$state for '$frontier' [$transition] — the source ring's commit is unresolvable; not promoting (even with --override). Clears once the tag resolves." >&2
+      _record_promote_outcome blocked "$agent" "$transition" "UNRESOLVABLE"
       continue
     fi
     # REGRESSION and SUSPECT both HALT + need a human: neither advances without --override, and
@@ -2212,12 +2247,23 @@ cmd_promote() {
     # the human answers the class's discriminating question first (#668 increment 2).
     if [ "$state" = "BLOCKED" ] && { [ "$triage" = "REGRESSION" ] || [ "$triage" = "SUSPECT" ]; } && [ "$pair_override" != true ]; then
       echo "::error::gate=BLOCKED (triage=$triage) for '$frontier' [$transition] — candidate regression suspected; not promoting. Investigate + rollback, do not --override blindly."
+      _record_promote_outcome blocked "$agent" "$transition" "$triage"
       continue
     fi
-    local advance=false
+    local advance=false via_allow_pre=false soak_unmet=false
     [ "$state" = "PROMOTE" ] && advance=true
     [ "$pair_override" = true ] && advance=true
-    [ "$state" = "BLOCKED" ] && [ "$triage" = "PRE_EXISTING" ] && [ "$allow_pre" = true ] && advance=true
+    # allow-pre-existing is NARROW (#1177): it advances ONLY a BLOCKED pair triaged PRE_EXISTING, and
+    # only once that pair's dwell floor AND sample target are met (a waived sample has target 0) —
+    # it removes the environmental block, never the soak. REGRESSION/SUSPECT were refused above.
+    if [ "$state" = "BLOCKED" ] && [ "$triage" = "PRE_EXISTING" ] && [ "$allow_pre" = true ] && [ "$advance" != true ]; then
+      if [[ "$_dwell" =~ ^[0-9]+$ && "$_floor" =~ ^[0-9]+$ && "$_sample" =~ ^[0-9]+$ && "$_target" =~ ^[0-9]+$ ]] \
+         && [ "$_dwell" -ge "$_floor" ] && [ "$_sample" -ge "$_target" ]; then
+        advance=true; via_allow_pre=true
+      else
+        soak_unmet=true
+      fi
+    fi
     # Layer 3 (#668 increment 3): a human --confirm advances an AWAITING_CONFIRMATION pair
     # (reliability is already PROMOTE — the state is only ever set from an otherwise-PROMOTE
     # verdict). --confirm is NOT --override: it clears ONLY this state and can never advance a
@@ -2226,13 +2272,25 @@ cmd_promote() {
     if [ "$advance" != true ]; then
       if [ "$state" = "AWAITING_CONFIRMATION" ]; then
         echo "gate=AWAITING_CONFIRMATION for ring '$frontier' [$transition] — reliability PASSED; holding for an opt-in human go/no-go. Review the canary-confirm issue, then dispatch: promote $agent --confirm  (--confirm advances ONLY this reliability-clean state; it is NOT --override)."
+        _record_promote_outcome awaiting-confirmation "$agent" "$transition"
+      elif [ "$soak_unmet" = true ]; then
+        echo "gate=$state for ring '$frontier' [$transition] (cum_fail=$cum_fail, triage=$triage) — not promoting: allow-pre-existing is set but dwell/sample not met (dwell=${_dwell}h/${_floor}h sample=${_sample}/${_target}); it advances a PRE_EXISTING block only once the soak is complete."
+        _record_promote_outcome blocked "$agent" "$transition" "$triage"
       else
         echo "gate=$state for ring '$frontier' [$transition] (cum_fail=$cum_fail, triage=$triage) — not promoting. (use --override, or --allow-pre-existing for a PRE_EXISTING triage, after investigating)"
+        if [ "$state" = "SOAKING" ]; then
+          _record_promote_outcome soaking "$agent" "$transition"
+        else
+          _record_promote_outcome blocked "$agent" "$transition" "$triage"
+        fi
       fi
       continue
     fi
     if [ "$state" = "AWAITING_CONFIRMATION" ] && [ "$confirm" = true ]; then
       echo "::notice::human confirmation received (--confirm) — advancing $agent/$frontier [$transition] past the confirmation go/no-go (reliability was already PROMOTE)."
+    elif [ "$via_allow_pre" = true ]; then
+      # Make the narrow advance FINDABLE later (#1177): name the agent, transition and triage class.
+      echo "::warning::allow-pre-existing: advancing $agent $transition past a BLOCKED gate (triage=$triage) via $allow_pre_src — environmental block; dwell=${_dwell}h/${_floor}h sample=${_sample}/${_target} met."
     elif [ "$state" != "PROMOTE" ]; then
       echo "::warning::advancing $agent/$frontier despite gate state '$state' (triage=$triage)"
     fi
@@ -2244,6 +2302,7 @@ cmd_promote() {
     echo "advancing $frontier_tag -> ${cand:0:12} on $host"
     if [ "$dry" = true ]; then
       echo "[DRY-RUN] would: gh api PATCH repos/$host/git/refs/tags/$frontier_tag sha=$cand (force)"
+      _record_promote_outcome would-promote "$agent" "$transition"
       continue
     fi
     if ! _gh_move_tag "$host" "$frontier_tag" "$cand"; then
@@ -2251,10 +2310,12 @@ cmd_promote() {
       # Persist this FAILED tag write (#1023 defect 2). It is UNEXPECTED — a permission/API
       # rejection on the WRITE — distinct from an expected gate-block, which never reaches the move.
       _log_promotion_failure "$agent" "$frontier" "$cand" "$host" "tag write rejected ($frontier_tag on $host)"
+      _record_promote_outcome failed "$agent" "$transition" "tag write"
       rc=1
       continue
     fi
     echo "promoted $frontier_tag -> ${cand:0:12}"
+    _record_promote_outcome promoted "$agent" "$transition"
     # Expose the move for the workflow's GitHub Deployment (traceability, #502). The deployment must
     # be created on the repo that OWNS the moved commit (#1059). GITHUB_OUTPUT is single-valued
     # (last write wins); the workflow reads CANARY_PROMOTIONS_LOG — one TSV line per move — to
@@ -2268,7 +2329,10 @@ cmd_promote() {
       printf '%s\t%s\t%s\t%s\n' "$agent" "$frontier" "$cand" "$deploy_repo" >> "$CANARY_PROMOTIONS_LOG"
     fi
   done
-  [ "$pending" -eq 0 ] && echo "nothing to promote — $agent is fully rolled out."
+  if [ "$pending" -eq 0 ]; then
+    echo "nothing to promote — $agent is fully rolled out."
+    _record_promote_outcome current "$agent" -
+  fi
   return "$rc"
 }
 
@@ -2299,6 +2363,7 @@ cmd_promote_all() {
     echo "no agents registered in $CANARY_RINGS — nothing to promote."; return 0
   fi
   echo "== canary-rollout promote-all: fleet-wide (gate standard: .github#548) =="
+  _PROMOTE_OUTCOMES=()
   local failed=()
   while IFS= read -r agent; do
     [ -z "$agent" ] && continue
@@ -2316,9 +2381,29 @@ cmd_promote_all() {
   # permission or API rejection would otherwise be indistinguishable from a clean sweep unless
   # someone read the whole log. Emit ONE aggregated summary naming every failed agent, so the
   # failure is visible at a glance in the job summary while the sweep still exits 0.
+  #
+  # Nor may it say "all promoted" while an agent sits BLOCKED (#1177): count the per-pair outcomes
+  # cmd_promote recorded and print them, naming every blocked pair and its triage.
+  local -A outcome_n=()
+  local blocked=() o oc oa ot od
+  for o in "${_PROMOTE_OUTCOMES[@]}"; do
+    IFS=$'\t' read -r oc oa ot od <<< "$o"
+    outcome_n[$oc]=$(( ${outcome_n[$oc]:-0} + 1 ))
+    [ "$oc" = blocked ] && blocked+=("$oa $ot${od:+ $od}")
+  done
+  local tally="promoted: ${outcome_n[promoted]:-0}"
+  [ "${outcome_n[would-promote]:-0}" -gt 0 ] && tally+=", would promote (dry-run): ${outcome_n[would-promote]}"
+  tally+=", soaking: ${outcome_n[soaking]:-0}"
+  [ "${outcome_n[awaiting-confirmation]:-0}" -gt 0 ] && tally+=", awaiting confirmation: ${outcome_n[awaiting-confirmation]}"
+  tally+=", blocked: ${outcome_n[blocked]:-0}"
+  [ "${#blocked[@]}" -gt 0 ] && tally+=" ($(printf '%s\n' "${blocked[@]}" | paste -sd, - | sed 's/,/, /g'))"
+  tally+=", current: ${outcome_n[current]:-0}"
+  echo "promote-all outcomes: $tally"
   if [ ${#failed[@]} -gt 0 ]; then
     echo "::warning title=promote-all: ${#failed[@]} agent(s) failed::${failed[*]} — the sweep still exits 0 by design (#1019); investigate these before trusting a green promote-all."
     echo "promote-all summary: ${#failed[@]} failed — ${failed[*]}"
+  elif [ "${outcome_n[blocked]:-0}" -gt 0 ] || [ "${outcome_n[soaking]:-0}" -gt 0 ] || [ "${outcome_n[awaiting-confirmation]:-0}" -gt 0 ]; then
+    echo "promote-all summary: NOT all agents advanced — $tally"
   else
     echo "promote-all summary: all agents promoted or already current."
   fi

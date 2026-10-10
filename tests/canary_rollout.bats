@@ -7069,3 +7069,185 @@ _ago() { date -u -d "-$1 days" +%Y-%m-%dT%H:%M:%SZ; }
   [ "$output" = "1000" ]
   [ "$(grep -c '^run list ' "$GH_LOG")" -eq 1 ]
 }
+
+# ── operator gaps (#1177) ─────────────────────────────────────────────────────
+# (1) the narrow `allow_pre_existing` dispatch input, (2) an outcome-counting promote-all
+# summary, (3) a local run that cannot read an agent's tags fails loudly instead of reporting
+# "fully rolled out".
+
+# _wf_input_block <name> — the `workflow_dispatch` input block for <name> (its indented body).
+_wf_input_block() {
+  awk -v want="      $1:" '
+    $0 == want { inb=1; next }
+    inb && /^      [^[:space:]]/ { inb=0 }
+    inb && /^[^[:space:]]/ { inb=0 }
+    inb { print }
+  ' "$SCRIPT_DIR/.github/workflows/canary-rollout.yml"
+}
+
+# _wf_run_script — the `run:` body of the "Run canary-rollout" step, with the engine call
+# replaced by an echo of its argv so the arg-building case can be exercised offline.
+_wf_run_script() {
+  awk '
+    /^      - name: Run canary-rollout$/ { instep=1; next }
+    instep && /^        run: \|$/ { inrun=1; next }
+    inrun && /^      - name:/ { exit }
+    inrun && /^ {0,9}[^[:space:]]/ { exit }
+    inrun { sub(/^          /, ""); print }
+  ' "$SCRIPT_DIR/.github/workflows/canary-rollout.yml" \
+    | sed 's|^bash scripts/canary-rollout.sh "\${args\[@\]}"$|echo "ARGS: ${args[*]}"|'
+}
+
+@test "canary-rollout.yml: allow_pre_existing is a boolean dispatch input defaulting to false (#1177)" {
+  local block; block="$(_wf_input_block allow_pre_existing)"
+  [ -n "$block" ]
+  grep -qE '^        type: boolean$' <<< "$block"
+  grep -qE '^        default: false$' <<< "$block"
+  # The description must say it advances only an environmental (PRE_EXISTING) block.
+  grep -qi 'PRE_EXISTING' <<< "$block"
+  grep -qi 'environmental' <<< "$block"
+  grep -qi 'never' <<< "$block"
+}
+
+@test "canary-rollout.yml: allow_pre_existing is wired from the dispatch input into the run step (#1177)" {
+  grep -qF 'ALLOW_PRE_EXISTING: ${{ github.event.inputs.allow_pre_existing }}' \
+    "$SCRIPT_DIR/.github/workflows/canary-rollout.yml"
+}
+
+@test "canary-rollout.yml: only 'promote' passes --allow-pre-existing; no other command ever does (#1177)" {
+  local script; script="$(_wf_run_script)"
+  [ -n "$script" ]
+  [[ "$script" == *'echo "ARGS: ${args[*]}"'* ]]
+  local cmd out
+  for cmd in autocut evaluate evaluate-all promote promote-all rollback sync-issues drift; do
+    out="$(env CMD="$cmd" AGENT=dev-lead OVERRIDE=false CONFIRM=false DRY_RUN=true RING=ring1 TO=v1.0.0 \
+      ALLOW_PRE_EXISTING=true bash -c "$script")"
+    [[ "$out" == *"ARGS: "* ]]
+    if [ "$cmd" = promote ]; then
+      [[ "$out" == *"ARGS: promote dev-lead --allow-pre-existing"* ]]
+    else
+      [[ "$out" != *"--allow-pre-existing"* ]]
+    fi
+  done
+  # Default (input unset/false) never passes it, even to promote.
+  out="$(env CMD=promote AGENT=dev-lead OVERRIDE=false CONFIRM=false DRY_RUN=true RING= TO= \
+    ALLOW_PRE_EXISTING=false bash -c "$script")"
+  [[ "$out" == *"ARGS: promote dev-lead"* ]]
+  [[ "$out" != *"--allow-pre-existing"* ]]
+  out="$(env CMD=promote AGENT=dev-lead OVERRIDE=false CONFIRM=false DRY_RUN=true RING= TO= \
+    ALLOW_PRE_EXISTING= bash -c "$script")"
+  [[ "$out" != *"--allow-pre-existing"* ]]
+}
+
+@test "orchestrator: promote --allow-pre-existing logs a warning naming agent, transition and triage (#1177)" {
+  _graduated_stub 3 2 failure 0
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"DRY-RUN"* ]]
+  [[ "$output" == *"::warning::allow-pre-existing: advancing dev-lead next->ring0 past a BLOCKED gate (triage=PRE_EXISTING)"* ]]
+  [[ "$output" == *"--allow-pre-existing flag"* ]]
+}
+
+@test "orchestrator: --allow-pre-existing does NOT skip an unmet dwell floor on a PRE_EXISTING block (#1177)" {
+  _graduated_stub 3 2 failure 0
+  # Raise the next->ring0 dwell floor far past the 3-day-old cut: still BLOCKED/PRE_EXISTING,
+  # but dwell is unmet, so the narrow flag must hold.
+  local rings="$BATS_TEST_TMPDIR/rings-dwell.json"
+  jq '.agents["dev-lead"].gate.transitions["next->ring0"].dwell_hours = 1000' "$RINGS" > "$rings"
+  run env CANARY_RINGS="$rings" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PRE_EXISTING"* ]]
+  [[ "$output" != *"DRY-RUN"* ]]
+  [[ "$output" == *"not promoting"* ]]
+  [[ "$output" == *"dwell/sample not met"* ]]
+}
+
+@test "orchestrator: --allow-pre-existing does NOT skip an unmet sample target on a PRE_EXISTING block (#1177)" {
+  _graduated_stub 3 2 failure 0
+  local rings="$BATS_TEST_TMPDIR/rings-sample.json"
+  jq '.agents["dev-lead"].gate.transitions["next->ring0"] |= (del(.waive_sample, .waive_sample_if_no_caller) | .sample_min = 1000)' "$RINGS" > "$rings"
+  run env CANARY_RINGS="$rings" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PRE_EXISTING"* ]]
+  [[ "$output" != *"DRY-RUN"* ]]
+  [[ "$output" == *"dwell/sample not met"* ]]
+}
+
+@test "orchestrator: registry control.allow_pre_existing never advances a REGRESSION block (#1177)" {
+  _graduated_stub 3 2 failure 1
+  local rings="$BATS_TEST_TMPDIR/rings-control.json"
+  jq '.agents["dev-lead"].gate.control.allow_pre_existing = true' "$RINGS" > "$rings"
+  run env CANARY_RINGS="$rings" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REGRESSION"* ]]
+  [[ "$output" != *"DRY-RUN"* ]]
+  [[ "$output" != *"allow-pre-existing: advancing"* ]]
+}
+
+@test "orchestrator: registry control.allow_pre_existing advancing a PRE_EXISTING block is logged with its source (#1177)" {
+  _graduated_stub 3 2 failure 0
+  local rings="$BATS_TEST_TMPDIR/rings-control.json"
+  jq '.agents["dev-lead"].gate.control.allow_pre_existing = true' "$RINGS" > "$rings"
+  run env CANARY_RINGS="$rings" bash "$ORCH" promote dev-lead --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"DRY-RUN"* ]]
+  [[ "$output" == *"::warning::allow-pre-existing: advancing dev-lead next->ring0 past a BLOCKED gate (triage=PRE_EXISTING)"* ]]
+  [[ "$output" == *"registry control.allow_pre_existing"* ]]
+}
+
+@test "orchestrator: promote-all summary counts a BLOCKED agent and never says 'all promoted' (#1177)" {
+  _graduated_stub 3 2 failure 0
+  local rings="$BATS_TEST_TMPDIR/rings-one.json"
+  jq '.agents |= {"dev-lead": .["dev-lead"]}' "$RINGS" > "$rings"
+  run env CANARY_RINGS="$rings" bash "$ORCH" promote-all --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gate=BLOCKED"* ]]
+  [[ "$output" == *"blocked: 1 (dev-lead next->ring0 PRE_EXISTING)"* ]]
+  [[ "$output" != *"all agents promoted"* ]]
+}
+
+@test "orchestrator: promote-all summary tallies every outcome class (#1177)" {
+  run env CANARY_RINGS="$RINGS" bash -c "
+    source '$ORCH'
+    cmd_promote() {
+      case \"\$1\" in
+        dev-lead)   _record_promote_outcome blocked dev-lead next-\>ring0 PRE_EXISTING ;;
+        pr-review)  _record_promote_outcome blocked pr-review next-\>ring0 REGRESSION ;;
+        auto-rebase) _record_promote_outcome promoted auto-rebase ring0-\>ring1 ;;
+        agent-shield) _record_promote_outcome soaking agent-shield next-\>ring0 ;;
+        *) _record_promote_outcome current \"\$1\" - ;;
+      esac
+      return 0
+    }
+    cmd_promote_all
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"promoted: 1"* ]]
+  [[ "$output" == *"soaking: 1"* ]]
+  [[ "$output" == *"blocked: 2 (dev-lead next->ring0 PRE_EXISTING, pr-review next->ring0 REGRESSION)"* ]]
+  [[ "$output" != *"all agents promoted"* ]]
+}
+
+@test "orchestrator: THIS_REPO defaults to the engine's own repo (.github) when GITHUB_REPOSITORY is unset (#1177)" {
+  run env -u GITHUB_REPOSITORY CANARY_RINGS="$RINGS" bash -c "source '$ORCH'; echo \"\$THIS_REPO\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "petry-projects/.github" ]
+}
+
+@test "orchestrator: a local agent with no readable tags fails loudly — never 'fully rolled out' (#1177)" {
+  # Force dev-lead local (host == THIS_REPO) in a checkout that carries none of its tags —
+  # the exact local-run context of #1177 (a .github checkout reading .github-private's agent).
+  STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
+  printf '#!/usr/bin/env bash\ncase "$*" in *"run list"*) echo "[]" ;; *) echo "{}" ;; esac\n' > "$STUB_BIN/gh"
+  printf '#!/usr/bin/env bash\n: # no tags in this checkout\n' > "$STUB_BIN/git"
+  chmod +x "$STUB_BIN/gh" "$STUB_BIN/git"
+  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cannot read tags for dev-lead on petry-projects/.github-private"* ]]
+  [[ "$output" != *"fully rolled out"* ]]
+  [[ "$output" == *"BLOCKED"* ]]
+  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [[ "$output" == *"cannot read tags for dev-lead on petry-projects/.github-private"* ]]
+  [[ "$output" != *"fully rolled out"* ]]
+  [[ "$output" != *"DRY-RUN"* ]]
+}

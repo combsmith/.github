@@ -78,6 +78,27 @@ agents untouched; human approval is OVERRIDE-only), otherwise it runs read-only 
 report (#502). `sync-issues` then upserts one blocker issue per BLOCKED agent and renders the fleet-status table to the job summary.
 Per-agent `promote` / `rollback` remain `workflow_dispatch`-only (default `--dry-run`).
 
+### Manual promotion (operator runbook)
+
+Dispatch **Canary Rollout** with `command: promote` and the agent. Run with `dry_run: true` first, then again with
+`dry_run: false`. Choose the narrowest input that clears the block the gate reports:
+
+| Gate verdict | Input | What it does |
+|---|---|---|
+| `AWAITING_CONFIRMATION` | `confirm` | Human go/no-go for a reliability-clean pair. It can never advance a `BLOCKED` gate. |
+| `BLOCKED` + `PRE_EXISTING` | `allow_pre_existing` | Use this for an **environmental** block: the failure pre-dates the candidate (its reusable is unchanged) or falls in an environmental class. It advances **only** a block triaged `PRE_EXISTING`, and only once that pair's dwell and sample requirements are met. It **never** advances `REGRESSION` or `SUSPECT`. Each use logs a `::warning::allow-pre-existing: advancing <agent> <transition> … (triage=PRE_EXISTING)` line, so such promotions can be found later. Wired to `promote` only (#1177). |
+| anything else, after investigating | `override` | The **broader, rarer** tool. It skips the gate for the lowest pending pair entirely, including dwell/sample and `REGRESSION`/`SUSPECT`. Don't use it for an environmental block that `allow_pre_existing` can clear. |
+
+`promote-all` ends with a `promote-all outcomes: promoted: N, soaking: N, blocked: N (<agent> <transition> <triage>, …),
+current: N` tally. It prints "all agents promoted or already current" only when nothing is blocked, soaking or awaiting
+confirmation.
+
+**Local runs.** `scripts/canary-rollout.sh` treats `GITHUB_REPOSITORY` (default `petry-projects/.github`) as the repo of
+the current checkout. Agents hosted there resolve their tags from the local checkout, so you need a clone of that repo
+with its tags fetched. Agents hosted elsewhere resolve through `gh api` and need a `GH_TOKEN` that can read the host. When
+an agent's tags can't be read, the script prints `cannot read tags for <agent> on <host>` and holds the agent `BLOCKED`.
+It never reports a false "fully rolled out" (#1177).
+
 ## 4. Decision 3 — promotion is a single gated channel-tag move; rollback moves the tag back
 
 The **channel tags are the rollout state.** There is no separate state store:
