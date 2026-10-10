@@ -778,10 +778,16 @@ runtime:
 # ensure a regression from startsWith back to contains would be caught by CI.
 @test "pull_request workflow pre-filter uses prefix matching (startsWith, not contains)" {
   local workflow="$SCRIPT_DIR/.github/workflows/persona-mention-reusable.yml"
-  run grep -Fq -- "!startsWith(github.event.pull_request.body, '<!-- persona:')" "$workflow"
-  [ "$status" -eq 0 ]
-  run grep -Fq -- "contains(github.event.pull_request.body, '<!-- persona:')" "$workflow"
-  [ "$status" -ne 0 ]
+  # Inspect each job's own `if:` so a match elsewhere in the file cannot mask a
+  # lost guard.
+  local pr_if comment_if
+  pr_if="$(yq '.jobs.route-pull-request.if' "$workflow")"
+  comment_if="$(yq '.jobs.route.if' "$workflow")"
+  [[ "$pr_if" == *"!startsWith(github.event.pull_request.body, '<!-- persona:')"* ]]
+  [[ "$pr_if" != *"contains(github.event.pull_request.body, '<!-- persona:')"* ]]
+  # The comment path keeps substring matching: any persona marker in a comment
+  # means the comment is agent-authored.
+  [[ "$comment_if" == *"!contains(github.event.comment.body, '<!-- persona:')"* ]]
 }
 
 # --- pm_pr_route_verdict (the composed PR gauntlet — AC #2/#4 proof) --------
