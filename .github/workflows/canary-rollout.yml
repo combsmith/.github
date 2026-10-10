@@ -54,6 +54,8 @@
 #     clear) and renders the whole-fleet status table into the run's job summary (auto-triage).
 #   - workflow_dispatch: `evaluate` | `evaluate-all` | `promote` | `promote-all` |
 #     `rollback` | `sync-issues`, human-gated (promote/promote-all/sync-issues default to --dry-run).
+#     `promote` alone accepts `allow_pre_existing` — the NARROW advance of a PRE_EXISTING
+#     (environmental) block once dwell/sample are met; `override` is the broader, rarer tool (#1177).
 # ─────────────────────────────────────────────────────────────────────────────
 name: Canary Rollout
 
@@ -95,6 +97,17 @@ on:
         default: dev-lead
       override:
         description: "promote: advance even if the gate is not PROMOTE (records a warning)"
+        type: boolean
+        default: false
+      allow_pre_existing:
+        # The NARROW remedy every PRE_EXISTING blocker names (#1177). Wired to `promote` ONLY
+        # (no other command receives it; the schedule never sets it). Prefer this over
+        # `override` for an environmental block — `override` skips the gate entirely.
+        description: >-
+          promote: advance ONLY a BLOCKED gate triaged PRE_EXISTING (an environmental /
+          pre-existing failure, not the candidate's). It never advances a REGRESSION or SUSPECT
+          block and never skips the dwell or sample requirements; each use logs a warning.
+          `override` is the broader, rarer tool.
         type: boolean
         default: false
       confirm:
@@ -266,6 +279,8 @@ jobs:
           CMD: ${{ github.event_name == 'schedule' && (vars.CANARY_AUTO_PROMOTE == 'true' && 'promote-all' || 'evaluate-all') || github.event.inputs.command }}
           AGENT: ${{ github.event.inputs.agent || 'dev-lead' }}
           OVERRIDE: ${{ github.event.inputs.override }}
+          # Narrow PRE_EXISTING-only advance (#1177). Passed to `promote` only; empty on the schedule.
+          ALLOW_PRE_EXISTING: ${{ github.event.inputs.allow_pre_existing }}
           # Human go/no-go at a require_confirmation ring boundary (#668 Layer 3). Only meaningful
           # on a `promote` dispatch — the scheduled sweep never sets it, so AWAITING_CONFIRMATION
           # holds until a human deliberately confirms.
@@ -302,6 +317,7 @@ jobs:
             promote)
               args=(promote "$AGENT")
               [ "$OVERRIDE" = "true" ] && args+=(--override)
+              [ "$ALLOW_PRE_EXISTING" = "true" ] && args+=(--allow-pre-existing)   # PRE_EXISTING-only advance (#1177)
               [ "$CONFIRM" = "true" ] && args+=(--confirm)     # human go/no-go for AWAITING_CONFIRMATION (#668 Layer 3)
               [ "$DRY_RUN" != "false" ] && args+=(--dry-run)   # default-safe: dry unless explicitly false
               ;;
