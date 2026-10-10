@@ -1124,8 +1124,9 @@ On each run the workflow:
 
 1. Lists all open same-repo PRs excluding `dependabot[bot]` and fork PRs.
 2. Keeps only the PRs that are **eligible** under the `eligibility` input (see below),
-   then for each eligible PR that is behind the base branch, calls
-   `PUT /pulls/{n}/update-branch` with `merge` method to fast-forward it.
+   then for each eligible PR that is behind the base branch **and** whose update
+   gate passes (see below), calls `PUT /pulls/{n}/update-branch` with `merge`
+   method to fast-forward it.
    The `merge` method is used (never `rebase`) so existing approvals are not invalidated.
 3. On `workflows` permission error: posts an idempotent comment (sentinel `<!-- auto-rebase-blocked -->`) asking the author to rebase manually.
 4. On merge conflict (422): deletes any prior sentinel and posts a fresh comment
@@ -1133,12 +1134,21 @@ On each run the workflow:
    job in `claude-code-reusable.yml` to automatically resolve the conflict.
    If Claude cannot resolve it, it posts a clear failure comment with manual instructions.
 
+**Update gate (#1272):** being behind only matters if it blocks something, and
+each update restarts every review/CI cycle on the PR. A behind PR is updated only
+when the base branch's *effective* rules (rulesets and classic protection, read
+via the API) require branches to be up to date; merge-queue membership and
+auto-merge are not conditions. Conflicting PRs are still
+attempted so the conflict notice fires, and an unreadable gate fails safe to
+updating. The pure decision lives in `.github/scripts/auto-rebase/lib/update-gate.sh`;
+facts are gathered by `lib/gate-facts.sh`.
+
 **Eligibility:** Which behind PRs to update is selectable via a tunable
 `eligibility` input:
 
 | `eligibility` | Updates a behind PR when… |
 |---------------|---------------------------|
-| `all` (default) | always — every behind PR, including drafts |
+| `all` (default) | every behind PR, including drafts (then subject to the update gate above) |
 
 The predicate lives in `.github/scripts/auto-rebase/lib/eligibility.sh` and is
 unit-tested via bats; new modes (e.g. a future "front-of-queue N") can be added
