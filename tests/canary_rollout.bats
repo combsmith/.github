@@ -6523,10 +6523,11 @@ GHEOF
   [ "$status" -eq 0 ]
   local from; from="$(date -u -d '-8 days' +%Y-%m-%d)"
   grep -q -- "run list --repo org/busy --workflow Agent Ingress -L 5000 --created >=$from " "$GH_LOG"
-  # the per-role workflow lookup is NOT date-bounded
+  # the per-role workflow lookup is date-bounded too, to its own single 15-day tier (#1259 option B; it was unbounded
+  # before — this assertion is flipped deliberately)
   run grep -- "--workflow Dev-Lead Agent" "$GH_LOG"
   [ "$status" -eq 0 ]
-  [[ "$output" != *"--created"* ]]
+  [[ "$output" == *"--created >=$(date -u -d '-15 days' +%Y-%m-%d)"* ]]
   : > "$GH_LOG"
   run env CANARY_RINGS="$INGRESS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
     source '$ORCH'; set +e
@@ -6968,4 +6969,103 @@ YML
   run _ingress_registry_lint "$reg" "$tpl"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+# ── #1259 option B: the per-role (legacy) run list is date-bounded to one 15-day tier ─────────────────────
+# The gate only samples windows that start at most ~2 weeks back, so the newest 1000 runs of a busy workflow were
+# mostly dead weight (promote-all spent ~750 s of 925 s on `run list -L 1000`). The stub honors `--created` the
+# way GitHub does (newest-first, createdAt date >= bound), so bounded and unbounded reads can be compared.
+_legacy_runs_stub() {
+  export TMPDIR="$BATS_TEST_TMPDIR"
+  STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
+  export GH_LOG="$BATS_TEST_TMPDIR/gh-legacy.log"; : > "$GH_LOG"
+  export FIXTURE="$BATS_TEST_TMPDIR/legacy-runs.json"
+  local d2 d9 d14 d20
+  d2="$(date -u -d '-2 days' +%Y-%m-%dT10:00:00Z)"; d9="$(date -u -d '-9 days' +%Y-%m-%dT10:00:00Z)"
+  d14="$(date -u -d '-14 days' +%Y-%m-%dT10:00:00Z)"; d20="$(date -u -d '-20 days' +%Y-%m-%dT10:00:00Z)"
+  jq -n --arg a "$d2" --arg b "$d9" --arg c "$d14" --arg d "$d20" '[
+    {conclusion:"success",createdAt:$a,databaseId:1,workflowName:"Dev-Lead Agent"},
+    {conclusion:"failure",createdAt:$b,databaseId:2,workflowName:"Dev-Lead Agent"},
+    {conclusion:"success",createdAt:$c,databaseId:3,workflowName:"Dev-Lead Agent"},
+    {conclusion:"failure",createdAt:$d,databaseId:4,workflowName:"Dev-Lead Agent"}]' > "$FIXTURE"
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+echo "$*" >> "$GH_LOG"
+created=""; prev=""
+for a in "$@"; do [ "$prev" = "--created" ] && created="${a#>=}"; prev="$a"; done
+case "$1 $2" in
+  "run list") jq -c --arg c "$created" '[.[] | select($c == "" or (.createdAt[0:10] >= $c))]' "$FIXTURE" ;;
+  *) echo '{}' ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+}
+_ago() { date -u -d "-$1 days" +%Y-%m-%dT%H:%M:%SZ; }
+
+@test "_agent_run_json: the per-role run list is fetched date-bounded to the 15-day tier for a recent window (#1259 option B)" {
+  _legacy_runs_stub
+  run env CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' | jq -r '[.[].databaseId] | join(\",\")'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+  grep -q -- "--created >=$(date -u -d '-15 days' +%Y-%m-%d)" "$GH_LOG"
+  grep -q -- "-L 1000" "$GH_LOG"
+}
+
+@test "_agent_run_json: a window older than the tier, or an empty window, reads the unbounded list as before (#1259 option B)" {
+  _legacy_runs_stub
+  run env CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 21)' | jq -r '[.[].databaseId] | join(\",\")'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1,2,3,4" ]
+  run grep -q -- "--created" "$GH_LOG"
+  [ "$status" -eq 1 ]
+  : > "$GH_LOG"
+  run env CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '' | jq -r '[.[].databaseId] | join(\",\")'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1,2,3,4" ]
+  run grep -q -- "--created" "$GH_LOG"
+  [ "$status" -eq 1 ]
+}
+
+@test "_agent_run_json: CANARY_RUNS_HORIZON_TIERS='' disables the per-role bound (#1259 option B)" {
+  _legacy_runs_stub
+  run env CANARY_RUNS_HORIZON_TIERS='' CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' | jq -r '[.[].databaseId] | join(\",\")'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+  run grep -q -- "--created" "$GH_LOG"
+  [ "$status" -eq 1 ]
+}
+
+@test "_agent_run_json: bounded and unbounded reads give the same runs for every window within the tier (#1259 option B)" {
+  _legacy_runs_stub
+  local days out_b out_u
+  for days in 1 3 5 10 13 14; do
+    out_b="$(env CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago $days)'")"
+    out_u="$(env CANARY_RUNS_HORIZON_TIERS='' CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago $days)'")"
+    [ -n "$out_b" ]
+    [ "$out_b" = "$out_u" ] || { echo "window=$days bounded=$out_b unbounded=$out_u"; return 1; }
+  done
+}
+
+@test "_agent_run_json: windows of different ages share ONE per-role fetch, and a capped bounded list triggers no refetch (#1259 option B)" {
+  _legacy_runs_stub
+  local cache="$BATS_TEST_TMPDIR/rc-legacy" recent; mkdir -p "$cache"
+  run env _RUNS_CACHE_DIR="$cache" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e
+    for d in 2 7 11 14; do _agent_run_json dev-lead org/legacy \"\$(date -u -d \"-\$d days\" +%Y-%m-%dT%H:%M:%SZ)\" >/dev/null; done"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^run list ' "$GH_LOG")" -eq 1 ]
+  # A bounded list that fills the 1000 cap IS the newest-1000 (newest-first), so it is used as is: no second read.
+  : > "$GH_LOG"; cache="$BATS_TEST_TMPDIR/rc-legacy-cap"; mkdir -p "$cache"
+  # Dated relative to now: a fixed date would fall behind the stub's 15-day bound and filter every row out.
+  recent="$(date -u -d '-1 days' +%Y-%m-%dT10:00:00Z)"
+  jq -n -c --arg c "$recent" '[range(1000) as $i | {conclusion:"success",createdAt:$c,databaseId:$i,workflowName:"Dev-Lead Agent"}]' > "$FIXTURE"
+  run env _RUNS_CACHE_DIR="$cache" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' | jq 'length'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1000" ]
+  [ "$(grep -c '^run list ' "$GH_LOG")" -eq 1 ]
 }
