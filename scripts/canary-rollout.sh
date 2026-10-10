@@ -45,8 +45,8 @@ set -euo pipefail
 #                       here resolve their tags from the local checkout, so a local run needs a
 #                       checkout of that repo WITH its tags (`git fetch --tags`); agents hosted
 #                       elsewhere resolve via `gh api` and need a GH_TOKEN that can read the host.
-#                       An agent whose tags cannot be read fails loudly ("cannot read tags for
-#                       <agent> on <host>") and is held BLOCKED, never reported fully rolled out (#1177).
+#                       A checkout with no tags at all for an agent fails loudly ("cannot read
+#                       tags for <agent> on <host>") and the agent is held BLOCKED (#1177).
 
 _HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=lib/canary-rollout.sh
@@ -2404,6 +2404,8 @@ cmd_promote_all() {
     echo "promote-all summary: ${#failed[@]} failed — ${failed[*]}"
   elif [ "${outcome_n[blocked]:-0}" -gt 0 ] || [ "${outcome_n[soaking]:-0}" -gt 0 ] || [ "${outcome_n[awaiting-confirmation]:-0}" -gt 0 ]; then
     echo "promote-all summary: NOT all agents advanced — $tally"
+  elif [ "${outcome_n[would-promote]:-0}" -gt 0 ]; then
+    echo "promote-all summary: dry run — ${outcome_n[would-promote]} would be promoted; no tag was moved."
   else
     echo "promote-all summary: all agents promoted or already current."
   fi

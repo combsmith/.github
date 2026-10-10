@@ -7228,6 +7228,18 @@ _wf_run_script() {
   [[ "$output" != *"all agents promoted"* ]]
 }
 
+@test "orchestrator: promote-all --dry-run with only promotable pairs does not say 'all promoted' (#1177)" {
+  run env CANARY_RINGS="$RINGS" bash -c "
+    source '$ORCH'
+    cmd_promote() { _record_promote_outcome would-promote \"\$1\" next-\>ring0; return 0; }
+    cmd_promote_all --dry-run
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dry run"* ]]
+  [[ "$output" == *"no tag was moved"* ]]
+  [[ "$output" != *"all agents promoted"* ]]
+}
+
 @test "orchestrator: THIS_REPO defaults to the engine's own repo (.github) when GITHUB_REPOSITORY is unset (#1177)" {
   run env -u GITHUB_REPOSITORY CANARY_RINGS="$RINGS" bash -c "source '$ORCH'; echo \"\$THIS_REPO\""
   [ "$status" -eq 0 ]
