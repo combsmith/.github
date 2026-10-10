@@ -835,9 +835,9 @@ has_clause() {
 # bot_logins_compared <clauses> <lhs> — the sorted logins excluded by
 # "<lhs> != '<login>'" clauses.
 bot_logins_compared() {
-  local clause lhs="$2"
+  local clause lhs="$2" pattern="^([^[:space:]]+) != '([^']+)'\$"
   while IFS= read -r clause; do
-    if [[ "$clause" =~ ^([^[:space:]]+)\ !=\ \'([^\']+)\'$ ]] && [ "${BASH_REMATCH[1]}" = "$lhs" ]; then
+    if [[ "$clause" =~ $pattern ]] && [ "${BASH_REMATCH[1]}" = "$lhs" ]; then
       printf '%s\n' "${BASH_REMATCH[2]}"
     fi
   done <<<"$1" | sort -u
@@ -861,6 +861,10 @@ TRUST_FLOOR_CLAUSE_PR="contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"
   [[ "$clauses" != *"endsWith(github.event.comment.body"* ]]
 }
 
+@test "route.if has exactly the 5 expected clauses (no extra restrictive clause)" {
+  [ "$(job_if_clauses route | wc -l)" -eq 5 ]
+}
+
 @test "route.if requires an @petry-projects/ handle in the comment" {
   has_clause "$(job_if_clauses route)" "contains(github.event.comment.body, '@petry-projects/')"
 }
@@ -882,21 +886,23 @@ TRUST_FLOOR_CLAUSE_PR="contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"
   [[ "$output" != *"||"* ]]
 }
 
-@test "route-pull-request.if marker axis matches pm_pr_should_route's semantics" {
-  # The PR-path axis 2 must mirror the library. Probe the library's observable
-  # semantics: a trusted human's body that QUOTES the marker mid-text.
+@test "route-pull-request.if has exactly the 8 expected clauses (no extra restrictive clause)" {
+  # A pure conjunction can also be broken by ADDING a clause (e.g. a draft
+  # filter) that stops valid PRs from routing; pin the clause count.
+  [ "$(job_if_clauses route-pull-request | wc -l)" -eq 8 ]
+}
+
+@test "route-pull-request.if marker axis is substring (!contains), matching pm_pr_should_route" {
+  # Policy is pinned explicitly (not derived from the helper): a marker anywhere
+  # in the body skips the PR, so the helper must reject a trusted human's body
+  # that QUOTES the marker mid-text AND the workflow must use !contains.
   local clauses quoted
   clauses="$(job_if_clauses route-pull-request)"
   quoted=$'## Summary\n\nThe `<!-- persona:qa-lead -->` marker is unchanged.'
-  if pm_pr_should_route don-petry don-petry OWNER "$quoted"; then
-    # Prefix semantics (#1286): only a body AUTHORED with the marker is skipped.
-    has_clause "$clauses" "!startsWith(github.event.pull_request.body, '<!-- persona:')"
-    [[ "$clauses" != *"contains(github.event.pull_request.body"* ]]
-  else
-    # Substring semantics: any marker in the body skips the PR.
-    has_clause "$clauses" "!contains(github.event.pull_request.body, '<!-- persona:')"
-    [[ "$clauses" != *"startsWith(github.event.pull_request.body"* ]]
-  fi
+  run pm_pr_should_route don-petry don-petry OWNER "$quoted"
+  [ "$status" -ne 0 ]
+  has_clause "$clauses" "!contains(github.event.pull_request.body, '<!-- persona:')"
+  [[ "$clauses" != *"startsWith(github.event.pull_request.body"* ]]
 }
 
 @test "route-pull-request.if only runs for same-repo pull_request events" {
