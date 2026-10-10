@@ -728,6 +728,11 @@ runtime:
 # Same two recursion axes and trust floor as pm_should_route, but WITHOUT the
 # @-mention requirement: a PR is derived, not addressed. A PR event must not
 # become an ungated write surface, so the guards apply on this path too (AC #4).
+#
+# The workflow's pull_request pre-filter uses !startsWith(body, '<!-- persona:')
+# for axis 2 (not substring contains). The tests below verify this prefix-matching
+# semantics: a marker quoted mid-body does NOT block routing, but a marker at the
+# start (or after leading blank lines, per pm_is_agent_authored_body) DOES block.
 
 @test "pm_pr_should_route allows a trusted human's PR with no @-mention in the body" {
   run pm_pr_should_route don-petry don-petry OWNER "Ordinary PR description, no handles."
