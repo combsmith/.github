@@ -96,8 +96,8 @@ confirmation.
 **Local runs.** `scripts/canary-rollout.sh` treats `GITHUB_REPOSITORY` (default `petry-projects/.github`) as the repo of
 the current checkout. Agents hosted there resolve their tags from the local checkout, so you need a clone of that repo
 with its tags fetched. Agents hosted elsewhere resolve through `gh api` and need a `GH_TOKEN` that can read the host. When
-a checkout has no tags at all for an agent, the script fails loudly (`cannot read tags for <agent> on <host>`) and holds
-the agent `BLOCKED` (#1177).
+all ring tags of a locally hosted agent are unreadable (release tags make no difference), the script fails loudly
+(`cannot read tags for <agent> on <host>`) and holds the agent `BLOCKED` (#1177).
 
 ## 4. Decision 3 — promotion is a single gated channel-tag move; rollback moves the tag back
 

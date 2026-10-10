@@ -45,8 +45,8 @@ set -euo pipefail
 #                       here resolve their tags from the local checkout, so a local run needs a
 #                       checkout of that repo WITH its tags (`git fetch --tags`); agents hosted
 #                       elsewhere resolve via `gh api` and need a GH_TOKEN that can read the host.
-#                       A checkout with no tags at all for an agent fails loudly ("cannot read
-#                       tags for <agent> on <host>") and the agent is held BLOCKED (#1177).
+#                       A locally hosted agent whose ring tags are all unreadable fails loudly
+#                       ("cannot read tags for <agent> on <host>") and is held BLOCKED (#1177).
 
 _HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=lib/canary-rollout.sh
@@ -550,18 +550,17 @@ _ring_commits() {
     lines+=("$ch ${c:--} $u")
   done
   [ -n "$flag" ] && rm -f "$flag"
-  # A LOCAL-git agent with EVERY ring absent AND no <agent>/* tag at all in this checkout is not
-  # "fully rolled out": the checkout simply cannot see its host's tags (e.g. a local run from the
-  # wrong repo, or a clone without tags, #1177). Fail loudly and report every ring unknown, so the
-  # frontier holds it BLOCKED (#1225 path) instead of emitting a false COMPLETE.
+  # A LOCAL-git agent with EVERY ring tag absent is not "fully rolled out": the rollout state
+  # cannot be read (e.g. a local run from the wrong repo, or a clone without ring tags, #1177).
+  # <agent>/vX.Y.Z release tags being present make no difference. Fail loudly and report every
+  # ring unknown, so the frontier holds it BLOCKED (#1225 path) instead of emitting a false COMPLETE.
   local host; host="$(_agent_field "$agent" host)"
-  if [ "$any_known" -eq 0 ] && { [ -z "$host" ] || [ "$host" = "$THIS_REPO" ]; } \
-     && [ -z "$(git for-each-ref --count=1 --format='%(refname)' "refs/tags/$agent/" 2>/dev/null || true)" ]; then
-    echo "::error::cannot read tags for $agent on ${host:-$THIS_REPO}: this checkout has no refs/tags/$agent/* (THIS_REPO=$THIS_REPO). Run from a checkout of ${host:-$THIS_REPO} with its tags fetched, or set GITHUB_REPOSITORY to the checkout's repo. Holding every ring BLOCKED (fail closed, #1177)." >&2
+  if [ "$any_known" -eq 0 ] && { [ -z "$host" ] || [ "$host" = "$THIS_REPO" ]; }; then
+    echo "::error::cannot read tags for $agent on ${host:-$THIS_REPO}: this checkout has none of its ring tags (THIS_REPO=$THIS_REPO). Run from a checkout of ${host:-$THIS_REPO} with its tags fetched, or set GITHUB_REPOSITORY to the checkout's repo. Holding every ring BLOCKED (fail closed, #1177)." >&2
     local i
     for i in "${!lines[@]}"; do lines[i]="${lines[i]% *} 1"; done
   fi
-  [ "${#lines[@]}" -gt 0 ] && printf '%s\n' "${lines[@]}"
+  if [ "${#lines[@]}" -gt 0 ]; then printf '%s\n' "${lines[@]}"; fi
   return 0
 }
 
@@ -2390,7 +2389,7 @@ cmd_promote_all() {
     [ -z "$oc" ] && continue
     outcome_n[$oc]=$(( ${outcome_n[$oc]:-0} + 1 ))
     [ "$oc" = blocked ] && blocked+=("$oa $ot${od:+ $od}")
-  done <<< "$(printf '%s\n' "${_PROMOTE_OUTCOMES[@]}")"
+  done <<< "$(if [ "${#_PROMOTE_OUTCOMES[@]}" -gt 0 ]; then printf '%s\n' "${_PROMOTE_OUTCOMES[@]}"; fi)"
   local tally="promoted: ${outcome_n[promoted]:-0}"
   [ "${outcome_n[would-promote]:-0}" -gt 0 ] && tally+=", would promote (dry-run): ${outcome_n[would-promote]}"
   tally+=", soaking: ${outcome_n[soaking]:-0}"

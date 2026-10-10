@@ -7240,6 +7240,24 @@ _wf_run_script() {
   [[ "$output" != *"all agents promoted"* ]]
 }
 
+@test "orchestrator: release tag present but every ring tag absent fails loudly — never 'fully rolled out' (#1177)" {
+  # Real tags in a scratch repo: a locally hosted agent with a <agent>/vX.Y.Z release tag but none
+  # of its ring tags is unreadable rollout state, not a completed rollout.
+  local repo="$BATS_TEST_TMPDIR/scratch-repo"
+  git init -q "$repo"
+  git -C "$repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+  git -C "$repo" tag dev-lead/v1.0.0
+  STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
+  printf '#!/usr/bin/env bash\ncase "$*" in *"run list"*) echo "[]" ;; *) echo "{}" ;; esac\n' > "$STUB_BIN/gh"
+  chmod +x "$STUB_BIN/gh"
+  cd "$repo"
+  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cannot read tags for dev-lead on petry-projects/.github-private"* ]]
+  [[ "$output" != *"fully rolled out"* ]]
+  [[ "$output" == *"BLOCKED"* ]]
+}
+
 @test "orchestrator: THIS_REPO defaults to the engine's own repo (.github) when GITHUB_REPOSITORY is unset (#1177)" {
   run env -u GITHUB_REPOSITORY CANARY_RINGS="$RINGS" bash -c "source '$ORCH'; echo \"\$THIS_REPO\""
   [ "$status" -eq 0 ]
