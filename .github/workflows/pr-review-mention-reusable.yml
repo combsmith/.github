@@ -8,6 +8,18 @@
 # repository_dispatch event to petry-projects/.github-private to trigger the
 # pr-review agent cascade.
 #
+# force_review rule (#1281): the dispatch carries client_payload[force_review]
+# =true (a JSON boolean, which lets pr-review skip its advisory-bot and
+# comment-disposition waiting gates; the review itself still runs in full) ONLY
+# for an @donpetry-bot comment / review comment by a trusted human: author
+# association OWNER, MEMBER or COLLABORATOR, author not donpetry-bot, and a body
+# with no automation marker (<!-- pr-review-agent, <!-- pr-review-claim,
+# <!-- persona:, <!-- dev-lead, <!-- dependency-advisory, <!-- maintainer-resolve,
+# <!-- auto-rebase-conflict). The review_requested path and marker-carrying
+# comments dispatch a plain, un-forced review. Agents post as the owner account,
+# so association alone cannot separate them from a person. The decision lives in
+# .github/scripts/pr-review-mention/lib/force-review.sh (bats-tested).
+#
 # Requires:
 #   GH_PAT_WORKFLOWS     — org secret, classic PAT (repo scope) for API calls and dispatch
 #   DON_PETRY_BOT_GH_PAT — org secret, classic PAT owned by donpetry-bot (repo scope) for posting comments
@@ -192,19 +204,72 @@ jobs:
           gh pr comment "$PR_URL" --body "$(printf '<!-- pr-review-agent mention-ack -->\n%s' "${MSG}")" \
             || echo "::warning::could not post ack comment on $PR_URL (comment cap / API error) — continuing"
 
+      # Source the force_review decision from this reusable's own commit so the
+      # rule always matches the pinned workflow version. Authenticated with the
+      # workflows PAT (already required here) so callers need no extra
+      # `contents:` permission.
+      - name: Checkout force-review tooling
+        if: steps.trust.outputs.trusted == 'true'
+        # Best-effort: a checkout failure must not suppress the review dispatch;
+        # the trigger step falls back to a plain (non-forced) dispatch.
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: petry-projects/.github
+          ref: ${{ github.job_workflow_sha }}
+          path: .pr-review-mention-tooling
+          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Trigger review agent
         if: steps.trust.outputs.trusted == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
           PR_URL: ${{ steps.pr.outputs.pr_url }}
+          # Comment fields via env, never inline `${{ }}` (script-injection).
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_ASSOC: ${{ github.event.comment.author_association }}
+          COMMENT_USER: ${{ github.event.comment.user.login }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
+          LIB=.pr-review-mention-tooling/.github/scripts/pr-review-mention/lib/force-review.sh
+          if [ -f "$LIB" ]; then
+            # shellcheck source=/dev/null
+            . "$LIB"
+            # Pure decision (see the header comment): force | plain | none.
+            read -r VERDICT RULE < <(pr_review_mention_force_decision \
+              "$EVENT_NAME" "$COMMENT_ASSOC" "$COMMENT_USER" "$COMMENT_BODY")
+          else
+            echo "::warning::force-review tooling unavailable — dispatching a plain review"
+            VERDICT=plain
+            RULE=tooling-unavailable
+          fi
+
+          FORCE_ARGS=()
+          case "$VERDICT" in
+            force)
+              # -F (typed field) so the payload value is the JSON boolean true.
+              FORCE_ARGS=(-F "client_payload[force_review]=true")
+              echo "force_review=true (rule: $RULE)"
+              ;;
+            plain)
+              echo "force_review=false (rule: $RULE)"
+              ;;
+            *)
+              echo "No dispatch (rule: $RULE)"
+              exit 0
+              ;;
+          esac
+
           # repository_dispatch requires only Contents: write, not Actions: write.
           # pr-review.yml in .github-private listens for "pr-review-mention" and
-          # extracts client_payload.pr_url to run the cascade.
+          # extracts client_payload.pr_url (and force_review) to run the cascade.
           gh api \
             --method POST \
             --header "Accept: application/vnd.github+json" \
             /repos/petry-projects/.github-private/dispatches \
             --field event_type=pr-review-mention \
-            --field "client_payload[pr_url]=$PR_URL"
+            --field "client_payload[pr_url]=$PR_URL" \
+            "${FORCE_ARGS[@]}"
           echo "Dispatch sent for $PR_URL"

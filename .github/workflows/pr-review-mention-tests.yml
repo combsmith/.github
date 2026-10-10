@@ -4,10 +4,12 @@
 #   - .github/workflows/pr-review-mention*.yml
 #   - test/workflows/pr-review-mention/**
 #   - standards/workflows/pr-review-mention.yml
+#   - .github/scripts/pr-review-mention/**
 #
 # Gates (all must pass before merge):
-#   1. shellcheck — static analysis for the test gh stub
+#   1. shellcheck — static analysis for the test gh stub and force-review lib
 #   2. bats       — guard (self-trigger exclusion) + ack (no bot self-mention)
+#                   + force-review (break-glass force_review decision, #1281)
 #
 # Standard: pins issue #538 — the mention listener must never re-trigger itself.
 
@@ -19,6 +21,7 @@ on:
       - '.github/workflows/pr-review-mention*.yml'
       - 'test/workflows/pr-review-mention/**'
       - 'standards/workflows/pr-review-mention.yml'
+      - '.github/scripts/pr-review-mention/**'
   push:
     branches:
       - main
@@ -26,6 +29,7 @@ on:
       - '.github/workflows/pr-review-mention*.yml'
       - 'test/workflows/pr-review-mention/**'
       - 'standards/workflows/pr-review-mention.yml'
+      - '.github/scripts/pr-review-mention/**'
 
 permissions:
   contents: read
@@ -80,7 +84,8 @@ jobs:
       - name: shellcheck
         run: |
           set -euo pipefail
-          shellcheck -x test/workflows/pr-review-mention/stubs/gh
+          shellcheck -x test/workflows/pr-review-mention/stubs/gh \
+            .github/scripts/pr-review-mention/lib/force-review.sh
 
       - name: Run bats suite
         run: bats --print-output-on-failure test/workflows/pr-review-mention/
