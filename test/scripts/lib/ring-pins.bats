@@ -294,6 +294,27 @@ setup() {
   [[ "$output" != *"apply-repo-settings/v1-stable"* ]]
 }
 
+# pr-review's engine keeps its grandfathered `pr-review.yml` name (#1127), so the
+# fleet caller's `uses:` line has no `-reusable` suffix. The re-pin must follow the
+# registry's reusable filename and move `uses:` and `agent_ref:` in lockstep (#1125).
+@test "ring_repin_uses: rewrites a grandfathered pr-review.yml pin and its agent_ref in lockstep (#1125)" {
+  local stub="    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/stable  # NOSONAR keep
+    with:
+      agent_ref: pr-review/stable"
+  run bash -c 'source "'"$REPO_ROOT"'/scripts/lib/ring-pins.sh"; ring_repin_uses pr-review pr-review/v1-ring1 <<<"$1"' _ "$stub"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"workflows/pr-review.yml@pr-review/v1-ring1  # NOSONAR keep"* ]]
+  [[ "$output" == *"agent_ref: pr-review/v1-ring1"* ]]
+  [[ "$output" != *"pr-review/stable"* ]]
+}
+
+@test "ring_repin_uses: a pr-review re-pin never touches a pr-review-mention pin (#1125)" {
+  local stub="    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v1-stable"
+  run bash -c 'source "'"$REPO_ROOT"'/scripts/lib/ring-pins.sh"; ring_repin_uses pr-review pr-review/v1-ring1 <<<"$1"' _ "$stub"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$stub" ]
+}
+
 @test "ring_vform_tier_aligned: true only for the repo's tier v-form (any major)" {
   ring_vform_tier_aligned auto-rebase/v2-ring1 auto-rebase TalkTerm    # ring1 repo
   ring_vform_tier_aligned auto-rebase/v9-stable auto-rebase markets    # stable repo
