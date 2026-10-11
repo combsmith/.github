@@ -212,6 +212,6 @@ jobs:
       actions: read
       contents: read
       checks: read
-    uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@b58510275dd1cbbd13c0733c15265d51fd63b992  # DEFECTIVE PIN — bare SHA, see §5
+    uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
