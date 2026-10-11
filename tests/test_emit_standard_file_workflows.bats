@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests for the repo-template WORKFLOW-STUB generator in
-# scripts/seed-repo-template.sh (#886).
+# scripts/emit-standard-file.sh (#886).
 #
 # The repo-template baseline re-seed ("chore: seed org baseline file scaffold")
 # must source its workflow stubs from the canonical standards/workflows/ — which
@@ -21,7 +21,7 @@
 
 setup() {
   REPO_ROOT="$(cd -- "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  SEED="${REPO_ROOT}/scripts/seed-repo-template.sh"
+  SEED="${REPO_ROOT}/scripts/emit-standard-file.sh"
   WF_DIR="${REPO_ROOT}/standards/workflows"
   export STANDARDS_DIR="$REPO_ROOT"
 }
@@ -151,7 +151,7 @@ RESEEDED_STUBS="dev-lead.yml auto-rebase.yml dependabot-automerge.yml"
 }
 
 @test "STANDARDS_REF defaults to standards/v1-stable when unset (environment variable resolution)" {
-  # Verify that seed-repo-template.sh accepts STANDARDS_REF and defaults to v1-stable
+  # Verify that emit-standard-file.sh accepts STANDARDS_REF and defaults to v1-stable
   # when unset. The script should complete successfully with default reference.
   run env -u STANDARDS_REF STANDARDS_DIR="$REPO_ROOT" bash "$SEED" --emit-workflow dev-lead.yml
   [ "$status" -eq 0 ]
