@@ -10,6 +10,10 @@
 #   - scripts/cut-standards-release.sh   (orchestrator)
 #   - scripts/lib/standards-release.sh   (pure decision core)
 #   - tests/standards_release.bats       (the suite)
+#   - scripts/lib/standards-channel-consumers.json  (the consumers `verify` runs, #1173)
+#   - scripts/standards-staleness.sh, scripts/lib/standards-staleness.sh,
+#     tests/standards_staleness.bats, .github/workflows/standards-staleness.yml
+#                                        (the channel staleness alarm, #1173)
 #   - .github/workflows/standards-release-tests.yml (this file)
 #
 # Gates (all must pass before merge):
@@ -23,7 +27,12 @@ on:
     paths:
       - 'scripts/cut-standards-release.sh'
       - 'scripts/lib/standards-release.sh'
+      - 'scripts/lib/standards-channel-consumers.json'
+      - 'scripts/standards-staleness.sh'
+      - 'scripts/lib/standards-staleness.sh'
       - 'tests/standards_release.bats'
+      - 'tests/standards_staleness.bats'
+      - '.github/workflows/standards-staleness.yml'
       - '.github/workflows/standards-release-tests.yml'
   push:
     branches:
@@ -31,7 +40,12 @@ on:
     paths:
       - 'scripts/cut-standards-release.sh'
       - 'scripts/lib/standards-release.sh'
+      - 'scripts/lib/standards-channel-consumers.json'
+      - 'scripts/standards-staleness.sh'
+      - 'scripts/lib/standards-staleness.sh'
       - 'tests/standards_release.bats'
+      - 'tests/standards_staleness.bats'
+      - '.github/workflows/standards-staleness.yml'
       - '.github/workflows/standards-release-tests.yml'
 
 permissions:
@@ -62,11 +76,12 @@ jobs:
       - name: shellcheck
         run: |
           set -euo pipefail
-          shellcheck --severity=warning -x scripts/cut-standards-release.sh scripts/lib/standards-release.sh
+          shellcheck --severity=warning -x scripts/cut-standards-release.sh scripts/lib/standards-release.sh \
+            scripts/standards-staleness.sh scripts/lib/standards-staleness.sh
 
       - name: Run bats suite
         # The suite stubs gh/git via PATH; a dummy token satisfies the
         # orchestrator's token precondition without any real API access.
         env:
           GH_TOKEN: dummy-token-for-stubbed-tests
-        run: bats --print-output-on-failure tests/standards_release.bats
+        run: bats --print-output-on-failure tests/standards_release.bats tests/standards_staleness.bats

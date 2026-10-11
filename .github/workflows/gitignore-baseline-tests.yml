@@ -3,13 +3,15 @@
 # Triggered on any PR that touches:
 #   - scripts/lib/gitignore-baseline.sh
 #   - scripts/sync-gitignore-baseline.sh
-#   - scripts/seed-repo-template.sh
+#   - scripts/emit-standard-file.sh
 #   - scripts/compliance-remediate.sh
 #   - test/scripts/lib/gitignore-baseline.bats
 #   - test/scripts/sync-gitignore-baseline/**
 #   - test/scripts/compliance-remediate/**
-#   - tests/test_seed_repo_template_gitignore.bats
-#   - tests/test_seed_repo_template_workflows.bats
+#   - tests/test_emit_standard_file_gitignore.bats
+#   - tests/test_emit_standard_file_workflows.bats
+#   - tests/test_seed_repo_template_single_home.bats
+#   - any file named seed-repo-template.sh (it must not exist here, #1927)
 #
 # Gates (all must pass before merge):
 #   1. shellcheck — static analysis of the lib + sync + seed + remediate scripts
@@ -23,13 +25,15 @@ on:
     paths:
       - 'scripts/lib/gitignore-baseline.sh'
       - 'scripts/sync-gitignore-baseline.sh'
-      - 'scripts/seed-repo-template.sh'
+      - 'scripts/emit-standard-file.sh'
+      - '**/seed-repo-template.sh'
       - 'scripts/compliance-remediate.sh'
       - 'test/scripts/lib/gitignore-baseline.bats'
       - 'test/scripts/sync-gitignore-baseline/**'
       - 'test/scripts/compliance-remediate/**'
-      - 'tests/test_seed_repo_template_gitignore.bats'
-      - 'tests/test_seed_repo_template_workflows.bats'
+      - 'tests/test_emit_standard_file_gitignore.bats'
+      - 'tests/test_emit_standard_file_workflows.bats'
+      - 'tests/test_seed_repo_template_single_home.bats'
       - '.github/workflows/gitignore-baseline-tests.yml'
   push:
     branches:
@@ -37,13 +41,15 @@ on:
     paths:
       - 'scripts/lib/gitignore-baseline.sh'
       - 'scripts/sync-gitignore-baseline.sh'
-      - 'scripts/seed-repo-template.sh'
+      - 'scripts/emit-standard-file.sh'
+      - '**/seed-repo-template.sh'
       - 'scripts/compliance-remediate.sh'
       - 'test/scripts/lib/gitignore-baseline.bats'
       - 'test/scripts/sync-gitignore-baseline/**'
       - 'test/scripts/compliance-remediate/**'
-      - 'tests/test_seed_repo_template_gitignore.bats'
-      - 'tests/test_seed_repo_template_workflows.bats'
+      - 'tests/test_emit_standard_file_gitignore.bats'
+      - 'tests/test_emit_standard_file_workflows.bats'
+      - 'tests/test_seed_repo_template_single_home.bats'
       - '.github/workflows/gitignore-baseline-tests.yml'
 
 permissions:
@@ -95,7 +101,7 @@ jobs:
           shellcheck --severity=warning -x \
             scripts/lib/gitignore-baseline.sh \
             scripts/sync-gitignore-baseline.sh \
-            scripts/seed-repo-template.sh \
+            scripts/emit-standard-file.sh \
             scripts/compliance-remediate.sh
 
       - name: Run bats suite
@@ -104,5 +110,6 @@ jobs:
             test/scripts/lib/gitignore-baseline.bats \
             test/scripts/sync-gitignore-baseline/ \
             test/scripts/compliance-remediate/ \
-            tests/test_seed_repo_template_gitignore.bats \
-            tests/test_seed_repo_template_workflows.bats
+            tests/test_emit_standard_file_gitignore.bats \
+            tests/test_emit_standard_file_workflows.bats \
+            tests/test_seed_repo_template_single_home.bats
