@@ -622,10 +622,16 @@ stub_has_stale_stable_header() {
 strip_stale_stable_header() {
   local base="$1" template="${2:-}"
   if [[ -n "$template" && -r "$template" ]]; then
-    awk -v tpl="$template" '
+    # Body comment blocks (consecutive comment lines) that name the stable channel are
+    # dropped whole too, so a legacy `# Pinned to the moving ... stable channel` block under
+    # `jobs:` does not survive and keep the detector true forever.
+    awk -v tpl="$template" -v re="^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)" '
       BEGIN { while ((getline l < tpl) > 0) { if (l ~ /^[^#[:space:]]/) break; hdr = hdr l "\n" } }
+      function flush() { if (!stale) printf "%s", blk; blk = ""; stale = 0 }
       !body && /^[^#[:space:]]/ { body = 1; printf "%s", hdr }
-      body { print }
+      body && /^[[:space:]]*#/ { blk = blk $0 "\n"; if ($0 ~ re) stale = 1; next }
+      body { flush(); print; next }
+      END { if (body) flush() }
     '
     return 0
   fi
