@@ -78,6 +78,25 @@ pm_is_agent_comment() {
   esac
 }
 
+# pm_is_agent_authored_body <body> — 0 if this body was AUTHORED as a persona:
+# its first non-blank line begins with the agent marker (leading blank lines and
+# leading whitespace ignored). Axis 2 of the PR path's recursion guard. Unlike a
+# comment, a PR body is never written by a persona mid-text — the runner's
+# pr_ensure_marker prepends the marker as the first line — so a marker anywhere
+# else is a quotation, and substring matching would skip that PR silently (#1286).
+pm_is_agent_authored_body() {
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    [ -n "$line" ] || continue
+    case "$line" in
+      "$PERSONA_AGENT_MARKER"*) return 0 ;;
+      *) return 1 ;;
+    esac
+  done <<< "$1"
+  return 1
+}
+
 # pm_extract_slugs <body> — emit each DISTINCT persona slug addressed in body.
 #
 # Matches '@<org>/<slug>' where slug is kebab-case, mirroring the schema's
@@ -533,7 +552,7 @@ pm_pr_should_route() {
 
   pm_is_bot_actor "$author" && return 1       # axis 1a: bot PR author
   pm_is_bot_actor "$actor" && return 1        # axis 1b: bot pusher/reopener (github.actor)
-  pm_is_agent_comment "$body" && return 1     # axis 2: agent marker
+  pm_is_agent_authored_body "$body" && return 1  # axis 2: body authored with the marker
   pm_trust_ok "$assoc" OWNER MEMBER COLLABORATOR || return 1
   return 0
 }
