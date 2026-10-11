@@ -961,17 +961,17 @@ TRUST_FLOOR_CLAUSE_PR="contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"
   [ "$(job_if_clauses route-pull-request | wc -l)" -eq 8 ]
 }
 
-@test "route-pull-request.if marker axis is substring (!contains), matching pm_pr_should_route" {
-  # Policy is pinned explicitly (not derived from the helper): a marker anywhere
-  # in the body skips the PR, so the helper must reject a trusted human's body
-  # that QUOTES the marker mid-text AND the workflow must use !contains.
+@test "route-pull-request.if marker axis is prefix (startsWith), matching pm_pr_should_route (#1286)" {
+  # Policy is pinned explicitly (not derived from the helper): only a body that
+  # LEADS with the marker is agent-authored; a trusted human's body that merely
+  # QUOTES the marker mid-text must still route.
   local clauses quoted
   clauses="$(job_if_clauses route-pull-request)"
   quoted=$'## Summary\n\nThe `<!-- persona:qa-lead -->` marker is unchanged.'
   run pm_pr_should_route don-petry don-petry OWNER "$quoted"
-  [ "$status" -ne 0 ]
-  has_clause "$clauses" "!contains(github.event.pull_request.body, '<!-- persona:')"
-  [[ "$clauses" != *"startsWith(github.event.pull_request.body"* ]]
+  [ "$status" -eq 0 ]
+  has_clause "$clauses" "!startsWith(github.event.pull_request.body, '<!-- persona:')"
+  [[ "$clauses" != *"!contains(github.event.pull_request.body"* ]]
 }
 
 @test "route-pull-request.if only runs for same-repo pull_request events" {
