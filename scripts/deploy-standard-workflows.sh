@@ -476,16 +476,37 @@ merge_guarded_surfaces() {
     # Keep repo-adjustable values (cron schedules, inline workflow_run.workflows)
     # from the existing stub instead of overwriting them with template defaults.
     merged_surface=$(printf '%s\n' "$extracted_surface" | EXISTING="$existing_surface" awk '
+      function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
       BEGIN {
         n = split(ENVIRON["EXISTING"], lines, "\n")
         for (i = 1; i <= n; i++) {
           if (lines[i] ~ /^[[:space:]]*(-[[:space:]]*)?cron:/) cron[++nc] = lines[i]
           else if (lines[i] ~ /^[[:space:]]*workflows:[[:space:]]*\[/) wf[++nw] = lines[i]
+          else if (lines[i] ~ /^[[:space:]]*workflows:[[:space:]]*(#.*)?$/) {
+            # block-form list: capture the key line plus its deeper-indented entries
+            ki = indent(lines[i]); ent = lines[i]
+            while (i < n) {
+              nx = lines[i + 1]
+              if (nx ~ /^[[:space:]]*$/ || nx ~ /^[[:space:]]*#/ || indent(nx) > ki) { ent = ent "\n" nx; i++ } else break
+            }
+            wf[++nw] = ent
+          }
         }
       }
       {
+        if (skipping) {
+          if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/ || indent($0) > ski) next
+          skipping = 0
+        }
         if ($0 ~ /^[[:space:]]*(-[[:space:]]*)?cron:/) { if (++ic <= nc) { print cron[ic]; next } }
-        else if ($0 ~ /^[[:space:]]*workflows:[[:space:]]*\[/) { if (++iw <= nw) { print wf[iw]; next } }
+        else if ($0 ~ /^[[:space:]]*workflows:[[:space:]]*(\[|(#.*)?$)/) {
+          if (++iw <= nw) {
+            print wf[iw]
+            # a block-form template list is replaced wholesale: drop its entries
+            if ($0 !~ /\[/) { skipping = 1; ski = indent($0) }
+            next
+          }
+        }
         print
       }
     ')
@@ -499,6 +520,19 @@ merge_guarded_surfaces() {
         fi
       fi
     done <<< "$existing_surface"
+    if [[ "$preserved" -eq 1 ]]; then
+      # Block-form workflow_run.workflows entries must also survive the merge.
+      while IFS= read -r existing_line; do
+        if ! printf '%s\n' "$merged_surface" | grep -qxF -- "$existing_line"; then
+          preserved=0
+          break
+        fi
+      done < <(printf '%s\n' "$existing_surface" | awk '
+        /^[[:space:]]*workflows:[[:space:]]*(#.*)?$/ { inwf = 1; next }
+        inwf && /^[[:space:]]*-[[:space:]]/ { print; next }
+        inwf && !/^[[:space:]]*(#.*)?$/ { inwf = 0 }
+      ')
+    fi
     if [[ "$preserved" -ne 1 ]]; then
       echo "Skipping '$surface': cannot preserve repo-specific values while repairing" >&2
       continue
@@ -841,9 +875,18 @@ deploy_repo() {
       # missing triggers/permissions/concurrency fields are added and drift-induced
       # removals are restored without losing documented per-repo liberties.
       mode="surface-drift-repin"
+      local merged_stub
+      merged_stub="$(merge_guarded_surfaces "$workflow" "$(< "$template")" "$existing_content")"
+      # Refuse the re-pin when drift survives the merge (e.g. job-level permissions
+      # the top-level repair cannot reach): queuing the unchanged stub would open a
+      # no-op PR every sweep.
+      if stub_any_surface_drift "$workflow" "$(< "$template")" "$merged_stub"; then
+        skip "$repo/$target_path surface drift not repairable by merge (e.g. job-level block); not queuing an unchanged stub"
+        continue
+      fi
       if [[ "$DRY_RUN" != "true" ]]; then
         repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
-        merge_guarded_surfaces "$workflow" "$(< "$template")" "$existing_content" > "$repin_source"
+        printf '%s\n' "$merged_stub" > "$repin_source"
       else
         repin_source="$template"
       fi

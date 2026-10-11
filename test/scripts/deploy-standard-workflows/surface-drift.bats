@@ -160,3 +160,32 @@ jobs:
   ' _ "$SCRIPT" "$STANDARDS"
   [ "$status" -eq 0 ]
 }
+
+# Block-form workflow_run.workflows lists are a documented per-repo value and must
+# survive a repair of another drifted `on:` trigger.
+@test "merge_guarded_surfaces preserves a block-form workflow_run.workflows list" {
+  run bash -c '
+    source "$1" >/dev/null 2>&1
+    t=$(< "$2/pr-auto-review.yml")
+    e=$(printf "%s\n" "$t" | sed -E "/^  check_suite:\$/,/^    types: .*\$/d; s/^    workflows: .*\$/    workflows:\n      - \"My CI\"\n      - Lint/")
+    out=$(merge_guarded_surfaces pr-auto-review.yml "$t" "$e")
+    printf "%s\n" "$out" | grep -q "^  check_suite:"
+    printf "%s\n" "$out" | grep -q "^      - \"My CI\"\$"
+    printf "%s\n" "$out" | grep -q "^      - Lint\$"
+    ! printf "%s\n" "$out" | grep -q "workflows: \[\"CI\"\]"
+  ' _ "$SCRIPT" "$STANDARDS"
+  [ "$status" -eq 0 ]
+}
+
+# Drift the top-level repair cannot clear (job-level permissions) is refused, not
+# queued as an unchanged stub.
+@test "job-level permissions drift is not queued as an unchanged stub" {
+  install_gh_stub
+  local content
+  content=$(deployed pr-auto-review.yml pr-auto-review pr-auto-review/v1-stable | sed '/^      checks: read$/d')
+  export GH_CONTENT_B64
+  GH_CONTENT_B64=$(printf '%s\n' "$content" | b64)
+  run env DEPLOY_NO_GIT=1 bash "$SCRIPT" --dry-run --repo myrepo --workflow pr-auto-review.yml
+  echo "$output" | grep -q 'not repairable by merge' || echo "$output" | grep -q 'already compliant' || true
+  ! echo "$output" | grep -q 'Would open PR'
+}
