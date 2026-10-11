@@ -46,7 +46,7 @@ case "$sub" in
         # file it models the branch's content: a reset to the base tip drops
         # every commit a prior run left on it.
         [ "${GH_REF_RESET_RC:-0}" -ne 0 ] && exit "${GH_REF_RESET_RC}"
-        [ -n "${GH_BRANCH_FILES:-}" ] && : > "$GH_BRANCH_FILES"
+        [ -n "${GH_BRANCH_FILES:-}" ] && printf '' > "$GH_BRANCH_FILES"
         exit 0 ;;
       */git/ref/heads/*)
         if printf '%s' "$args" | grep -q 'object.sha'; then
