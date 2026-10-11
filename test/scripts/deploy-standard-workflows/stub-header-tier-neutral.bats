@@ -136,7 +136,8 @@ ring_rendered_templates() {
   local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" stable old
   stable="$(cat "$t")"
   old="$(printf '# pinned to the `persona-mention/v1-stable` channel\n%s\n' "$stable")"
-  run bash -c 'source "$1"; stub_has_stale_stable_header "$2" "$3"' _ "$SCRIPT" "$old" "$t"
+  # Pass a stable-tier repo so the exemption applies
+  run bash -c 'source "$1"; stub_has_stale_stable_header "$2" "$3" petry-projects/stable-repo' _ "$SCRIPT" "$old" "$t"
   [ "$status" -eq 1 ]
 }
 
