@@ -24,6 +24,31 @@ setup() {
   run bash -c "source '$LIB'; printf '%s\n' standards/a.md standards/workflows/ci.yml standards/workflows-notes.md | ss_workflow_files"
   [ "$output" = "standards/workflows/ci.yml" ]
 }
+@test "ss_tree_diff: reports added, modified and removed files, sorted by path" {
+  printf 'standards/a.md\taaa\nstandards/gone.md\tggg\nstandards/same.md\tsss\n' > "$BATS_TEST_TMPDIR/base"
+  printf 'standards/same.md\tsss\nstandards/new.md\tnnn\nstandards/a.md\tbbb\n' > "$BATS_TEST_TMPDIR/head"
+  run ss_tree_diff "$BATS_TEST_TMPDIR/base" "$BATS_TEST_TMPDIR/head"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'modified\tstandards/a.md\nremoved\tstandards/gone.md\nadded\tstandards/new.md')" ]
+}
+@test "ss_tree_diff: identical listings differ in nothing" {
+  printf 'standards/a.md\taaa\n' > "$BATS_TEST_TMPDIR/base"
+  cp "$BATS_TEST_TMPDIR/base" "$BATS_TEST_TMPDIR/head"
+  run ss_tree_diff "$BATS_TEST_TMPDIR/base" "$BATS_TEST_TMPDIR/head"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+@test "ss_tree_diff: an empty base listing makes every head file added" {
+  : > "$BATS_TEST_TMPDIR/base"
+  printf 'standards/a.md\taaa\n' > "$BATS_TEST_TMPDIR/head"
+  run ss_tree_diff "$BATS_TEST_TMPDIR/base" "$BATS_TEST_TMPDIR/head"
+  [ "$output" = "$(printf 'added\tstandards/a.md')" ]
+}
+@test "ss_tree_diff: an unreadable listing fails instead of reporting no difference" {
+  printf 'standards/a.md\taaa\n' > "$BATS_TEST_TMPDIR/head"
+  run ss_tree_diff "$BATS_TEST_TMPDIR/missing" "$BATS_TEST_TMPDIR/head"
+  [ "$status" -ne 0 ]
+}
 @test "ss_age_days: whole days, floored" {
   [ "$(ss_age_days 1000000 $((1000000 - 86400 * 3 - 5)))" = "3" ]
   [ "$(ss_age_days 1000000 $((1000000 - 86399)))" = "0" ]
@@ -56,7 +81,7 @@ setup() {
   [ "$(ss_decision 2 0 3 seven)" = "UNKNOWN" ]
 }
 @test "ss_issue_body: carries the marker, both commits, the reason and every file" {
-  run bash -c "source '$LIB'; printf 'modified\tstandards/workflows/ci.yml\nadded\tstandards/new.md\n' | ss_issue_body standards/v1-stable $CH_SHA main $BR_SHA 14 'STALE workflows' 3 7 0 0"
+  run bash -c "source '$LIB'; printf 'modified\tstandards/workflows/ci.yml\nadded\tstandards/new.md\n' | ss_issue_body standards/v1-stable $CH_SHA main $BR_SHA 14 'STALE workflows' 3 7 0"
   [ "$status" -eq 0 ]
   [[ "$output" == "<!-- standards-channel-staleness channel=standards/v1-stable -->"* ]]
   [[ "$output" == *"111111111111"* && "$output" == *"222222222222"* ]]
@@ -67,30 +92,29 @@ setup() {
   [[ "$output" == *"cut-standards-release.sh verify"* ]]
 }
 @test "ss_issue_body: an age that is only an upper bound is stated as one" {
-  run bash -c "source '$LIB'; printf 'modified\tstandards/a.md\n' | ss_issue_body standards/v1-stable $CH_SHA main $BR_SHA 2 'STALE age' 9 7 1 0"
+  run bash -c "source '$LIB'; printf 'modified\tstandards/a.md\n' | ss_issue_body standards/v1-stable $CH_SHA main $BR_SHA 2 'STALE age' 9 7 1"
   [[ "$output" == *"is at most 9 days old. The limit is 7 days."* ]]
 }
-@test "ss_issue_body: a truncated file list says it may be incomplete" {
-  run bash -c "source '$LIB'; printf 'modified\tstandards/a.md\n' | ss_issue_body standards/v1-stable $CH_SHA main $BR_SHA 2 'STALE age' 9 7 0 1"
-  [[ "$output" == *"may be incomplete"* ]]
-}
-
 # ── gh glue, with gh stubbed ───────────────────────────────────────────────────
 # The stub answers each read from a fixture file and logs every issue write.
-#   $STUB/compare.json   the compare API response (absent → the call fails)
-#   $STUB/commits.tsv    "<sha>\t<iso date>" rows for the standards/ commit list
-#   $STUB/issues.json    the open-issue list
-#   $STUB/refs.txt       the standards/* tag refs
-#   $STUB/writes.log     one line per `gh issue create|edit|close`
-#   $STUB/body.md        the body file of the last create/edit
+#   $STUB/compare.json      the compare API response (absent → the call fails)
+#   $STUB/tree-<sha>.json   a git tree: the root tree of a commit, or the
+#                           recursive listing of a standards/ tree
+#   $STUB/commits.tsv       "<sha>\t<iso date>" rows for the standards/ commit list
+#   $STUB/issues.json       the open-issue list
+#   $STUB/refs.txt          the standards/* tag refs
+#   $STUB/reads.log         one line per `gh api` read
+#   $STUB/writes.log        one line per `gh issue create|edit|close`
+#   $STUB/body.md           the body file of the last create/edit
 _stub() {
   STUB="$BATS_TEST_TMPDIR/stub"
   mkdir -p "$STUB"
-  export STUB
+  export STUB CH_SHA BR_SHA
   printf 'refs/tags/standards/v1-stable\nrefs/tags/standards/v1.0.0\nrefs/tags/standards/v1.1.0\n' > "$STUB/refs.txt"
   echo '[]' > "$STUB/issues.json"
   : > "$STUB/commits.tsv"
   : > "$STUB/writes.log"
+  : > "$STUB/reads.log"
   cat > "$STUB/gh" <<'GH'
 #!/usr/bin/env bash
 args="$*"
@@ -104,10 +128,16 @@ case "$1 $2" in
     done
     exit 0 ;;
 esac
+echo "$args" >> "$STUB/reads.log"
 case "$args" in
   *"matching-refs/tags/standards/v"*) cat "$STUB/refs.txt" ;;
   *"/compare/"*) [ -f "$STUB/compare.json" ] || { echo "gh: HTTP 502" >&2; exit 1; }; cat "$STUB/compare.json" ;;
-  *"application/vnd.github.sha"*) printf '2222222222222222222222222222222222222222' ;;
+  *"/git/trees/"*)
+    sha="${args##*/git/trees/}"; sha="${sha%%\?*}"; sha="${sha%% *}"
+    [ -f "$STUB/tree-$sha.json" ] || { echo "gh: HTTP 404" >&2; exit 1; }
+    cat "$STUB/tree-$sha.json" ;;
+  *"application/vnd.github.sha"*"/commits/standards/"*) printf '%s' "${CH_SHA_REPLY-$CH_SHA}" ;;
+  *"application/vnd.github.sha"*) printf '%s' "$BR_SHA" ;;
   *"path=standards"*) cat "$STUB/commits.tsv" ;;
   *"--jq .default_branch"*) echo main ;;
   *) echo "unexpected gh call: $args" >&2; exit 97 ;;
@@ -116,20 +146,34 @@ GH
   chmod +x "$STUB/gh"
   export PATH="$STUB:$PATH"
   export SS_REPO="petry-projects/.github"
-  unset SS_CHANNEL SS_BRANCH DRY_RUN STANDARDS_STALENESS_MAX_DAYS GITHUB_STEP_SUMMARY
+  unset SS_CHANNEL SS_BRANCH DRY_RUN STANDARDS_STALENESS_MAX_DAYS GITHUB_STEP_SUMMARY CH_SHA_REPLY
 }
 
 # _iso_days_ago <n> — an ISO-8601 UTC timestamp n days before now.
 _iso_days_ago() { jq -rn --argjson n "$1" 'now - ($n * 86400) | todate'; }
 
-# _compare <channel-commit age in days> <file>... — write the compare fixture.
+# _compare <channel-commit age in days> <file>... — write the fixtures for a
+# channel that is that old and a branch on which each <file> was modified since.
+# Only files under standards/ are part of the standards/ trees; any other path
+# changes nothing there, so with no standards/ file the two trees are the same.
 _compare() {
-  local age="$1"; shift
-  local files
-  files="$(printf '%s\n' "$@" | jq -R 'select(length > 0) | {filename: ., status: "modified"}' | jq -s .)"
-  jq -n --arg sha "$CH_SHA" --arg d "$(_iso_days_ago "$age")" --argjson files "$files" \
-    '{status: "ahead", ahead_by: 5, base_commit: {sha: $sha, commit: {committer: {date: $d}}}, files: $files}' \
+  local age="$1" f i=0 changed=0; shift
+  jq -n --arg sha "$CH_SHA" --arg d "$(_iso_days_ago "$age")" \
+    '{status: "ahead", ahead_by: 5, base_commit: {sha: $sha, commit: {committer: {date: $d}}}}' \
     > "$STUB/compare.json"
+  local base='[{"path":"keep.md","type":"blob","sha":"keep"}' head='[{"path":"keep.md","type":"blob","sha":"keep"}'
+  for f in "$@"; do
+    case "$f" in standards/*) ;; *) continue ;; esac
+    i=$((i + 1)); changed=1
+    base="$base,{\"path\":\"${f#standards/}\",\"type\":\"blob\",\"sha\":\"old$i\"}"
+    head="$head,{\"path\":\"${f#standards/}\",\"type\":\"blob\",\"sha\":\"new$i\"}"
+  done
+  local base_tree="treebase" head_tree="treebase"
+  [ "$changed" = 0 ] || head_tree="treehead"
+  printf '{"tree":[{"path":"scripts","type":"tree","sha":"x"},{"path":"standards","type":"tree","sha":"%s"}]}' "$base_tree" > "$STUB/tree-$CH_SHA.json"
+  printf '{"tree":[{"path":"scripts","type":"tree","sha":"y"},{"path":"standards","type":"tree","sha":"%s"}]}' "$head_tree" > "$STUB/tree-$BR_SHA.json"
+  printf '{"tree":%s]}' "$base" > "$STUB/tree-treebase.json"
+  [ "$changed" = 0 ] || printf '{"tree":%s]}' "$head" > "$STUB/tree-treehead.json"
 }
 
 @test "glue: only non-standards files differ → FRESH, nothing written" {
@@ -258,10 +302,79 @@ _compare() {
 
 @test "glue: a compare response without the expected fields fails the run" {
   _stub
+  _compare 1 standards/ci-standards.md
   echo '{"message":"Not Found"}' > "$STUB/compare.json"
   run bash "$ORCH"
   [ "$status" -ne 0 ]
   [[ "$output" == *"without the expected fields"* ]]
+  [ ! -s "$STUB/writes.log" ]
+}
+
+@test "glue: both ends are pinned to commits before anything is compared" {
+  _stub
+  _compare 1 standards/workflows/agent-shield.yml
+  run bash "$ORCH"
+  [ "$status" -eq 0 ]
+  # The compare and the commit list run at the two resolved SHAs, never at the
+  # moving branch name.
+  grep -qF "compare/${CH_SHA}...${BR_SHA}" "$STUB/reads.log"
+  grep -qF "commits?sha=${BR_SHA}&path=standards" "$STUB/reads.log"
+  run grep -F "compare/standards/v1-stable...main" "$STUB/reads.log"
+  [ "$status" -eq 1 ]
+}
+
+@test "glue: a standards change is found from the trees even when compare lists no files" {
+  _stub
+  _compare 1 standards/workflows/agent-shield.yml
+  # compare caps its file list at 300 for the whole repo; here it lists none.
+  jq '. + {files: []}' "$STUB/compare.json" > "$STUB/c.json" && mv "$STUB/c.json" "$STUB/compare.json"
+  run bash "$ORCH"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"differs:  1 file(s) under standards/, 1 under standards/workflows/"* ]]
+  [[ "$output" == *"decision: STALE workflows"* ]]
+}
+
+@test "glue: added and removed standards files are listed with their change" {
+  _stub
+  _compare 1 standards/ci-standards.md
+  printf '{"tree":[{"path":"keep.md","type":"blob","sha":"keep"},{"path":"old.md","type":"blob","sha":"o"}]}' > "$STUB/tree-treebase.json"
+  printf '{"tree":[{"path":"keep.md","type":"blob","sha":"keep"},{"path":"workflows/new.yml","type":"blob","sha":"n"}]}' > "$STUB/tree-treehead.json"
+  run bash "$ORCH"
+  [ "$status" -eq 0 ]
+  grep -qF '| `standards/old.md` | removed |' "$STUB/body.md"
+  grep -qF '| `standards/workflows/new.yml` | added |' "$STUB/body.md"
+  run grep -F "keep.md" "$STUB/body.md"
+  [ "$status" -eq 1 ]
+}
+
+@test "glue: a standards/ listing that cannot be read fails the run — never fresh" {
+  _stub
+  _compare 1 standards/ci-standards.md
+  rm -f "$STUB/tree-treehead.json"
+  run bash "$ORCH"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not list standards/"* ]]
+  [[ "$output" != *"decision:"* ]]
+  [ ! -s "$STUB/writes.log" ]
+}
+
+@test "glue: a truncated standards/ listing fails the run instead of being diffed" {
+  _stub
+  _compare 1 standards/ci-standards.md
+  jq '. + {truncated: true}' "$STUB/tree-treehead.json" > "$STUB/t.json" && mv "$STUB/t.json" "$STUB/tree-treehead.json"
+  run bash "$ORCH"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"came back incomplete"* ]]
+  [ ! -s "$STUB/writes.log" ]
+}
+
+@test "glue: a channel that does not resolve to a commit fails the run" {
+  _stub
+  _compare 1 standards/ci-standards.md
+  export CH_SHA_REPLY='{"message":"Not Found"}'
+  run bash "$ORCH"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not resolve standards/v1-stable"* ]]
   [ ! -s "$STUB/writes.log" ]
 }
 

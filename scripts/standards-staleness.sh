@@ -60,6 +60,41 @@ _current_channel() {
   sr_channel_for "$highest"
 }
 
+# _commit_sha <ref> — the full commit SHA <ref> resolves to on SS_REPO (an
+# annotated tag is dereferenced). Fails when it cannot be read: an error body is
+# not a 40-hex SHA.
+_commit_sha() {
+  local sha
+  sha="$(gh api -H "Accept: application/vnd.github.sha" "repos/$SS_REPO/commits/$1")" \
+    || _fail "could not resolve $1 on $SS_REPO"
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || _fail "could not resolve $1 on $SS_REPO to a commit"
+  printf '%s' "$sha"
+}
+
+# _standards_tree_sha <commit_sha> — the git tree SHA of standards/ at that commit.
+# Empty when the commit has no standards/ directory. Fails when the root tree
+# cannot be read in full.
+_standards_tree_sha() {
+  local out
+  out="$(gh api "repos/$SS_REPO/git/trees/$1")" || _fail "could not read the root tree at ${1:0:12} on $SS_REPO"
+  jq -e '(.tree | type == "array") and (.truncated != true)' <<< "$out" > /dev/null \
+    || _fail "the root tree at ${1:0:12} on $SS_REPO came back incomplete"
+  jq -r '.tree[] | select(.path == "standards" and .type == "tree") | .sha' <<< "$out"
+}
+
+# _standards_blobs <tree_sha> — "<path>\t<blob sha>" for every file under the
+# standards/ tree <tree_sha>, paths prefixed "standards/". Nothing for an empty
+# <tree_sha>. Fails when the listing cannot be read in full, so a partial listing
+# is never diffed as if it were complete.
+_standards_blobs() {
+  local out
+  [ -n "${1:-}" ] || return 0
+  out="$(gh api "repos/$SS_REPO/git/trees/$1?recursive=1")" || _fail "could not list standards/ at tree ${1:0:12} on $SS_REPO"
+  jq -e '(.tree | type == "array") and (.truncated != true)' <<< "$out" > /dev/null \
+    || _fail "the listing of standards/ at tree ${1:0:12} on $SS_REPO came back incomplete"
+  jq -r '.tree[] | select(.type == "blob") | "standards/\(.path)\t\(.sha)"' <<< "$out"
+}
+
 # _alarm_issue <marker> — number of the open issue whose body carries <marker>,
 # or empty. Uses the issue list, not search: search does not index HTML comments.
 _alarm_issue() {
@@ -88,22 +123,34 @@ main() {
     return 0
   fi
 
-  local cmp
-  cmp="$(gh api "repos/$SS_REPO/compare/${channel}...${branch}")" \
+  # Pin both ends to commits FIRST, then read everything else at those two SHAs,
+  # so a branch that moves mid-run cannot pair one commit's diff with another's SHA.
+  local channel_sha branch_sha
+  channel_sha="$(_commit_sha "$channel")"
+  branch_sha="$(_commit_sha "$branch")"
+
+  local cmp channel_date ahead
+  cmp="$(gh api "repos/$SS_REPO/compare/${channel_sha}...${branch_sha}")" \
     || _fail "could not compare $channel with $branch on $SS_REPO"
-  local channel_sha branch_sha channel_date ahead n_all
-  channel_sha="$(jq -r '.base_commit.sha // empty' <<< "$cmp")"
   channel_date="$(jq -r '.base_commit.commit.committer.date // empty' <<< "$cmp")"
   ahead="$(jq -r '.ahead_by // empty' <<< "$cmp")"
-  n_all="$(jq -r '(.files // []) | length' <<< "$cmp")"
-  [[ "$channel_sha" =~ ^[0-9a-f]{40}$ && "$ahead" =~ ^[0-9]+$ && "$n_all" =~ ^[0-9]+$ && -n "$channel_date" ]] \
+  [[ "$ahead" =~ ^[0-9]+$ && -n "$channel_date" && "$(jq -r '.base_commit.sha // empty' <<< "$cmp")" = "$channel_sha" ]] \
     || _fail "the compare of $channel with $branch on $SS_REPO came back without the expected fields"
-  branch_sha="$(gh api -H "Accept: application/vnd.github.sha" "repos/$SS_REPO/commits/$branch")" \
-    || _fail "could not resolve $branch on $SS_REPO"
 
-  local files truncated=0 n wf
-  files="$(jq -r '(.files // [])[] | [.status, .filename] | @tsv' <<< "$cmp" | awk -F'\t' '$2 ~ /^standards\//')"
-  [ "$n_all" -ge 300 ] && truncated=1
+  # The differing files come from the two git trees of standards/, not from the
+  # compare response: compare lists at most 300 changed files for the whole repo,
+  # so a standards change could be cut off and read as "no difference". Equal tree
+  # SHAs mean standards/ is byte-identical, and nothing more is listed.
+  local base_tree head_tree base_list head_list files="" n wf
+  base_tree="$(_standards_tree_sha "$channel_sha")"
+  head_tree="$(_standards_tree_sha "$branch_sha")"
+  if [ "$base_tree" != "$head_tree" ]; then
+    base_list="$(mktemp)"; head_list="$(mktemp)"
+    _standards_blobs "$base_tree" > "$base_list"
+    _standards_blobs "$head_tree" > "$head_list"
+    files="$(ss_tree_diff "$base_list" "$head_list")" || { rm -f "$base_list" "$head_list"; _fail "could not diff the standards/ listings"; }
+    rm -f "$base_list" "$head_list"
+  fi
   n="$(printf '%s' "$files" | grep -c . || true)"
   wf="$(printf '%s\n' "$files" | cut -f2 | ss_workflow_files | grep -c . || true)"
 
@@ -114,7 +161,7 @@ main() {
   local age="" bound=0 now oldest
   if [ "$n" -gt 0 ]; then
     now="$(date -u +%s)"
-    oldest="$(gh api --paginate "repos/$SS_REPO/commits?sha=${branch}&path=standards&since=${channel_date}&per_page=100" \
+    oldest="$(gh api --paginate "repos/$SS_REPO/commits?sha=${branch_sha}&path=standards&since=${channel_date}&per_page=100" \
         --jq '.[] | [.sha, .commit.committer.date] | @tsv')" \
       || _fail "could not list the commits that changed standards/ on $branch since $channel_date"
     oldest="$(printf '%s\n' "$oldest" | awk -F'\t' -v base="$channel_sha" '$1 != "" && $1 != base { print $2 }' \
@@ -153,7 +200,7 @@ main() {
     STALE*)
       body_file="$(mktemp)"
       printf '%s\n' "$files" | ss_issue_body "$channel" "$channel_sha" "$branch" "$branch_sha" "$ahead" \
-        "$decision" "$age" "$SS_MAX_DAYS" "$bound" "$truncated" > "$body_file"
+        "$decision" "$age" "$SS_MAX_DAYS" "$bound" > "$body_file"
       if [ "$DRY_RUN" = "true" ]; then
         echo "[dry-run] would $([ -n "$existing" ] && echo "update issue #$existing" || echo "open an issue"): $title"
         cat "$body_file"

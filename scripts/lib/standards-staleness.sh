@@ -28,6 +28,23 @@ ss_standards_files() { grep -E '^standards/' || true; }
 # these alarms at once, whatever its age.
 ss_workflow_files() { grep -E '^standards/workflows/' || true; }
 
+# ss_tree_diff <base_listing> <head_listing> — the files that differ between two
+# listings of standards/. Each listing is a file of "<path>\t<blob sha>" lines.
+# stdout: "<status>\t<path>" lines sorted by path, status ∈ added|modified|removed.
+# Equal blob SHAs mean byte-identical files, so nothing is reported for them.
+ss_tree_diff() {
+  local base="${1:-}" head="${2:-}"
+  [ -r "$base" ] && [ -r "$head" ] || return 1
+  awk -F'\t' '
+    FILENAME == ARGV[1] { if ($1 != "") b[$1] = $2; next }
+    $1 != "" { h[$1] = $2 }
+    END {
+      for (p in h) { if (!(p in b)) print "added\t" p; else if (b[p] != h[p]) print "modified\t" p }
+      for (p in b) if (!(p in h)) print "removed\t" p
+    }
+  ' "$base" "$head" | sort -t "$(printf '\t')" -k2
+}
+
 # ss_age_days <now_epoch> <then_epoch> — whole days from <then> to <now>, never
 # negative. Empty (rc 1) when either is not a non-negative integer.
 ss_age_days() {
@@ -79,12 +96,12 @@ ss_reason_text() {
 }
 
 # ss_issue_body <channel> <channel_sha> <branch> <branch_sha> <ahead_by>
-#               <decision> <age_days> <max_days> <age_is_upper_bound> <truncated(0|1)>
+#               <decision> <age_days> <max_days> <age_is_upper_bound>
 # stdin: the differing standards/ files as "<status>\t<path>" lines.
 # stdout: the Markdown body of the alarm issue.
 ss_issue_body() {
   local channel="${1:-}" channel_sha="${2:-}" branch="${3:-}" branch_sha="${4:-}" ahead="${5:-}"
-  local decision="${6:-}" age="${7:-}" max="${8:-}" bound="${9:-0}" truncated="${10:-0}"
+  local decision="${6:-}" age="${7:-}" max="${8:-}" bound="${9:-0}"
   local status path n=0 rows=""
   while IFS=$'\t' read -r status path; do
     [ -n "$path" ] || continue
@@ -97,9 +114,6 @@ ss_issue_body() {
     "$channel" "${channel_sha:0:12}" "$branch" "${branch_sha:0:12}" "$ahead" "$n"
   ss_reason_text "$decision" "$age" "$max" "$bound"
   printf '\n\n## Files that differ\n\n| File | Change |\n|---|---|\n%s' "$rows"
-  if [ "$truncated" = "1" ]; then
-    printf '\nThe compare API returned its maximum of 300 files, so this list may be incomplete.\n'
-  fi
   cat <<'MD'
 
 ## What to do

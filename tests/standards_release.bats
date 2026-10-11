@@ -467,14 +467,15 @@ CAND_SHA="9999999999999999999999999999999999999999"
   [ "$(sr_consumer_verdict 0 "$BATS_TEST_TMPDIR/out" "" "")" = "PASS" ]
 }
 
-@test "consumer list: every row has id, repo, ref_env and command, and ids are unique" {
+@test "consumer list: every row has id, repo, ref_env, command and expect_output, and ids are unique" {
   run jq -e '
     (.consumers | length) > 0
     and all(.consumers[];
       (.id | type == "string" and length > 0)
       and (.repo | type == "string" and test("^[^/]+/[^/]+$"))
       and (.ref_env | type == "string" and test("^[A-Za-z_][A-Za-z0-9_]*$"))
-      and (.command | type == "string" and length > 0))
+      and (.command | type == "string" and length > 0)
+      and (.expect_output | type == "string" and length > 0))
     and ((.consumers | map(.id) | unique | length) == (.consumers | length))
   ' "$CONSUMERS"
   [ "$status" -eq 0 ]
@@ -557,7 +558,7 @@ CONSUMERSJSON
   cat > "$SR_CONSUMERS_FILE" <<'CONSUMERSJSON'
 {"consumers":[
   {"id":"a-check","repo":"petry-projects/consumer-a","ref_env":"A_REF","command":"bash check.sh","expect_output":"^checked at"},
-  {"id":"b-check","repo":"petry-projects/consumer-b","ref_env":"B_REF","command":"bash check.sh"}
+  {"id":"b-check","repo":"petry-projects/consumer-b","ref_env":"B_REF","command":"bash check.sh","expect_output":"."}
 ]}
 CONSUMERSJSON
   run bash "$ORCH" verify main
@@ -577,7 +578,15 @@ CONSUMERSJSON
 
 @test "verify: a malformed consumer row fails" {
   _verify_env 'echo "checked at $A_REF"'
-  echo '{"consumers":[{"id":"a-check","repo":"petry-projects/consumer-a","ref_env":"NOT VALID","command":"bash check.sh"}]}' > "$SR_CONSUMERS_FILE"
+  echo '{"consumers":[{"id":"a-check","repo":"petry-projects/consumer-a","ref_env":"NOT VALID","command":"bash check.sh","expect_output":"."}]}' > "$SR_CONSUMERS_FILE"
+  run bash "$ORCH" verify main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL malformed-entry"* ]]
+}
+
+@test "verify: a consumer row without expect_output is malformed — an exit code alone never passes" {
+  _verify_env 'echo "checked at $A_REF"'
+  echo '{"consumers":[{"id":"a-check","repo":"petry-projects/consumer-a","ref_env":"A_REF","command":"bash check.sh"}]}' > "$SR_CONSUMERS_FILE"
   run bash "$ORCH" verify main
   [ "$status" -ne 0 ]
   [[ "$output" == *"FAIL malformed-entry"* ]]
