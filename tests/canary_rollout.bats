@@ -7013,10 +7013,14 @@ YML
 _ingress_template_lint() {
   # shellcheck source=/dev/null
   source "$SCRIPT_DIR/scripts/lib/agent-ingress.sh"
-  local job bad=0
+  local job claimed bad=0
+  local -A registered=()
+  while IFS= read -r claimed; do
+    [ -n "$claimed" ] && registered["$claimed"]=1
+  done < <(jq -r '.agents[] | .ingress_job // empty' "$1")
   while IFS= read -r job; do
     [ -n "$job" ] || continue
-    jq -e --arg j "$job" '[.agents[] | .ingress_job // empty] | index($j) != null' "$1" >/dev/null || { printf '%s\n' "$job"; bad=1; }
+    [ -n "${registered["$job"]:-}" ] || { printf '%s\n' "$job"; bad=1; }
   done < <(agent_ingress_job_keys < "$2")
   return "$bad"
 }
@@ -7039,12 +7043,16 @@ jobs:
     uses: x/y/.github/workflows/pr-review.yml@v1
   'ci-failure-analyst':
     uses: x/y/.github/workflows/z.yml@v1
+  "pr-auto-review" :
+    uses: x/y/.github/workflows/a.yml@v1
+  pr-review-mention :   # whitespace before the colon is valid YAML
+    uses: x/y/.github/workflows/b.yml@v1
   # a comment, not a job
 permissions:
   contents: read
 YML
   [ "$status" -eq 0 ]
-  [ "$output" = "$(printf 'dev-lead\npr-review\nci-failure-analyst')" ]
+  [ "$output" = "$(printf 'dev-lead\npr-review\nci-failure-analyst\npr-auto-review\npr-review-mention')" ]
   run agent_ingress_job_keys <<< "name: no jobs here"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -7063,7 +7071,8 @@ YML
 
 @test "registry lint: a template job no agent claims is reported — a forgotten ingress_job cannot read as 'no caller' (#1247)" {
   local tpl="$BATS_TEST_TMPDIR/ingress.yml" reg="$BATS_TEST_TMPDIR/reg.json"
-  printf 'name: Agent Ingress\njobs:\n  dev-lead:\n    uses: x\n  pr-review:\n    uses: x\n  new-role:\n    uses: x\n' > "$tpl"
+  # `"new-role" :` — a quoted key with a space before its colon must still be seen (an unlisted job is an unlinted job)
+  printf 'name: Agent Ingress\njobs:\n  dev-lead:\n    uses: x\n  pr-review:\n    uses: x\n  "new-role" :\n    uses: x\n' > "$tpl"
   jq -n '{agents:{"dev-lead":{ingress_job:"dev-lead"},"pr-review":{},"legacy":{}}}' > "$reg"
   run _ingress_template_lint "$reg" "$tpl"
   [ "$status" -eq 1 ]

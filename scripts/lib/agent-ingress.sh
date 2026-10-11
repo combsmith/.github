@@ -78,7 +78,8 @@ agent_ingress_has_role_job() {
 # its top-level `jobs:`, one per line, unquoted, in file order (nothing when there
 # is no `jobs:` block). Same indentation and quoting rules as
 # agent_ingress_has_role_job: the job-key indent is whatever the first entry under
-# `jobs:` uses, and deeper (nested) keys and comments are skipped. CRLF-tolerant.
+# `jobs:` uses, and deeper (nested) keys and comments are skipped. Whitespace
+# between a key and its colon is accepted. CRLF-tolerant.
 agent_ingress_job_keys() {
   awk '
     BEGIN { injobs = 0; indent = -1 }
@@ -100,7 +101,10 @@ agent_ingress_job_keys() {
         if (end == 0) next
         name = substr(key, 1, end - 1)
         rest = substr(key, end)
+        sub(/[ \t]+$/, "", name)
       }
+      # YAML allows whitespace between a key and its colon (`"pr-review" :`, `pr-review :`).
+      sub(/^[ \t]+/, "", rest)
       if (name != "" && rest ~ /^:([ \t].*)?$/) print name
     }
   '
