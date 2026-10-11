@@ -151,6 +151,7 @@ CI_WORKFLOWS_CATEGORY="ci-workflows"
 # ---------------------------------------------------------------------------
 findings_count=0
 
+# Add a finding to the audit findings.json file.
 add_finding() {
   local repo="$1" category="$2" check="$3" severity="$4" detail="$5" standard_ref="${6:-}"
 
@@ -169,9 +170,13 @@ add_finding() {
   mv "$FINDINGS_FILE.tmp" "$FINDINGS_FILE"
 }
 
+# Start a grouped log section on stderr (GitHub Actions group).
 log() { echo "::group::$*" >&2; }
+# End a grouped log section on stderr.
 log_end() { echo "::endgroup::" >&2; }
+# Log an informational message to stderr.
 info() { echo "[INFO] $*" >&2; }
+# Log a warning message to stderr (GitHub Actions warning).
 warn() { echo "::warning::$*" >&2; }
 
 # mutations_enabled: issue/label mutation is allowed only when explicitly applied

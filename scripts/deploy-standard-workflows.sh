@@ -259,10 +259,15 @@ parse_args() {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+# Log a message to stdout with [deploy] prefix.
 log()  { echo "[deploy] $*"; }
+# Log a skip message (informational, nothing done).
 skip() { echo "[deploy] SKIP  $*"; }
+# Log a dry-run action (would happen with --dry-run flag).
 dry()  { echo "[deploy] DRY   $*"; }
+# Log a successful action.
 ok()   { echo "[deploy] OK    $*"; }
+# Log an error message to stderr.
 err()  { echo "[deploy] ERROR $*" >&2; }
 
 # True if <repo> is in the SKIP_REPOS list (exempt from standard-workflow deployment).
@@ -460,8 +465,8 @@ merge_guarded_surfaces() {
         if (indent($0) > keyindent) { print; next }
         capturing = 0
       }
-      if ($0 ~ ("^[[:space:]]*" key ":")) {
-        capturing = 1; keyindent = indent($0); print; next
+      if ($0 ~ ("^" key ":")) {
+        capturing = 1; keyindent = 0; print; next
       }
     }
   '
@@ -487,11 +492,13 @@ merge_guarded_surfaces() {
           else if (lines[i] ~ /^[[:space:]]*workflows:[[:space:]]*\[/) wf[++nw] = lines[i]
           else if (lines[i] ~ /^[[:space:]]*workflows:[[:space:]]*(#.*)?$/) {
             # block-form list: capture the key line plus its deeper-indented entries
-            ki = indent(lines[i]); ent = lines[i]
-            while (i < n) {
-              nx = lines[i + 1]
-              if (nx ~ /^[[:space:]]*$/ || nx ~ /^[[:space:]]*#/ || indent(nx) > ki) { ent = ent "\n" nx; i++ } else break
+            ki = indent(lines[i]); ent = lines[i]; i++
+            while (i <= n) {
+              if (lines[i] ~ /^[[:space:]]*$/ || lines[i] ~ /^[[:space:]]*#/) { ent = ent "\n" lines[i]; i++ }
+              else if (indent(lines[i]) > ki) { ent = ent "\n" lines[i]; i++ }
+              else break
             }
+            i--
             wf[++nw] = ent
           }
         }
