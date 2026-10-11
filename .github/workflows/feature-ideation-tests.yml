@@ -6,6 +6,7 @@
 #   - .github/scripts/feature-ideation/**
 #   - .github/schemas/signals.schema.json
 #   - test/workflows/feature-ideation/**
+#   - test/workflows/helpers/**   (fleet-pause.bash, loaded by fleet-pause.bats)
 #   - standards/workflows/feature-ideation.yml
 #
 # Gates (all must pass before merge):
@@ -26,6 +27,7 @@ on:
       - '.github/scripts/feature-ideation/**'
       - '.github/schemas/signals.schema.json'
       - 'test/workflows/feature-ideation/**'
+      - 'test/workflows/helpers/**'
       - 'standards/workflows/feature-ideation.yml'
   push:
     branches:
@@ -35,6 +37,7 @@ on:
       - '.github/scripts/feature-ideation/**'
       - '.github/schemas/signals.schema.json'
       - 'test/workflows/feature-ideation/**'
+      - 'test/workflows/helpers/**'
       - 'standards/workflows/feature-ideation.yml'
 
 permissions:
