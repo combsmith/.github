@@ -208,6 +208,11 @@ readonly REPLACE_IF_PRESENT_WORKFLOWS=(
 # the sweep must never read, replace or re-pin it.
 declare -A ENGINE_HOST_REPOS=(
   ["pr-review.yml"]="$ENGINE_HOST_REPO"
+  # The central BMAD idea engines live under these names in .github-private; their
+  # callers here are stubs, so the sweep must not treat the engines as consumers.
+  ["idea-enhancer.yml"]="$ENGINE_HOST_REPO"
+  ["idea-triage.yml"]="$ENGINE_HOST_REPO"
+  ["initiative-planner.yml"]="$ENGINE_HOST_REPO"
 )
 
 # is_replace_if_present_workflow <name.yml> -> 0 if the workflow deploys only over
@@ -595,12 +600,22 @@ stub_has_stale_stable_header() {
   ! grep -qE "^[[:space:]]*uses:.*@${base}/(v[0-9]+-)?stable([[:space:]]|\$)" <<< "$existing"
 }
 
-# strip_stale_stable_header <base> -> stdin minus the comment lines naming <base>'s
-# stable channel. Applied to the copied existing body on the in-place paths so the
-# deployed stub keeps its per-repo edits (e.g. workflow_run.workflows) yet no longer
-# trips stub_has_stale_stable_header on the next sweep (#1297).
+# strip_stale_stable_header <base> [<template>] -> stdin minus the stale stable-channel
+# header. With <template>, the stub's whole leading comment block (everything above the
+# first top-level YAML key) is replaced by the template's canonical, tier-neutral header,
+# so a multiline legacy bullet is never left half-deleted. The body is kept verbatim, so
+# per-repo edits (e.g. workflow_run.workflows) survive and the next sweep sees no stale
+# header (#1297). Without <template>, only the lines naming the stable channel are dropped.
 strip_stale_stable_header() {
-  local base="$1"
+  local base="$1" template="${2:-}"
+  if [[ -n "$template" && -r "$template" ]]; then
+    awk -v tpl="$template" '
+      BEGIN { while ((getline l < tpl) > 0) { if (l ~ /^[^#[:space:]]/) break; hdr = hdr l "\n" } }
+      !body && /^[^#[:space:]]/ { body = 1; printf "%s", hdr }
+      body { print }
+    '
+    return 0
+  fi
   grep -vE "^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)" || true
 }
 
@@ -973,7 +988,7 @@ deploy_repo() {
         printf '%s\n' "$existing_content" > "$repin_source"
       fi
       if [[ "$repin_source" != "$template" ]]; then
-        strip_stale_stable_header "$base" < "$repin_source" > "$repin_source.stripped"
+        strip_stale_stable_header "$base" "$template" < "$repin_source" > "$repin_source.stripped"
         mv "$repin_source.stripped" "$repin_source"
       fi
     fi
