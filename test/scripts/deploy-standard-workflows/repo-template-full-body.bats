@@ -136,7 +136,8 @@ deploy_capture() {
   GH_TOKEN=x run deploy_capture repo-template dependabot-rebase.yml
   [ "$status" -eq 0 ]
   echo "$output" | grep -qF 'repo-template — opened #1'
-  diff "$TEMPLATE" "$OUT/dependabot-rebase.yml"
+  run diff "$TEMPLATE" "$OUT/dependabot-rebase.yml"
+  [ "$status" -eq 0 ]
   GH_CONTENT_B64="$(b64 < "$OUT/dependabot-rebase.yml")"; export GH_CONTENT_B64
   rm -rf "$OUT"
   GH_TOKEN=x run deploy_capture repo-template dependabot-rebase.yml
@@ -155,7 +156,8 @@ deploy_capture() {
   GH_TOKEN=x run deploy_capture repo-template dependabot-rebase.yml
   [ "$status" -eq 0 ]
   echo "$output" | grep -qF 'repo-template — opened #1'
-  diff <(rendered_at dependabot-rebase/v2-ring1) "$OUT/dependabot-rebase.yml"
+  run diff <(rendered_at dependabot-rebase/v2-ring1) "$OUT/dependabot-rebase.yml"
+  [ "$status" -eq 0 ]
   run grep -qE '^ +uses:.*@dependabot-rebase/v2-stable' "$OUT/dependabot-rebase.yml"
   [ "$status" -eq 1 ]
   GH_CONTENT_B64="$(b64 < "$OUT/dependabot-rebase.yml")"; export GH_CONTENT_B64
