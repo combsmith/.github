@@ -2,10 +2,13 @@
 #
 # Triggered on any PR that touches:
 #   - standards/workflows/**            (a template pin changed)
+#   - .github/dependabot.yml            (Dependabot coverage of the templates changed)
 #   - test/scripts/standards-templates/** (the guard itself changed)
 #
 # Gate: bats — every deployable template pins its major-scoped
-#       `<agent>/v<M>-stable` channel and never the bare `<agent>/stable` form.
+#       `<agent>/v<M>-stable` channel and never the bare `<agent>/stable` form,
+#       and Dependabot's github-actions updates cover every directory of
+#       published workflow YAML (#1172).
 
 name: Standards Templates Tests
 
@@ -13,6 +16,7 @@ on:
   pull_request:
     paths:
       - 'standards/workflows/**'
+      - '.github/dependabot.yml'
       - 'test/scripts/standards-templates/**'
       - '.github/workflows/standards-templates-tests.yml'
   push:
@@ -20,6 +24,7 @@ on:
       - main
     paths:
       - 'standards/workflows/**'
+      - '.github/dependabot.yml'
       - 'test/scripts/standards-templates/**'
       - '.github/workflows/standards-templates-tests.yml'
 
