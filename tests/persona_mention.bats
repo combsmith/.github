@@ -904,7 +904,7 @@ has_clause() {
 # bot_logins_compared <clauses> <lhs> — the sorted logins excluded by
 # "<lhs> != '<login>'" clauses.
 bot_logins_compared() {
-  local clause lhs="$2" pattern="^([^[:space:]]+) != '([^']+)'\$"
+  local clause lhs="$2" pattern="^([^[:space:]]+) != '([^']+)'$"
   while IFS= read -r clause; do
     if [[ "$clause" =~ $pattern ]] && [ "${BASH_REMATCH[1]}" = "$lhs" ]; then
       printf '%s\n' "${BASH_REMATCH[2]}"
