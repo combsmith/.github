@@ -20,16 +20,19 @@ RULESET="${REPO_ROOT}/standards/rulesets/code-quality.json"
 
 # required-check context | providing workflow | line that pins the context
 #
-# The third field is the exact (trimmed) line whose presence produces the
-# context: a `name:` for a plain job, the job id for a reusable-workflow caller
-# (GitHub composes `<caller job id> / <reusable job name>`). Renaming either
-# silently un-requires the check, because the ruleset matches by context name.
+# The third field is the line whose presence produces the context, WITH its
+# indentation: a job-level `name:` (4 spaces) for a plain job, the job id
+# (2 spaces) for a reusable-workflow caller (GitHub composes
+# `<caller job id> / <reusable job name>`). The indentation is what ties the
+# line to a job: the workflow-level `name: CodeQL` sits at column 0 and must not
+# satisfy the check. Renaming a job silently un-requires its check, because the
+# ruleset matches by context name.
 # Fields are split on the first two `|` only, so the third may hold any text.
 PROVIDERS=(
-  "SonarCloud|sonarcloud.yml|name: SonarCloud"
-  "CodeQL|codeql.yml|name: CodeQL"
-  "agent-shield / AgentShield|agent-shield.yml|agent-shield:"
-  "dependency-audit / Detect ecosystems|dependency-audit.yml|dependency-audit:"
+  "SonarCloud|sonarcloud.yml|    name: SonarCloud"
+  "CodeQL|codeql.yml|    name: CodeQL"
+  "agent-shield / AgentShield|agent-shield.yml|  agent-shield:"
+  "dependency-audit / Detect ecosystems|dependency-audit.yml|  dependency-audit:"
 )
 
 # Print the `merge_group:` trigger line ONLY when it is a direct child of the
@@ -49,11 +52,11 @@ merge_group_lines() {
   ' "$1"
 }
 
-# Succeeds when <file> has a line equal to <line> once leading whitespace and a
-# trailing comment are ignored.
+# Succeeds when <file> has a line equal to <line>, indentation included, once a
+# trailing comment and trailing whitespace are ignored.
 has_line() {
   local file="$1" line="$2"
-  sed -E 's/^[[:space:]]+//; s/[[:space:]]+#.*$//; s/[[:space:]]+$//' "$file" | grep -Fxq -- "$line"
+  sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+$//' "$file" | grep -Fxq -- "$line"
 }
 
 required_contexts() {
@@ -139,6 +142,20 @@ required_contexts() {
   n="$(grep -c -- '-Dsonar.branch.name=' "$f")"
   # Both the first scan and its retry must pass the argument.
   [ "$n" -eq 2 ] || { echo "expected sonar.branch.name on scan and retry, found ${n}"; return 1; }
+}
+
+@test "a workflow-level name does not stand in for a renamed job" {
+  # codeql.yml is also NAMED `CodeQL` at workflow level. That line must not
+  # satisfy the context check once the job itself is renamed.
+  local renamed
+  renamed="$(mktemp)"
+  printf 'name: CodeQL\non:\n  merge_group:\njobs:\n  CodeQL:\n    name: Code scanning\n    runs-on: ubuntu-latest\n' > "$renamed"
+  if has_line "$renamed" "    name: CodeQL"; then
+    rm -f "$renamed"; echo "workflow-level name matched as a job name"; return 1
+  fi
+  printf 'name: CodeQL\non:\n  merge_group:\njobs:\n  CodeQL:\n    name: CodeQL  # required context\n    runs-on: ubuntu-latest\n' > "$renamed"
+  has_line "$renamed" "    name: CodeQL" || { rm -f "$renamed"; echo "job-level name not matched"; return 1; }
+  rm -f "$renamed"
 }
 
 @test "matchers reject a nested trigger and a filtered trigger" {
