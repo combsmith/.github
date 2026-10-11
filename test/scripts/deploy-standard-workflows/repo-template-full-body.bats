@@ -103,7 +103,8 @@ deploy_capture() {
 }
 
 @test "fixture: the stale body really differs from the template and keeps the right pin" {
-  ! diff -q <(stale_body_at dependabot-rebase/v2-stable) "$TEMPLATE" >/dev/null
+  run diff -q <(stale_body_at dependabot-rebase/v2-stable) "$TEMPLATE"
+  [ "$status" -eq 1 ]
   stale_body_at dependabot-rebase/v2-stable | grep -qF 'dependabot-rebase-reusable.yml@dependabot-rebase/v2-stable'
 }
 
