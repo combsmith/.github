@@ -68,13 +68,14 @@ STUB
 # Ring-awareness (#482): the auto-rebase template pins @auto-rebase/stable, but a
 # ring1 repo legitimately pins @auto-rebase/ring1. The sweep must treat that as
 # compliant and NOT plan a PR reverting it to stable.
-stub_pinning() {  # <ref> → base64 of a minimal stub pinning the reusable at <ref>
+stub_pinning() {  # <ref> → base64 of the auto-rebase template re-pinned to <ref>
   # Carries the S7635 marker — a converged consumer's shape after #875/#876 — so the
   # ring-awareness fixtures below are not tripped by the marker-drift check (#877).
-  local body="jobs:
-  auto-rebase:
-    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@$1
-    secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable"
+  # Derived from the template so its on:/permissions:/concurrency: surfaces match
+  # and the surface-drift check (#1236) stays clean.
+  local body
+  body="$(sed -E "s|(auto-rebase-reusable\.yml)@[^[:space:]]+|\1@$1|" \
+    "${REPO_ROOT}/standards/workflows/auto-rebase.yml")"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
 
