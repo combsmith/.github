@@ -2642,7 +2642,7 @@ $note"
 | candidate | \`${cand:0:12}\` |
 | host repo | \`$host\` |
 | cumulative failures | $cum_row |
-| triage | **$triage** |
+| triage | **$(triage_label "$triage")** |
 
 $note
 
