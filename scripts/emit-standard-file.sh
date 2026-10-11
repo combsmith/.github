@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# scripts/seed-repo-template.sh — emit standard file content for the
+# scripts/emit-standard-file.sh — emit standard file content for the
 # org repo-template to distribute to all new repos (#798, Story: SEED + DISTRIBUTE).
 #
+# This script only PRINTS a file. It does not seed anything. The tool that writes
+# the scaffold into petry-projects/repo-template is `scripts/seed-repo-template.sh`
+# in petry-projects/.github-private, the one home of that name. This file used to
+# share the name, which made the two look like diverged copies of one script
+# (petry-projects/.github-private#1927). Do not add a `seed-repo-template.sh` here:
+# tests/test_seed_repo_template_single_home.bats fails if one reappears.
+#
 # Usage:
-#   STANDARDS_DIR=<path> bash scripts/seed-repo-template.sh --emit-baseline .gitignore
-#   STANDARDS_DIR=<path> bash scripts/seed-repo-template.sh --emit-workflow dev-lead.yml
+#   STANDARDS_DIR=<path> bash scripts/emit-standard-file.sh --emit-baseline .gitignore
+#   STANDARDS_DIR=<path> bash scripts/emit-standard-file.sh --emit-workflow dev-lead.yml
 #
 # --emit-baseline .gitignore
 #   Print the seeded .gitignore: the marker-wrapped L1 secrets baseline on top
