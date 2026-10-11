@@ -155,3 +155,18 @@ ring_rendered_templates() {
   run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$stripped" "$t"
   [ "$status" -eq 0 ]
 }
+
+@test "strip_stale_stable_header with a template replaces the whole legacy header block" {
+  install_gh_stub
+  local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" old out
+  old="$(printf '# legacy header\n#   • You MUST NOT change: the `uses:` ref — it is pinned to the\n#     `persona-mention/v1-stable` channel, a moving tag.\n#     Never repoint it.\n%s\n' "$(sed -n '/^[^#[:space:]]/,$p' "$t")")"
+  out="$(bash -c 'source "$1"; strip_stale_stable_header persona-mention "$3" <<< "$2"' _ "$SCRIPT" "$old" "$t")"
+  [ "$(sed -n '/^[^#[:space:]]/q;p' <<< "$out")" = "$(sed -n '/^[^#[:space:]]/q;p' "$t")" ]
+  [[ "$out" != *legacy* ]]
+}
+
+@test "idea engines are engine-host targets in .github-private only" {
+  install_gh_stub
+  run bash -c 'source "$1"; for w in idea-enhancer.yml idea-triage.yml initiative-planner.yml; do is_engine_host_target "$w" .github-private || exit 1; ! is_engine_host_target "$w" TalkTerm || exit 2; done' _ "$SCRIPT"
+  [ "$status" -eq 0 ]
+}
