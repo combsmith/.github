@@ -583,20 +583,33 @@ merge_guarded_surfaces() {
   return 0
 }
 
-# stub_has_stale_stable_header <existing_content> <template> -> 0 if the stub carries a
+# stub_has_stale_stable_header <existing_content> <template> <repo> -> 0 if the stub carries a
 # comment naming its agent's stable channel (`<base>/stable`, `<base>/v<M>-stable`,
 # `<base> stable channel`) that the template no longer carries (#1297). Such a header
 # contradicts a ring pin; the pin alone is compliant, so without this check the sweep
-# would never ship the comment-only header fix to existing ring repos.
+# would never ship the comment-only header fix to existing ring repos. In ring repos,
+# even a currently stable-pinned stub must migrate its header because the in-place
+# repin will change the pin to ring, leaving the header contradictory.
 stub_has_stale_stable_header() {
-  local existing="$1" template="$2" base re
+  local existing="$1" template="$2" repo="$3" base re tier
   base="$(reusable_base_of "$template")"
   [[ -n "$base" ]] || return 1
   re="^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)"
   grep -qE "$re" <<< "$existing" || return 1
   ! grep -qE "$re" "$template" || return 1
-  # A stable-pinned stub's header still agrees with its pin: only a ring/next pin
-  # makes the stable wording a contradiction, so stable consumers see no churn.
+  # A stable-pinned stub's header agrees with its pin, BUT only when the repo is
+  # stable-tier. In ring-managed repos, a stable-pinned stub is itself an anomaly
+  # that the repin will fix; the header must migrate too, so don't exempt in ring.
+  if ring_is_ring_reusable "$base" && [[ -n "$repo" ]]; then
+    tier="$(ring_tier_for_repo "$base" "$repo" 2>/dev/null)" || tier=""
+    # Ring-managed repo with a tier: the stub should be ring-pinned, so the header
+    # is stale regardless of the current pin.
+    if [[ -n "$tier" ]] && [[ "$tier" != "stable" ]]; then
+      return 0  # Flag as stale
+    fi
+  fi
+  # Non-ring reusable or stable-tier repo: apply the exemption (don't flag if
+  # the stub is stable-pinned, since the header agrees with the pin).
   ! grep -qE "^[[:space:]]*uses:.*@${base}/(v[0-9]+-)?stable([[:space:]]|\$)" <<< "$existing"
 }
 
@@ -668,7 +681,7 @@ is_already_compliant() {
      && ! stub_has_s7635_marker <<< "$existing_content"; then
     return 1
   fi
-  stub_has_stale_stable_header "$existing_content" "$template" && return 1
+  stub_has_stale_stable_header "$existing_content" "$template" "$repo" && return 1
   if is_replace_if_present_workflow "$workflow" \
      || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
@@ -979,7 +992,7 @@ deploy_repo() {
     # pr-auto-review's workflow_run.workflows). Full-body-compared stubs are exempt —
     # their drift is already resolved by a template redeploy.
     if [[ "$DRY_RUN" != "true" && -n "$existing_sha" ]] \
-       && stub_has_stale_stable_header "$existing_content" "$template"; then
+       && stub_has_stale_stable_header "$existing_content" "$template" "$repo"; then
       base="$(reusable_base_of "$template")"
       if [[ "$repin_source" == "$template" ]] && ! is_replace_if_present_workflow "$workflow" \
          && ! { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; } \
