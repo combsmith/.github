@@ -26,6 +26,19 @@
 #   - The two critical gotchas (github_token override, the `model` input)
 #     are baked in here so callers cannot accidentally regress them.
 #
+# Fleet pause (AGENTS_PAUSED, #1295):
+#   - With the Actions variable AGENTS_PAUSED=true the two jobs below are
+#     skipped by their `if:` and `fleet-paused` prints one notice naming the
+#     pause source and until time. The run ends green having called no model.
+#   - `vars` is read in the CALLING repository's context, so an organisation
+#     variable pauses every consumer and a repository variable of the same
+#     name overrides it for that repository. The gate lives here because the
+#     caller stubs are frozen.
+#   - GitHub compares strings without regard to case, so `TRUE` pauses too.
+#     Unset, `false` or any other value runs the workflow exactly as before.
+#   - Same rule as dev-lead-reusable.yml in petry-projects/.github-private
+#     (#1525, #2249). Tests: test/workflows/feature-ideation/fleet-pause.bats.
+#
 # Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#8-feature-ideation-feature-ideationyml--bmad-method-repos
 name: Feature Ideation (Reusable)
 
@@ -126,6 +139,9 @@ jobs:
   # ---------------------------------------------------------------------------
   gather-signals:
     name: Gather Project Signals
+    # AGENTS_PAUSED (#1295): this job makes no model call, but its only
+    # product is the signals artifact `analyze` reads, so it is skipped with it.
+    if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -181,6 +197,11 @@ jobs:
   analyze:
     name: BMAD Analyst — Feature Ideation
     needs: [gather-signals]
+    # AGENTS_PAUSED (#1295): the model call is in this job. With the fleet
+    # paused it is skipped (neutral, not red) and `fleet-paused` below reports
+    # why. Keep the gate as the FIRST term, followed only by `&&` terms, so
+    # nothing after it can bypass the pause.
+    if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
@@ -773,3 +794,33 @@ jobs:
           path: ${{ runner.temp }}/dry-run.jsonl
           if-no-files-found: ignore
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Fleet pause notice — what a paused run does instead (#1295)
+  # ---------------------------------------------------------------------------
+  # With AGENTS_PAUSED=true the two jobs above are skipped by their `if:`, and
+  # a skipped job cannot log. This job runs instead and says why in one line.
+  # It stands alone (no `needs:`, or a skipped dependency would silence it) and
+  # runs while the fleet is paused, so it holds no secret, no token and no
+  # action: it can never reach the model.
+  fleet-paused:
+    name: Agent Fleet Paused — Ideation Not Run
+    if: vars.AGENTS_PAUSED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    env:
+      # Through `env:`, never `${{ }}` inside the script: the values are data.
+      PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
+      PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
+    steps:
+      - name: Report the fleet pause
+        run: |
+          set -euo pipefail
+          # Line breaks become spaces: a second log line starting with `::`
+          # would be read by the runner as a workflow command of its own.
+          pause_source="$(printf '%s' "${PAUSE_SOURCE:-not set (paused by hand)}" | tr '\r\n' '  ')"
+          pause_until="$(printf '%s' "${PAUSE_UNTIL:-not set}" | tr '\r\n' '  ')"
+          echo "::notice title=Agent fleet paused::Feature Ideation: not run, the agent fleet is paused (AGENTS_PAUSED=true)." \
+            "Pause source: ${pause_source}." \
+            "Paused until: ${pause_until}."
