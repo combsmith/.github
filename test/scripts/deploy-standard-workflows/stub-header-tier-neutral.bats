@@ -79,6 +79,21 @@ ring_rendered_templates() {
   if [ -n "$bad" ]; then printf '%s' "$bad"; return 1; fi
 }
 
+@test "sweep: every ring-managed template's existing stubs with stale headers are flagged as non-compliant (not skipped)" {
+  install_gh_stub
+  local rows t base ref rendered old bad=""
+  rows="$(ring_rendered_templates)"
+  while IFS=$'\t' read -r t base ref; do
+    rendered="$(bash -c 'source "$1"; ring_repin_uses "$2" "$3" < "$4"' _ "$SCRIPT" "$base" "$ref" "$t")"
+    # Simulate an existing ring-1 stub that still carries the old stable-channel header
+    old="$(printf '# pinned to the \`%s/v1-stable\` channel\n%s\n' "$base" "$rendered")"
+    # Verify it is NOT compliant (would be processed, not skipped, by the sweep)
+    run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/test-repo' _ "$SCRIPT" "$old" "$t"
+    [ "$status" -eq 1 ] || bad+="${t##*/}: stale header not flagged as non-compliant"$'\n'
+  done <<< "$rows"
+  if [ -n "$bad" ]; then printf '%s' "$bad"; return 1; fi
+}
+
 @test "ring-1 repo: a correctly swept persona-mention stub is compliant and its header agrees with its pin" {
   install_gh_stub
   local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" swept
