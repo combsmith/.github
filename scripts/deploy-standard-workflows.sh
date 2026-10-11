@@ -143,6 +143,9 @@ DEPLOYABLE_WORKFLOWS=(
   pr-auto-review.yml
   feature-ideation.yml
   pr-review.yml
+  idea-enhancer.yml
+  idea-triage.yml
+  initiative-planner.yml
 )
 
 # Deployable workflows whose stub BODY carries a documented per-repo edit the
@@ -586,7 +589,35 @@ stub_has_stale_stable_header() {
   [[ -n "$base" ]] || return 1
   re="^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)"
   grep -qE "$re" <<< "$existing" || return 1
-  ! grep -qE "$re" "$template"
+  ! grep -qE "$re" "$template" || return 1
+  # A stable-pinned stub's header still agrees with its pin: only a ring/next pin
+  # makes the stable wording a contradiction, so stable consumers see no churn.
+  ! grep -qE "^[[:space:]]*uses:.*@${base}/(v[0-9]+-)?stable([[:space:]]|\$)" <<< "$existing"
+}
+
+# strip_stale_stable_header <base> -> stdin minus the comment lines naming <base>'s
+# stable channel. Applied to the copied existing body on the in-place paths so the
+# deployed stub keeps its per-repo edits (e.g. workflow_run.workflows) yet no longer
+# trips stub_has_stale_stable_header on the next sweep (#1297).
+strip_stale_stable_header() {
+  local base="$1"
+  grep -vE "^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)" || true
+}
+
+# Workflows an adopter may or may not have (BMAD idea pipeline). The sweep never
+# seeds them; it only migrates an existing caller, re-pinning its OWN body in place.
+readonly PRESENT_ONLY_WORKFLOWS=(
+  idea-enhancer.yml
+  idea-triage.yml
+  initiative-planner.yml
+)
+
+is_present_only_workflow() {
+  local w="$1" p
+  for p in "${PRESENT_ONLY_WORKFLOWS[@]}"; do
+    [[ "$w" == "$p" ]] && return 0
+  done
+  return 1
 }
 
 # is_already_compliant <existing_content> <template> <repo> -> 0 if the deployed
@@ -876,6 +907,17 @@ deploy_repo() {
         repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
         printf '%s\n' "$existing_content" > "$repin_source"
       fi
+    elif is_present_only_workflow "$workflow"; then
+      # Optional pipeline stub: never seed; otherwise re-pin its OWN body in place.
+      if [[ -z "$existing_sha" ]]; then
+        skip "$repo/$workflow (present-only: no existing caller — never seeded)"
+        continue
+      fi
+      mode="repin-in-place"
+      if [[ "$DRY_RUN" != "true" ]]; then
+        repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
+        printf '%s\n' "$existing_content" > "$repin_source"
+      fi
     elif is_body_preserving_workflow "$workflow"; then
       # feature-ideation carries a per-repo project_context the sweep must never
       # clobber. Seed the generic template ONLY when the stub is absent; when it
@@ -914,6 +956,25 @@ deploy_repo() {
         printf '%s\n' "$merged_stub" > "$repin_source"
       else
         repin_source="$template"
+      fi
+    fi
+
+    # Stale stable-channel header (#1297): migrate by editing the stub's OWN body, never
+    # by redeploying the template (that would reset per-repo edits such as
+    # pr-auto-review's workflow_run.workflows). Full-body-compared stubs are exempt —
+    # their drift is already resolved by a template redeploy.
+    if [[ "$DRY_RUN" != "true" && -n "$existing_sha" ]] \
+       && stub_has_stale_stable_header "$existing_content" "$template"; then
+      base="$(reusable_base_of "$template")"
+      if [[ "$repin_source" == "$template" ]] && ! is_replace_if_present_workflow "$workflow" \
+         && ! { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; } \
+         && is_pin_compliant "$existing_content" "$template" "$repo"; then
+        repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
+        printf '%s\n' "$existing_content" > "$repin_source"
+      fi
+      if [[ "$repin_source" != "$template" ]]; then
+        strip_stale_stable_header "$base" < "$repin_source" > "$repin_source.stripped"
+        mv "$repin_source.stripped" "$repin_source"
       fi
     fi
 

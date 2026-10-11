@@ -115,3 +115,28 @@ ring_rendered_templates() {
   run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$swept" "$t"
   [ "$status" -eq 0 ]
 }
+
+@test "stable-pinned stub with a stable-channel header is NOT drift (tier-restricted)" {
+  install_gh_stub
+  local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" stable old
+  stable="$(cat "$t")"
+  old="$(printf '# pinned to the `persona-mention/v1-stable` channel\n%s\n' "$stable")"
+  run bash -c 'source "$1"; stub_has_stale_stable_header "$2" "$3"' _ "$SCRIPT" "$old" "$t"
+  [ "$status" -eq 1 ]
+}
+
+@test "strip_stale_stable_header drops only the stale comment lines and keeps per-repo edits" {
+  install_gh_stub
+  local body
+  body="$(printf '# pinned to the `pr-auto-review/v1-stable` channel\non:\n  workflow_run:\n    workflows: ["Build"]\n')"
+  run bash -c 'source "$1"; strip_stale_stable_header pr-auto-review <<< "$2"' _ "$SCRIPT" "$body"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'workflows: ["Build"]'* ]]
+  [[ "$output" != *stable* ]]
+}
+
+@test "idea stubs are deployable and present-only (never seeded)" {
+  install_gh_stub
+  run bash -c 'source "$1"; for w in idea-enhancer.yml idea-triage.yml initiative-planner.yml; do is_deployable_workflow "$w" && is_present_only_workflow "$w" || exit 1; done' _ "$SCRIPT"
+  [ "$status" -eq 0 ]
+}
