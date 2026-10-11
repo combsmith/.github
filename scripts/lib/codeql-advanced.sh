@@ -32,7 +32,7 @@ CODEQL_ADVANCED_EXCEPTIONS=(".github" ".github-private")
 codeql_advanced_exception() {
   local repo="$1" exception
   for exception in "${CODEQL_ADVANCED_EXCEPTIONS[@]}"; do
-    [ "$repo" = "$exception" ] && return 0
+    [[ "$repo" == "$exception" ]] && return 0
   done
   return 1
 }

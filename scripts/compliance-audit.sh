@@ -192,6 +192,14 @@ repo_was_audited() {
   grep -qxF "$1" "$AUDITED_REPOS_FILE"
 }
 
+# response_is_http_404 <captured gh output>: return 0 when a failed `gh api` call
+# was a definite "not there". Matches gh's stderr "(HTTP 404)" and the API's JSON
+# {"status":"404"}. Anything else (403, 5xx, rate limit, network) is not an
+# answer about the resource and must not be read as absence.
+response_is_http_404() {
+  [[ "$1" == *"HTTP 404"* || "$1" == *'"status":"404"'* ]]
+}
+
 # mark_repo_inconclusive <repo>: record that a closure-relevant check failed for <repo>.
 mark_repo_inconclusive() {
   printf '%s\n' "$1" >> "$INCONCLUSIVE_REPOS_FILE"
@@ -1226,13 +1234,12 @@ check_codeowners() {
       raw=$(gh api "repos/$ORG/$repo/contents/$path" 2>&1) && rc=0 || rc=$?
       [ "$rc" -eq 0 ] && break
       # 404 is deterministic — the file is not at this path; stop retrying it.
-      # Matches both gh's stderr "(HTTP 404)" and the API's JSON {"status":"404"}.
-      [[ "$raw" == *"HTTP 404"* || "$raw" == *'"status":"404"'* ]] && break
+      response_is_http_404 "$raw" && break
       [ "$i" -lt 3 ] && sleep $((i * 2))
     done
     if [ "$rc" -ne 0 ]; then
       # Non-404 failure (auth/scope/network/5xx/rate-limit) → inconclusive path.
-      [[ "$raw" == *"HTTP 404"* || "$raw" == *'"status":"404"'* ]] || any_unreadable=true
+      response_is_http_404 "$raw" || any_unreadable=true
       continue
     fi
     local content decoded
@@ -1524,6 +1531,9 @@ check_sonar_s7637_exemption() {
   esac
 }
 
+# Standard section every CodeQL finding below points at.
+CODEQL_STANDARD_REF="standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
+
 # ---------------------------------------------------------------------------
 # Check: CodeQL default setup is configured (and no stray codeql.yml exists)
 #
@@ -1589,7 +1599,7 @@ check_codeql_default_setup() {
     else
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-default-setup-not-configured" "error" \
         "CodeQL default setup query returned no state — either the repo has code scanning disabled or the API call failed. Enable via \`gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -F state=configured -F query_suite=default\`." \
-        "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
+        "$CODEQL_STANDARD_REF"
     fi
   else
     local state
@@ -1597,7 +1607,7 @@ check_codeql_default_setup() {
     if [ "$state" != "configured" ]; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-default-setup-not-configured" "error" \
         "CodeQL default setup is in state \`$state\` (expected \`configured\`). Run \`apply-repo-settings.sh $repo\` or \`gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -F state=configured -F query_suite=default\`." \
-        "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
+        "$CODEQL_STANDARD_REF"
     fi
   fi
 
@@ -1605,7 +1615,7 @@ check_codeql_default_setup() {
   if gh_api "repos/$ORG/$repo/contents/.github/workflows/codeql.yml" --jq '.name' > /dev/null 2>&1; then
     add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "stray-codeql-workflow" "error" \
       "Repo still ships \`.github/workflows/codeql.yml\`. The org standard now uses GitHub-managed CodeQL default setup; per-repo workflow files are drift and run a duplicate analysis alongside default setup. Delete the file. If a documented exception applies (custom query pack, build mode, path filters), open a standards PR against \`standards/ci-standards.md\` to record the exception before re-adding the workflow." \
-      "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
+      "$CODEQL_STANDARD_REF"
   fi
 }
 
@@ -1631,13 +1641,13 @@ check_codeql_advanced_workflow() {
 
   # ── Half 1: default setup must be off ──────────────────────────────────────
   raw_response=$(gh api "repos/$ORG/$repo/code-scanning/default-setup" 2>/dev/null) || api_ok=$?
-  if [ "$api_ok" -eq 0 ]; then
+  if [[ "$api_ok" -eq 0 ]]; then
     local state
     state=$(echo "$raw_response" | jq -r '.state // ""' 2>/dev/null || echo "")
-    if [ "$state" = "configured" ]; then
+    if [[ "$state" = "configured" ]]; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-default-setup-conflicts-advanced" "error" \
         "Repo is approved for advanced CodeQL setup (\`scripts/lib/codeql-advanced.sh\`) but default setup is \`configured\`. GitHub rejects the \`codeql.yml\` upload while default setup is enabled, so the required \`CodeQL\` check fails. Disable it: \`gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -f state=not-configured\`." \
-        "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
+        "$CODEQL_STANDARD_REF"
     fi
   elif echo "$raw_response" | jq -e '.status == "403"' > /dev/null 2>&1; then
     # Same known gap as the standard path: the audit token lacks the scope this
@@ -1652,16 +1662,14 @@ check_codeql_advanced_workflow() {
   # ── Half 2: the workflow must exist ────────────────────────────────────────
   api_ok=0
   raw_response=$(gh api "repos/$ORG/$repo/contents/.github/workflows/codeql.yml" --jq '.name' 2>&1) || api_ok=$?
-  if [ "$api_ok" -eq 0 ]; then
+  if [[ "$api_ok" -eq 0 ]]; then
     return 0
   fi
 
-  # Same 404 test as check_codeowners: gh's stderr "(HTTP 404)" or the API's
-  # JSON {"status":"404"}.
-  if [[ "$raw_response" == *"HTTP 404"* || "$raw_response" == *'"status":"404"'* ]]; then
+  if response_is_http_404 "$raw_response"; then
     add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-advanced-workflow-missing" "error" \
       "Repo is approved for advanced CodeQL setup (\`scripts/lib/codeql-advanced.sh\`) but ships no \`.github/workflows/codeql.yml\`, so nothing produces its required \`CodeQL\` check. Restore the workflow (it must trigger on \`push\`, \`pull_request\` and \`merge_group\`), or remove the repo from \`CODEQL_ADVANCED_EXCEPTIONS\` and re-enable default setup." \
-      "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
+      "$CODEQL_STANDARD_REF"
   else
     info "  CodeQL advanced workflow not readable for $repo (not a 404) — marking the repo inconclusive"
     mark_repo_inconclusive "$repo"
