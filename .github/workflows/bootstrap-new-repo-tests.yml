@@ -1,0 +1,81 @@
+# Quality gates for the new-repo bootstrap (scripts/bootstrap-new-repo.sh).
+#
+# A bats suite with no CI runner is unenforced — tests/test_bootstrap_new_repo.bats
+# went red on main for weeks (#1318) because nothing ran it. This is that runner.
+#
+# Triggered on any PR (or push to main) that touches the bootstrap, the real
+# sub-scripts its DRY_RUN tests drive end to end (apply-repo-settings.sh,
+# apply-rulesets.sh), the libraries they source (including scripts/lib/labels.sh,
+# which derives the persona <id>:hands-off family), the ring SoT, ring pins,
+# the sanctioned ruleset JSON and .gitignore baseline it reads, the suite itself, or this file.
+#
+# Gates (all must pass before merge):
+#   1. shellcheck — static analysis for the bootstrap
+#   2. bats       — the full bootstrap suite (gh is stubbed; no API access)
+
+name: Bootstrap New Repo Tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/bootstrap-new-repo.sh'
+      - 'scripts/apply-repo-settings.sh'
+      - 'scripts/apply-rulesets.sh'
+      - 'scripts/lib/labels.sh'
+      - 'scripts/lib/push-protection.sh'
+      - 'scripts/lib/gitignore-baseline.sh'
+      - 'scripts/lib/ring-pins.sh'
+      - 'standards/rulesets/*.json'
+      - 'standards/canary-rings.json'
+      - '.gitignore'
+      - 'tests/test_bootstrap_new_repo.bats'
+      - '.github/workflows/bootstrap-new-repo-tests.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/bootstrap-new-repo.sh'
+      - 'scripts/apply-repo-settings.sh'
+      - 'scripts/apply-rulesets.sh'
+      - 'scripts/lib/labels.sh'
+      - 'scripts/lib/push-protection.sh'
+      - 'scripts/lib/gitignore-baseline.sh'
+      - 'scripts/lib/ring-pins.sh'
+      - 'standards/rulesets/*.json'
+      - 'standards/canary-rings.json'
+      - '.gitignore'
+      - 'tests/test_bootstrap_new_repo.bats'
+      - '.github/workflows/bootstrap-new-repo-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bootstrap-new-repo-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and bats
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install bats, shellcheck, and jq
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bats shellcheck jq
+
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          shellcheck --severity=warning -x scripts/bootstrap-new-repo.sh
+
+      - name: Run bats suite
+        run: bats --print-output-on-failure tests/test_bootstrap_new_repo.bats
