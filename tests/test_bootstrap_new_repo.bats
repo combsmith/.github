@@ -46,13 +46,22 @@ case "\$args" in
     echo "\$args" >> "$CALLS"
     echo '{"full_name":"stub/repo"}'
     ;;
+  *"contents/personas/"*"/persona.yml"*)
+    # Per-persona manifest read (raw). labels.sh takes the declared
+    # opt_out_label rather than guessing the <id>:hands-off convention.
+    printf 'id: dev-lead\nstatus: active\nopt_out_label: dev-lead:hands-off\n'
+    ;;
   *"contents/personas"*)
-    # Persona listing: apply-repo-settings.sh pipes this through
-    # jq '.[]? | select(.type == "dir") | .name'. An object response causes
-    # jq to error when it tries .type on a string value. Return an empty
-    # array so the listing succeeds with zero personas (no opt-out labels,
-    # no sync failure).
-    echo '[]'
+    # Persona listing: labels.sh pipes this through
+    # jq '.[]? | select(.type == "dir") | .name'. Return one persona dir so the
+    # derived <id>:hands-off family resolves. An empty listing is a deliberate
+    # fail-closed derivation failure (#1139), so a test that wants that path sets
+    # STUB_PERSONA_LISTING='[]' instead of relying on the default.
+    if [ -n "\${STUB_PERSONA_LISTING+set}" ]; then
+      echo "\$STUB_PERSONA_LISTING"
+    else
+      echo '[{"name":"dev-lead","type":"dir"},{"name":"README.md","type":"file"}]'
+    fi
     ;;
   *)
     echo '{"full_name":"stub/repo"}'
@@ -112,6 +121,20 @@ EOF
   [ "$status" -eq 0 ]
   # apply-repo-settings dry-run prints its own intent line; apply-rulesets too.
   [[ "$output" == *"apply-rulesets"* ]] || [[ "$output" == *"rulesets"* ]]
+}
+
+# ── persona opt-out family: fail closed on an empty listing (#1139) ─────────────
+# An org always has personas, so an empty manifest listing means the <id>:hands-off
+# family could not be derived. apply-repo-settings.sh must fail rather than report
+# success, and bootstrap must surface that as a FAIL. This is the path the DRY_RUN
+# tests above hit by accident before the stub returned a real listing (#1318).
+@test "persona fail-closed: an empty persona listing fails the bootstrap" {
+  _stub_gh
+  run env DRY_RUN=true STUB_PERSONA_LISTING='[]' bash "$BOOTSTRAP" owner/new-repo
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not be derived faithfully"* ]]
+  [[ "$output" == *"FAIL"* ]]
+  [ ! -f "$CALLS" ]
 }
 
 # ── orchestration: sequencing + fail-fast + summary ───────────────────────────
@@ -268,6 +291,8 @@ _ring_sot_copy() {
   # (4/5) the standard label set.
   [[ "$output" == *"needs-human-review"* ]]
   [[ "$output" == *"ack-test-deletion"* ]]
+  # ...and the derived persona opt-out family, from the stubbed manifest.
+  [[ "$output" == *"dev-lead:hands-off"* ]]
 
   # (5/6) CODEOWNERS team verification.
   [[ "$output" == *"CODEOWNERS"* ]]
