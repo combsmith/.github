@@ -392,6 +392,8 @@ list_workflow_files() {
   return 1
 }
 
+# check_required_workflows <repo> — verify that <repo> has all org-required
+# CI workflows in .github/workflows/, accounting for agent-ingress.yml collapse.
 check_required_workflows() {
   local repo="$1"
 
@@ -918,6 +920,8 @@ RULESET_DRIFT_JQ='
   | @tsv
 '
 
+# check_ruleset_contents <repo> <rulesets_json> — audit a repo's rulesets for
+# compliance with content specifications, checking all codified parameters.
 check_ruleset_contents() {
   local repo="$1" rulesets_json="$2"
 
@@ -1459,6 +1463,8 @@ classify_inline_s7637_marker() {
   fi
 }
 
+# check_sonar_s7637_exemption <repo> — verify that repos running SonarCloud
+# carry the required NOSONAR(githubactions:S7637) marker on secrets:inherit lines.
 check_sonar_s7637_exemption() {
   local repo="$1"
 
@@ -2307,6 +2313,8 @@ record_agents_md_structural_findings() {
   return 0
 }
 
+# check_agents_md <repo> — verify that <repo> has an AGENTS.md that references
+# org-level standards, or flag it as non-compliant.
 check_agents_md() {
   local repo="$1"
 
@@ -2611,6 +2619,8 @@ swap_rulesets_finding_to_hands_off() {
   info "Routed ruleset finding #$issue in $repo to \`dev-lead:hands-off\` (dev-lead removed; finding kept open)"
 }
 
+# create_issue_for_finding <repo> <category> <check> <severity> <detail> <standard_ref>
+# — create or update a GitHub issue for a compliance finding in <repo>.
 create_issue_for_finding() {
   local repo="$1" category="$2" check="$3" severity="$4" detail="$5" standard_ref="$6"
 
@@ -2796,6 +2806,8 @@ ${AUDIT_GENERATED_MARKER}"
   fi
 }
 
+# create_umbrella_issue — create a summary GitHub issue for all compliance findings
+# from the current audit run, organizing findings by category and repo.
 create_umbrella_issue() {
   local audit_date
   audit_date=$(date -u +%Y-%m-%d)
