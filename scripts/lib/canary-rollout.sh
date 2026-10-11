@@ -294,6 +294,19 @@ iso_after() {
   if [[ "$a" > "$b" || "$a" == "$b" ]]; then echo "yes"; else echo "no"; fi
 }
 
+# run_list_covers <n> <cap> <oldest_createdAt> <since_z> — exit 0 when a run list of <n> entries, fetched newest-first
+# with a cap of <cap>, is provably COMPLETE for a window starting at <since_z>. A list under its cap is everything
+# there is. A list AT its cap may have lost its older end, so it is complete only when its oldest entry is strictly
+# older than the window start (everything newer than that entry is then in it); an exact tie, an empty window start
+# or an undated list proves nothing. Zulu ISO-8601 strings sort lexically, so this is a string comparison.
+run_list_covers() {
+  local n="${1:-0}" cap="${2:-0}" oldest="${3:-}" since="${4:-}"
+  case "$n" in ''|*[!0-9]*) return 1 ;; esac
+  case "$cap" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$n" -lt "$cap" ] && return 0
+  [ -n "$since" ] && [ -n "$oldest" ] && [[ "$oldest" < "$since" ]]
+}
+
 # decide_graduated <dwell_h> <dwell_floor> <sample> <sample_target> <sample_waived> \
 #                  <cum_failures> <cum_startup_failures>
 # Pure graduated gate for one transition. Echoes exactly one of:
@@ -332,15 +345,29 @@ decide_graduated() {
 #   PRE_EXISTING — the reusable is byte-identical to the prior channel (differs=0), OR
 #                  the failure is environmental (comment-cap / rate-limit / infra / data)
 #                  → report, do NOT rollback, do NOT advance.
-# Precedence: environmental category first, then differs=0 (can't be candidate-caused),
-# then a suspect match narrows an otherwise-REGRESSION verdict to SUSPECT.
+#   -            — INDETERMINATE: the reusable could not be compared at all (differs=unknown,
+#                  e.g. the candidate commit is unresolvable, #1249) and the failure is not
+#                  environmental. No verdict is claimed: PRE_EXISTING would assert "byte-
+#                  identical" and REGRESSION "changed", and neither was observed. The caller
+#                  still holds the pair BLOCKED. Same "-" a non-BLOCKED pair carries.
+# Precedence: environmental category first, then an uncompared reusable (no verdict), then
+# differs=0 (can't be candidate-caused), then a suspect match narrows an otherwise-REGRESSION
+# verdict to SUSPECT.
 classify_failure() {
   local differs="${1:-0}" category="${2:-unknown}" suspect="${3:-0}"
   case "$category" in
     comment-cap|rate-limit|infra|data) echo "PRE_EXISTING"; return 0 ;;
   esac
+  if [ "$differs" = "unknown" ]; then echo "-"; return 0; fi
   if [ "$differs" != "1" ]; then echo "PRE_EXISTING"; return 0; fi
   if [ "$suspect" -gt 0 ]; then echo "SUSPECT"; else echo "REGRESSION"; fi
+}
+
+# triage_label <triage> — the triage as a human reads it: the indeterminate "-" (or an empty
+# field) is spelled INDETERMINATE, every other value is itself. For issue titles and bodies only;
+# the machine-readable state line keeps "-".
+triage_label() {
+  case "${1:-}" in ''|-) printf '%s\n' "INDETERMINATE" ;; *) printf '%s\n' "$1" ;; esac
 }
 
 # decide_suspect_downgrade <cand_rate_permille> <base_rate_permille> <base_sample> <knobs_json>

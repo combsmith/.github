@@ -303,6 +303,26 @@ YML
   [ "$(classify_failure 1 data)" = "PRE_EXISTING" ]
 }
 
+# #1249: when the reusable could NOT be compared (the candidate commit is unresolvable) there is no diff to
+# derive a verdict from. "-" (indeterminate) says so; PRE_EXISTING would claim "byte-identical" and REGRESSION
+# would claim "changed", and neither was observed.
+@test "classify_failure: an uncompared reusable (differs=unknown) is indeterminate '-', never PRE_EXISTING or REGRESSION (#1249)" {
+  [ "$(classify_failure unknown unknown)" = "-" ]
+  [ "$(classify_failure unknown unknown 3)" = "-" ]   # a suspect signal cannot narrow a verdict that was never reached
+}
+@test "classify_failure: an environmental category still decides when the reusable was not compared (#1249)" {
+  [ "$(classify_failure unknown comment-cap)" = "PRE_EXISTING" ]
+  [ "$(classify_failure unknown infra)" = "PRE_EXISTING" ]
+}
+@test "triage_label: '-' reads INDETERMINATE where a human sees it; every other triage is itself (#1249)" {
+  [ "$(triage_label -)" = "INDETERMINATE" ]
+  [ "$(triage_label "")" = "INDETERMINATE" ]
+  [ "$(triage_label PRE_EXISTING)" = "PRE_EXISTING" ]
+  [ "$(triage_label REGRESSION)" = "REGRESSION" ]
+  [ "$(triage_label UNRESOLVED)" = "UNRESOLVED" ]
+  [ "$(triage_label -n)" = "-n" ]   # printed verbatim, never taken as an option
+}
+
 # ── classify_failure: SUSPECT third verdict (#668 increment 2, #675) ────────────
 # A suspect-class match at differs=1 becomes SUSPECT instead of REGRESSION — it still
 # BLOCKS + needs a human, but carries a discriminating question so the confirm is fast.
@@ -3626,16 +3646,93 @@ _sync_gap_stub() {
   [[ "$output" == "ccccccc ring0 next->ring0 BLOCKED 0 4 0 3 2 0 0 REGRESSION - - 0 0 0 0 0" ]]
 }
 
-@test "orchestrator: _frontier_state_resilient keeps an unresolvable (empty) src commit tracked BLOCKED with triage PRE_EXISTING — unchanged by the pair_verdict refactor (#1242)" {
+@test "orchestrator: _frontier_state_resilient keeps an unresolvable (empty) src commit tracked BLOCKED with an INDETERMINATE triage, not PRE_EXISTING (#1249)" {
   # A run-history fetch failure (data gap) makes the fallback walk the rings itself. ring0 has no tag but ring1 does:
-  # the pair is still pending (never vanishes), and with no resolvable candidate the reusable cannot
-  # differ, so classify_failure reads it as PRE_EXISTING — exactly as before the refactor.
+  # the pair is still pending (never vanishes) and stays BLOCKED. With no resolvable candidate NOTHING was compared,
+  # so the triage is "-" (indeterminate). #1243 pinned PRE_EXISTING here to keep that refactor behavior-neutral;
+  # #1249 decided the triage and flips it deliberately: a tag gap says nothing about whether the reusable changed.
   run bash -c "source '$ORCH'; _frontier_state() { echo org/x >> \"\$_CANARY_FETCH_FAIL_FLAG\"; return 1; }
     ordered_channels() { echo 'next,ring0,ring1'; }
     _ring_commits() { printf 'next - 0\nring0 - 0\nring1 abc1234 0\n'; }
+    _reusable_differs() { echo 'must not be called for an unresolvable candidate' >&2; echo 1; }
+    _frontier_state_resilient dev-lead 2>&1"
+  [ "$status" -eq 0 ]
+  [ "$output" = "- ring1 ring0->ring1 BLOCKED 0 0 0 0 0 0 0 - - - 0 0 0 0 1" ]
+}
+
+@test "orchestrator: _frontier_state_resilient still derives the data-gap triage from the reusable diff when the candidate IS resolvable (#1249)" {
+  run bash -c "source '$ORCH'; _frontier_state() { echo org/x >> \"\$_CANARY_FETCH_FAIL_FLAG\"; return 1; }
+    ordered_channels() { echo 'next,ring0'; }
+    _ring_commits() { printf 'next ccc1111 0\nring0 bbb2222 0\n'; }
+    _reusable_differs() { echo 1; }
     _frontier_state_resilient dev-lead 2>/dev/null"
   [ "$status" -eq 0 ]
-  [[ "$output" == *" ring1 ring0->ring1 BLOCKED "*" PRE_EXISTING "* ]]
+  [ "$output" = "ccc1111 ring0 next->ring0 BLOCKED 0 0 0 0 0 0 0 REGRESSION - - 0 0 0 0 1" ]
+  run bash -c "source '$ORCH'; _frontier_state() { echo org/x >> \"\$_CANARY_FETCH_FAIL_FLAG\"; return 1; }
+    ordered_channels() { echo 'next,ring0'; }
+    _ring_commits() { printf 'next ccc1111 0\nring0 bbb2222 0\n'; }
+    _reusable_differs() { echo 0; }
+    _frontier_state_resilient dev-lead 2>/dev/null"
+  [ "$status" -eq 0 ]
+  [ "$output" = "ccc1111 ring0 next->ring0 BLOCKED 0 0 0 0 0 0 0 PRE_EXISTING - - 0 0 0 0 1" ]
+}
+
+@test "orchestrator: _frontier_state_resilient is INDETERMINATE when the DESTINATION ring has no commit — a resolved candidate with nothing to compare against (#1249)" {
+  # next is tagged, ring0 has no tag yet (a first rollout to that ring) and run history is unreadable. There is no
+  # prior channel, so "byte-identical to the prior channel" (PRE_EXISTING) is as unsupported as it is for an
+  # unresolvable candidate. The pair stays BLOCKED; _reusable_differs is not consulted.
+  run bash -c "source '$ORCH'; _frontier_state() { echo org/x >> \"\$_CANARY_FETCH_FAIL_FLAG\"; return 1; }
+    ordered_channels() { echo 'next,ring0'; }
+    _ring_commits() { printf 'next ccc1111 0\nring0 - 0\n'; }
+    _reusable_differs() { echo 'must not be called without a prior commit' >&2; echo 0; }
+    _frontier_state_resilient dev-lead 2>&1"
+  [ "$status" -eq 0 ]
+  [ "$output" = "ccc1111 ring0 next->ring0 BLOCKED 0 0 0 0 0 0 0 - - - 0 0 0 0 1" ]
+}
+
+@test "_blocker_body: a data-gap hold with an INDETERMINATE triage does not claim a verdict from a diff that was never made (#1249)" {
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _blocker_body dev-lead 'ring0->ring1' - 0 0 - petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PARTIAL DATA"* ]]
+  [[ "$output" == *"INDETERMINATE"* ]]
+  [[ "$output" == *"| triage | **INDETERMINATE** |"* ]]
+  [[ "$output" != *"| triage | **-** |"* ]]
+  [[ "$output" != *"derived from the reusable diff alone"* ]]
+  [[ "$output" != *"PRE_EXISTING"* ]]
+  [[ "$output" != *"byte-identical"* ]]
+  [[ "$output" == *"source ring's commit is unresolvable"* ]]
+  # a resolved candidate with no destination commit names the missing side correctly
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' ccc1111 0 0 - petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"INDETERMINATE"* ]]
+  [[ "$output" == *"destination ring has no resolvable commit"* ]]
+  [[ "$output" != *"source ring's commit is unresolvable"* ]]
+  [[ "$output" != *"derived from the reusable diff alone"* ]]
+  # a resolvable candidate keeps the diff-derived wording
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' ccc1111 0 0 REGRESSION petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"derived from the reusable diff alone"* ]]
+}
+
+@test "orchestrator: sync-issues titles an INDETERMINATE data-gap blocker in words and does not label it needs-human (#1249)" {
+  _sync_gap_stub '[]'
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" \
+      CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=2 bash -c "
+        source '$ORCH'
+        _frontier_state_resilient() { echo '- ring1 ring0->ring1 BLOCKED 0 0 0 0 0 0 0 - - - 0 0 0 0 1'; }
+        cmd_sync_issues
+      "
+  [ "$status" -eq 0 ]
+  grep -q '^CREATE|' "$ISSUE_LOG"
+  grep -q "ring0->ring1 (INDETERMINATE, partial run-history — fail-closed)" "$ISSUE_LOG"
+  grep -q -- "--add-label dev-lead" "$ISSUE_LOG"
+  # the issue body's triage row is spelled out too, never a bare "-"
+  grep -qF '| triage | **INDETERMINATE** |' "$ISSUE_LOG"
+  run grep -q -- "--add-label needs-human" "$ISSUE_LOG"
+  [ "$status" -eq 1 ]
 }
 
 @test "orchestrator: _frontier_state_resilient fails CLOSED (non-zero) on a TOTAL inability to determine state (#820)" {
@@ -6974,7 +7071,8 @@ YML
 # ── #1259 option B: the per-role (legacy) run list is date-bounded to one 15-day tier ─────────────────────
 # The gate only samples windows that start at most ~2 weeks back, so the newest 1000 runs of a busy workflow were
 # mostly dead weight (promote-all spent ~750 s of 925 s on `run list -L 1000`). The stub honors `--created` the
-# way GitHub does (newest-first, createdAt date >= bound), so bounded and unbounded reads can be compared.
+# way GitHub does (newest-first, createdAt date >= bound), so bounded and unbounded reads can be compared. It
+# honors `--status` (conclusion filter) and `-L` the same way; GH_FAIL_STATUS=<status> fails that status read.
 _legacy_runs_stub() {
   export TMPDIR="$BATS_TEST_TMPDIR"
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
@@ -6991,10 +7089,18 @@ _legacy_runs_stub() {
   cat > "$STUB_BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
 echo "$*" >> "$GH_LOG"
-created=""; prev=""
-for a in "$@"; do [ "$prev" = "--created" ] && created="${a#>=}"; prev="$a"; done
+created=""; status=""; limit=1000000; prev=""
+for a in "$@"; do
+  [ "$prev" = "--created" ] && created="${a#>=}"
+  [ "$prev" = "--status" ] && status="$a"
+  [ "$prev" = "-L" ] && limit="$a"
+  prev="$a"
+done
 case "$1 $2" in
-  "run list") jq -c --arg c "$created" '[.[] | select($c == "" or (.createdAt[0:10] >= $c))]' "$FIXTURE" ;;
+  "run list")
+    if [ -n "$status" ] && [ "$status" = "${GH_FAIL_STATUS:-}" ]; then echo "HTTP 502: Bad Gateway" >&2; exit 1; fi
+    jq -c --arg c "$created" --arg s "$status" --argjson l "$limit" '[.[] | select($c == "" or (.createdAt[0:10] >= $c))
+      | select($s == "" or .conclusion == $s)] | sort_by(.createdAt) | reverse | .[0:$l]' "$FIXTURE" ;;
   *) echo '{}' ;;
 esac
 GHEOF
@@ -7050,7 +7156,7 @@ _ago() { date -u -d "-$1 days" +%Y-%m-%dT%H:%M:%SZ; }
   done
 }
 
-@test "_agent_run_json: windows of different ages share ONE per-role fetch, and a capped bounded list triggers no refetch (#1259 option B)" {
+@test "_agent_run_json: windows of different ages share ONE per-role fetch, and a capped bounded list is never refetched unbounded (#1259 option B)" {
   _legacy_runs_stub
   local cache="$BATS_TEST_TMPDIR/rc-legacy" recent; mkdir -p "$cache"
   run env _RUNS_CACHE_DIR="$cache" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
@@ -7058,16 +7164,182 @@ _ago() { date -u -d "-$1 days" +%Y-%m-%dT%H:%M:%SZ; }
     for d in 2 7 11 14; do _agent_run_json dev-lead org/legacy \"\$(date -u -d \"-\$d days\" +%Y-%m-%dT%H:%M:%SZ)\" >/dev/null; done"
   [ "$status" -eq 0 ]
   [ "$(grep -c '^run list ' "$GH_LOG")" -eq 1 ]
-  # A bounded list that fills the 1000 cap IS the newest-1000 (newest-first), so it is used as is: no second read.
+  # A bounded list that fills the 1000 cap IS the newest-1000 (newest-first), so the unbounded list would add
+  # nothing: it is never refetched. Since #1244 (legacy truncation) a capped list that does not reach the window
+  # start is completed with the failure-class runs instead (two status-filtered reads, both date-bounded).
   : > "$GH_LOG"; cache="$BATS_TEST_TMPDIR/rc-legacy-cap"; mkdir -p "$cache"
   # Dated relative to now: a fixed date would fall behind the stub's 15-day bound and filter every row out.
   recent="$(date -u -d '-1 days' +%Y-%m-%dT10:00:00Z)"
   jq -n -c --arg c "$recent" '[range(1000) as $i | {conclusion:"success",createdAt:$c,databaseId:$i,workflowName:"Dev-Lead Agent"}]' > "$FIXTURE"
   run env _RUNS_CACHE_DIR="$cache" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
-    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' | jq 'length'"
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' 2>/dev/null | jq 'length'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1000" ]
+  [ "$(grep -c '^run list ' "$GH_LOG")" -eq 3 ]
+  [ "$(grep -c -- '--status' "$GH_LOG")" -eq 2 ]
+  [ "$(grep -c -- '--created' "$GH_LOG")" -eq 3 ]
+}
+
+# ── #1244 (legacy truncation): a capped per-role run list must not silently lose the front of a window ───────────
+# `gh run list -L 1000` returns the NEWEST 1000 runs. On a busy workflow that is less than a day, so a failure
+# since the candidate cut dropped out of view once 1000 newer runs existed, and the 14-day baseline zero-filled
+# the days the list never reached. A list at its cap that does not reach back before the window start is now
+# (gating read) completed with the failure-class runs it cut off, read with a server-side status filter, or
+# (baseline read) reported as truncated so the unseen days are unknown, not zero.
+_legacy_busy_history() {   # <extra runs JSON array> → FIXTURE: 1000 runs of <conclusion $2> in the last ~10h + extra
+  local extra="${1:-[]}" concl="${2:-success}"
+  jq -n -c --argjson now "$(date -u +%s)" --argjson extra "$extra" --arg concl "$concl" '
+    [range(1000) as $i | {conclusion:$concl, createdAt:(($now - 3600 - $i*30) | strftime("%Y-%m-%dT%H:%M:%SZ")),
+      databaseId:(10000+$i), workflowName:"Dev-Lead Agent"}] + $extra' > "$FIXTURE"
+}
+_legacy_run() { jq -n -c --arg c "$1" --arg t "$(date -u -d "-$2 days" +%Y-%m-%dT10:00:00Z)" --argjson id "$3" \
+  '{conclusion:$c, createdAt:$t, databaseId:$id, workflowName:"Dev-Lead Agent"}'; }
+
+@test "run_list_covers: a list under its cap is complete; at the cap only when it reaches back before the window start (#1244)" {
+  run_list_covers 999 1000 "2026-01-05T00:00:00Z" "2026-01-01T00:00:00Z"
+  run_list_covers 0 1000 "" "2026-01-01T00:00:00Z"
+  run_list_covers 1000 1000 "2025-12-31T23:59:59Z" "2026-01-01T00:00:00Z"
+  run run_list_covers 1000 1000 "2026-01-05T00:00:00Z" "2026-01-01T00:00:00Z"
+  [ "$status" -eq 1 ]
+  run run_list_covers 1000 1000 "2026-01-01T00:00:00Z" "2026-01-01T00:00:00Z"   # an exact tie is not proof
+  [ "$status" -eq 1 ]
+  run run_list_covers 1000 1000 "2026-01-05T00:00:00Z" ""                        # no window start: cannot be proven
+  [ "$status" -eq 1 ]
+  run run_list_covers 1000 1000 "" "2026-01-01T00:00:00Z"                        # no dated run: cannot be proven
+  [ "$status" -eq 1 ]
+  run run_list_covers 1200 1000 "2026-01-05T00:00:00Z" "2026-01-01T00:00:00Z"   # over the cap is judged like at the cap
+  [ "$status" -eq 1 ]
+}
+
+@test "_agent_run_json: a capped per-role list that does not reach the window start is completed with the failures it cut off (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[$(_legacy_run failure 4 9001),$(_legacy_run success 4 9002),$(_legacy_run startup_failure 3 9003),$(_legacy_run failure 9 9004)]"
+  run env CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' 2>/dev/null \
+      | jq -r '[length, ([.[] | select(.databaseId < 10000) | .databaseId] | sort | join(\",\"))] | @tsv'"
+  [ "$status" -eq 0 ]
+  # the 1000 newest runs, plus the failure and startup_failure inside the window that the cap cut off. The older
+  # SUCCESS (9002) stays unseen (the executed count is a lower bound) and the failure before the window (9004) is out.
+  [ "$output" = "1002"$'\t'"9001,9003" ]
+  grep -q -- "--status failure" "$GH_LOG"
+  grep -q -- "--status startup_failure" "$GH_LOG"
+  [ "$(grep -c -- "--created >=$(date -u -d '-15 days' +%Y-%m-%d)" "$GH_LOG")" -eq 3 ]
+}
+
+@test "_agent_run_json: a capped per-role list that reaches back before the window start is complete — no failure-class read (#1244)" {
+  _legacy_runs_stub
+  # 1000 runs, one every ~9 minutes: the list reaches back ~6 days, past a window that started 5 days ago
+  jq -n -c --argjson now "$(date -u +%s)" '[range(1000) as $i | {conclusion:"success",
+    createdAt:(($now - 600 - $i*520) | strftime("%Y-%m-%dT%H:%M:%SZ")), databaseId:(10000+$i), workflowName:"Dev-Lead Agent"}]' > "$FIXTURE"
+  run env CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' >/dev/null"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^run list ' "$GH_LOG")" -eq 1 ]
+}
+
+@test "_agent_run_json: a capped per-role list read with NO window start is returned as is — nothing to prove (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[$(_legacy_run failure 4 9001)]"
+  run env CANARY_RUNS_HORIZON_TIERS='' CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '' | jq 'length'"
   [ "$status" -eq 0 ]
   [ "$output" = "1000" ]
   [ "$(grep -c '^run list ' "$GH_LOG")" -eq 1 ]
+}
+
+@test "_agent_run_json: a failure-class list that is ITSELF truncated makes the member UNRESOLVED (#1244)" {
+  _legacy_runs_stub
+  # 1000 failures in the last ~10h: the failure list is at its cap and does not reach the window start either
+  _legacy_busy_history "[]" failure
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env _CANARY_UNRESOLVED_FLAG="$flag" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' 2>/dev/null | jq 'length'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1000" ]
+  grep -q "^org/legacy"$'\t' "$flag"
+  grep -q "'failure' run list" "$flag"
+  grep -q "Dev-Lead Agent" "$flag"
+}
+
+@test "_agent_run_json: a failed failure-class read fails CLOSED, like the run list itself (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[$(_legacy_run failure 4 9001)]"
+  run env GH_FAIL_STATUS=failure CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' 2>/dev/null; echo \"rc=\$?\""
+  [ "$status" -eq 0 ]
+  [ "${lines[-1]}" = "rc=1" ]
+}
+
+@test "_agent_run_json: a truncated per-role list on a BASELINE read records the oldest listed day — no failure-class read, not UNRESOLVED (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[$(_legacy_run failure 4 9001)]"
+  local flag="$BATS_TEST_TMPDIR/unresolved" tflag="$BATS_TEST_TMPDIR/trunc"; : > "$flag"; : > "$tflag"
+  run env _CANARY_INGRESS_TRUNC_FLAG="$tflag" _CANARY_UNRESOLVED_FLAG="$flag" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 14)' 2>/dev/null | jq 'length'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1000" ]
+  [ "$(grep -c '^run list ' "$GH_LOG")" -eq 1 ]
+  [ ! -s "$flag" ]
+  # the oldest listed run is ~9.3h old: its day is today or yesterday
+  local d; d="$(cat "$tflag")"
+  [ "$d" = "$(date -u +%Y-%m-%d)" ] || [ "$d" = "$(date -u -d '-1 days' +%Y-%m-%d)" ]
+}
+
+@test "_agent_run_json: a failed failure-class read also marks the member UNRESOLVED, so a promote cannot read it as zero failures (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[$(_legacy_run failure 4 9001)]"
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env GH_FAIL_STATUS=failure _CANARY_UNRESOLVED_FLAG="$flag" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' >/dev/null 2>&1"
+  grep -q "^org/legacy"$'\t' "$flag"
+  grep -q "could not be read" "$flag"
+}
+
+@test "_agent_run_json: a BASELINE read that cannot record its cutoff is UNRESOLVED, not read as zero (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[$(_legacy_run failure 4 9001)]"
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env _CANARY_INGRESS_TRUNC_FLAG="$BATS_TEST_TMPDIR/no-such-dir/trunc" _CANARY_UNRESOLVED_FLAG="$flag" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 14)' 2>/dev/null | jq 'length'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1000" ]
+  grep -q "cutoff could not be recorded" "$flag"
+}
+
+@test "_baseline_daily: a truncated per-role list leaves the unseen days UNKNOWN, not zero — a busy workflow is sized from the days it shows (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[]"
+  run env CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _baseline_daily dev-lead 14 org/legacy 2>/dev/null"
+  [ "$status" -eq 0 ]
+  # the 1000 listed runs fall on today and possibly yesterday: one or two known days, never 14 zero-filled ones
+  local -a days; read -r -a days <<< "$output"
+  [ "${#days[@]}" -ge 1 ] && [ "${#days[@]}" -le 2 ]
+  local total=0 c; for c in "${days[@]}"; do total=$((total + c)); done
+  [ "$total" -eq 1000 ]
+  # zero-filled, this baseline sized the sample at the clamp MINIMUM (median 0); from the known days it is the maximum
+  # shellcheck disable=SC2086
+  [ "$(robust_sample_target 250 3 15 3 $output)" -eq 15 ]
+}
+
+@test "_baseline_daily: a truncated per-role list with NOTHING countable is the non-zero floor, never 'no caller' (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[]" skipped
+  run env CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _baseline_daily dev-lead 14 org/legacy 2>/dev/null"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "_cumulative_health: a failure older than the newest 1000 runs still counts against the candidate (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[$(_legacy_run failure 4 9001),$(_legacy_run startup_failure 3 9003)]"
+  local rings="$BATS_TEST_TMPDIR/rings.json"
+  jq '.agents["dev-lead"].gate.benign_failure_classes = [] | .agents["dev-lead"].gate.suspect_failure_classes = []' "$RINGS" > "$rings"
+  run env CANARY_RINGS="$rings" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _cumulative_health dev-lead '$(_ago 5)' 0 - org/legacy 2>/dev/null"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1 1 0 0 0" ]
 }
 
 # ── operator gaps (#1177) ─────────────────────────────────────────────────────
