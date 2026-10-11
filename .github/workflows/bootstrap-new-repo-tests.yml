@@ -6,8 +6,8 @@
 # Triggered on any PR (or push to main) that touches the bootstrap, the real
 # sub-scripts its DRY_RUN tests drive end to end (apply-repo-settings.sh,
 # apply-rulesets.sh), the libraries they source (including scripts/lib/labels.sh,
-# which derives the persona <id>:hands-off family), the ring SoT and .gitignore
-# baseline it reads, the suite itself, or this file.
+# which derives the persona <id>:hands-off family), the ring SoT, ring pins,
+# the sanctioned ruleset JSON and .gitignore baseline it reads, the suite itself, or this file.
 #
 # Gates (all must pass before merge):
 #   1. shellcheck — static analysis for the bootstrap
@@ -24,6 +24,9 @@ on:
       - 'scripts/lib/labels.sh'
       - 'scripts/lib/push-protection.sh'
       - 'scripts/lib/gitignore-baseline.sh'
+      - 'scripts/lib/ring-pins.sh'
+      - 'standards/rulesets/code-quality.json'
+      - 'standards/rulesets/pr-quality.json'
       - 'standards/canary-rings.json'
       - '.gitignore'
       - 'tests/test_bootstrap_new_repo.bats'
@@ -38,6 +41,9 @@ on:
       - 'scripts/lib/labels.sh'
       - 'scripts/lib/push-protection.sh'
       - 'scripts/lib/gitignore-baseline.sh'
+      - 'scripts/lib/ring-pins.sh'
+      - 'standards/rulesets/code-quality.json'
+      - 'standards/rulesets/pr-quality.json'
       - 'standards/canary-rings.json'
       - '.gitignore'
       - 'tests/test_bootstrap_new_repo.bats'
