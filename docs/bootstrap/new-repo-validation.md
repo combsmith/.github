@@ -9,7 +9,7 @@ produces a fully org-compliant repo, exercised under `DRY_RUN` with no drift.
 ## Primary onboarding path (one-click + one-command)
 
 1. **Use this template.** Create the repo from `petry-projects/repo-template`
-   (`seed-repo-template.sh` keeps that template in sync with `petry-projects/.github`
+   (`seed-repo-template.sh`, in `petry-projects/.github-private`, keeps that template in sync with `petry-projects/.github`
    `standards/`). This seeds day-0 only: the thin-caller workflow stubs pinned to
    their published `@<name>/stable` channel tags plus the root/baseline files
    (CODEOWNERS, AGENTS.md/CLAUDE.md pointers, LICENSE, SECURITY.md, `.gitignore`,
@@ -121,5 +121,7 @@ this branch. The cutover content to apply:
 ## See also
 
 - `scripts/bootstrap-new-repo.sh` — the orchestrator (issues #967, #968)
-- `scripts/seed-repo-template.sh` — day-0 template seeding + the generated `BOOTSTRAP.md` (#966)
-- `tests/test_bootstrap_new_repo.bats`, `tests/test_seed_repo_template.bats` — the executable validation
+- `scripts/seed-repo-template.sh` in `petry-projects/.github-private` — day-0 template seeding + the generated
+  `BOOTSTRAP.md` (#966), with its suite `tests/test_seed_repo_template.bats` there. That repo is the one home of
+  the seeder; this repo's `scripts/emit-standard-file.sh` only prints a standard file.
+- `tests/test_bootstrap_new_repo.bats` — the executable validation of the orchestrator
