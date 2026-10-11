@@ -1,0 +1,57 @@
+name: Standards Channel Staleness
+
+# Staleness alarm for the standards release channel (#1173).
+#
+# standards/v<major>-stable is promoted by hand: a human decides when
+# (standards/standards-versioning.md). This check tells that human when. It
+# compares standards/ on the channel with the default branch and keeps ONE
+# standing issue open while the gap is worth a promotion: a template under
+# standards/workflows/ differs, or the oldest unpublished change is more than
+# STANDARDS_STALENESS_MAX_DAYS (default 7) days old. The issue lists the
+# differing files, is updated in place, and is closed once the channel catches
+# up. Nothing is promoted here.
+#
+# Pure `gh` + `jq`, no LLM. Decision logic: scripts/lib/standards-staleness.sh
+# (bats: tests/standards_staleness.bats). Runs at most once daily plus manual
+# dispatch.
+
+on:
+  schedule:
+    - cron: '23 10 * * *'   # once daily, 10:23 UTC — off the top of the hour
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print what would be done; open, edit or close no issue'
+        type: boolean
+        default: false
+
+permissions: {}              # no default permissions; the job grants only what it needs
+
+concurrency:
+  group: standards-staleness
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Compare the standards channel with the default branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read           # checkout + read tags, compare, commits
+      issues: write            # open / update / close the one alarm issue
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          # Never pushes; don't leave the token in git config.
+          persist-credentials: false
+
+      - name: Check the channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          # Optional repo/org variable; empty falls back to the script default (7).
+          STANDARDS_STALENESS_MAX_DAYS: ${{ vars.STANDARDS_STALENESS_MAX_DAYS }}
+        run: bash scripts/standards-staleness.sh

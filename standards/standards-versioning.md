@@ -54,6 +54,69 @@ This mirrors `<name>/vX.Y.Z` + `<name>/v<major>-stable` for reusable workflows.
 > follow-up that layers a scheduled promoter on top of this same cut mechanism —
 > do not build it here.
 
+## A promotion is fleet-wide — there is no canary stage
+
+Reusable workflows are promoted through rings, so a bad release reaches a few
+repos first. The standards channel has **no rings and no canary stage**. Moving
+`standards/v1-stable` changes what **every** channel consumer reads, at once.
+The two steps below exist because of that: one tells the operator when a
+promotion is due, the other checks that it is safe before the tag moves.
+
+## Knowing when to promote — the staleness alarm
+
+The channel only moves when someone cuts a release, so it can fall behind `main`
+without anyone noticing. It once fell 14 commits and 8 `standards/` files behind,
+and the symptom showed up in another repo's drift check.
+
+[`standards-staleness.yml`](../.github/workflows/standards-staleness.yml) runs
+once a day and compares `standards/` on the channel with the default branch. It
+keeps **one** issue open while either of these holds:
+
+- a file under `standards/workflows/` differs (alarms at once, because templates
+  reach every seeded repo), or
+- the oldest unpublished change to `standards/` is more than 7 days old. Set the
+  repository variable `STANDARDS_STALENESS_MAX_DAYS` to change the limit.
+
+The issue lists the differing files. Each run updates it in place, and a run
+closes it once the channel has caught up. The check never promotes anything. If
+it cannot read the comparison, the run fails; it never reports the channel as
+fresh. The decision logic is in
+[`scripts/lib/standards-staleness.sh`](../scripts/lib/standards-staleness.sh).
+
+## Verifying before a cut
+
+Before promoting, run every known channel consumer against the candidate commit:
+
+```bash
+bash scripts/cut-standards-release.sh verify <known-good-main-sha>
+```
+
+`verify` resolves the ref to a commit, checks out each consumer repo, and runs
+its check pinned to that commit. It exits non-zero if any consumer fails. A zero
+exit code alone is not a pass: a consumer that could not read the candidate may
+skip its checks, so each consumer also declares the output that proves it ran.
+An unreadable consumer list, an unresolvable ref and an unavailable checkout all
+fail.
+
+The consumers are data, in
+[`scripts/lib/standards-channel-consumers.json`](../scripts/lib/standards-channel-consumers.json).
+Today they are the repo-template drift guard and the persona manifest validator,
+both in `petry-projects/.github-private`. **Add a row for every new reader of
+`STANDARDS_CHANNEL` or `PERSONA_SCHEMA_CHANNEL`.**
+
+What the operator's machine needs:
+
+- `gh` (authenticated) and `jq`.
+- GNU bash 4 or newer on `PATH` for the drift guard.
+- Python 3.10 or newer with `jsonschema` and `pyyaml` for the persona validator.
+  Set `PYTHON` to pick the interpreter.
+- Optionally `SR_CONSUMERS_ROOT`, a directory of existing consumer checkouts, to
+  verify against an unmerged consumer branch instead of a fresh clone.
+
+Pass `--verify` to `cut` to run the same check as part of the cut. It **refuses
+to cut** if any consumer fails, and writes no tag. `--verify` is opt-in so that
+`cut` without it behaves exactly as before.
+
 ## Cutting a release
 
 Run from a checkout of this repo at (or with `--commit` pointing at) a
@@ -66,6 +129,9 @@ bash scripts/cut-standards-release.sh cut v1.0.0 --dry-run
 
 # Cut the immutable release standards/v1.0.0 and move standards/v1-stable onto it:
 bash scripts/cut-standards-release.sh cut v1.0.0 --commit <known-good-main-sha>
+
+# The same, refusing to cut unless every channel consumer passes (use this for a promotion):
+bash scripts/cut-standards-release.sh cut v1.1.0 --commit <known-good-main-sha> --verify
 ```
 
 `cut` is **idempotent**: re-running with the same version and commit is a NOOP
@@ -104,5 +170,5 @@ degrades cleanly to "accepts current" while `previous` is empty.
 - **No behavior change for anything that does not opt in.** Scripts and repos
   that pass an explicit ref or a local standards directory keep resolving exactly
   as they do; this channel adds a tag, it does not change any existing
-  resolution path in this repo. In particular `scripts/seed-repo-template.sh`
+  resolution path in this repo. In particular `scripts/emit-standard-file.sh`
   (which reads a local `STANDARDS_DIR` checkout) is untouched.
