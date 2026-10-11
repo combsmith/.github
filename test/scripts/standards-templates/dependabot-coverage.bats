@@ -42,7 +42,7 @@ actions_entries() {
     /^[ \t]*#/ { next }
     /^[ \t]*-[ \t]*package-ecosystem:/ {
       flush(); s = $0; sub(/.*package-ecosystem:/, "", s); eco = value(s)
-      # The column where this entry's own keys start ("- " included).
+      # The column where the keys of this entry start ("- " included).
       match($0, /^[ \t]*-[ \t]*/); keycol = RLENGTH
       next
     }
