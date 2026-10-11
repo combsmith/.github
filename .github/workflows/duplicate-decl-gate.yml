@@ -23,6 +23,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  # standards/rulesets/duplicate-decl-gate.json makes this a required check
+  # where it is applied, so it must report on a merge queue's
+  # gh-readonly-queue/* ref too. The gate scans the tree, not a diff, so it
+  # needs nothing else to run there.
+  merge_group:
 
 permissions: {}
 
