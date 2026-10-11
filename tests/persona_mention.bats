@@ -88,6 +88,41 @@ MENTION_ON='    - surface: mention
   [ "$status" -ne 0 ]
 }
 
+# pm_is_agent_authored_body is the PR-path axis 2: a PR body is AUTHORED as a
+# persona only when the marker leads it (pr_ensure_marker's convention). A marker
+# anywhere else is a quotation and must not suppress routing (#1286).
+
+@test "pm_is_agent_authored_body matches a body whose first line is the marker" {
+  run pm_is_agent_authored_body $'<!-- persona:qa-lead -->\n## Summary\nautomated PR'
+  [ "$status" -eq 0 ]
+}
+
+@test "pm_is_agent_authored_body ignores leading blank lines and indentation" {
+  run pm_is_agent_authored_body $'\n\n   \n<!-- persona:qa-lead -->\nbody'
+  [ "$status" -eq 0 ]
+  run pm_is_agent_authored_body $'  \t<!-- persona:dev-lead -->\nbody'
+  [ "$status" -eq 0 ]
+  run pm_is_agent_authored_body $'\r\n<!-- persona:dev-lead -->\r\nbody'
+  [ "$status" -eq 0 ]
+}
+
+@test "pm_is_agent_authored_body does not match a marker quoted mid-body in prose" {
+  run pm_is_agent_authored_body $'## Summary\n\nThe `<!-- persona:solution-architect -->` marker is unchanged.'
+  [ "$status" -eq 1 ]
+}
+
+@test "pm_is_agent_authored_body does not match a marker inside a later fenced code block" {
+  run pm_is_agent_authored_body $'## Summary\n\n```\n<!-- persona:qa-lead -->\n```'
+  [ "$status" -eq 1 ]
+}
+
+@test "pm_is_agent_authored_body does not match an empty or blank body" {
+  run pm_is_agent_authored_body ''
+  [ "$status" -eq 1 ]
+  run pm_is_agent_authored_body $'\n  \n'
+  [ "$status" -eq 1 ]
+}
+
 @test "pm_is_bot_actor recognises the agent identities" {
   run pm_is_bot_actor donpetry-bot
   [ "$status" -eq 0 ]
@@ -693,6 +728,11 @@ runtime:
 # Same two recursion axes and trust floor as pm_should_route, but WITHOUT the
 # @-mention requirement: a PR is derived, not addressed. A PR event must not
 # become an ungated write surface, so the guards apply on this path too (AC #4).
+#
+# The workflow's pull_request pre-filter uses !startsWith(body, '<!-- persona:')
+# for axis 2 (not substring contains). The tests below verify this prefix-matching
+# semantics: a marker quoted mid-body does NOT block routing, but a marker at the
+# start (or after leading blank lines, per pm_is_agent_authored_body) DOES block.
 
 @test "pm_pr_should_route allows a trusted human's PR with no @-mention in the body" {
   run pm_pr_should_route don-petry don-petry OWNER "Ordinary PR description, no handles."
@@ -716,9 +756,38 @@ runtime:
   [ "$status" -eq 1 ]
 }
 
+@test "pm_pr_should_route allows a trusted human's PR that QUOTES the marker on a later line (#1286)" {
+  run pm_pr_should_route don-petry don-petry OWNER $'## Summary\n\nThe `<!-- persona:solution-architect -->` marker is unchanged.'
+  [ "$status" -eq 0 ]
+}
+
+@test "pm_pr_should_route blocks a PR whose body leads with the marker after blank lines (axis 2)" {
+  run pm_pr_should_route don-petry don-petry OWNER $'\n\n<!-- persona:qa-lead -->\nautomated PR'
+  [ "$status" -eq 1 ]
+}
+
 @test "pm_pr_should_route blocks a PR from an author below the default floor" {
   run pm_pr_should_route drive-by drive-by CONTRIBUTOR "PR body"
   [ "$status" -eq 1 ]
+}
+
+# The workflow's route-pull-request job uses a cheap if: condition that must match
+# the authoritative pm_pr_should_route function. The condition uses startsWith for
+# the marker axis (not contains), matching pm_is_agent_authored_body's semantics:
+# a marker quoted mid-body is not considered agent-authored. These verifications
+# ensure a regression from startsWith back to contains would be caught by CI.
+@test "pull_request workflow pre-filter uses prefix matching (startsWith, not contains)" {
+  local workflow="$SCRIPT_DIR/.github/workflows/persona-mention-reusable.yml"
+  # Inspect each job's own `if:` so a match elsewhere in the file cannot mask a
+  # lost guard.
+  local pr_if comment_if
+  pr_if="$(yq '.jobs.route-pull-request.if' "$workflow")"
+  comment_if="$(yq '.jobs.route.if' "$workflow")"
+  [[ "$pr_if" == *"!startsWith(github.event.pull_request.body, '<!-- persona:')"* ]]
+  [[ "$pr_if" != *"contains(github.event.pull_request.body, '<!-- persona:')"* ]]
+  # The comment path keeps substring matching: any persona marker in a comment
+  # means the comment is agent-authored.
+  [[ "$comment_if" == *"!contains(github.event.comment.body, '<!-- persona:')"* ]]
 }
 
 # --- pm_pr_route_verdict (the composed PR gauntlet — AC #2/#4 proof) --------

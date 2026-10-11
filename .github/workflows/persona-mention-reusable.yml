@@ -386,7 +386,13 @@ jobs:
     # triggered. Same two recursion axes and conservative §4 default floor as the
     # comment path's pre-filter — a PR event is no laxer:
     #   1. bot actor — a PR opened by an agent identity never routes
-    #   2. marker    — a PR body carrying '<!-- persona:' never routes
+    #   2. marker    — a PR body AUTHORED as a persona (it starts with
+    #                  '<!-- persona:', pr_ensure_marker's convention) never routes.
+    #                  A marker quoted later in the body does not count (#1286):
+    #                  no persona writes mid-body, so that is a quotation. This
+    #                  startsWith is the cheap pre-filter; pm_pr_should_route
+    #                  (pm_is_agent_authored_body) stays authoritative and also
+    #                  skips leading blank lines and whitespace.
     # There is deliberately NO '@petry-projects/' check: the PR path derives the
     # firing personas from their manifests, it does not read a handle from the body.
     #
@@ -412,7 +418,7 @@ jobs:
       github.event.pull_request.user.login != 'github-actions[bot]' &&
       github.actor != 'donpetry-bot' &&
       github.actor != 'github-actions[bot]' &&
-      !contains(github.event.pull_request.body, '<!-- persona:') &&
+      !startsWith(github.event.pull_request.body, '<!-- persona:') &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
 
     steps:
