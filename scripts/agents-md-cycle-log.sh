@@ -137,6 +137,13 @@ amcl_validate_log() {
       printf 'cycle %s: confirmed-false-positive count "%s" is not a non-negative integer\n' "$cycle" "$fps" >&2
       rc=1; continue
     fi
+    # Reject values too large for 64-bit Bash arithmetic before conversion. A 20-digit
+    # value wraps to 0; a 19-digit can wrap to a negative number. The 18-digit bound
+    # is always safe (fits in a signed 64-bit int: 2^63 - 1 = 9,223,372,036,854,775,807).
+    if [[ ${#findings} -gt 18 ]] || [[ ${#fps} -gt 18 ]]; then
+      printf 'cycle %s: count exceeds supported range\n' "$cycle" >&2
+      rc=1; continue
+    fi
     # Normalize the validated counts to base 10 before any arithmetic comparison.
     # amcl_is_uint accepts leading-zero decimals like "010"; left as-is, bash
     # arithmetic in [[ -gt ]]/[[ -eq ]] would read "010" as OCTAL 8, so a row
@@ -198,7 +205,7 @@ amcl_clean_cycles_met() {
     printf 'false'
     return 0
   fi
-  if ! amcl_is_uint "$required" || [[ ${#required} -gt 19 ]] || [[ "$((10#$required))" -lt 1 ]]; then
+  if ! amcl_is_uint "$required" || [[ ${#required} -gt 18 ]] || [[ "$((10#$required))" -lt 1 ]]; then
     printf 'false'
     return 0
   fi
@@ -296,7 +303,7 @@ amcl_main() {
         printf 'agents-md-cycle-log: log file not found: %s\n' "$log" >&2
         return 2
       fi
-      if ! amcl_is_uint "$required" || [[ ${#required} -gt 19 ]] || [[ "$((10#$required))" -lt 1 ]]; then
+      if ! amcl_is_uint "$required" || [[ ${#required} -gt 18 ]] || [[ "$((10#$required))" -lt 1 ]]; then
         printf 'agents-md-cycle-log: required-clean-cycles must be a positive integer, got "%s"\n' "$required" >&2
         return 2
       fi
