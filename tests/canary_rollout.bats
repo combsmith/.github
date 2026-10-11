@@ -320,6 +320,7 @@ YML
   [ "$(triage_label PRE_EXISTING)" = "PRE_EXISTING" ]
   [ "$(triage_label REGRESSION)" = "REGRESSION" ]
   [ "$(triage_label UNRESOLVED)" = "UNRESOLVED" ]
+  [ "$(triage_label -n)" = "-n" ]   # printed verbatim, never taken as an option
 }
 
 # ── classify_failure: SUSPECT third verdict (#668 increment 2, #675) ────────────
@@ -3682,6 +3683,8 @@ _sync_gap_stub() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"PARTIAL DATA"* ]]
   [[ "$output" == *"INDETERMINATE"* ]]
+  [[ "$output" == *"| triage | **INDETERMINATE** |"* ]]
+  [[ "$output" != *"| triage | **-** |"* ]]
   [[ "$output" != *"derived from the reusable diff alone"* ]]
   [[ "$output" != *"PRE_EXISTING"* ]]
   [[ "$output" != *"byte-identical"* ]]
@@ -3703,8 +3706,11 @@ _sync_gap_stub() {
   [ "$status" -eq 0 ]
   grep -q '^CREATE|' "$ISSUE_LOG"
   grep -q "ring0->ring1 (INDETERMINATE, partial run-history — fail-closed)" "$ISSUE_LOG"
-  ! grep -q -- "--add-label needs-human" "$ISSUE_LOG"
   grep -q -- "--add-label dev-lead" "$ISSUE_LOG"
+  # the issue body's triage row is spelled out too, never a bare "-"
+  grep -qF '| triage | **INDETERMINATE** |' "$ISSUE_LOG"
+  run grep -q -- "--add-label needs-human" "$ISSUE_LOG"
+  [ "$status" -eq 1 ]
 }
 
 @test "orchestrator: _frontier_state_resilient fails CLOSED (non-zero) on a TOTAL inability to determine state (#820)" {

@@ -354,7 +354,7 @@ classify_failure() {
 # field) is spelled INDETERMINATE, every other value is itself. For issue titles and bodies only;
 # the machine-readable state line keeps "-".
 triage_label() {
-  case "${1:-}" in ''|-) echo "INDETERMINATE" ;; *) echo "$1" ;; esac
+  case "${1:-}" in ''|-) printf '%s\n' "INDETERMINATE" ;; *) printf '%s\n' "$1" ;; esac
 }
 
 # decide_suspect_downgrade <cand_rate_permille> <base_rate_permille> <base_sample> <knobs_json>
