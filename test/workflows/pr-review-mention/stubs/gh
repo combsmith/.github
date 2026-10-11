@@ -9,6 +9,9 @@
 #   GH_BODY_FILE  — file to write the `--body` value to (verbatim, no quoting)
 #   GH_STUB_LOG   — optional append-only argv log (shell-quoted via %q)
 #   GH_STUB_EXIT  — exit code (default 0)
+#   GH_STUB_PERMISSION      — printed for a collaborator-permission lookup
+#                             (`gh api .../collaborators/<login>/permission`)
+#   GH_STUB_PERMISSION_EXIT — exit code for that lookup (default 0)
 
 set -euo pipefail
 
@@ -28,5 +31,18 @@ if [ -n "${GH_BODY_FILE:-}" ]; then
     prev="$arg"
   done
 fi
+
+for arg in "$@"; do
+  case "$arg" in
+    */collaborators/*/permission)
+      if [ "${GH_STUB_PERMISSION_EXIT:-0}" -ne 0 ]; then
+        echo "gh: Not Found (HTTP 404)" >&2
+        exit "$GH_STUB_PERMISSION_EXIT"
+      fi
+      printf '%s\n' "${GH_STUB_PERMISSION:-}"
+      exit 0
+      ;;
+  esac
+done
 
 exit "${GH_STUB_EXIT:-0}"
