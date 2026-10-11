@@ -713,12 +713,16 @@ _gh_retry_after() {
 # Used for the ingress list, whose newest-5000 read pages through ~50 pages per repo (~10 s each call)
 # although every window the gate samples starts at most ~2 weeks back (see _ingress_horizon).
 #
+# Optional 6th arg `status` (#1244): filter the list server-side with `--status <status>` (a run status or
+# conclusion, e.g. `failure`). Used to read the failure-class runs of a window completely when the general list
+# is truncated (see _agent_run_json). Part of the cache key, like the bound.
+#
 # Optional 3rd arg `strict` (#1224): when "1", a not-found workflow returns [] with exit 3
 # instead of 0, so the caller can tell "this repo has no such workflow" from "it has the
 # workflow but no runs" — the signal that a repo may be ADR-0007-collapsed. The not-found
 # verdict is cached alongside the [] (a `.nf` marker) so a strict cache hit still reports it.
 _repo_wf_runs_cached() {
-  local repo="$1" wf="$2" strict="${3:-0}" limit="${4:-1000}" from="${5:-}" out err summary ra delay span expo errfile cachef key
+  local repo="$1" wf="$2" strict="${3:-0}" limit="${4:-1000}" from="${5:-}" rstatus="${6:-}" out err summary ra delay span expo errfile cachef key
   local attempts="${CANARY_GH_RETRIES:-6}" base="${CANARY_GH_RETRY_SLEEP:-2}" attempt=1
   local ra_cap="${CANARY_GH_RETRY_AFTER_CAP:-900}"
   case "$ra_cap" in ''|*[!0-9]*) ra_cap=900 ;; esac
@@ -734,6 +738,7 @@ _repo_wf_runs_cached() {
     # the default limit must never serve the ingress read that asks for more runs.
     key="${repo}//${wf}//${limit}"
     [ -z "$from" ] || key+="//${from}"   # a date-bounded list is a different list from the unbounded one
+    [ -z "$rstatus" ] || key+="//status=${rstatus}"   # and so is a status-filtered one
     _cache_name "$key"
     cachef="$_RUNS_CACHE_DIR/${_CACHE_NAME}.json"
     if [ -s "$cachef" ]; then
@@ -744,6 +749,7 @@ _repo_wf_runs_cached() {
   fi
   local -a cargs=()
   [ -z "$from" ] || cargs=(--created ">=$from")
+  [ -z "$rstatus" ] || cargs+=(--status "$rstatus")
   errfile="$(mktemp)"
   declare -p tmpfiles &>/dev/null || declare -g -a tmpfiles=()
   tmpfiles+=("$errfile")
@@ -878,12 +884,12 @@ _timing_kind() {
   _TIMING_KIND="${1:-} ${2:-}"
   if [ "${1:-}" = run ] && [ "${2:-}" = list ]; then
     # Which list is slow: the workflow, the -L cap and whether it was date-bounded (#1259).
-    local w="" l="" b="" a prev=""
+    local w="" l="" b="" st="" a prev=""
     for a in "$@"; do
-      case "$prev" in --workflow) w="$a" ;; -L|--limit) l="$a" ;; --created) b=" bounded" ;; esac
+      case "$prev" in --workflow) w="$a" ;; -L|--limit) l="$a" ;; --created) b=" bounded" ;; -s|--status) st=" status=$a" ;; esac
       prev="$a"
     done
-    _TIMING_KIND="run list [${w:-?}] L=${l:-default}$b"
+    _TIMING_KIND="run list [${w:-?}] L=${l:-default}$b$st"
     return 0
   fi
   [ "${1:-}" = api ] || return 0
@@ -949,6 +955,19 @@ _record_unresolved() {
       || echo "::error::canary: cannot record or remove the unresolved-member flag '$_CANARY_UNRESOLVED_FLAG'; the gate will fail closed" >&2
   fi
   echo "::warning::canary: UNRESOLVED member $repo for '$agent' — $reason" >&2
+}
+
+# _note_once <key> <message> — print <message> to stderr once per sweep for <key>. The run readers execute
+# thousands of times per sweep in subshells, so the marker is a file under $_RUNS_CACHE_DIR; with no cache dir
+# (a unit test calling a reader directly) every call prints.
+_note_once() {
+  local key="$1" msg="$2" f
+  if [ -n "${_RUNS_CACHE_DIR:-}" ] && [ -d "$_RUNS_CACHE_DIR" ]; then
+    _cache_name "note//$key"; f="$_RUNS_CACHE_DIR/${_CACHE_NAME}.note"
+    [ -e "$f" ] && return 0
+    : > "$f" 2>/dev/null || true
+  fi
+  echo "$msg" >&2
 }
 
 # _unresolved_flag_path <agent> <cand> — per-process UNRESOLVED flag path, so concurrent
@@ -1050,7 +1069,7 @@ _ingress_runs_fetch() {
     n="$(jq 'if type == "array" then length else 0 end' <<< "${out:-[]}" 2>/dev/null || echo 0)"
     if [ "${n:-0}" -ge "$_INGRESS_BOUNDED_MAX" ]; then
       oldest="$(jq -r '[.[]? | (.createdAt // "")] | min // ""' <<< "$out" 2>/dev/null || true)"
-      if [ -z "$since" ] || [ -z "$oldest" ] || ! [[ "$oldest" < "$since" ]]; then
+      if ! run_list_covers "$n" "$_INGRESS_BOUNDED_MAX" "$oldest" "$since"; then
         out="$(_repo_wf_runs_cached "$repo" "$iwf" 1 "$_INGRESS_RUN_LIMIT" "")" || rc=$?
       fi
     fi
@@ -1106,7 +1125,7 @@ _ingress_agent_runs() {
   fi
   if [ "${list_n:-0}" -ge "$list_max" ]; then
     list_oldest="$(jq -r '[.[]? | (.createdAt // "")] | min // ""' <<< "$iraw" 2>/dev/null || true)"
-    if [ -z "$since" ] || [ -z "$list_oldest" ] || ! [[ "$list_oldest" < "$since" ]]; then
+    if ! run_list_covers "$list_n" "$list_max" "$list_oldest" "$since"; then
       if [ -n "$list_oldest" ] && [ -n "${_CANARY_INGRESS_TRUNC_FLAG:-}" ] && printf '%s\n' "${list_oldest:0:10}" >> "$_CANARY_INGRESS_TRUNC_FLAG" 2>/dev/null; then
         echo "::warning::$agent $repo: the ingress run list reached CANARY_INGRESS_RUN_LIMIT ($list_max) in the baseline window; using the newest days only." >&2
       else
@@ -1220,6 +1239,18 @@ _ingress_agent_runs() {
 #   4. the ingress exists but the role cannot be attributed (no `ingress_job`, a job-less run,
 #      unreadable jobs) → the member is UNRESOLVED (see _record_unresolved), never silent.
 # A genuine fetch failure fails CLOSED (non-zero), exactly like _run_json.
+#
+# Per-role list completeness (#1244): `gh run list -L 1000` is the NEWEST 1000 runs — under a day on a busy
+# workflow. A list at that cap which does not reach back before <since_z> (run_list_covers) has lost the front
+# of the window, so:
+#   - a GATING read is completed with the window's failure-class runs (`--status failure`, `--status
+#     startup_failure`: small lists, read completely server-side), so no failure since the cut can scroll out of
+#     view. The executed count from the general list is then a LOWER bound, which can only delay a promotion. If a
+#     failure-class list is itself truncated the member is UNRESOLVED (the gate cannot see every failure);
+#   - a BASELINE read (_baseline_daily arms _CANARY_INGRESS_TRUNC_FLAG) records the oldest listed day instead, so
+#     the days the list never reached are unknown rather than zero — the same treatment as a capped ingress read.
+# A read with no window start has nothing to prove and returns the list as is.
+_LEGACY_RUN_LIMIT=1000
 _agent_run_json() {
   local agent="$1" repo="$2" since="$3" wf iwf raw iraw role rc=0
   [ -n "${_TIMING_CALLS:-}" ] && { printf . >> "$_TIMING_CALLS" 2>/dev/null || true; }   # call counter (CANARY_TIMING)
@@ -1227,12 +1258,12 @@ _agent_run_json() {
   _reg_run_workflow "$agent"; wf="$_REG_VAL"
   # Date-bound the per-role list (#1259, option B): every window the gate samples starts at most ~2 weeks back, so the
   # newest 1000 runs of a busy workflow are mostly older than anything read. One fixed tier (CANARY_RUNS_HORIZON_TIERS,
-  # days, default "15"; EMPTY disables the bound) so every window shares ONE fetch per (repo, workflow). No fallback
-  # read is needed when the bounded list hits the 1000 cap: GitHub returns newest-first, so it is then exactly the
-  # newest-1000 the unbounded call returns (the existing truncation behavior, unchanged). A window older than the tier
-  # (a long soak) gets the unbounded list as before.
+  # days, default "15"; EMPTY disables the bound) so every window shares ONE fetch per (repo, workflow). No unbounded
+  # fallback read is needed when the bounded list hits the 1000 cap: GitHub returns newest-first, so it is then exactly
+  # the newest-1000 the unbounded call returns. A capped list that does not reach the window start is completed below
+  # instead (#1244). A window older than the tier (a long soak) gets the unbounded list as before.
   _horizon_from "$since" "${CANARY_RUNS_HORIZON_TIERS-15}"
-  raw="$(_repo_wf_runs_cached "$repo" "$wf" 1 1000 "$_HORIZON_FROM")" || rc=$?
+  raw="$(_repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM")" || rc=$?
   if [ "$rc" -eq 3 ]; then
     rc=0; _reg_ingress_wf; iwf="$_REG_VAL"
     iraw="$(_ingress_runs_fetch "$repo" "$iwf" "$since")" || rc=$?
@@ -1250,9 +1281,42 @@ _agent_run_json() {
   elif [ "$rc" -ne 0 ]; then
     return 1
   fi
-  jq -c --arg since "$since" \
-    '[ .[]? | select($since == "" or (.createdAt // "") >= $since) ]' \
-    <<< "${raw:-[]}" 2>/dev/null || echo '[]'
+  # One jq pass (this runs thousands of times per sweep, #1259): "<listed>\t<oldest createdAt>" on the first
+  # line, the in-window runs on the second. An undated run makes the oldest "" (completeness then unproven).
+  local out meta body n oldest
+  out="$(jq -rc --arg since "$since" \
+    '(if type == "array" then . else [] end) as $r
+     | "\($r | length)\t\([$r[] | (.createdAt // "")] | min // "")",
+       [ $r[] | select($since == "" or (.createdAt // "") >= $since) ]' \
+    <<< "${raw:-[]}" 2>/dev/null)" || out=""
+  meta="${out%%$'\n'*}"; body="${out#*$'\n'}"
+  n="${meta%%$'\t'*}"; oldest="${meta#*$'\t'}"
+  case "$n" in ''|*[!0-9]*) echo '[]'; return 0 ;; esac
+  if [ -z "$since" ] || run_list_covers "$n" "$_LEGACY_RUN_LIMIT" "$oldest" "$since"; then
+    printf '%s\n' "$body"; return 0
+  fi
+  # Truncated for this window. Baseline read: report the oldest listed day and let _baseline_daily drop the unseen
+  # days. (An unarmed or unwritable flag falls through to the gating treatment below.)
+  if [ -n "${_CANARY_INGRESS_TRUNC_FLAG:-}" ] && [ -n "$oldest" ] && printf '%s\n' "${oldest:0:10}" >> "$_CANARY_INGRESS_TRUNC_FLAG" 2>/dev/null; then
+    _note_once "trunc-baseline//${repo}//${wf}" "::warning::$agent $repo: the '$wf' run list reached $_LEGACY_RUN_LIMIT runs in the baseline window; using the newest days only."
+    printf '%s\n' "$body"; return 0
+  fi
+  # Gating read: complete the window's failure-class runs. Same bound as the general list, so the reads are
+  # shared by every window in the tier; a failed read fails CLOSED like the list itself.
+  local st sraw smeta sn soldest extra=""
+  _note_once "trunc-gating//${repo}//${wf}" "::notice::$agent $repo: the '$wf' run list reached $_LEGACY_RUN_LIMIT runs before the window start; reading its failure-class runs separately (the executed count is a lower bound)."
+  for st in failure startup_failure; do
+    sraw="$(_repo_wf_runs_cached "$repo" "$wf" 0 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" "$st")" || return 1
+    smeta="$(jq -r '"\(length)\t\([.[] | (.createdAt // "")] | min // "")"' <<< "${sraw:-[]}" 2>/dev/null || true)"
+    sn="${smeta%%$'\t'*}"; soldest="${smeta#*$'\t'}"
+    if ! run_list_covers "$sn" "$_LEGACY_RUN_LIMIT" "$soldest" "$since"; then
+      _record_unresolved "$agent" "$repo" "the '$st' run list of '$wf' reached $_LEGACY_RUN_LIMIT runs before the window start; older failures in the window may be missing"
+    fi
+    extra+="${sraw:-[]}"$'\n'
+  done
+  jq -c -s --arg since "$since" \
+    'add | [ .[]? | select((.createdAt // "") >= $since) ] | unique_by(.databaseId) | sort_by(.createdAt // "") | reverse' \
+    <<< "${body:-[]}"$'\n'"$extra" 2>/dev/null || return 1
 }
 
 # _tier_sample <agent> <since_z> <repo...> — EXECUTED runs (success+failure) on the
@@ -1538,7 +1602,7 @@ _cumulative_health() {
 
 # _baseline_daily <agent> <window_days> <repo...> — per-day EXECUTED counts on the
 # source tier over the trailing window_days (window_days integers, zero-filled — fewer only when a
-# capped collapsed-repo read left the older days unknown, see _ingress_agent_runs),
+# capped read left the older days unknown, see _ingress_agent_runs and _agent_run_json),
 # feeding the robust spike-capped baseline for the sample target (#548).
 _baseline_daily() {
   local agent="$1" window="$2"; shift 2
@@ -1550,7 +1614,8 @@ _baseline_daily() {
     day="$(date -u -d "-${i} days" +%Y-%m-%d 2>/dev/null || date -u -v"-${i}d" +%Y-%m-%d 2>/dev/null || echo "")"
     days+=("$day")
   done
-  # A capped ingress read (see _ingress_agent_runs) leaves every day OLDER than that repo's first unread
+  # A capped read — an ingress read (see _ingress_agent_runs) or a per-role list at its cap that does not reach
+  # the window start (see _agent_run_json, #1244) — leaves every day OLDER than that repo's first unread
   # run's day unknown — NOT zero — and that boundary day itself only partly counted. Truncation is
   # tracked PER REPO: a truncated member drops only its own older days, so a fully-read member's history
   # still counts. The boundary day is kept only when it has observed runs (a lower bound, never a false
@@ -2012,7 +2077,7 @@ _pair_state() {
     unset _CANARY_UNRESOLVED_FLAG
   fi
   if [ -n "$unresolved" ]; then
-    echo "::error::canary gate for '$agent' [$transition] is BLIND on ring member(s) $unresolved — their runs could not be attributed (ADR-0007 ingress present, role job unresolvable). Counted as UNRESOLVED, not passing evidence; register the agent's ingress_job in the ring registry." >&2
+    echo "::error::canary gate for '$agent' [$transition] is BLIND on ring member(s) $unresolved — their runs could not be attributed or completely read (see the UNRESOLVED warnings above for the reason per member). Counted as UNRESOLVED, not passing evidence. For an ADR-0007 collapsed member whose role job is unresolvable, register the agent's ingress_job in the ring registry." >&2
     # PRE_EXISTING is advanceable via `promote --allow-pre-existing`, so UNRESOLVED must dominate it.
     if [ "$state" != "BLOCKED" ] || [ "$triage" = "PRE_EXISTING" ]; then
       state="BLOCKED"; triage="UNRESOLVED"; mix_shift="-"; downgrade="-"
@@ -2598,7 +2663,7 @@ $(printf '%s\n' "$guidance" | sed 's/^/> /')"
 > | candidate | \`$dg_cand_rate\` | $dg_cand_sample |
 > | baseline | \`$dg_base_rate\` | $dg_base_sample |"
   elif [ "$triage" = "UNRESOLVED" ]; then
-    note="> ⚠️ **UNRESOLVED (gate blind on a ring member, #1224)** — at least one ring member is an ADR-0007 collapsed repo (its per-role workflow is gone, \`$(_ingress_workflow)\` is present) and this agent's runs there could not be attributed to its role job. That member is **not** counted as passing evidence, so the gate holds instead of promoting on incomplete evidence. This is **not** a detected run failure (cumulative failures: $cum_fail). Fix: register the agent's \`ingress_job\` (its job key in the ingress) in \`standards/canary-rings.json\`. If the evidence below says job reads were capped, the ingress has more runs in the window than \`CANARY_INGRESS_JOBS_MAX\` allows: raise that knob (default 300) instead. This issue auto-closes once every member resolves."
+    note="> ⚠️ **UNRESOLVED (gate blind on a ring member, #1224)** — this agent's runs on at least one ring member could not be attributed or completely read (the reason per member is listed below). That member is **not** counted as passing evidence, so the gate holds instead of promoting on incomplete evidence. This is **not** a detected run failure (cumulative failures: $cum_fail). For an ADR-0007 collapsed repo (its per-role workflow is gone, \`$(_ingress_workflow)\` is present) whose runs could not be attributed to the role job: register the agent's \`ingress_job\` (its job key in the ingress) in \`standards/canary-rings.json\`. If the evidence below says job reads were capped, the ingress has more runs in the window than \`CANARY_INGRESS_JOBS_MAX\` allows: raise that knob (default 300) instead. If it names a per-role run list that reached $_LEGACY_RUN_LIMIT runs, that workflow has more failed runs since the candidate cut than one listing returns, so the gate cannot see every failure in the window (#1244): investigate the failure volume; the hold clears when the candidate is recut. This issue auto-closes once every member resolves."
   elif [ "$triage" = "FLAG_ERROR" ]; then
     note="> ⚠️ **FLAG_ERROR (gate held — runner temp dir unwritable)** — the candidate's cut date resolved fine, but the gate could not create its unresolved-member flag file (\`TMPDIR\` unwritable or full), so it could not record unattributable ring members and fails closed rather than promote on possibly incomplete evidence. This is **not** a detected run failure (cumulative failures: $cum_fail). Fix: free space / make \`TMPDIR\` writable on the runner; this clears on the next tick."
   elif [ "$triage" = "PRE_EXISTING" ]; then
