@@ -15,10 +15,16 @@
 # association OWNER, MEMBER or COLLABORATOR, author not donpetry-bot, and a body
 # with no automation marker (<!-- pr-review-agent, <!-- pr-review-claim,
 # <!-- persona:, <!-- dev-lead, <!-- dependency-advisory, <!-- maintainer-resolve,
-# <!-- auto-rebase-conflict). The review_requested path and marker-carrying
-# comments dispatch a plain, un-forced review. Agents post as the owner account,
-# so association alone cannot separate them from a person. The decision lives in
-# .github/scripts/pr-review-mention/lib/force-review.sh (bats-tested).
+# <!-- auto-rebase-conflict), AND the commenter's permission on the repository
+# is admin or write (#1284), read from repos/{repo}/collaborators/{login}/permission
+# — the same endpoint the review_requested trust check uses. Association alone
+# admits read-only members and collaborators, so a read / triage / none
+# permission, or a failed lookup, dispatches a plain review (rule
+# insufficient-permission / permission-unavailable). The review_requested path
+# and marker-carrying comments dispatch a plain, un-forced review. Agents post as
+# the owner account, so association alone cannot separate them from a person.
+# The decision lives in .github/scripts/pr-review-mention/lib/force-review.sh
+# (bats-tested); the one-line decision log names the rule and the permission.
 #
 # Requires:
 #   GH_PAT_WORKFLOWS     — org secret, classic PAT (repo scope) for API calls and dispatch
@@ -232,14 +238,34 @@ jobs:
           COMMENT_ASSOC: ${{ github.event.comment.author_association }}
           COMMENT_USER: ${{ github.event.comment.user.login }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          REPO: ${{ github.repository }}
         run: |
+          # The forced path needs admin or write on the repository (#1284), so
+          # read the trusted commenter's permission from the same endpoint the
+          # review_requested trust check uses. A failed or empty lookup leaves
+          # PERM empty, which the decision turns into a plain dispatch.
+          PERM=""
+          PERM_NOTE=""
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            case "$COMMENT_ASSOC" in
+              OWNER | MEMBER | COLLABORATOR)
+                PERM="$(gh api "repos/${REPO}/collaborators/${COMMENT_USER}/permission" \
+                  --jq '.permission' 2>/dev/null)" || {
+                  echo "::warning::could not read the permission of @${COMMENT_USER} on ${REPO} — dispatching without force_review"
+                  PERM=""
+                }
+                PERM_NOTE=" [permission: ${PERM:-unavailable}; force needs admin or write]"
+                ;;
+            esac
+          fi
+
           LIB=.pr-review-mention-tooling/.github/scripts/pr-review-mention/lib/force-review.sh
           if [ -f "$LIB" ]; then
             # shellcheck source=/dev/null
             . "$LIB"
             # Pure decision (see the header comment): force | plain | none.
             read -r VERDICT RULE < <(pr_review_mention_force_decision \
-              "$EVENT_NAME" "$COMMENT_ASSOC" "$COMMENT_USER" "$COMMENT_BODY")
+              "$EVENT_NAME" "$COMMENT_ASSOC" "$COMMENT_USER" "$COMMENT_BODY" "$PERM")
           else
             echo "::warning::force-review tooling unavailable — dispatching a plain review"
             VERDICT=plain
@@ -251,13 +277,13 @@ jobs:
             force)
               # -F (typed field) so the payload value is the JSON boolean true.
               FORCE_ARGS=(-F "client_payload[force_review]=true")
-              echo "force_review=true (rule: $RULE)"
+              echo "force_review=true (rule: ${RULE})${PERM_NOTE}"
               ;;
             plain)
-              echo "force_review=false (rule: $RULE)"
+              echo "force_review=false (rule: ${RULE})${PERM_NOTE}"
               ;;
             *)
-              echo "No dispatch (rule: $RULE)"
+              echo "No dispatch (rule: ${RULE})${PERM_NOTE}"
               exit 0
               ;;
           esac

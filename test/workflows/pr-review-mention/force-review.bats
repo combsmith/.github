@@ -48,22 +48,22 @@ MARKERS=(
 # ── pure decision function ───────────────────────────────────────────────────
 
 @test "decision: OWNER comment mention → force" {
-  run decide issue_comment OWNER don-petry '@donpetry-bot please review'
+  run decide issue_comment OWNER don-petry '@donpetry-bot please review' admin
   [ "$status" -eq 0 ]
   [ "$output" = "force trusted-human-comment-mention" ]
 }
 
 @test "decision: MEMBER and COLLABORATOR comment mentions → force" {
-  run decide issue_comment MEMBER alice '@donpetry-bot please review'
+  run decide issue_comment MEMBER alice '@donpetry-bot please review' write
   [ "$status" -eq 0 ]
   [ "$output" = "force trusted-human-comment-mention" ]
-  run decide issue_comment COLLABORATOR bob '@donpetry-bot please review'
+  run decide issue_comment COLLABORATOR bob '@donpetry-bot please review' admin
   [ "$status" -eq 0 ]
   [ "$output" = "force trusted-human-comment-mention" ]
 }
 
 @test "decision: OWNER review-comment mention → force" {
-  run decide pull_request_review_comment OWNER don-petry '@donpetry-bot look again'
+  run decide pull_request_review_comment OWNER don-petry '@donpetry-bot look again' admin
   [ "$status" -eq 0 ]
   [ "$output" = "force trusted-human-comment-mention" ]
 }
@@ -81,7 +81,7 @@ MARKERS=(
 }
 
 @test "decision: OWNER comment carrying a <!-- dev-lead marker → plain" {
-  run decide issue_comment OWNER don-petry $'<!-- dev-lead status -->\n@donpetry-bot please review'
+  run decide issue_comment OWNER don-petry $'<!-- dev-lead status -->\n@donpetry-bot please review' admin
   [ "$status" -eq 0 ]
   [ "$output" = "plain automation-marker" ]
 }
@@ -89,7 +89,7 @@ MARKERS=(
 @test "decision: every automation marker → plain" {
   local m
   for m in "${MARKERS[@]}"; do
-    run decide issue_comment OWNER don-petry "${m} x -->"$'\n''@donpetry-bot review'
+    run decide issue_comment OWNER don-petry "${m} x -->"$'\n''@donpetry-bot review' admin
     [ "$status" -eq 0 ]
     [ "$output" = "plain automation-marker" ] || {
       echo "marker not honoured: $m → $output"
@@ -99,7 +99,7 @@ MARKERS=(
 }
 
 @test "decision: a marker anywhere in the body (not just the start) → plain" {
-  run decide issue_comment OWNER don-petry $'@donpetry-bot please review\n\n<!-- maintainer-resolve id=1 -->'
+  run decide issue_comment OWNER don-petry $'@donpetry-bot please review\n\n<!-- maintainer-resolve id=1 -->' admin
   [ "$status" -eq 0 ]
   [ "$output" = "plain automation-marker" ]
 }
@@ -132,10 +132,49 @@ MARKERS=(
 }
 
 @test "decision: a body full of glob/shell metacharacters is treated literally" {
-  run decide issue_comment OWNER don-petry "@donpetry-bot \$(touch ${TT_TMP}/pwned) * ? [a] \`id\`"
+  run decide issue_comment OWNER don-petry "@donpetry-bot \$(touch ${TT_TMP}/pwned) * ? [a] \`id\`" admin
   [ "$status" -eq 0 ]
   [ "$output" = "force trusted-human-comment-mention" ]
   [ ! -e "${TT_TMP}/pwned" ]
+}
+
+@test "decision: MEMBER with read permission → plain (insufficient-permission)" {
+  run decide issue_comment MEMBER alice '@donpetry-bot please review' read
+  [ "$status" -eq 0 ]
+  [ "$output" = "plain insufficient-permission" ]
+}
+
+@test "decision: COLLABORATOR with triage permission → plain (insufficient-permission)" {
+  run decide issue_comment COLLABORATOR bob '@donpetry-bot please review' triage
+  [ "$status" -eq 0 ]
+  [ "$output" = "plain insufficient-permission" ]
+}
+
+@test "decision: OWNER with any permission other than admin / write → plain" {
+  local p
+  for p in none read triage ADMIN 'write ' bogus; do
+    run decide issue_comment OWNER don-petry '@donpetry-bot please review' "$p"
+    [ "$status" -eq 0 ]
+    [ "$output" = "plain insufficient-permission" ] || {
+      echo "permission not rejected: '$p' → $output"
+      return 1
+    }
+  done
+}
+
+@test "decision: empty permission (lookup failed) → plain, never force" {
+  run decide issue_comment OWNER don-petry '@donpetry-bot please review' ""
+  [ "$status" -eq 0 ]
+  [ "$output" = "plain permission-unavailable" ]
+  run decide issue_comment OWNER don-petry '@donpetry-bot please review'
+  [ "$status" -eq 0 ]
+  [ "$output" = "plain permission-unavailable" ]
+}
+
+@test "decision: review_requested ignores the permission argument" {
+  run decide pull_request "" don-petry "" admin
+  [ "$status" -eq 0 ]
+  [ "$output" = "plain review-requested" ]
 }
 
 # ── shipped "Trigger review agent" step ──────────────────────────────────────
@@ -154,6 +193,9 @@ run_trigger() {
     COMMENT_ASSOC="${COMMENT_ASSOC:-}" \
     COMMENT_USER="${COMMENT_USER:-}" \
     COMMENT_BODY="${COMMENT_BODY:-}" \
+    REPO="petry-projects/.github" \
+    GH_STUB_PERMISSION="${GH_STUB_PERMISSION-admin}" \
+    GH_STUB_PERMISSION_EXIT="${GH_STUB_PERMISSION_EXIT:-0}" \
       bash -e "${TT_TMP}/trigger.sh"
   )
 }
@@ -193,6 +235,54 @@ gh_log() { cat "$GH_STUB_LOG"; }
   [[ "$output" == *"force_review=false (rule: automation-marker)"* ]]
 }
 
+@test "step: the permission is read from the collaborator-permission endpoint" {
+  EVENT_NAME=issue_comment COMMENT_ASSOC=MEMBER COMMENT_USER=alice \
+    COMMENT_BODY='@donpetry-bot please review' run run_trigger
+  [ "$status" -eq 0 ]
+  [[ "$(gh_log)" == *"repos/petry-projects/.github/collaborators/alice/permission"* ]]
+  [[ "$output" == *"force_review=true (rule: trusted-human-comment-mention) [permission: admin; force needs admin or write]"* ]]
+}
+
+@test "step: MEMBER with write permission dispatches force_review=true" {
+  GH_STUB_PERMISSION=write EVENT_NAME=issue_comment COMMENT_ASSOC=MEMBER COMMENT_USER=alice \
+    COMMENT_BODY='@donpetry-bot please review' run run_trigger
+  [ "$status" -eq 0 ]
+  [[ "$(gh_log)" == *"-F client_payload\[force_review\]=true"* ]]
+}
+
+@test "step: MEMBER with read permission dispatches a plain review" {
+  GH_STUB_PERMISSION=read EVENT_NAME=issue_comment COMMENT_ASSOC=MEMBER COMMENT_USER=alice \
+    COMMENT_BODY='@donpetry-bot please review' run run_trigger
+  [ "$status" -eq 0 ]
+  [[ "$(gh_log)" == *"/repos/petry-projects/.github-private/dispatches"* ]]
+  [[ "$(gh_log)" != *"force_review"* ]]
+  [[ "$output" == *"force_review=false (rule: insufficient-permission) [permission: read; force needs admin or write]"* ]]
+}
+
+@test "step: a failed permission lookup dispatches a plain review and says why" {
+  GH_STUB_PERMISSION_EXIT=1 EVENT_NAME=issue_comment COMMENT_ASSOC=OWNER COMMENT_USER=don-petry \
+    COMMENT_BODY='@donpetry-bot please review' run run_trigger
+  [ "$status" -eq 0 ]
+  [[ "$(gh_log)" == *"/repos/petry-projects/.github-private/dispatches"* ]]
+  [[ "$(gh_log)" != *"force_review"* ]]
+  [[ "$output" == *"could not read the permission of @don-petry"* ]]
+  [[ "$output" == *"force_review=false (rule: permission-unavailable) [permission: unavailable"* ]]
+}
+
+@test "step: an empty permission lookup result dispatches a plain review" {
+  GH_STUB_PERMISSION="" EVENT_NAME=issue_comment COMMENT_ASSOC=OWNER COMMENT_USER=don-petry \
+    COMMENT_BODY='@donpetry-bot please review' run run_trigger
+  [ "$status" -eq 0 ]
+  [[ "$(gh_log)" != *"force_review"* ]]
+  [[ "$output" == *"force_review=false (rule: permission-unavailable) [permission: unavailable"* ]]
+}
+
+@test "step: review_requested does not look up the commenter permission" {
+  EVENT_NAME=pull_request run run_trigger
+  [ "$status" -eq 0 ]
+  [[ "$(gh_log)" != *"/permission"* ]]
+}
+
 @test "step: CONTRIBUTOR comment sends no dispatch at all" {
   EVENT_NAME=issue_comment COMMENT_ASSOC=CONTRIBUTOR COMMENT_USER=mallory \
     COMMENT_BODY='@donpetry-bot please review' run run_trigger
@@ -229,6 +319,11 @@ gh_log() { cat "$GH_STUB_LOG"; }
 
 @test "wiring: the workflow header comment states the force_review rule" {
   head -40 "$TT_WORKFLOW" | grep -q 'force_review'
+}
+
+@test "wiring: the workflow header comment states the permission rule" {
+  head -40 "$TT_WORKFLOW" | grep -q 'collaborators/{login}/permission'
+  head -40 "$TT_WORKFLOW" | grep -q 'admin or write'
 }
 
 @test "decision: a [bot] account with a trusted association → none" {
