@@ -19,22 +19,21 @@
 #     organisation's) variables to a `workflow_call` job, nor that a paused run
 #     ends green. Only a live run with the variable set can.
 #
-# Run: bats test/workflows/feature-ideation/fleet-pause.bats   (needs python3 + PyYAML)
+# Run: bats test/workflows/feature-ideation/fleet-pause.bats   (needs python3 + PyYAML; fails without)
 
 load 'helpers/setup'
 
 WF="${TT_REPO_ROOT}/.github/workflows/feature-ideation-reusable.yml"
 
 setup() {
-  # PyYAML parses the workflow: skip locally without it, never silently in CI
-  # (feature-ideation-tests.yml installs it from
-  # scripts/feature-ideation-tests-requirements.txt).
+  # PyYAML parses the workflow. Without it the suite FAILS, here and in CI: a
+  # skip would report the gate as checked when nothing looked at it.
+  # feature-ideation-tests.yml installs it from
+  # scripts/feature-ideation-tests-requirements.txt; locally:
+  #   python3 -m pip install -r scripts/feature-ideation-tests-requirements.txt
   if ! python3 -c 'import yaml' 2>/dev/null; then
-    if [ -n "${CI:-}" ]; then
-      echo "PyYAML is required in CI" >&2
-      return 1
-    fi
-    skip "PyYAML not installed"
+    echo "PyYAML is required: python3 -m pip install -r scripts/feature-ideation-tests-requirements.txt" >&2
+    return 1
   fi
   PAUSE_PY="${BATS_TEST_TMPDIR}/pause.py"
   cat > "$PAUSE_PY" <<'PY'
