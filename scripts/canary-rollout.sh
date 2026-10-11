@@ -1296,9 +1296,15 @@ _agent_run_json() {
     printf '%s\n' "$body"; return 0
   fi
   # Truncated for this window. Baseline read: report the oldest listed day and let _baseline_daily drop the unseen
-  # days. (An unarmed or unwritable flag falls through to the gating treatment below.)
-  if [ -n "${_CANARY_INGRESS_TRUNC_FLAG:-}" ] && [ -n "$oldest" ] && printf '%s\n' "${oldest:0:10}" >> "$_CANARY_INGRESS_TRUNC_FLAG" 2>/dev/null; then
-    _note_once "trunc-baseline//${repo}//${wf}" "::warning::$agent $repo: the '$wf' run list reached $_LEGACY_RUN_LIMIT runs in the baseline window; using the newest days only."
+  # days. An armed flag that cannot record the cutoff (undated oldest run, unwritable flag) would let
+  # _baseline_daily read the unseen days as zero, so that member is UNRESOLVED instead. (An unarmed flag is a
+  # gating read and falls through to the treatment below.)
+  if [ -n "${_CANARY_INGRESS_TRUNC_FLAG:-}" ]; then
+    if [ -n "$oldest" ] && printf '%s\n' "${oldest:0:10}" >> "$_CANARY_INGRESS_TRUNC_FLAG" 2>/dev/null; then
+      _note_once "trunc-baseline//${repo}//${wf}" "::warning::$agent $repo: the '$wf' run list reached $_LEGACY_RUN_LIMIT runs in the baseline window; using the newest days only."
+    else
+      _record_unresolved "$agent" "$repo" "the '$wf' run list reached $_LEGACY_RUN_LIMIT runs in the baseline window and the cutoff could not be recorded; unseen days would read as zero"
+    fi
     printf '%s\n' "$body"; return 0
   fi
   # Gating read: complete the window's failure-class runs. Same bound as the general list, so the reads are
@@ -1306,7 +1312,10 @@ _agent_run_json() {
   local st sraw smeta sn soldest extra=""
   _note_once "trunc-gating//${repo}//${wf}" "::notice::$agent $repo: the '$wf' run list reached $_LEGACY_RUN_LIMIT runs before the window start; reading its failure-class runs separately (the executed count is a lower bound)."
   for st in failure startup_failure; do
-    sraw="$(_repo_wf_runs_cached "$repo" "$wf" 0 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" "$st")" || return 1
+    sraw="$(_repo_wf_runs_cached "$repo" "$wf" 0 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" "$st")" || {
+      _record_unresolved "$agent" "$repo" "the '$st' run list of '$wf' could not be read; failures in the window may be missing"
+      return 1
+    }
     smeta="$(jq -r '"\(length)\t\([.[] | (.createdAt // "")] | min // "")"' <<< "${sraw:-[]}" 2>/dev/null || true)"
     sn="${smeta%%$'\t'*}"; soldest="${smeta#*$'\t'}"
     if ! run_list_covers "$sn" "$_LEGACY_RUN_LIMIT" "$soldest" "$since"; then

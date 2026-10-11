@@ -7103,15 +7103,15 @@ _legacy_run() { jq -n -c --arg c "$1" --arg t "$(date -u -d "-$2 days" +%Y-%m-%d
   run_list_covers 0 1000 "" "2026-01-01T00:00:00Z"
   run_list_covers 1000 1000 "2025-12-31T23:59:59Z" "2026-01-01T00:00:00Z"
   run run_list_covers 1000 1000 "2026-01-05T00:00:00Z" "2026-01-01T00:00:00Z"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
   run run_list_covers 1000 1000 "2026-01-01T00:00:00Z" "2026-01-01T00:00:00Z"   # an exact tie is not proof
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
   run run_list_covers 1000 1000 "2026-01-05T00:00:00Z" ""                        # no window start: cannot be proven
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
   run run_list_covers 1000 1000 "" "2026-01-01T00:00:00Z"                        # no dated run: cannot be proven
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
   run run_list_covers 1200 1000 "2026-01-05T00:00:00Z" "2026-01-01T00:00:00Z"   # over the cap is judged like at the cap
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
 }
 
 @test "_agent_run_json: a capped per-role list that does not reach the window start is completed with the failures it cut off (#1244)" {
@@ -7186,6 +7186,27 @@ _legacy_run() { jq -n -c --arg c "$1" --arg t "$(date -u -d "-$2 days" +%Y-%m-%d
   # the oldest listed run is ~9.3h old: its day is today or yesterday
   local d; d="$(cat "$tflag")"
   [ "$d" = "$(date -u +%Y-%m-%d)" ] || [ "$d" = "$(date -u -d '-1 days' +%Y-%m-%d)" ]
+}
+
+@test "_agent_run_json: a failed failure-class read also marks the member UNRESOLVED, so a promote cannot read it as zero failures (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[$(_legacy_run failure 4 9001)]"
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env GH_FAIL_STATUS=failure _CANARY_UNRESOLVED_FLAG="$flag" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 5)' >/dev/null 2>&1"
+  grep -q "^org/legacy"$'\t' "$flag"
+  grep -q "could not be read" "$flag"
+}
+
+@test "_agent_run_json: a BASELINE read that cannot record its cutoff is UNRESOLVED, not read as zero (#1244)" {
+  _legacy_runs_stub
+  _legacy_busy_history "[$(_legacy_run failure 4 9001)]"
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env _CANARY_INGRESS_TRUNC_FLAG="$BATS_TEST_TMPDIR/no-such-dir/trunc" _CANARY_UNRESOLVED_FLAG="$flag" CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'; set +e; _agent_run_json dev-lead org/legacy '$(_ago 14)' 2>/dev/null | jq 'length'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1000" ]
+  grep -q "cutoff could not be recorded" "$flag"
 }
 
 @test "_baseline_daily: a truncated per-role list leaves the unseen days UNKNOWN, not zero — a busy workflow is sized from the days it shows (#1244)" {
