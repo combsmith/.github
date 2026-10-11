@@ -290,7 +290,7 @@ apply_codeql_default_setup() {
   if codeql_advanced_exception "$repo"; then
     local exception_state
     exception_state=$(gh api "repos/$ORG/$repo/code-scanning/default-setup" --jq '.state' 2>/dev/null || echo "")
-    if [ "$exception_state" = "configured" ]; then
+    if [[ "$exception_state" == "configured" ]]; then
       warn "  $repo is in CODEQL_ADVANCED_EXCEPTIONS but default setup is ENABLED — its codeql.yml upload will be rejected. Disable it: gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -f state=not-configured"
     fi
     skip "  $repo is in CODEQL_ADVANCED_EXCEPTIONS — skipping default setup"
