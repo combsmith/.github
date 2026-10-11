@@ -612,6 +612,37 @@ _only_real_step() {
   [[ "$output" == *"already configured"* ]]
 }
 
+@test "apply_codeql_default_setup never changes a repo approved for advanced setup" {
+  # .github runs an inline codeql.yml so CodeQL reports on its merge queue.
+  # Enabling default setup there makes GitHub reject that workflow's upload, so
+  # the applier may read the state but must never PATCH it, in either direction.
+  gh() { printf 'gh %s\n' "$*" >> "$CALLS"; printf 'not-configured\n'; }
+  : > "$CALLS"
+  run apply_codeql_default_setup .github
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CODEQL_ADVANCED_EXCEPTIONS"* ]]
+  [[ "$output" != *"ENABLED"* ]]
+  ! grep -q -- 'PATCH' "$CALLS"
+}
+
+@test "apply_codeql_default_setup warns, without changing it, when a listed repo has default setup on" {
+  gh() { printf 'gh %s\n' "$*" >> "$CALLS"; printf 'configured\n'; }
+  : > "$CALLS"
+  run apply_codeql_default_setup .github
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"default setup is ENABLED"* ]]
+  [[ "$output" == *"state=not-configured"* ]]
+  ! grep -q -- 'PATCH' "$CALLS"
+}
+
+@test "apply_codeql_default_setup still enables default setup on an unlisted repo" {
+  gh() { printf 'gh %s\n' "$*" >> "$CALLS"; printf 'not-configured\n'; }
+  : > "$CALLS"
+  run apply_codeql_default_setup acme
+  [ "$status" -eq 0 ]
+  grep -q -- '-X PATCH repos/.*/acme/code-scanning/default-setup' "$CALLS"
+}
+
 @test "a failing apply_codeql_default_setup propagates its name into FAILED_STEPS (AC6c/AC6d)" {
   _only_real_step apply_codeql_default_setup
   gh() {
