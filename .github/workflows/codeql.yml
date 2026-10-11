@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CodeQL — advanced setup (merge-queue exception to the org default-setup rule)
+#
+# WHY THIS EXISTS: the org standard is GitHub-managed CodeQL **default setup**
+# (standards/ci-standards.md §2). Default setup analyzes `push` and
+# `pull_request` only and cannot be given extra triggers, so it never posts a
+# result on a merge queue's `gh-readonly-queue/*` ref. `CodeQL` is a required
+# status check, so with default setup a merge queue could never merge anything
+# (github/codeql-action#1537). This workflow adds the `merge_group` trigger and
+# keeps the prior default-setup coverage: languages `actions` + `python`, the
+# `default` query suite.
+#
+# This repo is listed in scripts/lib/codeql-advanced.sh, which is what stops
+# apply-repo-settings.sh from re-enabling default setup and the compliance audit
+# from flagging this file as drift. Remove the repo from that list before
+# deleting this file.
+#
+# ⚠️ REQUIRED CUTOVER (repository setting, not a file change): code-scanning
+# default setup must be DISABLED while this workflow exists. GitHub rejects the
+# advanced-setup upload while default setup is enabled, which fails this check.
+#   gh api -X PATCH repos/petry-projects/.github/code-scanning/default-setup \
+#     -f state=not-configured
+#
+# The required-check context produced here is `CodeQL` — do NOT rename the
+# `CodeQL` job; the ruleset matches the required check by context name.
+# ─────────────────────────────────────────────────────────────────────────────
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Required status check: must report on the merge queue's gh-readonly-queue/*
+  # ref, or the queue never merges.
+  merge_group:
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Preserve the language set from the prior default setup.
+        language: [actions, python]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@977e6ceaea7361825998245d787fa3b4d6b9e5df # codeql-bundle-v2.27.0
+        with:
+          languages: ${{ matrix.language }}
+          # `actions` and `python` are interpreted — no compilation step.
+          build-mode: none
+          # No `queries:` input: the `default` suite, as default setup ran.
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@977e6ceaea7361825998245d787fa3b4d6b9e5df # codeql-bundle-v2.27.0
+        with:
+          category: /language:${{ matrix.language }}
+
+  CodeQL:
+    name: CodeQL
+    needs: analyze
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Fail closed: only a fully successful matrix passes. `cancelled` and
+      # `skipped` runs completed no scan, so they must not report green.
+      - name: Require every language analysis to succeed
+        env:
+          ANALYZE_RESULT: ${{ needs.analyze.result }}
+        run: |
+          if [[ "${ANALYZE_RESULT}" != "success" ]]; then
+            echo "CodeQL analyze result: ${ANALYZE_RESULT} (expected success)" >&2
+            exit 1
+          fi

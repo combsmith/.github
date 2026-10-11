@@ -296,6 +296,12 @@ RULESETS_SRC_DIR="${RULESETS_SRC_DIR:-$SCRIPT_DIR/../standards/rulesets}"
 # shellcheck source=lib/stub-verbatim.sh
 . "$SCRIPT_DIR/lib/stub-verbatim.sh"
 
+# Repos approved for advanced CodeQL setup — codeql_advanced_exception(). Shared
+# with apply-repo-settings.sh so the audit never flags as drift a codeql.yml the
+# applier is deliberately leaving in place.
+# shellcheck source=lib/codeql-advanced.sh
+. "$SCRIPT_DIR/lib/codeql-advanced.sh"
+
 # AGENTS.md structural linter — the pure, data-driven driver (amdl_lint) and its
 # default rule-set path (AMDL_DEFAULT_RULES). Sourced, not exec'd: agents-md-lint.sh
 # guards its CLI behind a BASH_SOURCE check, so sourcing only defines functions.
@@ -1535,9 +1541,22 @@ check_sonar_s7637_exemption() {
 #      exclusive at the GitHub level — leaving the file behind double-bills
 #      CI minutes and creates two competing analyses. Remediation: delete
 #      .github/workflows/codeql.yml.
+#
+# Repos in CODEQL_ADVANCED_EXCEPTIONS (scripts/lib/codeql-advanced.sh) are
+# approved to run an inline codeql.yml instead — today, repos with a merge
+# queue, because default setup cannot report on `merge_group`. For those the
+# two findings above are inverted into one:
+#
+#   3. codeql-advanced-workflow-missing (error): an approved repo has no
+#      codeql.yml, so nothing produces its required `CodeQL` check.
 # ---------------------------------------------------------------------------
 check_codeql_default_setup() {
   local repo="$1"
+
+  if codeql_advanced_exception "$repo"; then
+    check_codeql_advanced_workflow "$repo"
+    return 0
+  fi
 
   # Query the default-setup state.
   # IMPORTANT: Do NOT use the gh_api() retry wrapper here. When gh api gets a
@@ -1583,6 +1602,35 @@ check_codeql_default_setup() {
     add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "stray-codeql-workflow" "error" \
       "Repo still ships \`.github/workflows/codeql.yml\`. The org standard now uses GitHub-managed CodeQL default setup; per-repo workflow files are drift and run a duplicate analysis alongside default setup. Delete the file. If a documented exception applies (custom query pack, build mode, path filters), open a standards PR against \`standards/ci-standards.md\` to record the exception before re-adding the workflow." \
       "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Check: a repo approved for advanced CodeQL setup still ships its codeql.yml
+#
+# Called by check_codeql_default_setup for repos in CODEQL_ADVANCED_EXCEPTIONS.
+# Only a deterministic 404 is "missing": a 403, a 5xx or a network failure says
+# nothing about the file, and filing a finding on one would send an agent to
+# re-add a workflow that is already there.
+# ---------------------------------------------------------------------------
+check_codeql_advanced_workflow() {
+  local repo="$1"
+
+  # Not gh_api(): on failure it retries and concatenates the error bodies, which
+  # makes the status unreadable (same reason as the default-setup query above).
+  local raw_response="" api_ok=0
+  raw_response=$(gh api "repos/$ORG/$repo/contents/.github/workflows/codeql.yml" --jq '.name' 2>&1) || api_ok=$?
+
+  if [ "$api_ok" -eq 0 ]; then
+    return 0
+  fi
+
+  if printf '%s' "$raw_response" | grep -qiE 'http 404|"status":[[:space:]]*"?404'; then
+    add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-advanced-workflow-missing" "error" \
+      "Repo is approved for advanced CodeQL setup (\`scripts/lib/codeql-advanced.sh\`) but ships no \`.github/workflows/codeql.yml\`, so nothing produces its required \`CodeQL\` check. Restore the workflow (it must trigger on \`push\`, \`pull_request\` and \`merge_group\`), or remove the repo from \`CODEQL_ADVANCED_EXCEPTIONS\` and re-enable default setup." \
+      "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
+  else
+    info "  CodeQL advanced workflow check skipped for $repo — could not read codeql.yml (not a 404)"
   fi
 }
 

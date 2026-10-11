@@ -1,0 +1,71 @@
+# Guard for this repo's own required-status-check workflows.
+#
+# Triggered on any PR that touches:
+#   - a workflow that provides a required check (SonarCloud, CodeQL,
+#     agent-shield, dependency-audit)
+#   - standards/rulesets/code-quality.json  (the required-context list)
+#   - test/workflows/required-checks/**     (the guard itself)
+#
+# Gate: bats — every required context has a providing workflow that triggers on
+#       `merge_group` and still produces the exact context name, so a merge
+#       queue on this repo cannot be stalled by a check that never reports.
+#       See test/workflows/required-checks/merge-group.bats.
+name: Required Checks Tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sonarcloud.yml'
+      - '.github/workflows/codeql.yml'
+      - '.github/workflows/agent-shield.yml'
+      - '.github/workflows/dependency-audit.yml'
+      - 'standards/rulesets/code-quality.json'
+      - 'test/workflows/required-checks/**'
+      - '.github/workflows/required-checks-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sonarcloud.yml'
+      - '.github/workflows/codeql.yml'
+      - '.github/workflows/agent-shield.yml'
+      - '.github/workflows/dependency-audit.yml'
+      - 'standards/rulesets/code-quality.json'
+      - 'test/workflows/required-checks/**'
+      - '.github/workflows/required-checks-tests.yml'
+
+permissions: {}
+
+concurrency:
+  group: required-checks-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: bats
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install bats and jq
+        run: |
+          set -euo pipefail
+          for attempt in {1..3}; do
+            if sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends bats jq; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Apt install failed, retrying in 5 seconds..." >&2
+              sleep 5
+            fi
+          done
+          echo "Apt install failed after 3 attempts" >&2
+          exit 1
+
+      - name: bats
+        run: bats --print-output-on-failure test/workflows/required-checks/

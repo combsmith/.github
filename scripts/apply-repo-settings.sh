@@ -63,6 +63,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/labels.sh
 . "$SCRIPT_DIR/lib/labels.sh"
 
+# Repos approved for advanced CodeQL setup — CODEQL_ADVANCED_EXCEPTIONS and
+# codeql_advanced_exception(). Shared with compliance-audit.sh so the applier
+# and the audit agree on which repos keep an inline codeql.yml.
+# shellcheck source=lib/codeql-advanced.sh
+. "$SCRIPT_DIR/lib/codeql-advanced.sh"
+
 usage() {
   echo "Usage: $0 <repo-name>"
   echo "       $0 --all"
@@ -263,28 +269,24 @@ apply_settings() {
 # per-repo workflow file. Languages are auto-detected from the default branch.
 #
 # Idempotent: if state is already "configured", we no-op. If "not-configured",
-# we PATCH to enable. Repos listed in CODEQL_ADVANCED_EXCEPTIONS are skipped
-# (they are approved to keep an inline codeql.yml; see the escape hatch in
-# ci-standards.md §2). The API rejects updates on repos without code scanning
-# capability (e.g. private repos without GHAS); we log a warning and continue
-# so that --all runs are not blocked by a single unsupported repo.
+# we PATCH to enable. Repos listed in CODEQL_ADVANCED_EXCEPTIONS
+# (scripts/lib/codeql-advanced.sh) are skipped: they are approved to keep an
+# inline codeql.yml (see the escape hatch in ci-standards.md §2), and enabling
+# default setup there makes GitHub reject the workflow's upload. The API rejects
+# updates on repos without code scanning capability (e.g. private repos without
+# GHAS); we log a warning and continue so that --all runs are not blocked by a
+# single unsupported repo.
 # ---------------------------------------------------------------------------
-
-# Repos approved for advanced CodeQL setup (inline codeql.yml).
-# Each entry must have a corresponding standards PR documenting the exception.
-CODEQL_ADVANCED_EXCEPTIONS=()
 
 apply_codeql_default_setup() {
   local repo="$1"
   info "Configuring CodeQL default setup for $ORG/$repo ..."
 
   # Skip repos approved for advanced (inline workflow) CodeQL setup.
-  for exception in "${CODEQL_ADVANCED_EXCEPTIONS[@]}"; do
-    if [ "$repo" = "$exception" ]; then
-      skip "  $repo is in CODEQL_ADVANCED_EXCEPTIONS — skipping default setup"
-      return 0
-    fi
-  done
+  if codeql_advanced_exception "$repo"; then
+    skip "  $repo is in CODEQL_ADVANCED_EXCEPTIONS — skipping default setup"
+    return 0
+  fi
 
   local current_state
   current_state=$(gh api "repos/$ORG/$repo/code-scanning/default-setup" --jq '.state' 2>/dev/null || echo "")

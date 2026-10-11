@@ -24,7 +24,7 @@ where to send a fix when behavior needs to change.
 |---|---|---|---|---|
 | **1. Stub** | `dev-lead.yml`, `dependency-audit.yml`, `dependabot-automerge.yml`, `dependabot-rebase.yml`, `agent-shield.yml`, `feature-ideation.yml`, `pr-review-mention.yml` | A thin caller stub that delegates via `uses: …/<name>-reusable.yml@<name>/stable` — the reusable's moving `stable` channel tag ([Reusable workflow versioning](#reusable-workflow-versioning--the-stable-channel)). Reusables not yet migrated to a channel keep their current canonical pin in the interim; `check_centralized_workflow_stubs` in `scripts/compliance-audit.sh` enforces the expected pin per reusable. | The matching `*-reusable.yml` (single source of truth) | **None** in normal use. May tune `with:` inputs where the reusable exposes them (e.g. `agent-shield` accepts `min-severity`, `required-files`; `feature-ideation` requires `project_context`). To change behavior, open a PR against the reusable; a release is cut and promoted by moving the channel tag, never by editing callers. |
 | **2. Per-repo template** | `ci.yml`, `sonarcloud.yml` | _(no template — see the patterns documented below)_ | In each repo, because the workflow is tech-stack-specific (language matrix, build tool, test framework) | **Limited.** Each adopting repo carries its own copy. Stay within the patterns in this document; do not change action SHAs, permission scopes, trigger events, or job names without raising a standards PR first. |
-| **GitHub-managed** | CodeQL default setup | _(no workflow file — managed via repo Settings → Code security)_ | GitHub | None. Configured via `apply-repo-settings.sh`; per-repo `codeql.yml` files are treated as drift by the compliance audit. See [§2 CodeQL Analysis](#2-codeql-analysis-github-managed-default-setup). |
+| **GitHub-managed** | CodeQL default setup | _(no workflow file — managed via repo Settings → Code security)_ | GitHub | None. Configured via `apply-repo-settings.sh`; per-repo `codeql.yml` files are treated as drift by the compliance audit, except in repos with a recorded exception (today: repos with a merge queue). See [§2 CodeQL Analysis](#2-codeql-analysis-github-managed-default-setup). |
 | **3. Free per-repo** | `release.yml`, project-specific automation | _(out of scope for this standard)_ | Per-repo | Free, but must still comply with the [Action Pinning Policy](#action-pinning-policy) and the [Required Workflows](#required-workflows) constraints. |
 
 Tier 1 stubs all carry an identical `SOURCE OF TRUTH` header block telling
@@ -73,6 +73,15 @@ indifferent to the outer event, so they need no change. Do not strip
 `merge_group` on a stub sync and do not flag it as trigger drift — the `on:`
 surface-drift checks compare against this template, so the merge-queue trigger set
 is the compliant baseline.
+
+The same rule holds for the required checks that are **not** stubs. A repo that
+turns on a merge queue must make every required context report on `merge_group`:
+its own `sonarcloud.yml` (`SonarCloud`) needs the trigger, and `CodeQL` needs the
+advanced-setup exception in [§2](#2-codeql-analysis-github-managed-default-setup),
+because default setup cannot be given one. In this repo
+`test/workflows/required-checks/merge-group.bats` fails if any context in
+`standards/rulesets/code-quality.json` has no providing workflow that triggers on
+`merge_group`.
 
 ### Reusable workflow versioning — the `stable` channel
 
@@ -492,7 +501,8 @@ and AgentShield workflows are in [`standards/workflows/`](workflows/). The CI,
 SonarCloud, and Dev-Lead Agent workflows are documented as patterns
 below — copy and adapt the examples to each repo's tech stack. CodeQL is
 **not** a workflow file: it is configured via GitHub-managed default setup
-(see [§2](#2-codeql-analysis-github-managed-default-setup)).
+(see [§2](#2-codeql-analysis-github-managed-default-setup), which also records
+the merge-queue exception).
 
 | # | Workflow | Notes |
 |---|----------|-------|
@@ -677,6 +687,38 @@ non-default toolchain, or a language CodeQL supports only via manual
 build. **Document the reason in the workflow file's header and open a
 standards PR against this document** so the exception is recorded
 alongside the rule.
+
+**A merge queue is such a need.** Default setup analyzes `push` and
+`pull_request` only and cannot be given extra triggers, so it never reports on a
+merge queue's `gh-readonly-queue/*` ref
+([github/codeql-action#1537](https://github.com/github/codeql-action/issues/1537)).
+`CodeQL` is a required status check, so a repo with a merge queue and default
+setup can never merge through the queue. Such a repo runs an inline `codeql.yml`
+that triggers on `push`, `pull_request` and `merge_group`, keeps the language
+set and query suite default setup had, and ends in a job named `CodeQL` so the
+required context is unchanged.
+
+**Recording an exception.** The approved repos are listed once, in
+`CODEQL_ADVANCED_EXCEPTIONS` in
+[`scripts/lib/codeql-advanced.sh`](../scripts/lib/codeql-advanced.sh). Both
+`apply-repo-settings.sh` and the compliance audit read that list:
+
+| | Repo not listed (the standard) | Repo listed (exception) |
+|---|---|---|
+| `apply-repo-settings.sh` | enables default setup | leaves default setup alone |
+| Compliance audit | flags default setup not configured, and any `codeql.yml` | flags a **missing** `codeql.yml` (`codeql-advanced-workflow-missing`) |
+
+| Repo | Reason |
+|---|---|
+| `.github` | Merge queue: `CodeQL` must report on `merge_group` |
+| `.github-private` | Merge queue: `CodeQL` must report on `merge_group` |
+
+**Cutover order matters.** Default setup must be **disabled** on a listed repo
+(`gh api -X PATCH repos/petry-projects/<repo>/code-scanning/default-setup -f state=not-configured`).
+While it is enabled GitHub rejects the advanced-setup upload, which fails the
+`CodeQL` check on every pull request. Add the repo to the list in the same change
+that adds its `codeql.yml`, or the next `apply-repo-settings.sh` run turns
+default setup back on.
 
 ### 3. SonarCloud Analysis (`sonarcloud.yml`)
 

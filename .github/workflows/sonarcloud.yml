@@ -9,6 +9,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Required status check: must report on the merge queue's gh-readonly-queue/*
+  # ref, or the queue never merges (standards/ci-standards.md, "Required-check
+  # stubs must support merge_group").
+  merge_group:
 
 jobs:
   sonarcloud:
@@ -33,6 +37,23 @@ jobs:
           python3 -m pytest test/feature-ideation/test_validate_signals.py \
             --cov --cov-report=xml:test/feature-ideation/coverage.xml
 
+      # On a merge queue run GITHUB_REF is the temporary gh-readonly-queue/* ref.
+      # Left alone, the scanner would record it as a new long-lived branch in
+      # SonarCloud for every queued PR. merge_group.base_ref is the full ref
+      # (refs/heads/main), so strip it to the short name the scanner expects.
+      # Empty on push and pull_request: the scanner's own detection is unchanged.
+      - name: Resolve Sonar branch name
+        id: branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.merge_group.base_ref }}
+        run: |
+          if [ "${EVENT_NAME}" = "merge_group" ]; then
+            echo "name=${BASE_REF#refs/heads/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=" >> "$GITHUB_OUTPUT"
+          fi
+
       # First attempt. continue-on-error lets the retry step below recover from
       # transient 403/5xx responses from binaries.sonarsource.com (the scanner
       # CLI download), without failing the job on a single CDN blip.
@@ -40,7 +61,17 @@ jobs:
         id: sonar
         if: ${{ env.SONAR_TOKEN != '' }}
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        with:
+          args: >-
+            ${{ steps.branch.outputs.name != '' &&
+            format('-Dsonar.branch.name={0}', steps.branch.outputs.name)
+            || '' }}
         continue-on-error: true
       - name: SonarCloud Scan (retry)
         if: ${{ env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' }}
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        with:
+          args: >-
+            ${{ steps.branch.outputs.name != '' &&
+            format('-Dsonar.branch.name={0}', steps.branch.outputs.name)
+            || '' }}
