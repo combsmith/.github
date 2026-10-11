@@ -260,6 +260,7 @@ dry()  { echo "[deploy] DRY   $*"; }
 ok()   { echo "[deploy] OK    $*"; }
 err()  { echo "[deploy] ERROR $*" >&2; }
 
+# True if <repo> is in the SKIP_REPOS list (exempt from standard-workflow deployment).
 is_skipped_repo() {
   local repo="$1" s
   for s in "${SKIP_REPOS[@]}"; do
@@ -569,7 +570,8 @@ emit_ref_for() {
   return 0
 }
 
-# Build the PR body for a batched stub deployment (one PR per repo).
+# Generate the PR body text for a batched workflow stub deployment.
+# Formats workflow names as a bullet list and includes standard boilerplate.
 batch_pr_body() {
   local w lines=""
   for w in "$@"; do lines+="- \`${w}\`"$'\n'; done
@@ -783,6 +785,7 @@ deploy_repo() {
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
+# Main entry point — orchestrates workflow deployment to all repos in the org.
 main() {
   parse_args "$@"
 
