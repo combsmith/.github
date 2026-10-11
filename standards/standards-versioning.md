@@ -104,5 +104,5 @@ degrades cleanly to "accepts current" while `previous` is empty.
 - **No behavior change for anything that does not opt in.** Scripts and repos
   that pass an explicit ref or a local standards directory keep resolving exactly
   as they do; this channel adds a tag, it does not change any existing
-  resolution path in this repo. In particular `scripts/seed-repo-template.sh`
+  resolution path in this repo. In particular `scripts/emit-standard-file.sh`
   (which reads a local `STANDARDS_DIR` checkout) is untouched.
