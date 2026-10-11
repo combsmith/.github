@@ -3037,7 +3037,7 @@ cmd_sync_issues() {
       elif [ "$bl_datagap" = "1" ]; then
         title="Canary blocker: $agent $bl_transition ($(triage_label "$bl_triage"), partial run-history — fail-closed)"
       else
-        title="Canary blocker: $agent $bl_transition (cum_fail=$bl_cum_fail, $bl_triage)"
+        title="Canary blocker: $agent $bl_transition (cum_fail=$bl_cum_fail, $(triage_label "$bl_triage"))"
       fi
       if [ -z "$num" ]; then
         if [ "$dry" = true ]; then echo "  [DRY] would OPEN blocker issue for $agent ($bl_triage)"; bl_link="(new)"; else
