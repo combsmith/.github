@@ -10,3 +10,22 @@ updates:
     labels:
       - "security"
       - "dependencies"
+
+  # The published workflow templates (#1172). `directory: "/"` scans only
+  # `.github/workflows/`, so without this entry the action pins in the templates
+  # every consumer is seeded from and drift-checked against are never bumped.
+  # For a non-root directory Dependabot reads the `*.yml` files in that directory.
+  # Every directory under `standards/` that holds workflow YAML needs an entry
+  # here; `test/scripts/standards-templates/dependabot-coverage.bats` enforces it.
+  - package-ecosystem: "github-actions"
+    directory: "/standards/workflows"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "security"
+      - "dependencies"
+    ignore:
+      # First-party reusables are pinned to a moving `<agent>/v<M>-stable` channel
+      # tag on purpose. Release tooling moves those pins, never Dependabot.
+      - dependency-name: "petry-projects/*"

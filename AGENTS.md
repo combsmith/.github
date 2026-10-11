@@ -54,6 +54,15 @@ and have `.github-private` **consume** it — the way repo-seeding tooling fetch
 `standards/workflows/` from `.github`. Do **not** add new org-wide standards or rulesets
 to `.github-private`.
 
+**`seed-repo-template.sh` has one home: `petry-projects/.github-private`.** That script writes
+the baseline scaffold into `petry-projects/repo-template` and opens the seed PR. It reads this
+repo's `standards/` at a pinned ref, so it is a consumer of the standards, not a standard. This
+repo's `scripts/emit-standard-file.sh` is a different tool: it only prints one standard file (the
+`.gitignore` baseline, or a workflow stub verbatim) from a local checkout. The two used to share a
+name and were mistaken for diverged copies (`petry-projects/.github-private#1927`). Do not add a
+`seed-repo-template.sh` here; `tests/test_seed_repo_template_single_home.bats` fails if one
+reappears.
+
 > **Known exception being remediated:** `code-quality.json` and `pr-quality.json`
 > currently live in `.github-private/.github/rulesets/` (added ad-hoc under
 > compliance fix #60, before this boundary was documented) and are being relocated
