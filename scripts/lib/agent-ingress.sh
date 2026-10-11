@@ -100,8 +100,8 @@ agent_ingress_job_keys() {
         end = index(key, ":")
         if (end == 0) next
         name = substr(key, 1, end - 1)
-        rest = substr(key, end)
         sub(/[ \t]+$/, "", name)
+        rest = substr(key, end)
       }
       # YAML allows whitespace between a key and its colon (`"pr-review" :`, `pr-review :`).
       sub(/^[ \t]+/, "", rest)
