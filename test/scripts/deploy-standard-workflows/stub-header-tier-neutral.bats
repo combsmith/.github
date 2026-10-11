@@ -140,3 +140,18 @@ ring_rendered_templates() {
   run bash -c 'source "$1"; for w in idea-enhancer.yml idea-triage.yml initiative-planner.yml; do is_deployable_workflow "$w" && is_present_only_workflow "$w" || exit 1; done' _ "$SCRIPT"
   [ "$status" -eq 0 ]
 }
+
+@test "sweep: ring-pinned stub with stale header is flagged as drift and header is stripped" {
+  install_gh_stub
+  local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" swept old
+  swept="$(bash -c 'source "$1"; ring_repin_uses persona-mention persona-mention/v1-ring1 < "$2"' _ "$SCRIPT" "$t")"
+  old="$(printf '# pinned to the \`persona-mention/v1-stable\` channel\n%s\n' "$swept")"
+  # Verify the stub with stale header is NOT compliant
+  run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$old" "$t"
+  [ "$status" -eq 1 ]
+  # Verify that stripping the header makes it compliant
+  local stripped
+  stripped="$(bash -c 'source "$1"; strip_stale_stable_header persona-mention <<< "$2"' _ "$SCRIPT" "$old")"
+  run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$stripped" "$t"
+  [ "$status" -eq 0 ]
+}
