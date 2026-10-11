@@ -181,6 +181,16 @@ ring_rendered_templates() {
   [[ "$out" != *legacy* ]]
 }
 
+@test "strip_stale_stable_header with a template also drops a stale comment block under jobs" {
+  install_gh_stub
+  local t="${REPO_ROOT}/standards/workflows/dev-lead.yml" old out
+  old="$(printf '# legacy header dev-lead/v1-stable\nname: x\njobs:\n  dev-lead:\n    # Pinned to the moving dev-lead stable channel tag, not @main,\n    # so a broken change cannot gate its own fix.\n    uses: foo\n    # keep me\n    with: 1\n')"
+  out="$(bash -c 'source "$1"; strip_stale_stable_header dev-lead "$3" <<< "$2"' _ "$SCRIPT" "$old" "$t")"
+  [[ "$out" != *"stable channel"* ]]
+  [[ "$out" != *"cannot gate"* ]]
+  [[ "$out" == *"# keep me"* ]]
+}
+
 @test "idea engines are engine-host targets in .github-private only" {
   install_gh_stub
   run bash -c 'source "$1"; for w in idea-enhancer.yml idea-triage.yml initiative-planner.yml; do is_engine_host_target "$w" .github-private || exit 1; ! is_engine_host_target "$w" TalkTerm || exit 2; done' _ "$SCRIPT"
