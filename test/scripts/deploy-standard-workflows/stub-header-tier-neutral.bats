@@ -104,3 +104,14 @@ ring_rendered_templates() {
   run bash -c 'source "$1"; stub_body_matches_template "$2" "$3" petry-projects/bmad-bgreat-suite' _ "$SCRIPT" "$swept" "$t"
   [ "$status" -eq 0 ]
 }
+
+@test "ring-1 repo: a correctly pinned stub still carrying the old stable-channel header is NOT compliant (is_already_compliant)" {
+  install_gh_stub
+  local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" swept old
+  swept="$(bash -c 'source "$1"; ring_repin_uses persona-mention persona-mention/v1-ring1 < "$2"' _ "$SCRIPT" "$t")"
+  old="$(printf '# pinned to the `persona-mention/v1-stable` channel\n%s\n' "$swept")"
+  run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$old" "$t"
+  [ "$status" -eq 1 ]
+  run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$swept" "$t"
+  [ "$status" -eq 0 ]
+}

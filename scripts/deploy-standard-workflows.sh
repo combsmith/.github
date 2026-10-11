@@ -575,6 +575,20 @@ merge_guarded_surfaces() {
   return 0
 }
 
+# stub_has_stale_stable_header <existing_content> <template> -> 0 if the stub carries a
+# comment naming its agent's stable channel (`<base>/stable`, `<base>/v<M>-stable`,
+# `<base> stable channel`) that the template no longer carries (#1297). Such a header
+# contradicts a ring pin; the pin alone is compliant, so without this check the sweep
+# would never ship the comment-only header fix to existing ring repos.
+stub_has_stale_stable_header() {
+  local existing="$1" template="$2" base re
+  base="$(reusable_base_of "$template")"
+  [[ -n "$base" ]] || return 1
+  re="^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)"
+  grep -qE "$re" <<< "$existing" || return 1
+  ! grep -qE "$re" "$template"
+}
+
 # is_already_compliant <existing_content> <template> <repo> -> 0 if the deployed
 # stub needs no re-deploy. A stub is compliant only when it is BOTH pin-compliant
 # (is_pin_compliant, below) AND — when its template carries a real `secrets: inherit`
@@ -608,6 +622,7 @@ is_already_compliant() {
      && ! stub_has_s7635_marker <<< "$existing_content"; then
     return 1
   fi
+  stub_has_stale_stable_header "$existing_content" "$template" && return 1
   if is_replace_if_present_workflow "$workflow" \
      || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
