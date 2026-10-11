@@ -1,13 +1,19 @@
-# Quality gates for the compliance-audit script and its unit tests.
+# Quality gates for the compliance-audit script, its unit tests and the audit
+# workflow's fleet-pause gate.
 #
 # Triggered on any PR that touches:
 #   - scripts/compliance-audit.sh
 #   - test/scripts/compliance-audit/**
+#   - .github/workflows/compliance-audit-and-improvement.yml
+#   - test/workflows/compliance-audit/**
+#   - test/workflows/helpers/**
 #
 # Gates (all must pass before merge):
 #   1. shellcheck — static analysis for the audit script
 #   2. bats       — unit tests for its pure helpers (pin matching, ruleset
 #                   targeting, codeowners catch-all, …)
+#   3. bats       — AGENTS_PAUSED gate of compliance-audit-and-improvement.yml
+#                   (#1309; needs PyYAML and fails without it)
 
 name: Compliance Audit Tests
 
@@ -17,6 +23,9 @@ on:
       - 'scripts/compliance-audit.sh'
       - 'scripts/lib/**'
       - 'test/scripts/compliance-audit/**'
+      - '.github/workflows/compliance-audit-and-improvement.yml'
+      - 'test/workflows/compliance-audit/**'
+      - 'test/workflows/helpers/**'
       - '.github/workflows/compliance-audit-tests.yml'
   push:
     branches:
@@ -25,6 +34,9 @@ on:
       - 'scripts/compliance-audit.sh'
       - 'scripts/lib/**'
       - 'test/scripts/compliance-audit/**'
+      - '.github/workflows/compliance-audit-and-improvement.yml'
+      - 'test/workflows/compliance-audit/**'
+      - 'test/workflows/helpers/**'
       - '.github/workflows/compliance-audit-tests.yml'
 
 permissions:
@@ -56,5 +68,11 @@ jobs:
           set -euo pipefail
           shellcheck --severity=warning -x scripts/compliance-audit.sh
 
+      - name: Install PyYAML for the fleet-pause suite
+        run: 'pip install --quiet --require-hashes --only-binary :all: -r scripts/feature-ideation-tests-requirements.txt'
+
       - name: Run bats suite
         run: bats --print-output-on-failure test/scripts/compliance-audit/
+
+      - name: Run workflow fleet-pause suite
+        run: bats --print-output-on-failure test/workflows/compliance-audit/
