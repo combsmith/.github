@@ -3677,6 +3677,19 @@ _sync_gap_stub() {
   [ "$output" = "ccc1111 ring0 next->ring0 BLOCKED 0 0 0 0 0 0 0 PRE_EXISTING - - 0 0 0 0 1" ]
 }
 
+@test "orchestrator: _frontier_state_resilient is INDETERMINATE when the DESTINATION ring has no commit — a resolved candidate with nothing to compare against (#1249)" {
+  # next is tagged, ring0 has no tag yet (a first rollout to that ring) and run history is unreadable. There is no
+  # prior channel, so "byte-identical to the prior channel" (PRE_EXISTING) is as unsupported as it is for an
+  # unresolvable candidate. The pair stays BLOCKED; _reusable_differs is not consulted.
+  run bash -c "source '$ORCH'; _frontier_state() { echo org/x >> \"\$_CANARY_FETCH_FAIL_FLAG\"; return 1; }
+    ordered_channels() { echo 'next,ring0'; }
+    _ring_commits() { printf 'next ccc1111 0\nring0 - 0\n'; }
+    _reusable_differs() { echo 'must not be called without a prior commit' >&2; echo 0; }
+    _frontier_state_resilient dev-lead 2>&1"
+  [ "$status" -eq 0 ]
+  [ "$output" = "ccc1111 ring0 next->ring0 BLOCKED 0 0 0 0 0 0 0 - - - 0 0 0 0 1" ]
+}
+
 @test "_blocker_body: a data-gap hold with an INDETERMINATE triage does not claim a verdict from a diff that was never made (#1249)" {
   run env CANARY_RINGS="$RINGS" bash -c \
     "source '$ORCH' && _blocker_body dev-lead 'ring0->ring1' - 0 0 - petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
@@ -3688,6 +3701,15 @@ _sync_gap_stub() {
   [[ "$output" != *"derived from the reusable diff alone"* ]]
   [[ "$output" != *"PRE_EXISTING"* ]]
   [[ "$output" != *"byte-identical"* ]]
+  [[ "$output" == *"source ring's commit is unresolvable"* ]]
+  # a resolved candidate with no destination commit names the missing side correctly
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' ccc1111 0 0 - petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"INDETERMINATE"* ]]
+  [[ "$output" == *"destination ring has no resolvable commit"* ]]
+  [[ "$output" != *"source ring's commit is unresolvable"* ]]
+  [[ "$output" != *"derived from the reusable diff alone"* ]]
   # a resolvable candidate keeps the diff-derived wording
   run env CANARY_RINGS="$RINGS" bash -c \
     "source '$ORCH' && _blocker_body dev-lead 'next->ring0' ccc1111 0 0 REGRESSION petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"

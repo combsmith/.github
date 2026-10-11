@@ -2620,11 +2620,15 @@ $(printf '%s\n' "$guidance" | sed 's/^/> /')"
     cum_row="_unknown — channel tags unresolved this tick_"
     note="> ⚠️ **TAG LOOKUP FAILED — FAILING CLOSED.** A channel-tag lookup for this pair errored this tick (a GitHub API failure — see the workflow log — not an absent tag), so the gate cannot tell where the rings are. Rather than report a false \"fully rolled out\", it holds the promotion and keeps this issue open. This clears automatically once the tags resolve again and the gate re-evaluates (#1225)."
   elif [ "$data_gap" = "1" ]; then
-    # With a resolvable candidate the triage rests on the reusable diff. With none (triage "-", #1249)
-    # nothing was compared, so no verdict is claimed.
+    # With both commits resolvable the triage rests on the reusable diff. With either missing (triage
+    # "-", #1249) nothing was compared, so no verdict is claimed.
     local gap_verdict="the triage verdict is derived from the reusable diff alone."
     if [ "$triage" = "-" ] || [ -z "$triage" ]; then
-      gap_verdict="there is **no triage verdict (INDETERMINATE)**: the source ring's commit is unresolvable this tick, so the reusable could not be compared with the prior channel."
+      if [ -z "$cand" ] || [ "$cand" = "-" ]; then
+        gap_verdict="there is **no triage verdict (INDETERMINATE)**: the source ring's commit is unresolvable this tick, so the reusable could not be compared with the prior channel."
+      else
+        gap_verdict="there is **no triage verdict (INDETERMINATE)**: the destination ring has no resolvable commit this tick, so there is no prior channel to compare the reusable with."
+      fi
     fi
     cum_row="_unknown — run history unavailable this tick_"
     note="> ⚠️ **PARTIAL DATA (run-history fetch failed) — FAILING CLOSED.** The canary gate could not read this agent's recent run history this tick (a sustained GitHub API failure — see the workflow log). Rather than report a false all-clear, the gate holds the promotion and keeps this issue open. The cumulative counts below are **not reliable for this tick**; $gap_verdict This clears automatically once run history is readable again and the gate re-evaluates.
@@ -2809,10 +2813,11 @@ _frontier_state_resilient() {
       if [ "$(pair_verdict "${cand:--}" "$prev_unknown" "${dstc:--}" "$ch_unknown")" != "ON_CANDIDATE" ]; then
         transition="${prev}->${ch}"
         prior="$dstc"
-        # An unresolvable (empty) candidate cannot be compared with anything: differs is unknown, not
-        # "unchanged" (#1249). _reusable_differs answers 0 for an empty candidate, which read as
+        # A comparison needs BOTH commits. With an unresolvable (empty) candidate, or a destination ring
+        # that has no commit yet (empty prior), nothing can be compared: differs is unknown, not
+        # "unchanged" (#1249). _reusable_differs answers 0 when either side is empty, which read as
         # PRE_EXISTING — a "byte-identical" claim nothing supports.
-        if [ -n "$cand" ]; then differs="$(_reusable_differs "$agent" "$cand" "$prior")"; else differs="unknown"; fi
+        if [ -n "$cand" ] && [ -n "$prior" ]; then differs="$(_reusable_differs "$agent" "$cand" "$prior")"; else differs="unknown"; fi
         # classify_failure with an unknown category + no suspect signal: differs=1 → REGRESSION
         # (fail closed — a changed reusable with UNREADABLE health is a suspected regression that
         # needs a human), differs=0 → PRE_EXISTING (a byte-identical reusable cannot be a
