@@ -128,9 +128,13 @@ sd_deploy_files_via_pr() {
       echo "FAILED no-branch"
       return 1
     fi
-    local branch_pr
+    # `gh pr list --head` matches the branch name only, so an open PR from a
+    # fork using the same name would match; keep only PRs whose head repo is $repo.
+    local branch_pr repo_l="${repo,,}"
     if ! branch_pr=$(gh pr list --repo "$repo" --head "$branch" --state open \
-          --json number --jq '.[0].number // ""' 2>/dev/null); then
+          --json number,headRepository,headRepositoryOwner \
+          --jq "[.[] | select((.headRepositoryOwner.login | ascii_downcase) == \"${repo_l%%/*}\" and (.headRepository.name | ascii_downcase) == \"${repo_l##*/}\")] | .[0].number // \"\"" \
+          2>/dev/null); then
       echo "FAILED branch-pr-probe-failed:${branch}"
       return 1
     fi
@@ -138,11 +142,15 @@ sd_deploy_files_via_pr() {
       echo "FAILED branch-in-use:${branch}#${branch_pr}"
       return 1
     fi
+    local reset_err reset_msg
+    reset_err=$(mktemp)
     if ! gh api "repos/${repo}/git/refs/heads/${branch}" --method PATCH \
-          --raw-field "sha=${base_sha}" -F force=true --silent 2>/dev/null; then
-      echo "FAILED branch-reset-failed:${branch}"
+          --raw-field "sha=${base_sha}" -F force=true --silent 2>"$reset_err"; then
+      reset_msg=$(tr '\n' ' ' < "$reset_err"); rm -f "$reset_err"
+      echo "FAILED branch-reset-failed:${branch}${reset_msg:+:${reset_msg}}"
       return 1
     fi
+    rm -f "$reset_err"
   fi
 
   # 5. PUT each file verbatim onto the branch. The blob SHA is looked up per file

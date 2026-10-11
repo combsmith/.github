@@ -45,7 +45,10 @@ case "$sub" in
         # Force-reset of an existing sync branch. When GH_BRANCH_FILES names a
         # file it models the branch's content: a reset to the base tip drops
         # every commit a prior run left on it.
-        [ "${GH_REF_RESET_RC:-0}" -ne 0 ] && exit "${GH_REF_RESET_RC}"
+        if [ "${GH_REF_RESET_RC:-0}" -ne 0 ]; then
+          [ -n "${GH_REF_RESET_ERR:-}" ] && printf '%s\n' "$GH_REF_RESET_ERR" >&2
+          exit "${GH_REF_RESET_RC}"
+        fi
         [ -n "${GH_BRANCH_FILES:-}" ] && printf '' > "$GH_BRANCH_FILES"
         exit 0 ;;
       */git/ref/heads/*)
@@ -279,6 +282,22 @@ deploy() {
   [ "$output" = "FAILED branch-reset-failed:standards-sync/add-to-project" ]
   [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
   [ "$(grep -c 'gh pr create' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "a failed reset surfaces the API error text when one is available" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_REF_RESET_RC="1"; export GH_REF_RESET_RC
+  GH_REF_RESET_ERR="gh: Cannot force-push (HTTP 422)"; export GH_REF_RESET_ERR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-reset-failed:standards-sync/add-to-project:gh: Cannot force-push (HTTP 422) " ]
+}
+
+@test "the branch-in-use probe is scoped to PRs whose head repo is the target repo" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  run deploy
+  [ "$status" -eq 0 ]
+  grep -q 'headRepositoryOwner' "$GH_CALLS"
 }
 
 # ---------------------------------------------------------------------------
