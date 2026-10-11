@@ -141,6 +141,14 @@ since pinned action SHAs do not affect application runtime stability.
     - "dependencies"
 ```
 
+`directory: "/"` makes Dependabot scan `.github/workflows/` only. A repository that
+publishes workflow YAML from another directory adds one more `github-actions` entry
+for that directory, where Dependabot reads the `*.yml` files directly. This
+repository does so for `standards/workflows/`, so the templates every consumer is
+seeded from do not fall behind the consumers (#1172). That entry ignores
+`petry-projects/*`: first-party reusables are pinned to a moving channel tag, and
+release tooling moves those pins.
+
 ### Full-Stack Example
 
 A full-stack repo (e.g., npm + Go + Terraform + GitHub Actions) combines the
