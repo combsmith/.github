@@ -197,7 +197,8 @@ repo_was_audited() {
 # {"status":"404"}. Anything else (403, 5xx, rate limit, network) is not an
 # answer about the resource and must not be read as absence.
 response_is_http_404() {
-  [[ "$1" == *"HTTP 404"* || "$1" == *'"status":"404"'* ]]
+  local response="$1"
+  [[ "$response" == *"HTTP 404"* || "$response" == *'"status":"404"'* ]]
 }
 
 # mark_repo_inconclusive <repo>: record that a closure-relevant check failed for <repo>.
