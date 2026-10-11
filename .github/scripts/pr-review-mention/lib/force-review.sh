@@ -9,7 +9,12 @@
 # comment-disposition waiting gates; the review itself still runs in full) only
 # when the dispatch carries client_payload.force_review == true. The rule:
 #   - a trusted human's @donpetry-bot comment (OWNER / MEMBER / COLLABORATOR,
-#     not donpetry-bot, no automation marker) is the break-glass → force;
+#     not donpetry-bot, no automation marker) is the break-glass → force, but
+#     only when the commenter's repository permission is admin or write (#1284).
+#     The association alone admits read-only members and collaborators, so the
+#     caller reads repos/{repo}/collaborators/{login}/permission (the endpoint
+#     the review_requested branch already trusts) and passes the value in. Any
+#     other value, or an empty one (lookup failed), dispatches a plain review;
 #   - the review_requested path never forces;
 #   - a comment carrying an automation marker never forces. Agents post as the
 #     owner account, so the association alone cannot tell them from a person.
@@ -27,15 +32,17 @@ PR_REVIEW_MENTION_AUTOMATION_MARKERS=(
   '<!-- auto-rebase-conflict'
 )
 
-# pr_review_mention_force_decision EVENT_NAME AUTHOR_ASSOC AUTHOR_LOGIN BODY
+# pr_review_mention_force_decision EVENT_NAME AUTHOR_ASSOC AUTHOR_LOGIN BODY [PERMISSION]
 #   Prints one line "<verdict> <rule>" and returns 0. Verdicts:
 #     force  dispatch with client_payload[force_review]=true
 #     plain  dispatch without the flag (today's behaviour)
 #     none   do not dispatch (untrusted / bot author / unsupported event)
-#   AUTHOR_ASSOC, AUTHOR_LOGIN and BODY are the comment's fields; they are
-#   ignored for the pull_request (review_requested) event.
+#   AUTHOR_ASSOC, AUTHOR_LOGIN and BODY are the comment's fields; PERMISSION is
+#   the author's .permission on the repository (admin | write | read | none),
+#   empty when the lookup failed. All are ignored for the pull_request
+#   (review_requested) event.
 pr_review_mention_force_decision() {
-  local event="$1" assoc="$2" login="$3" body="$4" marker
+  local event="$1" assoc="$2" login="$3" body="$4" permission="${5:-}" marker
 
   case "$event" in
     pull_request)
@@ -68,6 +75,18 @@ pr_review_mention_force_decision() {
       return 0
     fi
   done
+
+  case "$permission" in
+    admin | write) ;;
+    "")
+      echo "plain permission-unavailable"
+      return 0
+      ;;
+    *)
+      echo "plain insufficient-permission"
+      return 0
+      ;;
+  esac
 
   echo "force trusted-human-comment-mention"
 }
