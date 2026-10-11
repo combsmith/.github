@@ -6132,7 +6132,8 @@ esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
   # Test registry: dev-lead (ingress_job registered) + `noingress` (same per-role workflow, NO
-  # ingress_job) + `cfa` (ingress_job ci-failure-analyst). Each takes members from its rings.
+  # ingress_job: not an ingress role) + `cfa` (ingress_job ci-failure-analyst) + `rolegone` (ingress_job
+  # dev-lead, on a collapsed member whose ingress carries no dev-lead job). Each takes members from its rings.
   INGRESS_RINGS="$BATS_TEST_TMPDIR/ingress-rings.json"
   jq '{org_infra_repos, ingress,
        agents: {
@@ -6145,6 +6146,11 @@ GHEOF
          "cfa": (.agents["dev-lead"] | .ingress_job = "ci-failure-analyst" | .run_workflow = "CI Failure Analyst" | .gate.benign_failure_classes = []
                  | .gate.suspect_failure_classes = [] | del(.gate.correctness)
                  | .rings = [{"channel":"next","order":0,"members":["org/collapsed"]},
+                             {"channel":"ring0","order":1,"members":["org/legacy"]}]
+                 | .gate.transitions = {"next->ring0":{"dwell_hours":0,"waive_sample":true}}),
+         "rolegone": (.agents["dev-lead"] | .ingress_job = "dev-lead" | .gate.benign_failure_classes = []
+                 | .gate.suspect_failure_classes = [] | del(.gate.correctness)
+                 | .rings = [{"channel":"next","order":0,"members":["org/norole"]},
                              {"channel":"ring0","order":1,"members":["org/legacy"]}]
                  | .gate.transitions = {"next->ring0":{"dwell_hours":0,"waive_sample":true}})
        }}' "$RINGS" > "$INGRESS_RINGS"
@@ -6181,15 +6187,34 @@ GHEOF
   [ ! -s "$flag" ]
 }
 
-@test "_agent_run_json: ingress present but the agent has no ingress_job → member reported UNRESOLVED (#1224)" {
+# #1247 decision 2: an agent that registers NO ingress_job is not an ADR-0007 ingress role (Class 2/3 and
+# pull_request_target roles keep their own per-role stub), so a member's ingress says nothing about it. "No
+# per-role workflow" then means what it means on an uncollapsed repo: the member does not consume the agent
+# (#747). #1224 pinned UNRESOLVED here, when a forgotten ingress_job was the only way to notice a collapsed
+# role; the registry lint below now proves statically that every canonical ingress job is claimed.
+@test "_agent_run_json: an agent with no ingress_job is not an ingress role — a collapsed member without its workflow is a non-consumer [], not UNRESOLVED (#1247)" {
   _ingress_stub
   local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
   run env CANARY_RINGS="$INGRESS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 _CANARY_UNRESOLVED_FLAG="$flag" \
     bash -c "source '$ORCH' && _agent_run_json noingress org/collapsed ''"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"UNRESOLVED"* ]]
-  [[ "$output" == *"org/collapsed"* ]]
-  grep -q "^org/collapsed" "$flag"
+  [ "$output" = "[]" ]
+  [ ! -s "$flag" ]
+  # the ingress is never consulted for a role it cannot carry: no run list, no jobs read
+  run grep -q "Agent Ingress" "$GH_LOG"
+  [ "$status" -eq 1 ]
+  run grep -q "^run view" "$GH_LOG"
+  [ "$status" -eq 1 ]
+}
+
+@test "_agent_run_json: an ingress role whose job the collapsed member's ingress lacks is still UNRESOLVED (#1247, ADR-0007)" {
+  _ingress_stub
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env CANARY_RINGS="$INGRESS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 _CANARY_UNRESOLVED_FLAG="$flag" \
+    bash -c "source '$ORCH' && _agent_run_json rolegone org/norole '' 2>/dev/null"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+  grep -q "^org/norole" "$flag"
 }
 
 @test "_agent_run_json: CANARY_INGRESS_JOBS_MAX caps newest-first job reads and flags the member UNRESOLVED (#1224)" {
@@ -7008,15 +7033,25 @@ _ingress_frontier() {
 
 @test "_frontier_state: an UNRESOLVED member fails the gate loudly — BLOCKED/UNRESOLVED, never PROMOTE (#1224)" {
   _ingress_stub
-  run _ingress_frontier noingress
+  run _ingress_frontier rolegone
   [ "$status" -eq 0 ]
   # The member is named in an ::error:: annotation…
-  [[ "$output" == *"::error::"*"org/collapsed"* ]]
+  [[ "$output" == *"::error::"*"org/norole"* ]]
   # …and the state line holds the promotion with triage UNRESOLVED.
   local line; line="$(printf '%s\n' "$output" | tail -1)"
   read -r _c frontier transition state _d _f _s _t _cf _cs _cb triage _rest <<< "$line"
   [ "$state" = "BLOCKED" ]
   [ "$triage" = "UNRESOLVED" ]
+}
+
+@test "_frontier_state: an agent that is not an ingress role gates normally on a ring with a collapsed member — no UNRESOLVED hold (#1247)" {
+  _ingress_stub
+  run _ingress_frontier noingress
+  [ "$status" -eq 0 ]
+  read -r _c frontier transition state _d _f _s _t _cf _cs _cb triage _rest <<< "$(printf '%s\n' "$output" | tail -1)"
+  [ "$frontier" = "ring0" ]; [ "$state" = "PROMOTE" ]
+  [ "$triage" = "-" ]
+  [[ "$output" != *"UNRESOLVED"* ]]
 }
 
 @test "_blocker_body: UNRESOLVED triage explains the blind member, not a cut-date indeterminate (#1224)" {
@@ -7041,9 +7076,9 @@ _ingress_frontier() {
   run env CANARY_RINGS="$INGRESS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
     source '$ORCH'
     candidate_cut_date() { echo 2026-01-01T00:00:00Z; }
-    _unresolved_evidence noingress cand"
+    _unresolved_evidence rolegone cand"
   [ "$status" -eq 0 ]
-  [[ "$output" == *'`org/collapsed`'*"ingress_job"* ]]
+  [[ "$output" == *'`org/norole`'*"ingress_job"* ]]
   # The resolvable legacy member is not listed.
   [[ "$output" != *"org/legacy"* ]]
 }
@@ -7150,6 +7185,86 @@ YML
   # and a template declaring all of them is clean
   printf '  pr-review-mention:\n    uses: x\n  dev-leed:\n    uses: x\n' >> "$tpl"
   run _ingress_registry_lint "$reg" "$tpl"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# The lint above proves registry → template. #1247 decision 2 reads an agent with NO ingress_job as "not an
+# ingress role", which is only safe if the reverse also holds: every job the canonical ingress declares is claimed
+# by a registered agent. Otherwise a collapsed role with a forgotten ingress_job would read as "no caller".
+# _ingress_template_lint <registry.json> <template.yml> — prints each template job key no agent claims; exit 1 if any.
+_ingress_template_lint() {
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/scripts/lib/agent-ingress.sh"
+  local job bad=0 r_job
+  local -A registered=()
+  while IFS= read -r r_job; do
+    [ -n "$r_job" ] && registered["$r_job"]=1
+  done < <(jq -r '.agents[] | .ingress_job // empty' "$1")
+  while IFS= read -r job; do
+    [ -n "$job" ] || continue
+    if [ -z "${registered["$job"]:-}" ]; then
+      printf '%s\n' "$job"
+      bad=1
+    fi
+  done < <(agent_ingress_job_keys < "$2")
+  return "$bad"
+}
+
+@test "agent_ingress_job_keys: lists the top-level jobs of a workflow, bare or quoted, and nothing nested (#1247)" {
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/scripts/lib/agent-ingress.sh"
+  run agent_ingress_job_keys <<'YML'
+name: Agent Ingress
+on:
+  issues:
+    types: [opened]
+jobs:
+  dev-lead:
+    if: github.event_name == 'issues'
+    uses: x/y/.github/workflows/dev-lead-reusable.yml@v1
+    with:
+      nested-key: 1
+  "pr-review":   # quoted
+    uses: x/y/.github/workflows/pr-review.yml@v1
+  'ci-failure-analyst':
+    uses: x/y/.github/workflows/z.yml@v1
+  "pr-auto-review" :
+    uses: x/y/.github/workflows/a.yml@v1
+  pr-review-mention :   # whitespace before the colon is valid YAML
+    uses: x/y/.github/workflows/b.yml@v1
+  # a comment, not a job
+permissions:
+  contents: read
+YML
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'dev-lead\npr-review\nci-failure-analyst\npr-auto-review\npr-review-mention')" ]
+  run agent_ingress_job_keys <<< "name: no jobs here"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "registry lint: every job of the canonical agent-ingress.yml template is claimed by a registered ingress_job (#1247)" {
+  if [ ! -f "$INGRESS_TEMPLATE" ]; then
+    skip "canonical template not published yet ($INGRESS_TEMPLATE)"
+  fi
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/scripts/lib/agent-ingress.sh"
+  [ -n "$(agent_ingress_job_keys < "$INGRESS_TEMPLATE")" ]   # an empty listing must not pass vacuously
+  run _ingress_template_lint "$RINGS" "$INGRESS_TEMPLATE"
+  [ "$status" -eq 0 ] || { echo "canonical ingress job(s) no registered agent claims via ingress_job:"; echo "$output"; return 1; }
+}
+
+@test "registry lint: a template job no agent claims is reported — a forgotten ingress_job cannot read as 'no caller' (#1247)" {
+  local tpl="$BATS_TEST_TMPDIR/ingress.yml" reg="$BATS_TEST_TMPDIR/reg.json"
+  # `"new-role" :` — a quoted key with a space before its colon must still be seen (an unlisted job is an unlinted job)
+  printf 'name: Agent Ingress\njobs:\n  dev-lead:\n    uses: x\n  pr-review:\n    uses: x\n  "new-role" :\n    uses: x\n' > "$tpl"
+  jq -n '{agents:{"dev-lead":{ingress_job:"dev-lead"},"pr-review":{},"legacy":{}}}' > "$reg"
+  run _ingress_template_lint "$reg" "$tpl"
+  [ "$status" -eq 1 ]
+  [ "$output" = "$(printf 'pr-review\nnew-role')" ]
+  jq '.agents["pr-review"].ingress_job = "pr-review" | .agents["new-role"] = {ingress_job:"new-role"}' "$reg" > "$reg.ok"
+  run _ingress_template_lint "$reg.ok" "$tpl"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
