@@ -456,10 +456,13 @@ merge_guarded_surfaces() {
     function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
     {
       if (capturing) {
-        if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/ || indent($0) > 0) { print; next }
+        if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) { print; next }
+        if (indent($0) > keyindent) { print; next }
         capturing = 0
       }
-      if ($0 ~ ("^" key ":")) { capturing = 1; print }
+      if ($0 ~ ("^[[:space:]]*" key ":")) {
+        capturing = 1; keyindent = indent($0); print; next
+      }
     }
   '
   local existing_surface merged_surface candidate preserved existing_line
