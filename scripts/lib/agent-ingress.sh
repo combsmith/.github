@@ -99,8 +99,10 @@ agent_ingress_job_keys() {
         end = index(key, ":")
         if (end == 0) next
         name = substr(key, 1, end - 1)
+        gsub(/[ \t]+$/, "", name)
         rest = substr(key, end)
       }
+      gsub(/^[ \t]+/, "", rest)
       if (name != "" && rest ~ /^:([ \t].*)?$/) print name
     }
   '

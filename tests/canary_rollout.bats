@@ -7013,10 +7013,17 @@ YML
 _ingress_template_lint() {
   # shellcheck source=/dev/null
   source "$SCRIPT_DIR/scripts/lib/agent-ingress.sh"
-  local job bad=0
+  local job bad=0 r_job
+  local -A registered=()
+  while IFS= read -r r_job; do
+    [ -n "$r_job" ] && registered["$r_job"]=1
+  done < <(jq -r '.agents[] | .ingress_job // empty' "$1")
   while IFS= read -r job; do
     [ -n "$job" ] || continue
-    jq -e --arg j "$job" '[.agents[] | .ingress_job // empty] | index($j) != null' "$1" >/dev/null || { printf '%s\n' "$job"; bad=1; }
+    if [ -z "${registered["$job"]:-}" ]; then
+      printf '%s\n' "$job"
+      bad=1
+    fi
   done < <(agent_ingress_job_keys < "$2")
   return "$bad"
 }
