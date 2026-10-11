@@ -46,6 +46,11 @@ source "$SCRIPT_DIR/lib/agent-ingress.sh"
 # compliance-audit.sh so the sweep and the audit agree on drift (#1277).
 # shellcheck source=scripts/lib/stub-verbatim.sh
 source "$SCRIPT_DIR/lib/stub-verbatim.sh"
+# Caller-stub on:/permissions/concurrency surface-drift model — shared with
+# compliance-audit.sh so a stub the audit flags `stub-surface-drift-*` is one this
+# sweep re-syncs rather than skipping as "already compliant" (#1236).
+# shellcheck source=scripts/lib/stub-surface.sh
+source "$SCRIPT_DIR/lib/stub-surface.sh"
 
 # Global temp-file registry — cleaned up by EXIT trap even on premature exit.
 declare -a _TMPFILES=()
@@ -254,10 +259,15 @@ parse_args() {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+# Log a message to stdout with [deploy] prefix.
 log()  { echo "[deploy] $*"; }
+# Log a skip message (informational, nothing done).
 skip() { echo "[deploy] SKIP  $*"; }
+# Log a dry-run action (would happen with --dry-run flag).
 dry()  { echo "[deploy] DRY   $*"; }
+# Log a successful action.
 ok()   { echo "[deploy] OK    $*"; }
+# Log an error message to stderr.
 err()  { echo "[deploy] ERROR $*" >&2; }
 
 # True if <repo> is in the SKIP_REPOS list (exempt from standard-workflow deployment).
@@ -403,6 +413,168 @@ stub_has_s7635_marker() {
   grep -qE '^[[:space:]]*secrets:[[:space:]]+inherit[[:space:]].*NOSONAR\(githubactions:S7635\)'
 }
 
+# stub_has_only_surface_drift <workflow> <template> <existing_content> <repo> -> 0 if
+# the stub is pin-correct, marker-correct, but has surface drift; non-zero otherwise.
+# This distinguishes surface-drift-only failures from pin/marker issues (#1236).
+stub_has_only_surface_drift() {
+  local workflow="$1" template="$2" existing_content="$3" repo="$4"
+  # If pin is wrong, this is not a surface-drift-only case.
+  is_pin_compliant "$existing_content" "$template" "$repo" || return 1
+  # If marker is missing, this is not a surface-drift-only case.
+  if template_requires_s7635_marker "$template" \
+     && ! stub_has_s7635_marker <<< "$existing_content"; then
+    return 1
+  fi
+  # Only if both pin and marker are correct, check for surface drift.
+  stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content"
+}
+
+# merge_guarded_surfaces <workflow> <template> <existing_content> — merge the
+# template's guarded surfaces (on:/permissions/concurrency) into the existing stub
+# while preserving repo-specific customizations. Ensures missing surfaces are added
+# and drift-induced removals are restored without losing documented liberties like
+# pr-auto-review's workflow_run.workflows list (#1242). Outputs merged content.
+merge_guarded_surfaces() {
+  local workflow="$1" template="$2" existing_content="$3"
+  local surfaces surface result extracted_surface
+  local -a surface_list
+
+  # Start with the existing content
+  result="$existing_content"
+
+  # Get guarded surfaces for this workflow
+  surfaces="$(stub_guarded_surfaces "$workflow")" || return 0
+
+  local old_ifs="$IFS"
+  IFS=,
+  # shellcheck disable=SC2206  # intentional comma split of a fixed internal list
+  surface_list=($surfaces)
+  IFS="$old_ifs"
+
+  # For each DRIFTED guarded surface, replace its TOP-LEVEL block with the
+  # template's. Unchanged surfaces are left alone (keeps permitted per-repo values
+  # such as pr-auto-review's workflow_run.workflows), and indented job-level
+  # `permissions:`/`concurrency:` blocks stay in their original `jobs.<id>` scope —
+  # only column-0 keys are removed or appended, so the result stays valid YAML.
+  # shellcheck disable=SC2016  # awk program, no shell expansion intended
+  local extract_prog='
+    function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
+    {
+      if (capturing) {
+        if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) { print; next }
+        if (indent($0) > keyindent) { print; next }
+        capturing = 0
+      }
+      if ($0 ~ ("^" key ":")) {
+        capturing = 1; keyindent = 0; print; next
+      }
+    }
+  '
+  local existing_surface merged_surface candidate preserved existing_line
+  for surface in "${surface_list[@]}"; do
+    stub_surface_drift "$template" "$result" "$surface" || continue
+    extracted_surface=$(printf '%s\n' "$template" | awk -v key="$surface" "$extract_prog")
+    if [[ -z "$extracted_surface" ]]; then
+      # No top-level block in the template, so a top-level repair cannot clear
+      # the drift; skip instead of looping forever.
+      echo "Skipping '$surface': no top-level block in template to repair from" >&2
+      continue
+    fi
+    existing_surface=$(printf '%s\n' "$result" | awk -v key="$surface" "$extract_prog")
+    # Keep repo-adjustable values (cron schedules, inline workflow_run.workflows)
+    # from the existing stub instead of overwriting them with template defaults.
+    merged_surface=$(printf '%s\n' "$extracted_surface" | EXISTING="$existing_surface" awk '
+      function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
+      BEGIN {
+        n = split(ENVIRON["EXISTING"], lines, "\n")
+        for (i = 1; i <= n; i++) {
+          if (lines[i] ~ /^[[:space:]]*(-[[:space:]]*)?cron:/) cron[++nc] = lines[i]
+          else if (lines[i] ~ /^[[:space:]]*workflows:[[:space:]]*\[/) wf[++nw] = lines[i]
+          else if (lines[i] ~ /^[[:space:]]*workflows:[[:space:]]*(#.*)?$/) {
+            # block-form list: capture the key line plus its deeper-indented entries
+            ki = indent(lines[i]); ent = lines[i]; i++
+            while (i <= n) {
+              if (lines[i] ~ /^[[:space:]]*$/ || lines[i] ~ /^[[:space:]]*#/) { ent = ent "\n" lines[i]; i++ }
+              else if (indent(lines[i]) > ki) { ent = ent "\n" lines[i]; i++ }
+              else break
+            }
+            i--
+            wf[++nw] = ent
+          }
+        }
+      }
+      {
+        if (skipping) {
+          if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/ || indent($0) > ski) next
+          skipping = 0
+        }
+        if ($0 ~ /^[[:space:]]*(-[[:space:]]*)?cron:/) { if (++ic <= nc) { print cron[ic]; next } }
+        else if ($0 ~ /^[[:space:]]*workflows:[[:space:]]*(\[|(#.*)?$)/) {
+          if (++iw <= nw) {
+            print wf[iw]
+            # a block-form template list is replaced wholesale: drop its entries
+            if ($0 !~ /\[/) { skipping = 1; ski = indent($0) }
+            next
+          }
+        }
+        print
+      }
+    ')
+    # If a per-repo value from the existing stub could not be preserved, do not repin
+    preserved=1
+    while IFS= read -r existing_line; do
+      if [[ "$existing_line" =~ ^[[:space:]]*(-[[:space:]]*)?cron: ]] || [[ "$existing_line" =~ ^[[:space:]]*workflows:[[:space:]]*\[ ]]; then
+        if ! printf '%s\n' "$merged_surface" | grep -qxF -- "$existing_line"; then
+          preserved=0
+          break
+        fi
+      fi
+    done <<< "$existing_surface"
+    if [[ "$preserved" -eq 1 ]]; then
+      # Block-form workflow_run.workflows entries must also survive the merge.
+      while IFS= read -r existing_line; do
+        if ! printf '%s\n' "$merged_surface" | grep -qxF -- "$existing_line"; then
+          preserved=0
+          break
+        fi
+      done < <(printf '%s\n' "$existing_surface" | awk '
+        /^[[:space:]]*workflows:[[:space:]]*(#.*)?$/ { inwf = 1; next }
+        inwf && /^[[:space:]]*-[[:space:]]/ { print; next }
+        inwf && !/^[[:space:]]*(#.*)?$/ { inwf = 0 }
+      ')
+    fi
+    if [[ "$preserved" -ne 1 ]]; then
+      echo "Skipping '$surface': cannot preserve repo-specific values while repairing" >&2
+      continue
+    fi
+    # Remove only the top-level block of this key from the result
+    candidate=$(printf '%s\n' "$result" | awk -v key="$surface" '
+      function indent(s,   n) { n = match(s, /[^ ]/); return n == 0 ? 0 : n - 1 }
+      {
+        if (skipping) {
+          if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) next
+          if (indent($0) > 0) next
+          skipping = 0
+        }
+        if ($0 ~ ("^" key ":")) { skipping = 1; next }
+        print
+      }
+    ')
+    # Append the merged top-level version of the surface
+    candidate="$(printf '%s\n\n%s' "$candidate" "$merged_surface")"
+    # Only accept the repair if it actually clears the drift; otherwise the stub
+    # would stay drifted and every sweep would open a new PR
+    if stub_surface_drift "$template" "$candidate" "$surface"; then
+      echo "Skipping '$surface': top-level repair does not clear drift (likely nested drift)" >&2
+      continue
+    fi
+    result="$candidate"
+  done
+
+  printf '%s' "$result"
+  return 0
+}
+
 # is_already_compliant <existing_content> <template> <repo> -> 0 if the deployed
 # stub needs no re-deploy. A stub is compliant only when it is BOTH pin-compliant
 # (is_pin_compliant, below) AND — when its template carries a real `secrets: inherit`
@@ -418,6 +590,17 @@ stub_has_s7635_marker() {
 # predate the template and carry per-repo edits, which are drift. So must every stub
 # in a FULL_BODY_COMPARE_REPOS repo (repo-template, #1285) other than a
 # BODY_PRESERVING_WORKFLOWS one, whose per-repo body is never re-synced.
+#
+# A pin-correct stub whose guarded `on:` / `permissions:` / `concurrency:` surface
+# differs from the template is ALSO drift (#1236): the audit flags it
+# `stub-surface-drift-*`, and skipping it here left the finding open every cycle
+# (e.g. stubs missing the `merge_group:` trigger the templates gained). The check
+# uses the audit's own comparison (lib/stub-surface.sh), so documented per-repo
+# liberties (`with:` inputs, cron values, pr-auto-review's workflow list) are not
+# drift. It is applied only where a redeploy actually rewrites the surface from the
+# template — never to a SKIP_REPO or a body-preserving workflow, which are re-pinned
+# from their OWN body (a surface diff there would re-flag forever, cf. #878; the
+# audit likewise exempts the meta-repos).
 is_already_compliant() {
   local existing_content="$1" template="$2" repo="$3" workflow="${2##*/}"
   is_pin_compliant "$existing_content" "$template" "$repo" || return 1
@@ -428,6 +611,10 @@ is_already_compliant() {
   if is_replace_if_present_workflow "$workflow" \
      || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
+  fi
+  if ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
+     && stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content"; then
+    return 1
   fi
   return 0
 }
@@ -689,6 +876,30 @@ deploy_repo() {
           printf '%s\n' "$existing_content" > "$repin_source"
         fi
       fi
+    elif [[ -n "$existing_sha" ]] && ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
+         && stub_has_only_surface_drift "$workflow" "$template" "$existing_content" "$repo"; then
+      # Surface drift detected but pin and marker are correct (#1236): merge the
+      # template's canonical guarded surfaces (on:/permissions/concurrency) into the
+      # existing stub to fix the drift while preserving repo-specific customizations
+      # like pr-auto-review's workflow_run.workflows list (#1242). This ensures
+      # missing triggers/permissions/concurrency fields are added and drift-induced
+      # removals are restored without losing documented per-repo liberties.
+      mode="surface-drift-repin"
+      local merged_stub
+      merged_stub="$(merge_guarded_surfaces "$workflow" "$(< "$template")" "$existing_content")"
+      # Refuse the re-pin when drift survives the merge (e.g. job-level permissions
+      # the top-level repair cannot reach): queuing the unchanged stub would open a
+      # no-op PR every sweep.
+      if stub_any_surface_drift "$workflow" "$(< "$template")" "$merged_stub"; then
+        skip "$repo/$target_path surface drift not repairable by merge (e.g. job-level block); not queuing an unchanged stub"
+        continue
+      fi
+      if [[ "$DRY_RUN" != "true" ]]; then
+        repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
+        printf '%s\n' "$merged_stub" > "$repin_source"
+      else
+        repin_source="$template"
+      fi
     fi
 
     # When repin_source is a copy of existing_content (meta-repo consumer or body-
@@ -745,19 +956,15 @@ deploy_repo() {
   branch="${SYNC_BRANCH_PREFIX}/workflows-$(date -u +%Y%m%d)"
   local title="chore: sync ${n} org-standard workflow stub(s) from ${ORG}/.github"
 
-  local n="${#names[@]}" list branch
-  list=$(IFS=', '; echo "${names[*]}")
-  branch="${SYNC_BRANCH_PREFIX}/workflows-$(date -u +%Y%m%d)"
-  local title="chore: sync ${n} org-standard workflow stub(s) from ${ORG}/.github"
-
   if [[ "$DRY_RUN" == "true" ]]; then
     local i
     for (( i = 0; i < n; i++ )); do
       [[ -n "${emits[i]}" ]] && dry "$repo/${names[i]} would pin @${emits[i]}"
       case "${modes[i]}" in
-        seed)           dry "$repo/${names[i]} seed-if-absent: seeding fresh from template" ;;
-        repin-in-place) dry "$repo/${names[i]} re-pin uses in place — existing body/project_context preserved" ;;
-        replace)        dry "$repo/${names[i]} replace-if-present: replacing existing caller with the template body" ;;
+        seed)                dry "$repo/${names[i]} seed-if-absent: seeding fresh from template" ;;
+        repin-in-place)      dry "$repo/${names[i]} re-pin uses in place — existing body/project_context preserved" ;;
+        replace)             dry "$repo/${names[i]} replace-if-present: replacing existing caller with the template body" ;;
+        surface-drift-repin) dry "$repo/${names[i]} surface drift detected: re-pin existing stub to preserve repo-specific values" ;;
       esac
     done
     dry "Would open PR for $repo (branch $branch) — ${n} stub(s): $list"
