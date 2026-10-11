@@ -17,33 +17,58 @@ REPO_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/../../.." && pwd)"
 
 # actions_entries — one "<directory>\t<ignored dependency names, comma-joined>"
 # line per directory a `github-actions` update entry covers. Reads both the
-# `directory:` scalar and the `directories:` list (inline or block form).
+# `directory:` scalar and the `directories:` list (inline or block form). Only a
+# `dependency-name` inside the entry's `ignore:` block counts as ignored: the same
+# key under `allow:` means the opposite.
 actions_entries() {
   awk '
-    function unquote(s) { gsub(/^[ \t]*["\047]?|["\047]?[ \t]*$/, "", s); return s }
+    # value(s) — a YAML scalar without its quotes or a trailing "# comment".
+    function value(s,   q) {
+      sub(/^[ \t]+/, "", s)
+      q = substr(s, 1, 1)
+      if (q == "\"" || q == "\047") {
+        s = substr(s, 2)
+        if (index(s, q) > 0) s = substr(s, 1, index(s, q) - 1)
+        return s
+      }
+      sub(/[ \t]+#.*$/, "", s)
+      sub(/[ \t]+$/, "", s)
+      return s
+    }
     function flush(   i) {
       if (eco == "github-actions") for (i = 1; i <= nd; i++) printf "%s\t%s\n", dirs[i], ign
-      eco = ""; nd = 0; ign = ""; inlist = 0
+      eco = ""; nd = 0; ign = ""; sect = ""
     }
     /^[ \t]*#/ { next }
     /^[ \t]*-[ \t]*package-ecosystem:/ {
-      flush(); s = $0; sub(/.*package-ecosystem:/, "", s); eco = unquote(s); next
-    }
-    /^[ \t]*directory:/ { s = $0; sub(/.*directory:/, "", s); dirs[++nd] = unquote(s); inlist = 0; next }
-    /^[ \t]*directories:/ {
-      s = $0; sub(/.*directories:/, "", s)
-      if (s ~ /\[/) {
-        gsub(/[\[\]]/, "", s); n = split(s, parts, ",")
-        for (i = 1; i <= n; i++) if (unquote(parts[i]) != "") dirs[++nd] = unquote(parts[i])
-        inlist = 0
-      } else inlist = 1
+      flush(); s = $0; sub(/.*package-ecosystem:/, "", s); eco = value(s)
+      # The column where this entry's own keys start ("- " included).
+      match($0, /^[ \t]*-[ \t]*/); keycol = RLENGTH
       next
     }
-    inlist && /^[ \t]*-[ \t]*[^ \t]/ && $0 !~ /:/ { s = $0; sub(/^[ \t]*-/, "", s); dirs[++nd] = unquote(s); next }
-    /^[ \t]*-[ \t]*dependency-name:/ {
-      s = $0; sub(/.*dependency-name:/, "", s); ign = (ign == "" ? "" : ign ",") unquote(s); inlist = 0; next
+    /^[ \t]*directory:/ { s = $0; sub(/.*directory:/, "", s); dirs[++nd] = value(s); sect = ""; next }
+    /^[ \t]*directories:/ {
+      s = $0; sub(/.*directories:/, "", s); sub(/[ \t]+#.*$/, "", s)
+      if (s ~ /\[/) {
+        gsub(/[\[\]]/, "", s); n = split(s, parts, ",")
+        for (i = 1; i <= n; i++) if (value(parts[i]) != "") dirs[++nd] = value(parts[i])
+        sect = ""
+      } else sect = "directories"
+      next
     }
-    /^[ \t]*[A-Za-z-]+:/ { inlist = 0 }
+    sect == "directories" && /^[ \t]*-[ \t]*[^ \t]/ && $0 !~ /^[ \t]*-[ \t]*[A-Za-z-]+:/ {
+      s = $0; sub(/^[ \t]*-/, "", s); dirs[++nd] = value(s); next
+    }
+    /^[ \t]*-[ \t]*dependency-name:/ {
+      if (sect == "ignore") { s = $0; sub(/.*dependency-name:/, "", s); ign = (ign == "" ? "" : ign ",") value(s) }
+      next
+    }
+    # Another key AT ENTRY LEVEL ends the current block and starts its own. A key
+    # nested deeper (e.g. `versions:` under one ignore item) leaves the block open.
+    /^[ \t]*[A-Za-z-]+:/ {
+      match($0, /^[ \t]*/)
+      if (RLENGTH == keycol) { s = $0; sub(/^[ \t]*/, "", s); sub(/:.*/, "", s); sect = s }
+    }
     END { flush() }
   ' "$DEPENDABOT_CONFIG"
 }
@@ -143,6 +168,49 @@ YAML
   run actions_entries
   [ "$status" -eq 0 ]
   [ "$output" = "$(printf '/\t\n/standards/workflows\t\n/standards/other\tpetry-projects/*,actions/checkout\n/standards/third\tpetry-projects/*,actions/checkout')" ]
+}
+
+@test "parser: a dependency-name under allow: is not read as ignored" {
+  DEPENDABOT_CONFIG="${BATS_TEST_TMPDIR}/dependabot.yml"
+  cat > "$DEPENDABOT_CONFIG" <<'YAML'
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/standards/workflows"
+    allow:
+      - dependency-name: "petry-projects/*"
+    labels:
+      - "security"
+  - package-ecosystem: "github-actions"
+    directory: "/standards/other"
+    ignore:
+      - dependency-name: "petry-projects/*"
+        versions: ["1.x"]
+      - dependency-name: "actions/checkout"
+    allow:
+      - dependency-name: "actions/*"
+YAML
+  run actions_entries
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '/standards/workflows\t\n/standards/other\tpetry-projects/*,actions/checkout')" ]
+}
+
+@test "parser: a trailing YAML comment is not part of a directory or a dependency name" {
+  DEPENDABOT_CONFIG="${BATS_TEST_TMPDIR}/dependabot.yml"
+  cat > "$DEPENDABOT_CONFIG" <<'YAML'
+version: 2
+updates:
+  - package-ecosystem: "github-actions" # actions
+    directory: "/standards/workflows" # the published templates
+    ignore:
+      - dependency-name: "petry-projects/*" # channel pins
+  - package-ecosystem: github-actions
+    directory: /standards/plain   # unquoted
+    directories: ["/a", "/b"] # inline list
+YAML
+  run actions_entries
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '/standards/workflows\tpetry-projects/*\n/standards/plain\t\n/a\t\n/b\t')" ]
 }
 
 @test "parser: a root-only config covers no standards directory (the #1172 state)" {

@@ -2,6 +2,7 @@
 #
 # Triggered on any PR that touches:
 #   - standards/workflows/**            (a template pin changed)
+#   - standards/**/*.yml, *.yaml        (workflow YAML added anywhere under standards/)
 #   - .github/dependabot.yml            (Dependabot coverage of the templates changed)
 #   - test/scripts/standards-templates/** (the guard itself changed)
 #
@@ -16,6 +17,10 @@ on:
   pull_request:
     paths:
       - 'standards/workflows/**'
+      # Any workflow YAML under standards/, so a NEW directory of templates still
+      # runs the Dependabot coverage guard (#1172).
+      - 'standards/**/*.yml'
+      - 'standards/**/*.yaml'
       - '.github/dependabot.yml'
       - 'test/scripts/standards-templates/**'
       - '.github/workflows/standards-templates-tests.yml'
@@ -24,6 +29,10 @@ on:
       - main
     paths:
       - 'standards/workflows/**'
+      # Any workflow YAML under standards/, so a NEW directory of templates still
+      # runs the Dependabot coverage guard (#1172).
+      - 'standards/**/*.yml'
+      - 'standards/**/*.yaml'
       - '.github/dependabot.yml'
       - 'test/scripts/standards-templates/**'
       - '.github/workflows/standards-templates-tests.yml'
