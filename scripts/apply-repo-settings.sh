@@ -282,8 +282,17 @@ apply_codeql_default_setup() {
   local repo="$1"
   info "Configuring CodeQL default setup for $ORG/$repo ..."
 
-  # Skip repos approved for advanced (inline workflow) CodeQL setup.
+  # Repos approved for advanced (inline workflow) CodeQL setup: never enable
+  # default setup. If it is already enabled the repo is in a broken state (its
+  # codeql.yml upload is rejected), so say so. This script does not turn a
+  # code-scanning setting OFF on its own; the compliance audit files
+  # codeql-default-setup-conflicts-advanced and a maintainer makes the change.
   if codeql_advanced_exception "$repo"; then
+    local exception_state
+    exception_state=$(gh api "repos/$ORG/$repo/code-scanning/default-setup" --jq '.state' 2>/dev/null || echo "")
+    if [ "$exception_state" = "configured" ]; then
+      warn "  $repo is in CODEQL_ADVANCED_EXCEPTIONS but default setup is ENABLED — its codeql.yml upload will be rejected. Disable it: gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -f state=not-configured"
+    fi
     skip "  $repo is in CODEQL_ADVANCED_EXCEPTIONS — skipping default setup"
     return 0
   fi

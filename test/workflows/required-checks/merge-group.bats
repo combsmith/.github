@@ -7,16 +7,18 @@
 # enough to stop every merge: the entry waits out the queue's check timeout and
 # is ejected.
 #
-# The required contexts are read from standards/rulesets/code-quality.json, so a
-# context added to the ruleset without a `merge_group` provider registered here
-# fails this suite before it can reach a live queue.
+# The required contexts are read from every ruleset under standards/rulesets/, so
+# a context added to any of them without a `merge_group` provider registered here
+# fails this suite before it can reach a live queue. That includes
+# duplicate-decl-gate.json, which is codified for this repo but may not be
+# applied yet: the workflow has to be ready before the ruleset is.
 #
 # Sibling guard for the caller-stub TEMPLATES other repos adopt:
 # test/scripts/standards-templates/merge-group-required-checks.bats.
 
 REPO_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/../../.." && pwd)"
 WF_DIR="${REPO_ROOT}/.github/workflows"
-RULESET="${REPO_ROOT}/standards/rulesets/code-quality.json"
+RULESETS_DIR="${REPO_ROOT}/standards/rulesets"
 
 # required-check context | providing workflow | line that pins the context
 #
@@ -33,6 +35,15 @@ PROVIDERS=(
   "CodeQL|codeql.yml|    name: CodeQL"
   "agent-shield / AgentShield|agent-shield.yml|  agent-shield:"
   "dependency-audit / Detect ecosystems|dependency-audit.yml|  dependency-audit:"
+  "duplicate-decl-gate|duplicate-decl-gate.yml|  duplicate-decl-gate:"
+)
+
+# For a reusable-workflow caller the right half of the context is a job name
+# inside the reusable, so that has to be pinned as well.
+# required-check context | reusable workflow | job-level name line
+REUSABLE_JOB_NAMES=(
+  "agent-shield / AgentShield|agent-shield-reusable.yml|    name: AgentShield"
+  "dependency-audit / Detect ecosystems|dependency-audit-reusable.yml|    name: Detect ecosystems"
 )
 
 # Print the `merge_group:` trigger line ONLY when it is a direct child of the
@@ -60,8 +71,8 @@ has_line() {
 }
 
 required_contexts() {
-  jq -r '.rules[] | select(.type == "required_status_checks")
-         | .parameters.required_status_checks[].context' "$RULESET"
+  jq -r '.rules[]? | select(.type == "required_status_checks")
+         | .parameters.required_status_checks[].context' "$RULESETS_DIR"/*.json | sort -u
 }
 
 @test "every required context in the ruleset has a registered provider" {
@@ -108,6 +119,25 @@ required_contexts() {
   fi
 }
 
+@test "every reusable still names the job that completes a caller's context" {
+  local violations=() entry rest ctx wf line f caller
+  for entry in "${REUSABLE_JOB_NAMES[@]}"; do
+    ctx="${entry%%|*}"; rest="${entry#*|}"
+    wf="${rest%%|*}"; line="${rest#*|}"
+    f="${WF_DIR}/${wf}"
+    [ -f "$f" ] || { violations+=("${wf}: reusable missing"); continue; }
+    has_line "$f" "$line" || violations+=("${wf}: line '${line}' (context '${ctx}') not found")
+    # The caller must actually call this reusable, or the pin above is moot.
+    caller="${WF_DIR}/${wf%-reusable.yml}.yml"
+    grep -Eq "^    uses: (\./|petry-projects/\.github/)\.github/workflows/${wf}(@|[[:space:]]|\$)" "$caller" \
+      || violations+=("${caller##*/}: does not call ${wf}")
+  done
+  if [ "${#violations[@]}" -ne 0 ]; then
+    printf 'reusable job name drift -> %s\n' "${violations[@]}"
+    return 1
+  fi
+}
+
 @test "the merge_group trigger carries no branch or path filter" {
   # A filtered trigger can skip the workflow for some queue entries, which leaves
   # the required check unreported for exactly those entries.
@@ -133,6 +163,16 @@ required_contexts() {
 
 @test "codeql.yml analyses the languages default setup covered" {
   grep -Eq '^[[:space:]]+language:[[:space:]]*\[actions,[[:space:]]*python\][[:space:]]*$' "${WF_DIR}/codeql.yml"
+}
+
+@test "codeql.yml keeps the weekly scan default setup ran" {
+  # Without a schedule, new queries only reach code on the next push or PR.
+  awk '
+    /^  schedule:[[:space:]]*$/ { in_s = 1; next }
+    in_s && /^  [^[:space:]]/   { in_s = 0 }
+    in_s && /cron:/             { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' "${WF_DIR}/codeql.yml"
 }
 
 @test "the SonarCloud scan names the base branch on a merge queue run" {
@@ -167,5 +207,5 @@ required_contexts() {
   [ -z "$(merge_group_lines "$nested")" ]   || { echo "nested merge_group wrongly matched"; rm -f "$nested" "$filtered"; return 1; }
   [ -n "$(merge_group_lines "$filtered")" ] || { echo "top-level merge_group not matched"; rm -f "$nested" "$filtered"; return 1; }
   rm -f "$nested" "$filtered"
-  [ "$(required_contexts | wc -l)" -ge 4 ] || { echo "expected >=4 required contexts in the ruleset"; return 1; }
+  [ "$(required_contexts | wc -l)" -ge 5 ] || { echo "expected >=5 required contexts across the rulesets"; return 1; }
 }

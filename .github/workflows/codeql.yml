@@ -8,7 +8,7 @@
 # status check, so with default setup a merge queue could never merge anything
 # (github/codeql-action#1537). This workflow adds the `merge_group` trigger and
 # keeps the prior default-setup coverage: languages `actions` + `python`, the
-# `default` query suite.
+# `default` query suite, and a weekly scheduled scan.
 #
 # This repo is listed in scripts/lib/codeql-advanced.sh, which is what stops
 # apply-repo-settings.sh from re-enabling default setup and the compliance audit
@@ -34,6 +34,11 @@ on:
   # Required status check: must report on the merge queue's gh-readonly-queue/*
   # ref, or the queue never merges.
   merge_group:
+  # Default setup scanned weekly even when nothing changed, which is how newly
+  # published queries reach code nobody has touched. Keep that. Minute chosen by
+  # scripts/lib/cron-timing.sh (cron_offset_minute codeql.yml).
+  schedule:
+    - cron: '22 4 * * 0'   # Sundays 04:22 UTC
 
 permissions: {}
 

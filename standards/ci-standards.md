@@ -695,8 +695,8 @@ merge queue's `gh-readonly-queue/*` ref
 `CodeQL` is a required status check, so a repo with a merge queue and default
 setup can never merge through the queue. Such a repo runs an inline `codeql.yml`
 that triggers on `push`, `pull_request` and `merge_group`, keeps the language
-set and query suite default setup had, and ends in a job named `CodeQL` so the
-required context is unchanged.
+set, query suite and weekly `schedule` default setup had, and ends in a job
+named `CodeQL` so the required context is unchanged.
 
 **Recording an exception.** The approved repos are listed once, in
 `CODEQL_ADVANCED_EXCEPTIONS` in
@@ -705,8 +705,8 @@ required context is unchanged.
 
 | | Repo not listed (the standard) | Repo listed (exception) |
 |---|---|---|
-| `apply-repo-settings.sh` | enables default setup | leaves default setup alone |
-| Compliance audit | flags default setup not configured, and any `codeql.yml` | flags a **missing** `codeql.yml` (`codeql-advanced-workflow-missing`) |
+| `apply-repo-settings.sh` | enables default setup | never enables it; warns if it is on, and does not turn it off |
+| Compliance audit | flags default setup not configured, and any `codeql.yml` | flags a **missing** `codeql.yml` (`codeql-advanced-workflow-missing`) and default setup left **on** (`codeql-default-setup-conflicts-advanced`) |
 
 | Repo | Reason |
 |---|---|
@@ -719,6 +719,9 @@ While it is enabled GitHub rejects the advanced-setup upload, which fails the
 `CodeQL` check on every pull request. Add the repo to the list in the same change
 that adds its `codeql.yml`, or the next `apply-repo-settings.sh` run turns
 default setup back on.
+
+Every instruction elsewhere in this document to enable default setup or to
+delete `codeql.yml` applies to repos **not** on this list.
 
 ### 3. SonarCloud Analysis (`sonarcloud.yml`)
 
@@ -1906,8 +1909,10 @@ For single-job workflows, top-level least-privilege permissions are acceptable
 
 > **CodeQL is not in this table** because it is configured via GitHub
 > default setup, not a workflow file. GitHub manages the analyzer's
-> permissions internally; no `permissions:` block exists in this repo to
-> audit. See [§2 CodeQL Analysis](#2-codeql-analysis-github-managed-default-setup).
+> permissions internally; no `permissions:` block exists to audit. The
+> exception is a repo approved for advanced setup, whose `codeql.yml` sets
+> `permissions: {}` at top level and `contents: read` + `security-events: write`
+> on the analysis job. See [§2 CodeQL Analysis](#2-codeql-analysis-github-managed-default-setup).
 >
 > **Note on admin operations from Claude Code:** GitHub Actions does **not**
 > expose an `administration` permission scope. The valid set is documented at
@@ -1952,7 +1957,7 @@ references. Use consistent, descriptive names:
 |---------|---------|-------|
 | Language / tool name | `TypeScript`, `Go`, `SonarCloud` | For multi-language repos |
 | `build-and-test` | `build-and-test` | For single-language repos |
-| `CodeQL` | `CodeQL` | Default-setup CodeQL — single context regardless of language count |
+| `CodeQL` | `CodeQL` | Default-setup CodeQL — single context regardless of language count. Repos approved for advanced setup produce the same context from a final job named `CodeQL` in their `codeql.yml`. |
 | `Analyze (actions)` | `Analyze (actions)` | Manual `codeql.yml` with `jobs.analyze.name: Analyze` — the language is appended in parentheses by `codeql-action`. Use `Analyze ({language})` (e.g. `Analyze (javascript-typescript)`) in required-check configs for repos with a per-repo `codeql.yml`. |
 | `claude` | `claude` | Claude Code Action |
 
@@ -1964,7 +1969,10 @@ Changing a job name requires updating the branch protection configuration.
 > produce a single `CodeQL` check. Repos with a hand-authored `codeql.yml` produce
 > one `Analyze ({language})` check per language. If a ruleset was configured with
 > `Analyze` (no language suffix), it will never be satisfied — use the language-qualified
-> name that actually appears in the PR check list.
+> name that actually appears in the PR check list. The approved advanced-setup
+> repos ([§2](#2-codeql-analysis-github-managed-default-setup)) add a job named
+> `CodeQL` that depends on every `Analyze ({language})` job, so their required
+> context stays the single `CodeQL`.
 
 ---
 
@@ -2037,6 +2045,7 @@ autofix:
 1. **Determine tech stack** and select the matching workflow patterns above
 2. **Create `ci.yml`** with lint, format, typecheck, and test stages
 3. **Enable CodeQL default setup** via `apply-repo-settings.sh` (or `gh api -X PATCH repos/<org>/<repo>/code-scanning/default-setup -F state=configured`) — do **not** add a `codeql.yml` workflow file
+   (a repo that needs a merge queue is the exception: see [§2](#2-codeql-analysis-github-managed-default-setup))
 4. **Add `sonarcloud.yml`** and configure `sonar-project.properties`
 5. **Add `dev-lead.yml`** from [`standards/workflows/`](workflows/) for AI-driven PR automation
 6. **Add `dependabot.yml`** from the appropriate template in [`standards/dependabot/`](dependabot/)
@@ -2061,7 +2070,9 @@ The specific ecosystems configured in each check depend on the repo's stack.
 The **CodeQL** column reflects GitHub default setup state (`configured` vs
 `not-configured`), not the presence of a workflow file. Repos still
 carrying a per-repo `codeql.yml` after this standard lands are flagged as
-drift, not as compliant.
+drift, not as compliant. For the repos approved for advanced setup
+([§2](#2-codeql-analysis-github-managed-default-setup)) it is the other way
+round: compliant means `codeql.yml` present and default setup `not-configured`.
 
 | Repository | CI | CodeQL† | SonarCloud | Claude | Coverage | Dep Auto-merge | Dep Audit | Dependabot Config | Copilot Setup |
 |------------|:--:|:------:|:----------:|:------:|:--------:|:--------------:|:---------:|:-----------------:|:-------------:|
@@ -2077,7 +2088,8 @@ default-setup migration is the work this standard introduces; the next
 weekly compliance audit (after `apply-repo-settings.sh` runs against the
 fleet) will flip the cells to `Yes` or surface specific failures via the
 `codeql-default-setup-not-configured` finding category. There is no
-`codeql.yml` workflow column anymore — that file is drift, not signal.
+`codeql.yml` workflow column anymore — outside the approved advanced-setup
+repos, that file is drift, not signal.
 
 ### Gaps to Address
 
@@ -2088,7 +2100,8 @@ Every `—` in the table above is a gap that must be remediated. Priority order:
 3. **TalkTerm:** Missing SonarCloud, Claude, Dependabot — 3 of 8 categories missing
 4. **markets:** Missing CI pipeline and Coverage; Dependabot config only covers `github-actions` (missing `npm` ecosystem)
 5. **google-app-scripts:** Missing dependency audit; Dependabot npm `limit:10` (should be `0` per policy); auto-merge uses older `--admin` bypass pattern
-6. **All repos:** Enable CodeQL default setup via `apply-repo-settings.sh` and remove any pre-existing `codeql.yml` workflow file
+6. **All repos except those approved for advanced setup ([§2](#2-codeql-analysis-github-managed-default-setup)):**
+   Enable CodeQL default setup via `apply-repo-settings.sh` and remove any pre-existing `codeql.yml` workflow file
 7. **All repos:** Add `copilot-setup-steps.yml` — copy from [`standards/workflows/`](workflows/copilot-setup-steps.yml), uncomment the matching stack block, and merge to `main`
 
 ### Version Inconsistencies
@@ -2102,7 +2115,9 @@ All repos MUST align to the latest version of each action:
 
 > **`github/codeql-action` is no longer pinned per repo** because the
 > standard no longer ships a `codeql.yml` workflow. GitHub manages the
-> analyzer version internally for default-setup repos.
+> analyzer version internally for default-setup repos. The repos approved for
+> advanced setup pin it by SHA in their own `codeql.yml`, kept current by
+> Dependabot like any other action.
 
 ---
 

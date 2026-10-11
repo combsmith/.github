@@ -2,8 +2,9 @@
 #
 # Triggered on any PR that touches:
 #   - a workflow that provides a required check (SonarCloud, CodeQL,
-#     agent-shield, dependency-audit)
-#   - standards/rulesets/code-quality.json  (the required-context list)
+#     agent-shield, dependency-audit, duplicate-decl-gate), or a reusable one
+#     of them calls
+#   - standards/rulesets/**                 (the required-context lists)
 #   - test/workflows/required-checks/**     (the guard itself)
 #
 # Gate: bats — every required context has a providing workflow that triggers on
@@ -19,7 +20,10 @@ on:
       - '.github/workflows/codeql.yml'
       - '.github/workflows/agent-shield.yml'
       - '.github/workflows/dependency-audit.yml'
-      - 'standards/rulesets/code-quality.json'
+      - '.github/workflows/duplicate-decl-gate.yml'
+      - '.github/workflows/agent-shield-reusable.yml'
+      - '.github/workflows/dependency-audit-reusable.yml'
+      - 'standards/rulesets/**'
       - 'test/workflows/required-checks/**'
       - '.github/workflows/required-checks-tests.yml'
   push:
@@ -29,7 +33,10 @@ on:
       - '.github/workflows/codeql.yml'
       - '.github/workflows/agent-shield.yml'
       - '.github/workflows/dependency-audit.yml'
-      - 'standards/rulesets/code-quality.json'
+      - '.github/workflows/duplicate-decl-gate.yml'
+      - '.github/workflows/agent-shield-reusable.yml'
+      - '.github/workflows/dependency-audit-reusable.yml'
+      - 'standards/rulesets/**'
       - 'test/workflows/required-checks/**'
       - '.github/workflows/required-checks-tests.yml'
 

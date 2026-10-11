@@ -829,6 +829,14 @@ remediate_finding() {
       report_skip "$repo" "$check" \
         "Deleting workflow files requires \`workflow\` token scope — remove .github/workflows/codeql.yml using a PAT"
       ;;
+    ci-workflows/codeql-advanced-workflow-missing)
+      report_skip "$repo" "$check" \
+        "Adding workflow files requires \`workflow\` token scope — restore .github/workflows/codeql.yml (push, pull_request, merge_group) using a PAT"
+      ;;
+    ci-workflows/codeql-default-setup-conflicts-advanced)
+      report_skip "$repo" "$check" \
+        "Not changed automatically (turns a code-scanning setting off). Disable via: gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -f state=not-configured"
+      ;;
     ci-workflows/*)
       report_skip "$repo" "$check" \
         "No automatic remediation for this CI workflow finding — review standards/ci-standards.md"

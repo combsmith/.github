@@ -1545,10 +1545,14 @@ check_sonar_s7637_exemption() {
 # Repos in CODEQL_ADVANCED_EXCEPTIONS (scripts/lib/codeql-advanced.sh) are
 # approved to run an inline codeql.yml instead — today, repos with a merge
 # queue, because default setup cannot report on `merge_group`. For those the
-# two findings above are inverted into one:
+# two findings above are inverted (see check_codeql_advanced_workflow):
 #
 #   3. codeql-advanced-workflow-missing (error): an approved repo has no
 #      codeql.yml, so nothing produces its required `CodeQL` check.
+#
+#   4. codeql-default-setup-conflicts-advanced (error): an approved repo has
+#      default setup enabled. GitHub then rejects the workflow's upload, so
+#      the required `CodeQL` check fails on every pull request.
 # ---------------------------------------------------------------------------
 check_codeql_default_setup() {
   local repo="$1"
@@ -1606,21 +1610,48 @@ check_codeql_default_setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Check: a repo approved for advanced CodeQL setup still ships its codeql.yml
+# Check: a repo approved for advanced CodeQL setup is actually in that state
 #
 # Called by check_codeql_default_setup for repos in CODEQL_ADVANCED_EXCEPTIONS.
-# Only a deterministic 404 is "missing": a 403, a 5xx or a network failure says
-# nothing about the file, and filing a finding on one would send an agent to
-# re-add a workflow that is already there.
+# The approved state is: codeql.yml present, default setup off. Either half
+# missing breaks the required `CodeQL` check, so each is a finding.
+#
+# Only a definite answer files a finding. A read that fails for any other reason
+# (403, 5xx, rate limit, network) says nothing about the repo, so it files
+# nothing and marks the repo inconclusive: close_resolved_issues must not close
+# an open finding on the strength of a check that did not run.
 # ---------------------------------------------------------------------------
 check_codeql_advanced_workflow() {
   local repo="$1"
 
-  # Not gh_api(): on failure it retries and concatenates the error bodies, which
-  # makes the status unreadable (same reason as the default-setup query above).
+  # Not gh_api() for either read: on failure it retries and concatenates the
+  # error bodies, which makes the status unreadable (same reason as the
+  # default-setup query in check_codeql_default_setup).
   local raw_response="" api_ok=0
-  raw_response=$(gh api "repos/$ORG/$repo/contents/.github/workflows/codeql.yml" --jq '.name' 2>&1) || api_ok=$?
 
+  # ── Half 1: default setup must be off ──────────────────────────────────────
+  raw_response=$(gh api "repos/$ORG/$repo/code-scanning/default-setup" 2>/dev/null) || api_ok=$?
+  if [ "$api_ok" -eq 0 ]; then
+    local state
+    state=$(echo "$raw_response" | jq -r '.state // ""' 2>/dev/null || echo "")
+    if [ "$state" = "configured" ]; then
+      add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-default-setup-conflicts-advanced" "error" \
+        "Repo is approved for advanced CodeQL setup (\`scripts/lib/codeql-advanced.sh\`) but default setup is \`configured\`. GitHub rejects the \`codeql.yml\` upload while default setup is enabled, so the required \`CodeQL\` check fails. Disable it: \`gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -f state=not-configured\`." \
+        "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
+    fi
+  elif echo "$raw_response" | jq -e '.status == "403"' > /dev/null 2>&1; then
+    # Same known gap as the standard path: the audit token lacks the scope this
+    # endpoint needs. Not a finding, and not a reason to hold issue closure on
+    # every run, so the repo is not marked inconclusive for it.
+    info "  CodeQL default setup state not readable for $repo — audit token lacks required permissions (403)"
+  else
+    info "  CodeQL default setup state not readable for $repo — marking the repo inconclusive"
+    mark_repo_inconclusive "$repo"
+  fi
+
+  # ── Half 2: the workflow must exist ────────────────────────────────────────
+  api_ok=0
+  raw_response=$(gh api "repos/$ORG/$repo/contents/.github/workflows/codeql.yml" --jq '.name' 2>&1) || api_ok=$?
   if [ "$api_ok" -eq 0 ]; then
     return 0
   fi
@@ -1632,7 +1663,8 @@ check_codeql_advanced_workflow() {
       "Repo is approved for advanced CodeQL setup (\`scripts/lib/codeql-advanced.sh\`) but ships no \`.github/workflows/codeql.yml\`, so nothing produces its required \`CodeQL\` check. Restore the workflow (it must trigger on \`push\`, \`pull_request\` and \`merge_group\`), or remove the repo from \`CODEQL_ADVANCED_EXCEPTIONS\` and re-enable default setup." \
       "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
   else
-    info "  CodeQL advanced workflow check skipped for $repo — could not read codeql.yml (not a 404)"
+    info "  CodeQL advanced workflow not readable for $repo (not a 404) — marking the repo inconclusive"
+    mark_repo_inconclusive "$repo"
   fi
 }
 

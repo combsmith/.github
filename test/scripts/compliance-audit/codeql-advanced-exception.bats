@@ -35,6 +35,7 @@ _run_check() {
     source "'"$REPO_ROOT"'/scripts/compliance-audit.sh"
     check_codeql_default_setup "$REPO"
     cat "$REPORT_DIR/findings.json"
+    if repo_has_inconclusive_checks "$REPO"; then echo "INCONCLUSIVE=yes"; else echo "INCONCLUSIVE=no"; fi
   '
 }
 
@@ -54,6 +55,24 @@ exit 0'
 UNREADABLE_WORKFLOW='case "$args" in
   *code-scanning/default-setup*) echo "{\"state\":\"not-configured\"}"; exit 0 ;;
   *workflows/codeql.yml*) echo "gh: Resource not accessible by integration (HTTP 403)" >&2; exit 1 ;;
+esac
+exit 0'
+
+DEFAULT_SETUP_STILL_ON='case "$args" in
+  *code-scanning/default-setup*) echo "{\"state\":\"configured\"}"; exit 0 ;;
+  *workflows/codeql.yml*) echo "codeql.yml"; exit 0 ;;
+esac
+exit 0'
+
+DEFAULT_SETUP_FORBIDDEN='case "$args" in
+  *code-scanning/default-setup*) echo "{\"message\":\"Resource not accessible by personal access token\",\"status\":\"403\"}"; exit 1 ;;
+  *workflows/codeql.yml*) echo "codeql.yml"; exit 0 ;;
+esac
+exit 0'
+
+DEFAULT_SETUP_UNREACHABLE='case "$args" in
+  *code-scanning/default-setup*) echo "error connecting to api.github.com" >&2; exit 1 ;;
+  *workflows/codeql.yml*) echo "codeql.yml"; exit 0 ;;
 esac
 exit 0'
 
@@ -80,11 +99,44 @@ exit 0'
   [[ "$output" != *"codeql-default-setup-not-configured"* ]]
 }
 
-@test "listed repo whose codeql.yml cannot be read (403) → no finding" {
+@test "listed repo whose codeql.yml cannot be read (403) → no finding, repo inconclusive" {
+  # Not filed as missing, and not treated as present either: an open
+  # codeql-advanced-workflow-missing issue must not be closed on this run.
   run _run_check ".github" "$UNREADABLE_WORKFLOW"
   [ "$status" -eq 0 ]
   [[ "$output" != *"codeql-advanced-workflow-missing"* ]]
   [[ "$output" != *"stray-codeql-workflow"* ]]
+  [[ "$output" == *"INCONCLUSIVE=yes"* ]]
+}
+
+@test "listed repo in the approved state is not marked inconclusive" {
+  run _run_check ".github" "$ADVANCED_STATE"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"INCONCLUSIVE=no"* ]]
+}
+
+@test "listed repo with default setup still on → codeql-default-setup-conflicts-advanced error" {
+  run _run_check ".github" "$DEFAULT_SETUP_STILL_ON"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codeql-default-setup-conflicts-advanced"* ]]
+  [[ "$output" == *"error"* ]]
+  [[ "$output" != *"stray-codeql-workflow"* ]]
+}
+
+@test "listed repo, default-setup state forbidden to the audit token (403) → no finding, not inconclusive" {
+  # The audit token routinely lacks this scope; holding issue closure on every
+  # run for it would never clear.
+  run _run_check ".github" "$DEFAULT_SETUP_FORBIDDEN"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"codeql-default-setup-conflicts-advanced"* ]]
+  [[ "$output" == *"INCONCLUSIVE=no"* ]]
+}
+
+@test "listed repo, default-setup state unreachable → no finding, repo inconclusive" {
+  run _run_check ".github" "$DEFAULT_SETUP_UNREACHABLE"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"codeql-default-setup-conflicts-advanced"* ]]
+  [[ "$output" == *"INCONCLUSIVE=yes"* ]]
 }
 
 @test "the list holds both merge-queue repos and matches whole names only" {
