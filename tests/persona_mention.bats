@@ -863,3 +863,159 @@ runtime:
   [ "$status" -eq 0 ]
   [ "$output" = "skip below-floor" ]
 }
+
+# --- workflow job-level if: pre-filters (#1288) ----------------------------
+# jobs.route.if and jobs.route-pull-request.if decide whether a run ever reaches
+# a step holding the org token. Each restates, in expression syntax, a shell
+# pre-filter tested above (pm_should_route / pm_pr_should_route), so the two
+# copies can drift. These tests parse the workflow (python3 + PyYAML, already
+# required by pm_manifest_query) and pin the expressions clause by clause — not
+# the file's text, so a matching string in a YAML comment cannot satisfy them.
+
+WORKFLOW="$SCRIPT_DIR/.github/workflows/persona-mention-reusable.yml"
+
+# job_if <job> — the job's raw if: expression, as parsed from the workflow.
+job_if() {
+  python3 - "$WORKFLOW" "$1" <<'PY'
+import sys, yaml
+with open(sys.argv[1]) as f:
+    print(yaml.safe_load(f)["jobs"][sys.argv[2]]["if"])
+PY
+}
+
+# job_if_clauses <job> — the if: split on '&&', one whitespace-normalised clause
+# per line. Asserting on whole clauses means a negated or wrapped copy of an
+# expected clause (e.g. '!contains(...)' for 'contains(...)') does not match.
+job_if_clauses() {
+  python3 - "$WORKFLOW" "$1" <<'PY'
+import sys, yaml
+with open(sys.argv[1]) as f:
+    expr = yaml.safe_load(f)["jobs"][sys.argv[2]]["if"]
+for clause in expr.split("&&"):
+    print(" ".join(clause.split()))
+PY
+}
+
+# has_clause <clauses> <clause> — 0 if <clause> is one of <clauses> exactly.
+has_clause() {
+  grep -Fxq -- "$2" <<<"$1"
+}
+
+# bot_logins_compared <clauses> <lhs> — the sorted logins excluded by
+# "<lhs> != '<login>'" clauses.
+bot_logins_compared() {
+  local clause lhs="$2" pattern="^([^[:space:]]+) != '([^']+)'$"
+  while IFS= read -r clause; do
+    if [[ "$clause" =~ $pattern ]] && [ "${BASH_REMATCH[1]}" = "$lhs" ]; then
+      printf '%s\n' "${BASH_REMATCH[2]}"
+    fi
+  done <<<"$1" | sort -u
+}
+
+TRUST_FLOOR_CLAUSE_COMMENT="contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association)"
+TRUST_FLOOR_CLAUSE_PR="contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.pull_request.author_association)"
+
+@test "route.if is a pure && conjunction (no || can bypass a guard)" {
+  run job_if route
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"||"* ]]
+}
+
+@test "route.if keeps the comment recursion guard: marker matched ANYWHERE (!contains, #860)" {
+  local clauses
+  clauses="$(job_if_clauses route)"
+  has_clause "$clauses" "!contains(github.event.comment.body, '<!-- persona:')"
+  # No narrower variant may sit alongside or replace it.
+  [[ "$clauses" != *"startsWith(github.event.comment.body"* ]]
+  [[ "$clauses" != *"endsWith(github.event.comment.body"* ]]
+}
+
+@test "route.if has exactly the 5 expected clauses (no extra restrictive clause)" {
+  [ "$(job_if_clauses route | wc -l)" -eq 5 ]
+}
+
+@test "route.if requires an @petry-projects/ handle in the comment" {
+  has_clause "$(job_if_clauses route)" "contains(github.event.comment.body, '@petry-projects/')"
+}
+
+@test "route.if excludes both bot logins as the comment author" {
+  local clauses
+  clauses="$(job_if_clauses route)"
+  has_clause "$clauses" "github.event.comment.user.login != 'donpetry-bot'"
+  has_clause "$clauses" "github.event.comment.user.login != 'github-actions[bot]'"
+}
+
+@test "route.if enforces the OWNER/MEMBER/COLLABORATOR trust floor" {
+  has_clause "$(job_if_clauses route)" "$TRUST_FLOOR_CLAUSE_COMMENT"
+}
+
+@test "route-pull-request.if is a pure && conjunction (no || can bypass a guard)" {
+  run job_if route-pull-request
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"||"* ]]
+}
+
+@test "route-pull-request.if has exactly the 8 expected clauses (no extra restrictive clause)" {
+  # A pure conjunction can also be broken by ADDING a clause (e.g. a draft
+  # filter) that stops valid PRs from routing; pin the clause count.
+  [ "$(job_if_clauses route-pull-request | wc -l)" -eq 8 ]
+}
+
+@test "route-pull-request.if marker axis is prefix (startsWith), matching pm_pr_should_route (#1286)" {
+  # Policy is pinned explicitly (not derived from the helper): only a body that
+  # LEADS with the marker is agent-authored; a trusted human's body that merely
+  # QUOTES the marker mid-text must still route.
+  local clauses quoted
+  clauses="$(job_if_clauses route-pull-request)"
+  quoted=$'## Summary\n\nThe `<!-- persona:qa-lead -->` marker is unchanged.'
+  run pm_pr_should_route don-petry don-petry OWNER "$quoted"
+  [ "$status" -eq 0 ]
+  has_clause "$clauses" "!startsWith(github.event.pull_request.body, '<!-- persona:')"
+  [[ "$clauses" != *"!contains(github.event.pull_request.body"* ]]
+}
+
+@test "route-pull-request.if only runs for same-repo pull_request events" {
+  local clauses
+  clauses="$(job_if_clauses route-pull-request)"
+  has_clause "$clauses" "github.event_name == 'pull_request'"
+  has_clause "$clauses" "github.event.pull_request.head.repo.full_name == github.repository"
+}
+
+@test "route-pull-request.if excludes both bot logins as PR author AND as github.actor" {
+  local clauses
+  clauses="$(job_if_clauses route-pull-request)"
+  has_clause "$clauses" "github.event.pull_request.user.login != 'donpetry-bot'"
+  has_clause "$clauses" "github.event.pull_request.user.login != 'github-actions[bot]'"
+  has_clause "$clauses" "github.actor != 'donpetry-bot'"
+  has_clause "$clauses" "github.actor != 'github-actions[bot]'"
+}
+
+@test "route-pull-request.if enforces the OWNER/MEMBER/COLLABORATOR trust floor" {
+  has_clause "$(job_if_clauses route-pull-request)" "$TRUST_FLOOR_CLAUSE_PR"
+}
+
+@test "bot logins hardcoded in both if: expressions equal the set pm_is_bot_actor rejects" {
+  local expected route_clauses pr_clauses login lhs
+  unset PERSONA_BOT_LOGINS
+  expected="$(pm_bot_logins | sort -u)"
+  [ -n "$expected" ]
+  # Every expected login really is rejected by pm_is_bot_actor.
+  while IFS= read -r login; do
+    pm_is_bot_actor "$login"
+  done <<<"$expected"
+
+  route_clauses="$(job_if_clauses route)"
+  pr_clauses="$(job_if_clauses route-pull-request)"
+  [ "$(bot_logins_compared "$route_clauses" github.event.comment.user.login)" = "$expected" ]
+  [ "$(bot_logins_compared "$pr_clauses" github.event.pull_request.user.login)" = "$expected" ]
+  [ "$(bot_logins_compared "$pr_clauses" github.actor)" = "$expected" ]
+
+  # No login exclusion on any other identity slipped in unpaired.
+  for lhs in $( { printf '%s\n' "$route_clauses" "$pr_clauses"; } \
+      | sed -nE "s/^([^[:space:]]+) != '[^']+'\$/\\1/p" | sort -u); do
+    case "$lhs" in
+      github.event.comment.user.login|github.event.pull_request.user.login|github.actor) ;;
+      *) echo "unexpected login exclusion on $lhs"; return 1 ;;
+    esac
+  done
+}
