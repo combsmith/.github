@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests for the repo-template .gitignore generator in
-# scripts/seed-repo-template.sh (#798).
+# scripts/emit-standard-file.sh (#798).
 #
 # The seeded template must carry the marker-wrapped org secrets baseline (L1) on
 # top, with the template's own ecosystem/OS entries (L2) below the END marker —
@@ -12,7 +12,7 @@
 
 setup() {
   REPO_ROOT="$(cd -- "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  SEED="${REPO_ROOT}/scripts/seed-repo-template.sh"
+  SEED="${REPO_ROOT}/scripts/emit-standard-file.sh"
   export STANDARDS_DIR="$REPO_ROOT"
 }
 

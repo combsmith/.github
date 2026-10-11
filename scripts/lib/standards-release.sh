@@ -197,3 +197,27 @@ sr_cut_decision() {
   if [ "$existing" = "$requested" ]; then echo "NOOP"; return 0; fi
   echo "REFUSE"; return 0
 }
+
+# sr_consumer_verdict <exit_code> <output_file> [<expect_regex>] [<reject_regex>]
+# — decide whether one channel consumer passed against a candidate commit
+# (#1173). Echoes exactly one of:
+#   PASS
+#   FAIL not-run                  — no numeric exit code: the consumer never ran.
+#   FAIL exit-<n>                 — the consumer exited non-zero.
+#   FAIL output-unreadable        — its output could not be read back.
+#   FAIL rejected-output          — its output matches <reject_regex>.
+#   FAIL expected-output-missing  — its output does not match <expect_regex>.
+# A zero exit alone is not a pass. A consumer that cannot read the candidate may
+# skip every check and still exit 0, so the output must also show the work was
+# done (<expect_regex>) and must not show a skip or an error (<reject_regex>).
+# Both are extended regexes; an empty one is not applied. Reads the local output
+# file only — no gh/git/network.
+sr_consumer_verdict() {
+  local rc="${1:-}" out="${2:-}" expect="${3:-}" reject="${4:-}"
+  if ! [[ "$rc" =~ ^[0-9]+$ ]]; then echo "FAIL not-run"; return 0; fi
+  if [ "$rc" -ne 0 ]; then echo "FAIL exit-$rc"; return 0; fi
+  if [ -z "$out" ] || [ ! -r "$out" ]; then echo "FAIL output-unreadable"; return 0; fi
+  if [ -n "$reject" ] && grep -Eq -- "$reject" "$out"; then echo "FAIL rejected-output"; return 0; fi
+  if [ -n "$expect" ] && ! grep -Eq -- "$expect" "$out"; then echo "FAIL expected-output-missing"; return 0; fi
+  echo "PASS"
+}

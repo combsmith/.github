@@ -1,0 +1,23 @@
+{
+  "_comment": "Known consumers of the standards release channel (standards/v<major>-stable). `cut-standards-release.sh verify <ref>` runs each one against a candidate commit before a promotion (#1173). Add a row for every new STANDARDS_CHANNEL / PERSONA_SCHEMA_CHANNEL reader. Fields: id; repo (owner/name, checked out at its default branch); ref_env (the env var that pins the consumer to the candidate commit); command (run with `bash -c` from the consumer checkout); expect_output (REQUIRED) / reject_output (extended regexes over the combined output — a zero exit alone is not a pass, because a consumer that could not read the candidate may skip its checks and still exit 0; a row without expect_output is refused as malformed).",
+  "consumers": [
+    {
+      "id": "template-stub-drift",
+      "repo": "petry-projects/.github-private",
+      "description": "repo-template drift guard: every seeded stub must match its emission at the candidate.",
+      "ref_env": "STANDARDS_REF",
+      "command": "bash scripts/template_stub_drift.sh",
+      "expect_output": "\tALIGNED\t",
+      "reject_output": "\tDRIFTED\t|::error|Could not compute the standards-derived content"
+    },
+    {
+      "id": "persona-schema-validator",
+      "repo": "petry-projects/.github-private",
+      "description": "Persona manifests must validate against the persona schema at the candidate. Needs Python >= 3.10 with jsonschema and pyyaml; set PYTHON to choose the interpreter.",
+      "ref_env": "PERSONA_SCHEMA_REF",
+      "command": "\"${PYTHON:-python3}\" personas/validate-personas.py",
+      "expect_output": "^OK: [0-9]+ persona manifest",
+      "reject_output": "::error|nothing to validate"
+    }
+  ]
+}
