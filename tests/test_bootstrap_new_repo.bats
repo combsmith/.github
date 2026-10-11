@@ -131,7 +131,7 @@ EOF
 @test "persona fail-closed: an empty persona listing fails the bootstrap" {
   _stub_gh
   run env DRY_RUN=true STUB_PERSONA_LISTING='[]' bash "$BOOTSTRAP" owner/new-repo
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
   [[ "$output" == *"could not be derived faithfully"* ]]
   [[ "$output" == *"FAIL"* ]]
   [ ! -f "$CALLS" ]
