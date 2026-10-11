@@ -74,6 +74,38 @@ agent_ingress_has_role_job() {
   '
 }
 
+# agent_ingress_job_keys — read a workflow YAML on stdin and print each key under
+# its top-level `jobs:`, one per line, unquoted, in file order (nothing when there
+# is no `jobs:` block). Same indentation and quoting rules as
+# agent_ingress_has_role_job: the job-key indent is whatever the first entry under
+# `jobs:` uses, and deeper (nested) keys and comments are skipped. CRLF-tolerant.
+agent_ingress_job_keys() {
+  awk '
+    BEGIN { injobs = 0; indent = -1 }
+    { sub(/\r$/, "") }
+    /^[^ \t#]/ { injobs = ($0 ~ /^jobs:[ \t]*(#.*)?$/); indent = -1; next }
+    injobs && /^ +[^ #]/ {
+      n = match($0, /[^ ]/) - 1
+      if (indent < 0) indent = n
+      if (n != indent) next
+      key = substr($0, n + 1)
+      q = substr(key, 1, 1)
+      if (q == "\"" || q == "\047") {
+        end = index(substr(key, 2), q)
+        if (end == 0) next
+        name = substr(key, 2, end - 1)
+        rest = substr(key, end + 2)
+      } else {
+        end = index(key, ":")
+        if (end == 0) next
+        name = substr(key, 1, end - 1)
+        rest = substr(key, end)
+      }
+      if (name != "" && rest ~ /^:([ \t].*)?$/) print name
+    }
+  '
+}
+
 # agent_ingress_gh_error_kind <stderr> [workflow-only] — classify a failed
 # `gh run list` / `gh api` by its stderr: `missing` for a PERMANENT absence (gh's
 # "could not find any workflows named …", or an HTTP 404 / Not Found), `transient`

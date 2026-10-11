@@ -1214,11 +1214,18 @@ _ingress_agent_runs() {
 # Zulu timestamp (same record shape as _run_json, plus `role` for ingress-attributed runs).
 # Resolution order (#1224):
 #   1. the per-role workflow (`run_workflow`) exists → its runs (legacy, unchanged);
-#   2. it is absent but the ingress exists and the agent registers `ingress_job` → the ingress
+#   2. it is absent and the agent registers NO `ingress_job` → [] (#1247). Such an agent is not an
+#      ADR-0007 ingress role (Class 2/3 and pull_request_target roles keep their own stub), so a
+#      member's ingress says nothing about it and the ingress is not consulted: no per-role
+#      workflow means the repo does not consume this agent, as on an uncollapsed repo (#747). The
+#      registry lint (tests/canary_rollout.bats) proves every canonical ingress job IS claimed by
+#      an `ingress_job`, so a collapsed role cannot land here by a forgotten registration;
+#   3. it is absent but the ingress exists and the agent registers `ingress_job` → the ingress
 #      runs in which that role job ran;
-#   3. neither exists → [] (the repo does not consume this agent, #747);
-#   4. the ingress exists but the role cannot be attributed (no `ingress_job`, a job-less run,
-#      unreadable jobs) → the member is UNRESOLVED (see _record_unresolved), never silent.
+#   4. neither exists → [] (the repo does not consume this agent, #747);
+#   5. the ingress exists and the agent is an ingress role, but the role cannot be attributed (the
+#      member's ingress carries no such job, a job-less run, unreadable jobs) → the member is
+#      UNRESOLVED (see _record_unresolved), never silent.
 # A genuine fetch failure fails CLOSED (non-zero), exactly like _run_json.
 _agent_run_json() {
   local agent="$1" repo="$2" since="$3" wf iwf raw iraw role rc=0
@@ -1234,15 +1241,13 @@ _agent_run_json() {
   _horizon_from "$since" "${CANARY_RUNS_HORIZON_TIERS-15}"
   raw="$(_repo_wf_runs_cached "$repo" "$wf" 1 1000 "$_HORIZON_FROM")" || rc=$?
   if [ "$rc" -eq 3 ]; then
+    # Not an ingress role (no ingress_job): the member's ingress cannot carry it, so it is not read (#1247).
+    _reg_ingress_job "$agent"; role="$_REG_VAL"
+    if [ -z "$role" ]; then echo '[]'; return 0; fi
     rc=0; _reg_ingress_wf; iwf="$_REG_VAL"
     iraw="$(_ingress_runs_fetch "$repo" "$iwf" "$since")" || rc=$?
     case "$rc" in
       0)
-        _reg_ingress_job "$agent"; role="$_REG_VAL"
-        if [ -z "$role" ]; then
-          _record_unresolved "$agent" "$repo" "no '$wf' workflow but '$iwf' is present and the agent registers no ingress_job"
-          echo '[]'; return 0
-        fi
         _ingress_agent_runs "$agent" "$repo" "$role" "$since" <<< "$iraw"; return 0 ;;
       3) echo '[]'; return 0 ;;
       *) return 1 ;;
