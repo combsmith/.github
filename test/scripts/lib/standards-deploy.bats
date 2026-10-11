@@ -23,7 +23,15 @@ args="$*"
 case "$sub" in
   pr)
     case "${1:-}" in
-      list)   printf '%s' "${GH_EXISTING_PR:-}" ;;
+      list)
+        # --head <branch>: the "is the existing sync branch in use?" probe
+        # (any label). Otherwise: the label-keyed idempotency check.
+        if printf '%s' "$args" | grep -q -- '--head'; then
+          [ "${GH_BRANCH_PR_RC:-0}" -ne 0 ] && exit "${GH_BRANCH_PR_RC}"
+          printf '%s' "${GH_BRANCH_PR:-}"
+        else
+          printf '%s' "${GH_EXISTING_PR:-}"
+        fi ;;
       create)
         [ "${GH_PR_CREATE_RC:-0}" -ne 0 ] && exit "${GH_PR_CREATE_RC}"
         printf '%s\n' "${GH_PR_URL:-https://github.com/o/r/pull/1}" ;;
@@ -33,6 +41,13 @@ case "$sub" in
     endpoint="${1:-}"
     case "$endpoint" in
       */git/refs)          exit "${GH_REF_CREATE_RC:-0}" ;;
+      */git/refs/heads/*)
+        # Force-reset of an existing sync branch. When GH_BRANCH_FILES names a
+        # file it models the branch's content: a reset to the base tip drops
+        # every commit a prior run left on it.
+        [ "${GH_REF_RESET_RC:-0}" -ne 0 ] && exit "${GH_REF_RESET_RC}"
+        [ -n "${GH_BRANCH_FILES:-}" ] && : > "$GH_BRANCH_FILES"
+        exit 0 ;;
       */git/ref/heads/*)
         if printf '%s' "$args" | grep -q 'object.sha'; then
           printf '%s' "${GH_BASE_SHA-basesha111}"
@@ -59,6 +74,10 @@ case "$sub" in
         if [ "${GH_PUT_RC:-0}" -ne 0 ]; then
           printf '%s\n' "${GH_PUT_ERR:-gh: sha was not supplied (HTTP 422)}" >&2
           exit "${GH_PUT_RC}"
+        fi
+        if [ -n "${GH_BRANCH_FILES:-}" ]; then
+          p="${endpoint#*/contents/}"
+          grep -qxF "$p" "$GH_BRANCH_FILES" || printf '%s\n' "$p" >> "$GH_BRANCH_FILES"
         fi
         exit 0 ;;
       repos/*)
@@ -191,6 +210,75 @@ deploy() {
   [ "$status" -eq 0 ]
   [ "$output" = "OPENED https://github.com/o/r/pull/1" ]
   grep -q 'gh pr create' "$GH_CALLS"
+}
+
+# ---------------------------------------------------------------------------
+# Stale same-date branch (petry-projects/.github#1296): a prior run's branch —
+# its PR closed — must not leak that run's commits into this run's PR.
+# ---------------------------------------------------------------------------
+@test "stale same-date branch with extra commits and no open PR: PR holds only this run's files" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC   # branch already exists
+  GH_BRANCH_FILES="${TT_TMP}/branch-files"; export GH_BRANCH_FILES
+  # The first run's 5 stubs, plus an agent's later "review fix" commit.
+  printf '%s\n' .github/workflows/a.yml .github/workflows/b.yml \
+    .github/workflows/c.yml .github/workflows/d.yml .github/workflows/e.yml \
+    > "$GH_BRANCH_FILES"
+  run sd_deploy_files_via_pr "petry-projects/markets" "standards-sync/workflows-20261011" \
+    "standards-sync" "chore: sync 1 stub" "body" \
+    ".github/workflows/persona-mention.yml" "$LOCAL_FILE"
+  [ "$status" -eq 0 ]
+  [ "$output" = "OPENED https://github.com/o/r/pull/1" ]
+  [ "$(cat "$GH_BRANCH_FILES")" = ".github/workflows/persona-mention.yml" ]
+}
+
+@test "stale branch is force-reset to the default-branch tip before any PUT" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  run deploy
+  [ "$status" -eq 0 ]
+  grep -q 'gh pr list --repo petry-projects/markets --head standards-sync/add-to-project --state open' "$GH_CALLS"
+  grep -q 'gh api repos/petry-projects/markets/git/refs/heads/standards-sync/add-to-project --method PATCH --raw-field sha=basesha111 -F force=true' "$GH_CALLS"
+  local reset_line put_line
+  reset_line=$(grep -n 'git/refs/heads/.* --method PATCH' "$GH_CALLS" | head -1 | cut -d: -f1)
+  put_line=$(grep -n 'contents/.* --method PUT' "$GH_CALLS" | head -1 | cut -d: -f1)
+  [ "$reset_line" -lt "$put_line" ]
+}
+
+@test "a freshly created branch is not reset" {
+  run deploy
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'gh pr list .*--head' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "existing branch used by an open (unlabeled) PR fails loudly naming the branch" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_BRANCH_PR="77"; export GH_BRANCH_PR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-in-use:standards-sync/add-to-project#77" ]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'gh pr create' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "existing branch whose PR probe errors is not reset" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_BRANCH_PR_RC="1"; export GH_BRANCH_PR_RC
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-pr-probe-failed:standards-sync/add-to-project" ]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "a failed reset of the stale branch fails loudly naming the branch" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_REF_RESET_RC="1"; export GH_REF_RESET_RC
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-reset-failed:standards-sync/add-to-project" ]
+  [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'gh pr create' "$GH_CALLS")" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------

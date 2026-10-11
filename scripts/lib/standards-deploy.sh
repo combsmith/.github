@@ -8,7 +8,8 @@
 #
 #   1. checks for an already-open PR on the sync branch (idempotent skip),
 #   2. preflights that the token can write the repo (clear finding on a scope gap),
-#   3. creates (or reuses) a sync branch off the repo's default branch,
+#   3. creates a sync branch off the repo's default branch (an existing one with
+#      no open PR is reset to the default-branch tip, never reused as-is),
 #   4. PUTs the verbatim file content onto that branch via the Contents API,
 #   5. opens a labeled pull request.
 #
@@ -33,7 +34,7 @@ _STANDARDS_DEPLOY_SOURCED=1
 #   repo_slug   owner/name of the target repo (e.g. petry-projects/markets)
 #   path        path of the file within the target repo
 #   local_file  local file whose contents are deployed verbatim
-#   branch      head branch to create/reuse for the PR
+#   branch      head branch to create (or reset) for the PR
 #   label       label applied to the opened PR (e.g. standards-sync)
 #   title       commit message and PR title
 #   body        PR body (markdown)
@@ -113,7 +114,13 @@ sd_deploy_files_via_pr() {
     return 1
   fi
 
-  # 4. Create the sync branch; reuse it if a prior run already created it.
+  # 4. Create the sync branch off the default-branch tip. If a prior run already
+  #    created it (same-date name), it may carry that run's commits — or later
+  #    pushes to them — which must NOT leak into this run's PR
+  #    (petry-projects/.github#1296). Step 1 found no open labeled PR; if no open
+  #    PR of any label uses the branch either, force-reset it to the base tip so
+  #    it holds only what this run writes. Otherwise, or if the probe or reset
+  #    errors, fail loudly naming the branch rather than build on unknown commits.
   if ! gh api "repos/${repo}/git/refs" --method POST \
         --raw-field "ref=refs/heads/${branch}" \
         --raw-field "sha=${base_sha}" --silent 2>/dev/null; then
@@ -121,11 +128,26 @@ sd_deploy_files_via_pr() {
       echo "FAILED no-branch"
       return 1
     fi
+    local branch_pr
+    if ! branch_pr=$(gh pr list --repo "$repo" --head "$branch" --state open \
+          --json number --jq '.[0].number // ""' 2>/dev/null); then
+      echo "FAILED branch-pr-probe-failed:${branch}"
+      return 1
+    fi
+    if [ -n "$branch_pr" ]; then
+      echo "FAILED branch-in-use:${branch}#${branch_pr}"
+      return 1
+    fi
+    if ! gh api "repos/${repo}/git/refs/heads/${branch}" --method PATCH \
+          --raw-field "sha=${base_sha}" -F force=true --silent 2>/dev/null; then
+      echo "FAILED branch-reset-failed:${branch}"
+      return 1
+    fi
   fi
 
   # 5. PUT each file verbatim onto the branch. The blob SHA is looked up per file
   #    on the branch so both create (absent → empty SHA) and update (drifted stub)
-  #    work, whether the branch is fresh or reused. Errors are NOT swallowed: a
+  #    work, whether the branch is fresh or reset. Errors are NOT swallowed: a
   #    read failure that yields an empty SHA would make the subsequent PUT omit
   #    `sha` and 422 against an existing file — the exact opaque failure in #864.
   local path local_file branch_sha encoded j err_file get_rc get_msg put_msg
