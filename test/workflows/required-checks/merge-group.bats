@@ -24,6 +24,7 @@ RULESET="${REPO_ROOT}/standards/rulesets/code-quality.json"
 # context: a `name:` for a plain job, the job id for a reusable-workflow caller
 # (GitHub composes `<caller job id> / <reusable job name>`). Renaming either
 # silently un-requires the check, because the ruleset matches by context name.
+# Fields are split on the first two `|` only, so the third may hold any text.
 PROVIDERS=(
   "SonarCloud|sonarcloud.yml|name: SonarCloud"
   "CodeQL|codeql.yml|name: CodeQL"
@@ -76,9 +77,9 @@ required_contexts() {
 }
 
 @test "every provider workflow triggers on merge_group" {
-  local violations=() entry wf f
+  local violations=() entry rest wf f
   for entry in "${PROVIDERS[@]}"; do
-    IFS='|' read -r _ wf _ <<< "$entry"
+    rest="${entry#*|}"; wf="${rest%%|*}"
     f="${WF_DIR}/${wf}"
     [ -f "$f" ] || { violations+=("${wf}: workflow missing"); continue; }
     [ -n "$(merge_group_lines "$f")" ] || violations+=("${wf}: no top-level 'merge_group:' trigger in on: block")
@@ -90,9 +91,10 @@ required_contexts() {
 }
 
 @test "every provider workflow still produces its required context name" {
-  local violations=() entry ctx wf line f
+  local violations=() entry rest ctx wf line f
   for entry in "${PROVIDERS[@]}"; do
-    IFS='|' read -r ctx wf line <<< "$entry"
+    ctx="${entry%%|*}"; rest="${entry#*|}"
+    wf="${rest%%|*}"; line="${rest#*|}"
     f="${WF_DIR}/${wf}"
     [ -f "$f" ] || { violations+=("${wf}: workflow missing"); continue; }
     has_line "$f" "$line" || violations+=("${wf}: line '${line}' (context '${ctx}') not found")
@@ -106,9 +108,9 @@ required_contexts() {
 @test "the merge_group trigger carries no branch or path filter" {
   # A filtered trigger can skip the workflow for some queue entries, which leaves
   # the required check unreported for exactly those entries.
-  local violations=() entry wf f
+  local violations=() entry rest wf f
   for entry in "${PROVIDERS[@]}"; do
-    IFS='|' read -r _ wf _ <<< "$entry"
+    rest="${entry#*|}"; wf="${rest%%|*}"
     f="${WF_DIR}/${wf}"
     [ -f "$f" ] || continue
     if awk '

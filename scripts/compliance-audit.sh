@@ -1625,7 +1625,9 @@ check_codeql_advanced_workflow() {
     return 0
   fi
 
-  if printf '%s' "$raw_response" | grep -qiE 'http 404|"status":[[:space:]]*"?404'; then
+  # Same 404 test as check_codeowners: gh's stderr "(HTTP 404)" or the API's
+  # JSON {"status":"404"}.
+  if [[ "$raw_response" == *"HTTP 404"* || "$raw_response" == *'"status":"404"'* ]]; then
     add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-advanced-workflow-missing" "error" \
       "Repo is approved for advanced CodeQL setup (\`scripts/lib/codeql-advanced.sh\`) but ships no \`.github/workflows/codeql.yml\`, so nothing produces its required \`CodeQL\` check. Restore the workflow (it must trigger on \`push\`, \`pull_request\` and \`merge_group\`), or remove the repo from \`CODEQL_ADVANCED_EXCEPTIONS\` and re-enable default setup." \
       "standards/ci-standards.md#2-codeql-analysis-github-managed-default-setup"
