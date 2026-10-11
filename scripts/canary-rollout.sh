@@ -1233,11 +1233,18 @@ _ingress_agent_runs() {
 # Zulu timestamp (same record shape as _run_json, plus `role` for ingress-attributed runs).
 # Resolution order (#1224):
 #   1. the per-role workflow (`run_workflow`) exists → its runs (legacy, unchanged);
-#   2. it is absent but the ingress exists and the agent registers `ingress_job` → the ingress
+#   2. it is absent and the agent registers NO `ingress_job` → [] (#1247). Such an agent is not an
+#      ADR-0007 ingress role (Class 2/3 and pull_request_target roles keep their own stub), so a
+#      member's ingress says nothing about it and the ingress is not consulted: no per-role
+#      workflow means the repo does not consume this agent, as on an uncollapsed repo (#747). The
+#      registry lint (tests/canary_rollout.bats) proves every canonical ingress job IS claimed by
+#      an `ingress_job`, so a collapsed role cannot land here by a forgotten registration;
+#   3. it is absent but the ingress exists and the agent registers `ingress_job` → the ingress
 #      runs in which that role job ran;
-#   3. neither exists → [] (the repo does not consume this agent, #747);
-#   4. the ingress exists but the role cannot be attributed (no `ingress_job`, a job-less run,
-#      unreadable jobs) → the member is UNRESOLVED (see _record_unresolved), never silent.
+#   4. neither exists → [] (the repo does not consume this agent, #747);
+#   5. the ingress exists and the agent is an ingress role, but the role cannot be attributed (the
+#      member's ingress carries no such job, a job-less run, unreadable jobs) → the member is
+#      UNRESOLVED (see _record_unresolved), never silent.
 # A genuine fetch failure fails CLOSED (non-zero), exactly like _run_json.
 #
 # Per-role list completeness (#1244): `gh run list -L 1000` is the NEWEST 1000 runs — under a day on a busy
@@ -1265,15 +1272,13 @@ _agent_run_json() {
   _horizon_from "$since" "${CANARY_RUNS_HORIZON_TIERS-15}"
   raw="$(_repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM")" || rc=$?
   if [ "$rc" -eq 3 ]; then
+    # Not an ingress role (no ingress_job): the member's ingress cannot carry it, so it is not read (#1247).
+    _reg_ingress_job "$agent"; role="$_REG_VAL"
+    if [ -z "$role" ]; then echo '[]'; return 0; fi
     rc=0; _reg_ingress_wf; iwf="$_REG_VAL"
     iraw="$(_ingress_runs_fetch "$repo" "$iwf" "$since")" || rc=$?
     case "$rc" in
       0)
-        _reg_ingress_job "$agent"; role="$_REG_VAL"
-        if [ -z "$role" ]; then
-          _record_unresolved "$agent" "$repo" "no '$wf' workflow but '$iwf' is present and the agent registers no ingress_job"
-          echo '[]'; return 0
-        fi
         _ingress_agent_runs "$agent" "$repo" "$role" "$since" <<< "$iraw"; return 0 ;;
       3) echo '[]'; return 0 ;;
       *) return 1 ;;
@@ -2086,7 +2091,7 @@ _pair_state() {
     unset _CANARY_UNRESOLVED_FLAG
   fi
   if [ -n "$unresolved" ]; then
-    echo "::error::canary gate for '$agent' [$transition] is BLIND on ring member(s) $unresolved — their runs could not be attributed or completely read (see the UNRESOLVED warnings above for the reason per member). Counted as UNRESOLVED, not passing evidence. For an ADR-0007 collapsed member whose role job is unresolvable, register the agent's ingress_job in the ring registry." >&2
+    echo "::error::canary gate for '$agent' [$transition] is BLIND on ring member(s) $unresolved — their runs could not be attributed or completely read (see the UNRESOLVED warnings above for the reason per member). Counted as UNRESOLVED, not passing evidence. For an ADR-0007 collapsed member whose role job is unresolvable, re-sync the member's ingress from the canonical template or correct the agent's ingress_job in the ring registry." >&2
     # PRE_EXISTING is advanceable via `promote --allow-pre-existing`, so UNRESOLVED must dominate it.
     if [ "$state" != "BLOCKED" ] || [ "$triage" = "PRE_EXISTING" ]; then
       state="BLOCKED"; triage="UNRESOLVED"; mix_shift="-"; downgrade="-"
@@ -2201,7 +2206,7 @@ cmd_evaluate() {
       elif [ "$downgrade" = "DOWNGRADE" ]; then
         echo "::notice::triage=PRE_EXISTING (auto-downgraded from SUSPECT, #668 increment 6) — the candidate's suspect-class failure rate (${dg_cand_rate}‰ over ${dg_cand_sample} runs) is no worse than the prior version's (${dg_base_rate}‰ over ${dg_base_sample} runs), so the timeout is environmental, not a candidate regression. Report only; the SUSPECT hold auto-cleared (no human needed). Advances with --allow-pre-existing once dwell/sample pass."
       elif [ "$triage" = "UNRESOLVED" ]; then
-        echo "::error::triage=UNRESOLVED — at least one ring member's runs could not be attributed (ADR-0007 collapsed repo: '$(_ingress_workflow)' present, no per-role workflow, role job unresolvable). The gate is blind there, so it holds rather than promote on incomplete evidence. Register the agent's ingress_job in the ring registry (#1224)."
+        echo "::error::triage=UNRESOLVED — at least one ring member's runs could not be attributed or completely read (see the UNRESOLVED warnings above for the reason per member). The gate is blind there, so it holds rather than promote on incomplete evidence. For an ADR-0007 collapsed member ('$(_ingress_workflow)' present, no per-role workflow) whose role job is unresolvable, re-sync its ingress from the canonical template or correct the agent's ingress_job in the ring registry (#1224, #1247)."
       elif [ "$triage" = "FLAG_ERROR" ]; then
         echo "::error::triage=FLAG_ERROR — could not create the unresolved-member flag file (TMPDIR unwritable/full). The gate fails closed and holds; fix the runner's temp dir."
       elif [ "$triage" = "PRE_EXISTING" ]; then
@@ -2672,7 +2677,7 @@ $(printf '%s\n' "$guidance" | sed 's/^/> /')"
 > | candidate | \`$dg_cand_rate\` | $dg_cand_sample |
 > | baseline | \`$dg_base_rate\` | $dg_base_sample |"
   elif [ "$triage" = "UNRESOLVED" ]; then
-    note="> ⚠️ **UNRESOLVED (gate blind on a ring member, #1224)** — this agent's runs on at least one ring member could not be attributed or completely read (the reason per member is listed below). That member is **not** counted as passing evidence, so the gate holds instead of promoting on incomplete evidence. This is **not** a detected run failure (cumulative failures: $cum_fail). For an ADR-0007 collapsed repo (its per-role workflow is gone, \`$(_ingress_workflow)\` is present) whose runs could not be attributed to the role job: register the agent's \`ingress_job\` (its job key in the ingress) in \`standards/canary-rings.json\`. If the evidence below says job reads were capped, the ingress has more runs in the window than \`CANARY_INGRESS_JOBS_MAX\` allows: raise that knob (default 300) instead. If it names a per-role run list that reached $_LEGACY_RUN_LIMIT runs, that workflow has more failed runs since the candidate cut than one listing returns, so the gate cannot see every failure in the window (#1244): investigate the failure volume; the hold clears when the candidate is recut. This issue auto-closes once every member resolves."
+    note="> ⚠️ **UNRESOLVED (gate blind on a ring member, #1224)** — this agent's runs on at least one ring member could not be attributed or completely read (the reason per member is listed below). That member is **not** counted as passing evidence, so the gate holds instead of promoting on incomplete evidence. This is **not** a detected run failure (cumulative failures: $cum_fail). For an ADR-0007 collapsed repo (its per-role workflow is gone, \`$(_ingress_workflow)\` is present) whose runs could not be attributed to the role job: the member's ingress carries no job for this role, or the registry's \`ingress_job\` does not name that job's key. Re-sync the member's ingress from the canonical \`standards/workflows/agent-ingress.yml\`, or correct \`ingress_job\` in \`standards/canary-rings.json\` (#1247). If the evidence below says job reads were capped, the ingress has more runs in the window than \`CANARY_INGRESS_JOBS_MAX\` allows: raise that knob (default 300) instead. If it names a per-role run list that reached $_LEGACY_RUN_LIMIT runs, that workflow has more failed runs since the candidate cut than one listing returns, so the gate cannot see every failure in the window (#1244): investigate the failure volume; the hold clears when the candidate is recut. This issue auto-closes once every member resolves."
   elif [ "$triage" = "FLAG_ERROR" ]; then
     note="> ⚠️ **FLAG_ERROR (gate held — runner temp dir unwritable)** — the candidate's cut date resolved fine, but the gate could not create its unresolved-member flag file (\`TMPDIR\` unwritable or full), so it could not record unattributable ring members and fails closed rather than promote on possibly incomplete evidence. This is **not** a detected run failure (cumulative failures: $cum_fail). Fix: free space / make \`TMPDIR\` writable on the runner; this clears on the next tick."
   elif [ "$triage" = "PRE_EXISTING" ]; then
