@@ -303,6 +303,25 @@ YML
   [ "$(classify_failure 1 data)" = "PRE_EXISTING" ]
 }
 
+# #1249: when the reusable could NOT be compared (the candidate commit is unresolvable) there is no diff to
+# derive a verdict from. "-" (indeterminate) says so; PRE_EXISTING would claim "byte-identical" and REGRESSION
+# would claim "changed", and neither was observed.
+@test "classify_failure: an uncompared reusable (differs=unknown) is indeterminate '-', never PRE_EXISTING or REGRESSION (#1249)" {
+  [ "$(classify_failure unknown unknown)" = "-" ]
+  [ "$(classify_failure unknown unknown 3)" = "-" ]   # a suspect signal cannot narrow a verdict that was never reached
+}
+@test "classify_failure: an environmental category still decides when the reusable was not compared (#1249)" {
+  [ "$(classify_failure unknown comment-cap)" = "PRE_EXISTING" ]
+  [ "$(classify_failure unknown infra)" = "PRE_EXISTING" ]
+}
+@test "triage_label: '-' reads INDETERMINATE where a human sees it; every other triage is itself (#1249)" {
+  [ "$(triage_label -)" = "INDETERMINATE" ]
+  [ "$(triage_label "")" = "INDETERMINATE" ]
+  [ "$(triage_label PRE_EXISTING)" = "PRE_EXISTING" ]
+  [ "$(triage_label REGRESSION)" = "REGRESSION" ]
+  [ "$(triage_label UNRESOLVED)" = "UNRESOLVED" ]
+}
+
 # ── classify_failure: SUSPECT third verdict (#668 increment 2, #675) ────────────
 # A suspect-class match at differs=1 becomes SUSPECT instead of REGRESSION — it still
 # BLOCKS + needs a human, but carries a discriminating question so the confirm is fast.
@@ -3626,16 +3645,66 @@ _sync_gap_stub() {
   [[ "$output" == "ccccccc ring0 next->ring0 BLOCKED 0 4 0 3 2 0 0 REGRESSION - - 0 0 0 0 0" ]]
 }
 
-@test "orchestrator: _frontier_state_resilient keeps an unresolvable (empty) src commit tracked BLOCKED with triage PRE_EXISTING — unchanged by the pair_verdict refactor (#1242)" {
+@test "orchestrator: _frontier_state_resilient keeps an unresolvable (empty) src commit tracked BLOCKED with an INDETERMINATE triage, not PRE_EXISTING (#1249)" {
   # A run-history fetch failure (data gap) makes the fallback walk the rings itself. ring0 has no tag but ring1 does:
-  # the pair is still pending (never vanishes), and with no resolvable candidate the reusable cannot
-  # differ, so classify_failure reads it as PRE_EXISTING — exactly as before the refactor.
+  # the pair is still pending (never vanishes) and stays BLOCKED. With no resolvable candidate NOTHING was compared,
+  # so the triage is "-" (indeterminate). #1243 pinned PRE_EXISTING here to keep that refactor behavior-neutral;
+  # #1249 decided the triage and flips it deliberately: a tag gap says nothing about whether the reusable changed.
   run bash -c "source '$ORCH'; _frontier_state() { echo org/x >> \"\$_CANARY_FETCH_FAIL_FLAG\"; return 1; }
     ordered_channels() { echo 'next,ring0,ring1'; }
     _ring_commits() { printf 'next - 0\nring0 - 0\nring1 abc1234 0\n'; }
+    _reusable_differs() { echo 'must not be called for an unresolvable candidate' >&2; echo 1; }
+    _frontier_state_resilient dev-lead 2>&1"
+  [ "$status" -eq 0 ]
+  [ "$output" = "- ring1 ring0->ring1 BLOCKED 0 0 0 0 0 0 0 - - - 0 0 0 0 1" ]
+}
+
+@test "orchestrator: _frontier_state_resilient still derives the data-gap triage from the reusable diff when the candidate IS resolvable (#1249)" {
+  run bash -c "source '$ORCH'; _frontier_state() { echo org/x >> \"\$_CANARY_FETCH_FAIL_FLAG\"; return 1; }
+    ordered_channels() { echo 'next,ring0'; }
+    _ring_commits() { printf 'next ccc1111 0\nring0 bbb2222 0\n'; }
+    _reusable_differs() { echo 1; }
     _frontier_state_resilient dev-lead 2>/dev/null"
   [ "$status" -eq 0 ]
-  [[ "$output" == *" ring1 ring0->ring1 BLOCKED "*" PRE_EXISTING "* ]]
+  [ "$output" = "ccc1111 ring0 next->ring0 BLOCKED 0 0 0 0 0 0 0 REGRESSION - - 0 0 0 0 1" ]
+  run bash -c "source '$ORCH'; _frontier_state() { echo org/x >> \"\$_CANARY_FETCH_FAIL_FLAG\"; return 1; }
+    ordered_channels() { echo 'next,ring0'; }
+    _ring_commits() { printf 'next ccc1111 0\nring0 bbb2222 0\n'; }
+    _reusable_differs() { echo 0; }
+    _frontier_state_resilient dev-lead 2>/dev/null"
+  [ "$status" -eq 0 ]
+  [ "$output" = "ccc1111 ring0 next->ring0 BLOCKED 0 0 0 0 0 0 0 PRE_EXISTING - - 0 0 0 0 1" ]
+}
+
+@test "_blocker_body: a data-gap hold with an INDETERMINATE triage does not claim a verdict from a diff that was never made (#1249)" {
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _blocker_body dev-lead 'ring0->ring1' - 0 0 - petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PARTIAL DATA"* ]]
+  [[ "$output" == *"INDETERMINATE"* ]]
+  [[ "$output" != *"derived from the reusable diff alone"* ]]
+  [[ "$output" != *"PRE_EXISTING"* ]]
+  [[ "$output" != *"byte-identical"* ]]
+  # a resolvable candidate keeps the diff-derived wording
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' ccc1111 0 0 REGRESSION petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"derived from the reusable diff alone"* ]]
+}
+
+@test "orchestrator: sync-issues titles an INDETERMINATE data-gap blocker in words and does not label it needs-human (#1249)" {
+  _sync_gap_stub '[]'
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" \
+      CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=2 bash -c "
+        source '$ORCH'
+        _frontier_state_resilient() { echo '- ring1 ring0->ring1 BLOCKED 0 0 0 0 0 0 0 - - - 0 0 0 0 1'; }
+        cmd_sync_issues
+      "
+  [ "$status" -eq 0 ]
+  grep -q '^CREATE|' "$ISSUE_LOG"
+  grep -q "ring0->ring1 (INDETERMINATE, partial run-history — fail-closed)" "$ISSUE_LOG"
+  ! grep -q -- "--add-label needs-human" "$ISSUE_LOG"
+  grep -q -- "--add-label dev-lead" "$ISSUE_LOG"
 }
 
 @test "orchestrator: _frontier_state_resilient fails CLOSED (non-zero) on a TOTAL inability to determine state (#820)" {

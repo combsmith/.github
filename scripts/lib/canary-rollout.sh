@@ -332,15 +332,29 @@ decide_graduated() {
 #   PRE_EXISTING — the reusable is byte-identical to the prior channel (differs=0), OR
 #                  the failure is environmental (comment-cap / rate-limit / infra / data)
 #                  → report, do NOT rollback, do NOT advance.
-# Precedence: environmental category first, then differs=0 (can't be candidate-caused),
-# then a suspect match narrows an otherwise-REGRESSION verdict to SUSPECT.
+#   -            — INDETERMINATE: the reusable could not be compared at all (differs=unknown,
+#                  e.g. the candidate commit is unresolvable, #1249) and the failure is not
+#                  environmental. No verdict is claimed: PRE_EXISTING would assert "byte-
+#                  identical" and REGRESSION "changed", and neither was observed. The caller
+#                  still holds the pair BLOCKED. Same "-" a non-BLOCKED pair carries.
+# Precedence: environmental category first, then an uncompared reusable (no verdict), then
+# differs=0 (can't be candidate-caused), then a suspect match narrows an otherwise-REGRESSION
+# verdict to SUSPECT.
 classify_failure() {
   local differs="${1:-0}" category="${2:-unknown}" suspect="${3:-0}"
   case "$category" in
     comment-cap|rate-limit|infra|data) echo "PRE_EXISTING"; return 0 ;;
   esac
+  if [ "$differs" = "unknown" ]; then echo "-"; return 0; fi
   if [ "$differs" != "1" ]; then echo "PRE_EXISTING"; return 0; fi
   if [ "$suspect" -gt 0 ]; then echo "SUSPECT"; else echo "REGRESSION"; fi
+}
+
+# triage_label <triage> — the triage as a human reads it: the indeterminate "-" (or an empty
+# field) is spelled INDETERMINATE, every other value is itself. For issue titles and bodies only;
+# the machine-readable state line keeps "-".
+triage_label() {
+  case "${1:-}" in ''|-) echo "INDETERMINATE" ;; *) echo "$1" ;; esac
 }
 
 # decide_suspect_downgrade <cand_rate_permille> <base_rate_permille> <base_sample> <knobs_json>
