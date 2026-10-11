@@ -433,3 +433,202 @@ EOF
   # and commit as a shell-executable token with the actual script path quoted.
   grep -q "Re-run \"$ORCH\" cut 1.0.0 --commit 6666666666666666666666666666666666666666" <<< "$output"
 }
+
+# ── pre-promotion verification (#1173) ─────────────────────────────────────────
+# A promotion is fleet-wide with no canary stage, so every known channel consumer
+# is run against the candidate commit first. The consumer list is data.
+CONSUMERS="$SCRIPT_DIR/scripts/lib/standards-channel-consumers.json"
+CAND_SHA="9999999999999999999999999999999999999999"
+
+@test "sr_consumer_verdict: a zero exit with the expected output is PASS" {
+  printf 'a.yml\tALIGNED\tx\ty\tN\n' > "$BATS_TEST_TMPDIR/out"
+  [ "$(sr_consumer_verdict 0 "$BATS_TEST_TMPDIR/out" $'\tALIGNED\t' '::error')" = "PASS" ]
+}
+@test "sr_consumer_verdict: a non-zero exit fails and names the code" {
+  printf 'whatever\n' > "$BATS_TEST_TMPDIR/out"
+  [ "$(sr_consumer_verdict 3 "$BATS_TEST_TMPDIR/out" "" "")" = "FAIL exit-3" ]
+}
+@test "sr_consumer_verdict: a zero exit with rejected output fails" {
+  printf 'a.yml\tALIGNED\tx\ty\tN\n::error::boom\n' > "$BATS_TEST_TMPDIR/out"
+  [ "$(sr_consumer_verdict 0 "$BATS_TEST_TMPDIR/out" $'\tALIGNED\t' '::error')" = "FAIL rejected-output" ]
+}
+@test "sr_consumer_verdict: a zero exit without the expected output fails" {
+  printf 'nothing happened\n' > "$BATS_TEST_TMPDIR/out"
+  [ "$(sr_consumer_verdict 0 "$BATS_TEST_TMPDIR/out" '^OK: [0-9]+' "")" = "FAIL expected-output-missing" ]
+}
+@test "sr_consumer_verdict: no exit code means the consumer never ran" {
+  [ "$(sr_consumer_verdict "" "$BATS_TEST_TMPDIR/none" "" "")" = "FAIL not-run" ]
+}
+@test "sr_consumer_verdict: unreadable output fails" {
+  [ "$(sr_consumer_verdict 0 "$BATS_TEST_TMPDIR/does-not-exist" "" "")" = "FAIL output-unreadable" ]
+}
+@test "sr_consumer_verdict: with no patterns a zero exit passes" {
+  : > "$BATS_TEST_TMPDIR/out"
+  [ "$(sr_consumer_verdict 0 "$BATS_TEST_TMPDIR/out" "" "")" = "PASS" ]
+}
+
+@test "consumer list: every row has id, repo, ref_env and command, and ids are unique" {
+  run jq -e '
+    (.consumers | length) > 0
+    and all(.consumers[];
+      (.id | type == "string" and length > 0)
+      and (.repo | type == "string" and test("^[^/]+/[^/]+$"))
+      and (.ref_env | type == "string" and test("^[A-Za-z_][A-Za-z0-9_]*$"))
+      and (.command | type == "string" and length > 0))
+    and ((.consumers | map(.id) | unique | length) == (.consumers | length))
+  ' "$CONSUMERS"
+  [ "$status" -eq 0 ]
+}
+
+@test "consumer list: the drift guard's patterns reject a run that skipped every file (hollow green)" {
+  local expect reject
+  expect="$(jq -r '.consumers[] | select(.id == "template-stub-drift") | .expect_output' "$CONSUMERS")"
+  reject="$(jq -r '.consumers[] | select(.id == "template-stub-drift") | .reject_output' "$CONSUMERS")"
+  # The guard exits 0 when it cannot compute a file's baseline: it warns and skips.
+  printf '::warning::Could not compute the standards-derived content for CLAUDE.md at N (x) — skipping its drift check.\n' > "$BATS_TEST_TMPDIR/out"
+  [ "$(sr_consumer_verdict 0 "$BATS_TEST_TMPDIR/out" "$expect" "$reject")" = "FAIL rejected-output" ]
+  printf '.github/CODEOWNERS\tALIGNED\taaa\taaa\tN\n' > "$BATS_TEST_TMPDIR/out"
+  [ "$(sr_consumer_verdict 0 "$BATS_TEST_TMPDIR/out" "$expect" "$reject")" = "PASS" ]
+  printf '.github/CODEOWNERS\tALIGNED\taaa\taaa\tN\nCLAUDE.md\tDRIFTED\tbbb\taaa\t\n' > "$BATS_TEST_TMPDIR/out"
+  [ "$(sr_consumer_verdict 0 "$BATS_TEST_TMPDIR/out" "$expect" "$reject")" = "FAIL rejected-output" ]
+}
+
+# _verify_env <check.sh body> — a gh stub that resolves any ref to CAND_SHA (or
+# prints $GH_SHA_REPLY when set) and refuses every write, a fake consumer checkout
+# "consumer-a" whose check.sh has the given body, and a one-row consumer list
+# pointing at it.
+_verify_env() {
+  _stub_bin
+  export GH_SHA_REPLY="${GH_SHA_REPLY-$CAND_SHA}"
+  cat > "$STUBDIR/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+case "$*" in
+  *"-X PATCH"*|*"-X POST"*) echo "gh WRITE attempted: $*" >&2; exit 99 ;;
+  *"application/vnd.github.sha"*) printf '%s' "$GH_SHA_REPLY" ;;
+  *) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+esac
+GHSTUB
+  cat > "$STUBDIR/git" <<'GITSTUB'
+#!/usr/bin/env bash
+case "$*" in
+  "rev-parse HEAD") echo "9999999999999999999999999999999999999999" ;;
+  *) : ;;
+esac
+GITSTUB
+  chmod +x "$STUBDIR/gh" "$STUBDIR/git"
+  export SR_CONSUMERS_ROOT="$STUBDIR/consumers"
+  mkdir -p "$SR_CONSUMERS_ROOT/consumer-a"
+  printf '#!/usr/bin/env bash\n%s\n' "$1" > "$SR_CONSUMERS_ROOT/consumer-a/check.sh"
+  export SR_CONSUMERS_FILE="$STUBDIR/consumers.json"
+  cat > "$SR_CONSUMERS_FILE" <<'CONSUMERSJSON'
+{"consumers":[{"id":"a-check","repo":"petry-projects/consumer-a","ref_env":"A_REF","command":"bash check.sh","expect_output":"^checked at [0-9a-f]{40}$","reject_output":"::error"}]}
+CONSUMERSJSON
+}
+
+@test "verify: a passing consumer is run pinned to the resolved commit SHA" {
+  _verify_env 'echo "checked at $A_REF"'
+  run bash "$ORCH" verify main
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"candidate: main -> 999999999999"* ]]
+  [[ "$output" == *"a-check"*"PASS"* ]]
+  [[ "$output" == *"verified: all 1 channel consumer(s) pass"* ]]
+}
+
+@test "verify: a consumer that exits non-zero fails verification and its output is shown" {
+  _verify_env 'echo "schema rejects manifest x"; exit 1'
+  run bash "$ORCH" verify main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"a-check"*"FAIL exit-1"* ]]
+  [[ "$output" == *"schema rejects manifest x"* ]]
+  [[ "$output" == *"1 of 1 channel consumer(s) failed"* ]]
+}
+
+@test "verify: a consumer that exits 0 without doing its work fails (no hollow green)" {
+  _verify_env 'echo "skipped: could not read the ref"'
+  run bash "$ORCH" verify main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL expected-output-missing"* ]]
+}
+
+@test "verify: one failing consumer fails the run even when another passes" {
+  _verify_env 'echo "checked at $A_REF"'
+  mkdir -p "$SR_CONSUMERS_ROOT/consumer-b"
+  printf '#!/usr/bin/env bash\nexit 4\n' > "$SR_CONSUMERS_ROOT/consumer-b/check.sh"
+  cat > "$SR_CONSUMERS_FILE" <<'CONSUMERSJSON'
+{"consumers":[
+  {"id":"a-check","repo":"petry-projects/consumer-a","ref_env":"A_REF","command":"bash check.sh","expect_output":"^checked at"},
+  {"id":"b-check","repo":"petry-projects/consumer-b","ref_env":"B_REF","command":"bash check.sh"}
+]}
+CONSUMERSJSON
+  run bash "$ORCH" verify main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"a-check"*"PASS"* ]]
+  [[ "$output" == *"b-check"*"FAIL exit-4"* ]]
+  [[ "$output" == *"1 of 2 channel consumer(s) failed"* ]]
+}
+
+@test "verify: a consumer whose checkout is unavailable fails, it is not skipped" {
+  _verify_env 'echo "checked at $A_REF"'
+  rm -rf "$SR_CONSUMERS_ROOT/consumer-a"
+  run bash "$ORCH" verify main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL checkout-unavailable"* ]]
+}
+
+@test "verify: a malformed consumer row fails" {
+  _verify_env 'echo "checked at $A_REF"'
+  echo '{"consumers":[{"id":"a-check","repo":"petry-projects/consumer-a","ref_env":"NOT VALID","command":"bash check.sh"}]}' > "$SR_CONSUMERS_FILE"
+  run bash "$ORCH" verify main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL malformed-entry"* ]]
+}
+
+@test "verify: an empty consumer list is an error, not a pass" {
+  _verify_env 'echo "checked at $A_REF"'
+  echo '{"consumers":[]}' > "$SR_CONSUMERS_FILE"
+  run bash "$ORCH" verify main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot verify"* ]]
+}
+
+@test "verify: an unreadable consumer list is an error, not a pass" {
+  _verify_env 'echo "checked at $A_REF"'
+  export SR_CONSUMERS_FILE="$STUBDIR/missing.json"
+  run bash "$ORCH" verify main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot verify"* ]]
+}
+
+@test "verify: a ref that does not resolve to a commit is an error and runs no consumer" {
+  GH_SHA_REPLY='{"message":"No commit found for SHA: nope","status":"422"}'
+  _verify_env 'echo ran > "$0.ran"; echo "checked at $A_REF"'
+  run bash "$ORCH" verify nope
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not resolve 'nope'"* ]]
+  [ ! -e "$SR_CONSUMERS_ROOT/consumer-a/check.sh.ran" ]
+}
+
+@test "cut --verify: refuses to cut when a consumer fails, and writes no tag" {
+  _verify_env 'echo "manifest invalid"; exit 1'
+  run bash "$ORCH" cut v1.2.0 --verify
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSE to cut standards/v1.2.0"* ]]
+  [[ "$output" != *"gh WRITE attempted"* ]]
+  [[ "$output" != *"creating immutable release"* ]]
+}
+
+@test "cut --verify --dry-run: verifies, then previews without writing" {
+  _verify_env 'echo "checked at $A_REF"'
+  run bash "$ORCH" cut v1.2.0 --verify --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"verified: all 1 channel consumer(s) pass"* ]]
+  [[ "$output" == *"[dry-run] no tags written."* ]]
+}
+
+@test "cut without --verify does not run the consumers (existing behaviour)" {
+  _verify_env 'echo ran > "$0.ran"; echo "checked at $A_REF"'
+  run bash "$ORCH" cut v1.2.0 --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"candidate:"* ]]
+  [ ! -e "$SR_CONSUMERS_ROOT/consumer-a/check.sh.ran" ]
+}

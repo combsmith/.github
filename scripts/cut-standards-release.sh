@@ -23,11 +23,18 @@ set -euo pipefail
 # Logic Lives in a Pure, Tested Script"); this file is thin I/O glue.
 #
 # Usage:
-#   cut-standards-release.sh cut <vX.Y.Z> [--commit <sha>] [--dry-run]
+#   cut-standards-release.sh cut <vX.Y.Z> [--commit <sha>] [--dry-run] [--verify]
 #       Cut the immutable release standards/vX.Y.Z at <sha> (default: local HEAD)
 #       and move standards/v<major>-stable onto it. Re-running is a NOOP when the
 #       release already points at <sha>; it REFUSES to clobber a release that
 #       resolves to a different commit. --dry-run reads but never writes.
+#       --verify runs `verify <sha>` first and REFUSES to cut if any channel
+#       consumer fails. A promotion is fleet-wide with no canary stage, so
+#       promote with --verify (#1173).
+#   cut-standards-release.sh verify <ref>
+#       Run every known channel consumer against <ref> (a commit SHA, branch or
+#       tag on SR_REPO) and exit non-zero if any fails. Read-only. The consumers
+#       are data: scripts/lib/standards-channel-consumers.json.
 #   cut-standards-release.sh versions
 #       List published standards/vX.Y.Z versions, highest first.
 #   cut-standards-release.sh resolve
@@ -42,18 +49,28 @@ set -euo pipefail
 #   GH_TOKEN   credential for the tag-write API path (the release-channel-tags
 #              ruleset grants the authorized mover an update-bypass on the
 #              protected tag; see standards/rulesets/release-channel-tags.json).
+#   SR_CONSUMERS_FILE  the channel-consumer list `verify` reads
+#              (default: scripts/lib/standards-channel-consumers.json).
+#   SR_CONSUMERS_ROOT  optional directory of existing consumer checkouts, one per
+#              repo name (e.g. $SR_CONSUMERS_ROOT/.github-private). When set,
+#              `verify` runs the consumers there instead of cloning them — use
+#              it to verify against an unmerged consumer branch.
+#   PYTHON     interpreter for Python consumers (default python3).
 
 _HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=lib/standards-release.sh
 source "${_HERE}/lib/standards-release.sh"
 
 SR_REPO="${SR_REPO:-${GITHUB_REPOSITORY:-petry-projects/.github}}"
+SR_CONSUMERS_FILE="${SR_CONSUMERS_FILE:-${_HERE}/lib/standards-channel-consumers.json}"
 
 _usage() {
   cat >&2 <<EOF
 Usage: $0 <command> [args]
 
-  cut <vX.Y.Z> [--commit <sha>] [--dry-run]   cut the release + move the channel
+  cut <vX.Y.Z> [--commit <sha>] [--dry-run] [--verify]
+                                              cut the release + move the channel
+  verify <ref>                                run every channel consumer against <ref>
   versions                                    list published standards/vX.Y.Z
   resolve                                     print current + N-1 versions
   channel <vX.Y.Z>                            print the moving channel for a version
@@ -162,17 +179,110 @@ _cmd_channel() {
   printf '%s\n' "$(sr_channel_for "$v")"
 }
 
-# _cmd_cut <version> [--commit sha] [--dry-run] — cut the immutable release and
-# move the channel.
+# _gh_commit_sha <repo> <ref> — echo the full commit SHA <ref> resolves to on
+# <repo>. Empty when it cannot be read: an error body is JSON, not a 40-hex SHA,
+# so it is rejected rather than handed to a consumer as a ref.
+_gh_commit_sha() {
+  local sha
+  sha="$(gh api -H "Accept: application/vnd.github.sha" "repos/$1/commits/$2" 2>/dev/null)" || true
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 0
+  printf '%s' "$sha"
+}
+
+# _consumer_checkout <repo> <workdir> — echo a directory holding a checkout of
+# the consumer <repo>. With SR_CONSUMERS_ROOT set it is the existing checkout
+# $SR_CONSUMERS_ROOT/<name>; otherwise the repo is shallow-cloned once into
+# <workdir>. Returns non-zero when no checkout is available.
+_consumer_checkout() {
+  local repo="$1" work="$2" name="${1##*/}" dir
+  if [ -n "${SR_CONSUMERS_ROOT:-}" ]; then
+    dir="${SR_CONSUMERS_ROOT%/}/$name"
+    [ -d "$dir" ] || return 1
+    printf '%s' "$dir"
+    return 0
+  fi
+  dir="$work/$name"
+  if [ ! -d "$dir" ]; then
+    gh repo clone "$repo" "$dir" -- --depth 1 --quiet >/dev/null 2>&1 || return 1
+  fi
+  printf '%s' "$dir"
+}
+
+# _cmd_verify <ref> — run every known channel consumer against <ref> and return
+# non-zero if any fails (#1173). Read-only. "Could not verify" is a failure, never
+# a pass: an unreadable consumer list, an empty one, an unresolvable ref, a
+# malformed row and an unavailable checkout all fail.
+_cmd_verify() {
+  local ref="${1:-}"
+  [ -n "$ref" ] || _usage
+  command -v jq >/dev/null 2>&1 || { echo "::error::verify needs jq" >&2; return 1; }
+  local count
+  count="$(jq -r '(.consumers // []) | length' "$SR_CONSUMERS_FILE" 2>/dev/null)" || count=""
+  if ! [[ "$count" =~ ^[1-9][0-9]*$ ]]; then
+    echo "::error::no channel consumers could be read from $SR_CONSUMERS_FILE — cannot verify (an unreadable or empty list is not a pass)" >&2
+    return 1
+  fi
+  local sha
+  sha="$(_gh_commit_sha "$SR_REPO" "$ref")"
+  if [ -z "$sha" ]; then
+    echo "::error::could not resolve '$ref' to a commit on $SR_REPO — cannot verify" >&2
+    return 1
+  fi
+  echo "candidate: $ref -> ${sha:0:12} on $SR_REPO"
+  echo "consumers: $count (from $SR_CONSUMERS_FILE)"
+
+  local work i=0 failed=0 row id repo ref_env command expect reject dir out rc verdict
+  work="$(mktemp -d)"
+  while [ "$i" -lt "$count" ]; do
+    row="$(jq -c --argjson i "$i" '.consumers[$i]' "$SR_CONSUMERS_FILE")"
+    id="$(jq -r '.id // empty' <<< "$row")"
+    repo="$(jq -r '.repo // empty' <<< "$row")"
+    ref_env="$(jq -r '.ref_env // empty' <<< "$row")"
+    command="$(jq -r '.command // empty' <<< "$row")"
+    expect="$(jq -r '.expect_output // empty' <<< "$row")"
+    reject="$(jq -r '.reject_output // empty' <<< "$row")"
+    out="$work/$i.out"
+    : > "$out"
+    if [ -z "$id" ] || [ -z "$repo" ] || [ -z "$command" ] || ! [[ "$ref_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      verdict="FAIL malformed-entry"
+    elif ! dir="$(_consumer_checkout "$repo" "$work")"; then
+      verdict="FAIL checkout-unavailable"
+    else
+      rc=0
+      ( cd "$dir" && env "$ref_env=$sha" bash -c "$command" ) > "$out" 2>&1 || rc=$?
+      verdict="$(sr_consumer_verdict "$rc" "$out" "$expect" "$reject")"
+    fi
+    printf '  %-28s %-34s %s\n' "${id:-<row $i>}" "${repo:-?}" "$verdict"
+    if [ "$verdict" != "PASS" ]; then
+      failed=$((failed + 1))
+      if [ -s "$out" ]; then
+        echo "    --- last lines of ${id:-row $i} output ---"
+        tail -n 20 "$out" | sed 's/^/    /'
+      fi
+    fi
+    i=$((i + 1))
+  done
+  rm -rf "$work"
+
+  if [ "$failed" -gt 0 ]; then
+    echo "::error::$failed of $count channel consumer(s) failed against ${sha:0:12} — do not promote the channel to this commit" >&2
+    return 1
+  fi
+  echo "verified: all $count channel consumer(s) pass against ${sha:0:12}"
+}
+
+# _cmd_cut <version> [--commit sha] [--dry-run] [--verify] — cut the immutable
+# release and move the channel.
 _cmd_cut() {
   local raw="${1:-}"; shift || true
   [ -n "$raw" ] || _usage
-  local version commit="" dry_run=0
+  local version commit="" dry_run=0 verify=0
   version="$(_normalize_version "$raw")"
   while [ $# -gt 0 ]; do
     case "$1" in
       --commit) commit="${2:-}"; shift 2 ;;
       --dry-run) dry_run=1; shift ;;
+      --verify) verify=1; shift ;;
       *) echo "::error::unknown flag '$1'" >&2; _usage ;;
     esac
   done
@@ -209,6 +319,15 @@ _cmd_cut() {
       : # publish below
       ;;
   esac
+
+  # --verify (#1173): every channel consumer must pass against the target commit
+  # before anything is written. It reads only, so a dry run verifies too.
+  if [ "$verify" -eq 1 ]; then
+    if ! _cmd_verify "$commit"; then
+      echo "::error::REFUSE to cut $release_tag: channel-consumer verification failed at ${commit:0:12}. No tags written." >&2
+      exit 1
+    fi
+  fi
 
   if [ "$dry_run" -eq 1 ]; then
     echo "[dry-run] no tags written."
@@ -316,6 +435,7 @@ main() {
   local cmd="$1"; shift
   case "$cmd" in
     cut)      _cmd_cut "$@" ;;
+    verify)   _cmd_verify "$@" ;;
     versions) _cmd_versions ;;
     resolve)  _cmd_resolve ;;
     channel)  _cmd_channel "$@" ;;
