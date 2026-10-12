@@ -202,7 +202,7 @@ jobs:
     if: >-
       github.event_name == 'check_run'
       && github.event.check_run.conclusion == 'failure'
-      && !startsWith(github.event.check_run.name, 'CI Failure Analyst')
+      && !startsWith(github.event.check_run.name, 'ci-failure-analyst')
     concurrency:
       group: "ci-failure-analyst-${{ github.event.check_run.head_sha }}"
       cancel-in-progress: false
