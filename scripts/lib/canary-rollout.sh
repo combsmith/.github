@@ -80,6 +80,28 @@ robust_sample_target() {
   clamp "$target_raw" "$lo" "$hi"
 }
 
+# baseline_sample_decision <fraction_permille> <clamp_lo> <clamp_hi> <cap_multiple> <waive_if_no_caller> <baseline...>
+# The sample a baseline-sized transition needs, from what the baseline read reported. <baseline...> is
+# either the per-day executed counts or the single token "unknown". Echoes "<waived> <target> <basis>":
+#   unknown   — the read was truncated and observed nothing countable (or reported nothing at all, or a
+#               token that is not a count). The traffic is NOT known to be zero, so the sample is sized at
+#               the clamp MINIMUM and is never waived (#1244 item 16, ADR-0014): "false <clamp_lo> unknown".
+#   no-caller — every day was read and every day is zero, and the transition opts into
+#               waive_sample_if_no_caller: dwell-only (#548): "true 0 no-caller".
+#   measured  — anything else: "false <robust_sample_target> measured".
+# "unknown" is a signal, never a count: the reader does not invent a number to stand for "I could not see".
+baseline_sample_decision() {
+  local frac="$1" lo="$2" hi="$3" cap_multiple="${4:-3}" waive_if_no_caller="${5:-}"; shift 5
+  local c total=0
+  [ "$#" -eq 0 ] && { echo "false $lo unknown"; return 0; }
+  for c in "$@"; do
+    case "$c" in ''|*[!0-9]*) echo "false $lo unknown"; return 0 ;; esac
+    total=$(( total + c ))
+  done
+  if [ "$total" -eq 0 ] && [ "$waive_if_no_caller" = "true" ]; then echo "true 0 no-caller"; return 0; fi
+  echo "false $(robust_sample_target "$frac" "$lo" "$hi" "$cap_multiple" "$@") measured"
+}
+
 # ── version-bump math (autocut front end, #1069) ──────────────────────────────
 # Pure semver helpers used by `canary-rollout.sh autocut` to compute the next
 # immutable release version from the highest existing <agent>/vX.Y.Z on the host.
