@@ -668,7 +668,8 @@ is_present_only_workflow() {
 # rendered at the repo's tier channel (stub_body_matches_template): its callers
 # predate the template and carry per-repo edits, which are drift. So must every stub
 # in a FULL_BODY_COMPARE_REPOS repo (repo-template, #1285) other than a
-# BODY_PRESERVING_WORKFLOWS one, whose per-repo body is never re-synced.
+# BODY_PRESERVING_WORKFLOWS or PRESENT_ONLY_WORKFLOWS one, whose per-repo body is
+# re-pinned in place and never re-synced from the template.
 #
 # A pin-correct stub whose guarded `on:` / `permissions:` / `concurrency:` surface
 # differs from the template is ALSO drift (#1236): the audit flags it
@@ -689,7 +690,8 @@ is_already_compliant() {
   fi
   stub_has_stale_stable_header "$existing_content" "$template" "$repo" && return 1
   if is_replace_if_present_workflow "$workflow" \
-     || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
+     || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
+          && ! is_present_only_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
   fi
   if ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
