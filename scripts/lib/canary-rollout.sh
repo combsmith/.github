@@ -93,12 +93,15 @@ robust_sample_target() {
 baseline_sample_decision() {
   local frac="$1" lo="$2" hi="$3" cap_multiple="${4:-3}" waive_if_no_caller="${5:-}"; shift 5
   local c total=0
-  [ "$#" -eq 0 ] && { echo "false $lo unknown"; return 0; }
+  [[ "$#" -eq 0 ]] && { echo "false $lo unknown"; return 0; }
   for c in "$@"; do
-    case "$c" in ''|*[!0-9]*) echo "false $lo unknown"; return 0 ;; esac
+    case "$c" in
+      ''|*[!0-9]*) echo "false $lo unknown"; return 0 ;;
+      *) ;;
+    esac
     total=$(( total + c ))
   done
-  if [ "$total" -eq 0 ] && [ "$waive_if_no_caller" = "true" ]; then echo "true 0 no-caller"; return 0; fi
+  if [[ "$total" -eq 0 && "$waive_if_no_caller" = "true" ]]; then echo "true 0 no-caller"; return 0; fi
   echo "false $(robust_sample_target "$frac" "$lo" "$hi" "$cap_multiple" "$@") measured"
 }
 
