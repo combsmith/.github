@@ -177,7 +177,8 @@ ring_rendered_templates() {
   local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" old out
   old="$(printf '# legacy header\n#   • You MUST NOT change: the `uses:` ref — it is pinned to the\n#     `persona-mention/v1-stable` channel, a moving tag.\n#     Never repoint it.\n%s\n' "$(sed -n '/^[^#[:space:]]/,$p' "$t")")"
   out="$(bash -c 'source "$1"; strip_stale_stable_header persona-mention "$3" <<< "$2"' _ "$SCRIPT" "$old" "$t")"
-  [ "$(sed -n '/^[^#[:space:]]/q;p' <<< "$out")" = "$(sed -n '/^[^#[:space:]]/q;p' "$t")" ]
+  # The template header, rendered tier-neutral (it may still name the stable channel).
+  [ "$(sed -n '/^[^#[:space:]]/q;p' <<< "$out")" = "$(sed -n '/^[^#[:space:]]/q;p' "$t" | bash -c 'source "$1"; ring_repin_uses persona-mention persona-mention/v1-ring1' _ "$SCRIPT")" ]
   [[ "$out" != *legacy* ]]
 }
 
@@ -195,4 +196,16 @@ ring_rendered_templates() {
   install_gh_stub
   run bash -c 'source "$1"; for w in idea-enhancer.yml idea-triage.yml initiative-planner.yml; do is_engine_host_target "$w" .github-private || exit 1; ! is_engine_host_target "$w" TalkTerm || exit 2; done' _ "$SCRIPT"
   [ "$status" -eq 0 ]
+}
+
+@test "ring repin renders a template's stable-channel comments tier-neutral; cleanup never reinstalls them" {
+  install_gh_stub
+  local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" old out
+  old="$(printf '# legacy persona-mention/v1-stable\n%s\n' "$(sed -n '/^[^#[:space:]]/,$p' "$t")")"
+  out="$(bash -c 'source "$1"; strip_stale_stable_header persona-mention "$3" <<< "$2"' _ "$SCRIPT" "$old" "$t")"
+  run grep -E '^[[:space:]]*#.*(persona-mention/(v[0-9]+-)?stable|persona-mention stable channel)' <<< "$out"
+  [ "$status" -eq 1 ]
+  # Stable repin keeps the stable wording.
+  run bash -c 'source "$1"; ring_repin_uses persona-mention persona-mention/v1-stable < "$2"' _ "$SCRIPT" "$t"
+  grep -qF 'persona-mention/v1-stable' <<< "$output"
 }
