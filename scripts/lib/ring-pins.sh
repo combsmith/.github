@@ -455,11 +455,22 @@ ring_tag_exists() {
 # is re-pinned alongside `uses:` here. This only re-pins the VALUE of an input the
 # stub already forwards (never adds/forwards a new one), so it never introduces the
 # undeclared-input channel-skew defect (#1052).
+# When <newref> is not a stable channel, comment lines naming this agent's stable
+# channel (`<base>/v<M>-stable`, `<base> stable channel`) are rendered tier-neutral
+# (`<base>/<tier>`), so a header never contradicts the ring pin even while the
+# template still carries the stable wording (#1297).
 ring_repin_uses() {
-  local base="$1" newref="$2" file
+  local base="$1" newref="$2" file neutral=()
   file="$(ring_reusable_file "$base")"
   file="${file//./\\.}"
+  if [[ ! "$newref" =~ stable$ ]]; then
+    neutral=(
+      -e "/^[[:space:]]*#/s#${base}/(v[0-9]+-)?stable#${base}/<tier>#g"
+      -e "/^[[:space:]]*#/s#${base} stable channel#${base}/<tier> channel#g"
+    )
+  fi
   sed -E \
+    "${neutral[@]+"${neutral[@]}"}" \
     -e "s#^([[:space:]]*uses:[[:space:]]*petry-projects/[^@[:space:]]*/${file})@[^[:space:]]+#\1@${newref}#" \
     -e "s#^([[:space:]]*agent_ref:[[:space:]]*[\"']?)${base}/[^\"'[:space:]]+#\1${newref}#" \
     -e "s#^([[:space:]]*checkout_ref:[[:space:]]*[\"']?)${base}/[^\"'[:space:]]+#\1${newref}#"

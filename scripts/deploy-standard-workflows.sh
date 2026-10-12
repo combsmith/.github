@@ -596,7 +596,6 @@ stub_has_stale_stable_header() {
   [[ -n "$base" ]] || return 1
   re="^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)"
   grep -qE "$re" <<< "$existing" || return 1
-  ! grep -qE "$re" "$template" || return 1
   # A stable-pinned stub's header agrees with its pin, BUT only when the repo is
   # stable-tier. In ring-managed repos, a stable-pinned stub is itself an anomaly
   # that the repin will fix; the header must migrate too, so don't exempt in ring.
@@ -605,9 +604,12 @@ stub_has_stale_stable_header() {
     # Ring-managed repo with a tier: the stub should be ring-pinned, so the header
     # is stale regardless of the current pin.
     if [[ -n "$tier" ]] && [[ "$tier" != "stable" ]]; then
+      # The template may still carry the stable wording; ring renders (ring_repin_uses)
+      # and the header cleanup neutralize it, so the template never exempts a ring repo.
       return 0  # Flag as stale
     fi
   fi
+  ! grep -qE "$re" "$template" || return 1
   # Non-ring reusable or stable-tier repo: apply the exemption (don't flag if
   # the stub is stable-pinned, since the header agrees with the pin).
   ! grep -qE "^[[:space:]]*uses:.*@${base}/(v[0-9]+-)?stable([[:space:]]|\$)" <<< "$existing"
@@ -625,8 +627,14 @@ strip_stale_stable_header() {
     # Body comment blocks (consecutive comment lines) that name the stable channel are
     # dropped whole too, so a legacy `# Pinned to the moving ... stable channel` block under
     # `jobs:` does not survive and keep the detector true forever.
-    awk -v tpl="$template" -v re="^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)" '
-      BEGIN { while ((getline l < tpl) > 0) { if (l ~ /^[^#[:space:]]/) break; hdr = hdr l "\n" } }
+    awk -v tpl="$template" -v base="$base" -v re="^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)" '
+      BEGIN {
+        while ((getline l < tpl) > 0) { if (l ~ /^[^#[:space:]]/) break; hdr = hdr l "\n" }
+        # The template header may still name the stable channel; render it tier-neutral
+        # (same wording as ring_repin_uses) so cleanup never reinstalls it.
+        gsub(base "/(v[0-9]+-)?stable", base "/<tier>", hdr)
+        gsub(base " stable channel", base "/<tier> channel", hdr)
+      }
       function flush() { if (!stale) printf "%s", blk; blk = ""; stale = 0 }
       !body && /^[^#[:space:]]/ { body = 1; printf "%s", hdr }
       body && /^[[:space:]]*#/ { blk = blk $0 "\n"; if ($0 ~ re) stale = 1; next }
