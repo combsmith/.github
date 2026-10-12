@@ -56,8 +56,7 @@ permissions: {}
 
 jobs:
   dev-lead:
-    # Pinned to this repo's moving dev-lead ring channel tag (set by the
-    # standards sweep), not @main, so a broken
+    # Pinned to the moving dev-lead stable channel tag, not @main, so a broken
     # change to dev-lead can no longer gate its own fix (the self-host circular
     # dependency). Promotion is done by moving that channel tag centrally; this
     # caller is never edited on release. agent_ref threads the same channel into

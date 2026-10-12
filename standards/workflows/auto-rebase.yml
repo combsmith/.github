@@ -6,9 +6,8 @@
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All branch-update logic lives in the
 #     reusable workflow above.
-#   • You MUST NOT change: the `uses:` ref — it is pinned to this repo's ring
-#     channel for `auto-rebase`, set by the standards sweep (a moving tag
-#     advanced centrally). Never
+#   • You MUST NOT change: the `uses:` ref — it is pinned to the
+#     `auto-rebase/v2-stable` channel, a moving tag advanced centrally. Never
 #     repoint it to `@main`, a SHA, or a frozen `@vX` (see ci-standards.md →
 #     Reusable workflow versioning). Also do not change the trigger event,
 #     the concurrency group name,

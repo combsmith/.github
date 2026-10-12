@@ -7,9 +7,8 @@
 #   • This file is a THIN CALLER STUB. All idea→initiative dispatch logic (the
 #     `idea:approved` gate, the trusted-actor check, and the cross-repo dispatch
 #     to the central BMAD Scrum Master planner) lives in the reusable above.
-#   • You MUST NOT change: the `uses:` ref — it is pinned to this repo's ring
-#     channel for `initiative-planner`, set by the standards sweep (a moving
-#     tag advanced centrally).
+#   • You MUST NOT change: the `uses:` ref — it is pinned to the
+#     `initiative-planner/v1-stable` channel, a moving tag advanced centrally.
 #     Never repoint it to `@main`, a SHA, or a frozen `@vX` (see
 #     ci-standards.md → Reusable workflow versioning). Also do not change the
 #     trigger events or the `secrets:` block.
