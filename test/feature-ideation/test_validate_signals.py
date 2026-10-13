@@ -166,3 +166,12 @@ class TestPathConfinement:
 
         monkeypatch.setenv("VALIDATE_SIGNALS_EXTRA_ROOTS", str(tmp_path))
         assert os.path.realpath(str(tmp_path)) in module._allowed_roots()
+
+    def test_filesystem_root_is_never_an_allowed_root(self, monkeypatch):
+        """A filesystem-root CWD (container without WORKDIR) must not trust everything."""
+        import os
+
+        fs_root = os.path.abspath(os.sep)
+        monkeypatch.chdir(fs_root)
+        monkeypatch.setenv("VALIDATE_SIGNALS_EXTRA_ROOTS", fs_root)
+        assert fs_root not in module._allowed_roots()

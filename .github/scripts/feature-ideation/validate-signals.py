@@ -89,7 +89,9 @@ def _allowed_roots() -> list[str]:
     if runner_temp:
         roots.append(os.path.realpath(runner_temp))
     roots.append(_REPO_ROOT)
-    return roots
+    # A filesystem root ("/" or a Windows drive root, e.g. a container whose
+    # WORKDIR is unset) would trust every path and defeat confinement.
+    return [r for r in roots if os.path.dirname(r) != r]
 
 
 def _confine_path(raw: str | os.PathLike[str]) -> Path | None:
