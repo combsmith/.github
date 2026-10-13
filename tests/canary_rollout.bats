@@ -61,6 +61,30 @@ setup() {
   [ "$(clamp "$(round_div $((250*sum)) $((1000*n)))" 3 15)" -eq 15 ]
 }
 
+# ── baseline_sample_decision: baseline → "<waived> <target> <basis>" (#1244 item 16, ADR-0014) ──────────
+# The baseline read reports "unknown" when it was truncated and observed nothing countable. That is a
+# signal, not a count: the sample is sized at the clamp MINIMUM and never waived as "no caller".
+@test "baseline_sample_decision: an unknown baseline sizes at the clamp minimum and is never waived (#1244 item 16)" {
+  [ "$(baseline_sample_decision 250 3 15 3 true unknown)" = "false 3 unknown" ]
+  [ "$(baseline_sample_decision 250 3 15 3 false unknown)" = "false 3 unknown" ]
+  [ "$(baseline_sample_decision 250 5 15 3 true unknown)" = "false 5 unknown" ]
+}
+@test "baseline_sample_decision: a measured all-zero baseline is 'no caller' — waived only when the transition opts in (#548)" {
+  [ "$(baseline_sample_decision 250 3 15 3 true 0 0 0)" = "true 0 no-caller" ]
+  [ "$(baseline_sample_decision 250 3 15 3 false 0 0 0)" = "false 3 measured" ]
+  [ "$(baseline_sample_decision 250 3 15 3 "" 0 0 0)" = "false 3 measured" ]
+}
+@test "baseline_sample_decision: a measured baseline is sized by robust_sample_target, waiver or not" {
+  [ "$(baseline_sample_decision 250 3 15 3 true 28 28 28 28)" = "false 7 measured" ]
+  [ "$(baseline_sample_decision 250 3 15 3 false 437)" = "false 15 measured" ]
+  [ "$(baseline_sample_decision 250 3 15 3 true 1)" = "false 3 measured" ]
+}
+@test "baseline_sample_decision: no baseline at all is unknown, never a waiver — and a stray token is not read as a count" {
+  [ "$(baseline_sample_decision 250 3 15 3 true)" = "false 3 unknown" ]
+  [ "$(baseline_sample_decision 250 3 15 3 true 4 unknown 2)" = "false 3 unknown" ]
+  [ "$(baseline_sample_decision 250 3 15 3 true 4 x 2)" = "false 3 unknown" ]
+}
+
 # ── version-bump math (autocut front end, #1069) ──────────────────────────────
 @test "bump_version: patch increments the patch component" {
   [ "$(bump_version 2.1.0 patch)" = "2.1.1" ]
@@ -6171,13 +6195,13 @@ GHEOF
   [ ! -s "$flag" ]
 }
 
-@test "_baseline_daily: a truncated read that observed NOTHING countable is a non-zero floor, never 'no caller' (#1224 liveness)" {
+@test "_baseline_daily: a truncated read that observed NOTHING countable reports 'unknown' — a signal, not a count, and never 'no caller' (#1224 liveness, #1244 item 16)" {
   _ingress_stub
   local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
   run env CANARY_RINGS="$INGRESS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 CANARY_INGRESS_JOBS_MAX=2 _CANARY_UNRESOLVED_FLAG="$flag" \
     bash -c "source '$ORCH' && _baseline_daily dev-lead 3 org/skipbusy 2>/dev/null"
   [ "$status" -eq 0 ]
-  [ "$output" = "1" ]
+  [ "$output" = "unknown" ]
   [ ! -s "$flag" ]
 }
 
@@ -6968,6 +6992,42 @@ _ingress_frontier() {
   [[ "$output" != *"UNRESOLVED"* ]]
 }
 
+# #1244 item 16 end to end: the baseline-sized transition, with the baseline read stubbed to each basis.
+_item16_frontier() {   # <_baseline_daily output>
+  local rings="$BATS_TEST_TMPDIR/item16-rings.json"
+  jq '.agents.cfa.gate.transitions = {"next->ring0":{"dwell_hours":0,"sample_fraction_permille":250,
+        "sample_clamp_min":3,"sample_clamp_max":15,"waive_sample_if_no_caller":true}}' "$INGRESS_RINGS" > "$rings"
+  env CANARY_RINGS="$rings" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 bash -c "
+    source '$ORCH'
+    channel_commit() { case \"\$2\" in next) echo cand ;; *) echo prior ;; esac; }
+    candidate_cut_date() { echo 2026-01-01T00:00:00Z; }
+    _reusable_differs() { echo 0; }
+    _baseline_daily() { echo '$1'; }
+    _frontier_state cfa"
+}
+
+@test "_frontier_state: an UNKNOWN baseline holds at the clamp minimum and says so — it is not waived as 'no caller' (#1244 item 16)" {
+  _ingress_stub
+  run _item16_frontier unknown
+  [ "$status" -eq 0 ]
+  read -r _c frontier transition state _d _f sample target _rest <<< "$(printf '%s\n' "$output" | tail -1)"
+  [ "$frontier" = "ring0" ]
+  [ "$target" = "3" ]
+  [ "$sample" = "1" ]
+  [ "$state" = "SOAKING" ]
+  [[ "$output" == *"::notice::"*"baseline is unknown"*"clamp minimum (3)"* ]]
+}
+
+@test "_frontier_state: a MEASURED all-zero baseline is still waived as 'no caller' — unchanged (#548, #1244 item 16)" {
+  _ingress_stub
+  run _item16_frontier '0 0 0'
+  [ "$status" -eq 0 ]
+  read -r _c frontier transition state _d _f sample target _rest <<< "$(printf '%s\n' "$output" | tail -1)"
+  [ "$state" = "PROMOTE" ]
+  [ "$target" = "0" ]
+  [[ "$output" != *"baseline is unknown"* ]]
+}
+
 @test "_blocker_body: UNRESOLVED triage explains the blind member, not a cut-date indeterminate (#1224)" {
   run bash -c "source '$ORCH' && _blocker_body dev-lead 'next->ring0' cand 0 0 UNRESOLVED petry-projects/.github-private '- \`org/collapsed\` — ingress present'"
   [ "$status" -eq 0 ]
@@ -7437,13 +7497,13 @@ _legacy_run() { jq -n -c --arg c "$1" --arg t "$(date -u -d "-$2 days" +%Y-%m-%d
   [ "$(robust_sample_target 250 3 15 3 $output)" -eq 15 ]
 }
 
-@test "_baseline_daily: a truncated per-role list with NOTHING countable is the non-zero floor, never 'no caller' (#1244)" {
+@test "_baseline_daily: a truncated per-role list with NOTHING countable reports 'unknown', never 'no caller' (#1244 item 16)" {
   _legacy_runs_stub
   _legacy_busy_history "[]" skipped
   run env CANARY_RINGS="$RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
     bash -c "source '$ORCH' && _baseline_daily dev-lead 14 org/legacy 2>/dev/null"
   [ "$status" -eq 0 ]
-  [ "$output" = "1" ]
+  [ "$output" = "unknown" ]
 }
 
 @test "_cumulative_health: a failure older than the newest 1000 runs still counts against the candidate (#1244)" {
