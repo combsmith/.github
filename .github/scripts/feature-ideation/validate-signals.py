@@ -97,8 +97,13 @@ def _confine_path(raw: str | os.PathLike[str]) -> Path | None:
     """
     candidate = os.path.realpath(raw)
     for root in _allowed_roots():
-        if os.path.commonpath([root, candidate]) == root:
-            return Path(candidate)
+        try:
+            if os.path.commonpath([root, candidate]) == root:
+                return Path(candidate)
+        except ValueError:
+            # On Windows, os.path.commonpath raises ValueError when paths are
+            # on different drives (e.g., C:\ and D:\). Treat this as outside.
+            continue
     return None
 
 
