@@ -1616,7 +1616,8 @@ _cumulative_health() {
 
 # _baseline_daily <agent> <window_days> <repo...> — per-day EXECUTED counts on the
 # source tier over the trailing window_days (window_days integers, zero-filled — fewer only when a
-# capped read left the older days unknown, see _ingress_agent_runs and _agent_run_json),
+# capped read left the older days unknown, see _ingress_agent_runs and _agent_run_json; the single
+# token "unknown" when a capped read observed nothing countable at all),
 # feeding the robust spike-capped baseline for the sample target (#548).
 _baseline_daily() {
   local agent="$1" window="$2"; shift 2
@@ -1635,8 +1636,8 @@ _baseline_daily() {
   # still counts. The boundary day is kept only when it has observed runs (a lower bound, never a false
   # zero). A day is dropped from the baseline only when NO member knows it. A truncated read must also
   # never look like "no caller" (an all-zero baseline lets waive_sample_if_no_caller skip sampling in
-  # _pair_state), so if nothing countable was observed the baseline is a non-zero floor, which sizes the
-  # sample target at its clamp minimum.
+  # _pair_state), so if nothing countable was observed the baseline is reported as the single token
+  # "unknown", which sizes the sample target at its clamp minimum and is never waived (#1244 item 16).
   for repo in "$@"; do
     tflag="$(mktemp 2>/dev/null || true)"   # unwritable → the ingress cap stays strict (UNRESOLVED)
     json="$(_CANARY_INGRESS_TRUNC_FLAG="$tflag" _agent_run_json "$agent" "$repo" "$since")"
@@ -1666,7 +1667,9 @@ _baseline_daily() {
     total=$(( total + count ))
     out+="${count} "
   done
-  [ "$any_trunc" -eq 1 ] && [ "$total" -eq 0 ] && out="1 "
+  # Truncated and nothing countable observed: the traffic is unknown, not zero. Say so with the token the
+  # pure core understands (baseline_sample_decision) rather than a made-up count (#1244 item 16).
+  [ "$any_trunc" -eq 1 ] && [ "$total" -eq 0 ] && out="unknown "
   echo "${out% }"
 }
 
@@ -1978,19 +1981,23 @@ _pair_state() {
   elif [ -n "$(_gate_knob "$agent" "$transition" sample_min)" ]; then
     target="$(_gate_knob "$agent" "$transition" sample_min)"
   else
-    local win frac cmin cmax spike_cap daily baseline_total
+    local win frac cmin cmax spike_cap daily basis
     win="${SOAK_WINDOW_DAYS:-$(_gate_field "$agent" baseline_window_days)}"; win="${win:-14}"
     frac="$(_gate_knob "$agent" "$transition" sample_fraction_permille)"; frac="${frac:-250}"
     cmin="$(_gate_knob "$agent" "$transition" sample_clamp_min)"; cmin="${cmin:-3}"
     cmax="$(_gate_knob "$agent" "$transition" sample_clamp_max)"; cmax="${cmax:-15}"
     spike_cap="$(_gate_field "$agent" baseline_spike_cap_multiple)"; spike_cap="${spike_cap:-3}"
     daily="$(_baseline_daily "$agent" "$win" "${src_repos[@]}")"
-    baseline_total=0; for c in $daily; do baseline_total=$(( baseline_total + c )); done
-    if [ "$baseline_total" -eq 0 ] && [ "$(_gate_knob "$agent" "$transition" waive_sample_if_no_caller)" = "true" ]; then
-      waived="true"   # dwell-only: the source tier has no caller (#548)
-    else
-      # shellcheck disable=SC2086
-      target="$(robust_sample_target "$frac" "$cmin" "$cmax" "$spike_cap" $daily)"
+    # The pure core decides: a measured all-zero baseline may be waived as "no caller" (#548), an unknown one
+    # (truncated read, nothing countable) is sized at the clamp minimum and never waived (#1244 item 16).
+    # shellcheck disable=SC2086
+    read -r waived target basis < <(baseline_sample_decision "$frac" "$cmin" "$cmax" "$spike_cap" \
+      "$(_gate_knob "$agent" "$transition" waive_sample_if_no_caller)" $daily)
+    # A decision that printed nothing must not read as "waived" or as a zero target: hold at the minimum.
+    case "$waived" in true|false) ;; *) waived="false"; basis="unknown" ;; esac
+    case "$target" in ''|*[!0-9]*) target="$cmin" ;; esac
+    if [ "$basis" = "unknown" ]; then
+      echo "::notice::$agent $transition: the baseline is unknown (a truncated read observed nothing countable on the source tier) — sample sized at the clamp minimum ($target), not waived." >&2
     fi
   fi
 
