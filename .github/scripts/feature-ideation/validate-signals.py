@@ -13,8 +13,10 @@ Exit codes:
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -67,6 +69,39 @@ def _check_date_time(instance) -> bool:  # noqa: ANN001 — jsonschema callback 
     return True
 
 
+# Repo checkout containing this script (…/.github/scripts/feature-ideation/).
+_REPO_ROOT = os.path.realpath(Path(__file__).resolve().parent.parent.parent.parent)
+
+
+def _allowed_roots() -> list[str]:
+    """Trusted base directories that CLI path arguments must resolve inside.
+
+    Covers every legitimate caller: repo fixtures/schemas (CWD or this script's
+    checkout), the reusable workflow's ``${{ runner.temp }}/signals.json``
+    (``$RUNNER_TEMP``), and test scratch files (the system temp dir).
+    """
+    roots = [os.path.realpath(os.getcwd()), os.path.realpath(tempfile.gettempdir())]
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    if runner_temp:
+        roots.append(os.path.realpath(runner_temp))
+    roots.append(_REPO_ROOT)
+    return roots
+
+
+def _confine_path(raw: str | os.PathLike[str]) -> Path | None:
+    """Resolve ``raw`` and return it only if it lies inside an allowed root.
+
+    Guards against path traversal (``../``, absolute paths, symlinks) via the
+    CLI arguments — SonarCloud pythonsecurity:S8707. Returns ``None`` when the
+    resolved path escapes every allowed root.
+    """
+    candidate = os.path.realpath(raw)
+    for root in _allowed_roots():
+        if os.path.commonpath([root, candidate]) == root:
+            return Path(candidate)
+    return None
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2 or len(argv) > 3:
         sys.stderr.write(
@@ -74,15 +109,21 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
-    signals_path = Path(argv[1])
-    if len(argv) == 3:
-        schema_path = Path(argv[2])
-    else:
-        schema_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "schemas"
-            / "signals.schema.json"
+    raw_schema = argv[2] if len(argv) == 3 else os.path.join(
+        _REPO_ROOT, ".github", "schemas", "signals.schema.json"
+    )
+    signals_path = _confine_path(argv[1])
+    if signals_path is None:
+        sys.stderr.write(
+            f"[validate-signals] path is outside the allowed directories: {argv[1]}\n"
         )
+        return 2
+    schema_path = _confine_path(raw_schema)
+    if schema_path is None:
+        sys.stderr.write(
+            f"[validate-signals] schema path is outside the allowed directories: {raw_schema}\n"
+        )
+        return 2
 
     if not signals_path.exists():
         sys.stderr.write(f"[validate-signals] not found: {signals_path}\n")
