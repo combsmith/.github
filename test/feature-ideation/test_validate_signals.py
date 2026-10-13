@@ -142,15 +142,27 @@ class TestPathConfinement:
         assert rc == 2
         assert "outside the allowed directories" in capsys.readouterr().err
 
-    def test_default_allowed_roots_include_cwd_and_temp(self, tmp_path, monkeypatch):
-        """Default roots cover the CWD, the temp dir, $RUNNER_TEMP and the repo."""
+    def test_default_allowed_roots_exclude_system_temp(self, tmp_path, monkeypatch):
+        """Default roots cover CWD, $RUNNER_TEMP and the repo, not the system temp dir."""
         import os
         import tempfile
 
-        monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
-        monkeypatch.chdir(tmp_path)
+        runner = tmp_path / "runner"
+        runner.mkdir()
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.setenv("RUNNER_TEMP", str(runner))
+        monkeypatch.delenv("VALIDATE_SIGNALS_EXTRA_ROOTS", raising=False)
+        monkeypatch.chdir(cwd)
         roots = module._allowed_roots()
         assert os.path.realpath(os.getcwd()) in roots
-        assert os.path.realpath(tempfile.gettempdir()) in roots
-        assert os.path.realpath(str(tmp_path)) in roots
+        assert os.path.realpath(str(runner)) in roots
         assert str(repo_root) in roots
+        assert os.path.realpath(tempfile.gettempdir()) not in roots
+
+    def test_extra_roots_env_is_opt_in(self, tmp_path, monkeypatch):
+        """$VALIDATE_SIGNALS_EXTRA_ROOTS adds explicitly-listed directories."""
+        import os
+
+        monkeypatch.setenv("VALIDATE_SIGNALS_EXTRA_ROOTS", str(tmp_path))
+        assert os.path.realpath(str(tmp_path)) in module._allowed_roots()

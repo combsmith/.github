@@ -16,7 +16,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -78,9 +77,14 @@ def _allowed_roots() -> list[str]:
 
     Covers every legitimate caller: repo fixtures/schemas (CWD or this script's
     checkout), the reusable workflow's ``${{ runner.temp }}/signals.json``
-    (``$RUNNER_TEMP``), and test scratch files (the system temp dir).
+    (``$RUNNER_TEMP``). The shared system temp dir is deliberately NOT trusted;
+    callers that need other locations opt in explicitly by listing them in
+    ``$VALIDATE_SIGNALS_EXTRA_ROOTS`` (``os.pathsep``-separated).
     """
-    roots = [os.path.realpath(os.getcwd()), os.path.realpath(tempfile.gettempdir())]
+    roots = [os.path.realpath(os.getcwd())]
+    for extra in os.environ.get("VALIDATE_SIGNALS_EXTRA_ROOTS", "").split(os.pathsep):
+        if extra:
+            roots.append(os.path.realpath(extra))
     runner_temp = os.environ.get("RUNNER_TEMP")
     if runner_temp:
         roots.append(os.path.realpath(runner_temp))

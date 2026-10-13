@@ -10,6 +10,11 @@ VALIDATOR="${TT_REPO_ROOT}/.github/scripts/feature-ideation/validate-signals.py"
 SCHEMA="${TT_REPO_ROOT}/.github/schemas/signals.schema.json"
 FIX="${TT_FIXTURES_DIR}/expected"
 
+setup() {
+  # validate-signals.py confines paths; opt the bats scratch dir in.
+  export VALIDATE_SIGNALS_EXTRA_ROOTS="${BATS_TEST_TMPDIR}"
+}
+
 @test "schema: validator script exists and is executable" {
   [ -f "$VALIDATOR" ]
   [ -r "$VALIDATOR" ]
