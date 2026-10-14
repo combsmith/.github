@@ -24,7 +24,7 @@
 # NOT call `set` itself and runs nothing at source time.
 #
 # Reads (all optional, with defaults):
-#   - $ORG               — GitHub org slug to scope the search (default: petry-projects)
+#   - $ORG               — GitHub org slug to scope the search (default: combsmith)
 #   - $PR_LIMITS_CONFIG  — path to the pr-limits.json single source of truth
 #                          (default: <repo>/standards/pr-limits.json, resolved
 #                          relative to this file)
@@ -89,7 +89,7 @@ plg_is_exempt_actor() {
 # ---------------------------------------------------------------------------
 plg_count_open_automation_prs() {
   local config="$1"
-  local org="${ORG:-petry-projects}"
+  local org="${ORG:-combsmith}"
   local exempt_actors exempt_labels prs
 
   exempt_actors="$(jq -c '.exempt_actors // []' "$config" 2>/dev/null || echo '[]')"
@@ -131,7 +131,7 @@ plg_count_open_automation_prs() {
 # ---------------------------------------------------------------------------
 plg_count_source_prs() {
   local source="$1"
-  local org="${ORG:-petry-projects}"
+  local org="${ORG:-combsmith}"
   local prs
 
   prs="$(gh search prs "head:$source/" \

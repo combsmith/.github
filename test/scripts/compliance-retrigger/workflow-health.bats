@@ -56,7 +56,7 @@ teardown() {
   # Use DRY_RUN=false so the current code's enable path would fire if present;
   # the fix must prevent it unconditionally, not just in dry-run mode.
   GH_TOKEN=fake \
-    ORG=petry-projects \
+    ORG=combsmith \
     DRY_RUN=false \
     GH_STUB_WORKFLOW_STATE=disabled_manually \
     run bash "$TT_SCRIPT"
@@ -69,7 +69,7 @@ teardown() {
 
 @test "running the script does not read dev-lead.yml workflow state" {
   GH_TOKEN=fake \
-    ORG=petry-projects \
+    ORG=combsmith \
     DRY_RUN=true \
     run bash "$TT_SCRIPT"
 
@@ -86,7 +86,7 @@ teardown() {
 
 @test "script output does not mention Workflows re-enabled" {
   GH_TOKEN=fake \
-    ORG=petry-projects \
+    ORG=combsmith \
     DRY_RUN=true \
     run bash "$TT_SCRIPT"
 
@@ -96,7 +96,7 @@ teardown() {
 
 @test "script output does not mention Workflows already active" {
   GH_TOKEN=fake \
-    ORG=petry-projects \
+    ORG=combsmith \
     DRY_RUN=true \
     run bash "$TT_SCRIPT"
 

@@ -11,14 +11,14 @@ not misconfiguration or drift**.
 
 - **Decision record (why this exists / why it is source-side):**
   [`docs/initiatives/pull-request-limits-adr.md`](../docs/initiatives/pull-request-limits-adr.md)
-  (Story 1, [#506](https://github.com/petry-projects/.github/issues/506)).
+  (Story 1, [#506](https://github.com/combsmith/.github/issues/506)).
 - **Single source of truth (the values):**
   [`standards/pr-limits.json`](pr-limits.json) (Story 2,
-  [#507](https://github.com/petry-projects/.github/issues/507)).
+  [#507](https://github.com/combsmith/.github/issues/507)).
 - **Apply path (where it is enforced):**
   [`scripts/lib/pr-limit-gate.sh`](../scripts/lib/pr-limit-gate.sh); live-path
   wiring + rollout scope is Story 3
-  ([#508](https://github.com/petry-projects/.github/issues/508)).
+  ([#508](https://github.com/combsmith/.github/issues/508)).
 
 ---
 
@@ -52,7 +52,7 @@ jq '.org_wide.automation_open_pr_cap' standards/pr-limits.json
 ```
 
 The config carries its own inline `_note` fields recording the human sign-off
-(epic [#505](https://github.com/petry-projects/.github/issues/505) gate) and the
+(epic [#505](https://github.com/combsmith/.github/issues/505) gate) and the
 rationale for the number. Consumers (the apply path in §3, and any future
 PR-creating workflow) **must** read the value from this file — never hardcode it.
 
@@ -87,8 +87,8 @@ and honours `DRY_RUN` / `DEV_LEAD_DRY_RUN` by computing and logging the decision
 but always returning allow.
 
 > **Wiring status.** The library and its tests exist, and the gate is now wired
-> into the PR-creation engine in `petry-projects/.github-private` (**Story 3**,
-> [#508](https://github.com/petry-projects/.github/issues/508)). Enforcement
+> into the PR-creation engine in `combsmith/.github-private` (**Story 3**,
+> [#508](https://github.com/combsmith/.github/issues/508)). Enforcement
 > activates as that change promotes through the dev-lead channels (ring0 →
 > stable) via the normal canary soak — so the gate is wired but not yet
 > enforcing on the running channel.
@@ -109,7 +109,7 @@ as policy, not drift.
 |---|---|---|
 | `dependabot[bot]` | actor | Already bounded per-ecosystem by `open-pull-requests-limit` (see §5). Security update PRs must never be starved by a general throttle. |
 | `OrganizationAdmin` | actor | Human break-glass / admin PRs. |
-| `@petry-projects/org-leads` | actor | Maintainer PRs — human review traffic, not automation backlog. |
+| `@combsmith/org-leads` | actor | Maintainer PRs — human review traffic, not automation backlog. |
 | `dependabot-automerge-petry` | actor (App) | Operates on *existing* PRs (approve / merge); it does not add to the open-PR queue. |
 | `security` | label | Urgent security / hotfix PRs bypass any throttle. |
 
@@ -182,7 +182,7 @@ them touches a GitHub setting or ruleset — there is no such surface to apply
 - [`standards/pr-limits.json`](pr-limits.json) — single source of truth (Story 2, #507).
 - [`scripts/lib/pr-limit-gate.sh`](../scripts/lib/pr-limit-gate.sh) — source-side
   admission gate (does its own `gh search prs` enumeration); wired into the
-  PR-creation engine in `petry-projects/.github-private` (Story 3).
+  PR-creation engine in `combsmith/.github-private` (Story 3).
 - [`standards/dependabot-policy.md`](dependabot-policy.md) — the complementary
   per-ecosystem Dependabot cap.
 - [`test/scripts/pr-limits/`](../test/scripts/pr-limits) — config + gate tests.
