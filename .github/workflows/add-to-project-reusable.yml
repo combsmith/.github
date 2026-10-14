@@ -16,7 +16,7 @@
 # standards/initiatives-project.md.
 #
 # Auth: mints a fresh installation token per run via
-# actions/create-github-app-token from the `petry-projects-planner` GitHub
+# actions/create-github-app-token from the `combsmith-planner` GitHub
 # App. Callers pass the App credentials with `secrets: inherit`:
 #   INITIATIVES_APP_ID, INITIATIVES_APP_PRIVATE_KEY.
 #
@@ -66,10 +66,10 @@ on:
         default: "add-to-project/stable"
     secrets:
       INITIATIVES_APP_ID:
-        description: "App ID of the petry-projects-planner GitHub App"
+        description: "App ID of the combsmith-planner GitHub App"
         required: true
       INITIATIVES_APP_PRIVATE_KEY:
-        description: "PEM private key for the petry-projects-planner GitHub App"
+        description: "PEM private key for the combsmith-planner GitHub App"
         required: true
 
 permissions: {}
