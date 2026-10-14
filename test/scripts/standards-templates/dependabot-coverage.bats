@@ -130,12 +130,12 @@ published_workflow_dirs() {
   while IFS=$'\t' read -r dir ignored; do
     case "$dir" in
       /standards/*)
-        [[ ",${ignored}," == *",petry-projects/*,"* ]] || bad+=("$dir")
+        [[ ",${ignored}," == *",combsmith/*,"* ]] || bad+=("$dir")
         ;;
     esac
   done < <(actions_entries)
   if [ "${#bad[@]}" -gt 0 ]; then
-    echo "github-actions entry must ignore petry-projects/* (channel pins are moved by release tooling): ${bad[*]}"
+    echo "github-actions entry must ignore combsmith/* (channel pins are moved by release tooling): ${bad[*]}"
     return 1
   fi
 }
@@ -162,12 +162,12 @@ updates:
     labels:
       - "security"
     ignore:
-      - dependency-name: "petry-projects/*"
+      - dependency-name: "combsmith/*"
       - dependency-name: "actions/checkout"
 YAML
   run actions_entries
   [ "$status" -eq 0 ]
-  [ "$output" = "$(printf '/\t\n/standards/workflows\t\n/standards/other\tpetry-projects/*,actions/checkout\n/standards/third\tpetry-projects/*,actions/checkout')" ]
+  [ "$output" = "$(printf '/\t\n/standards/workflows\t\n/standards/other\tcombsmith/*,actions/checkout\n/standards/third\tcombsmith/*,actions/checkout')" ]
 }
 
 @test "parser: a dependency-name under allow: is not read as ignored" {
@@ -178,13 +178,13 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/standards/workflows"
     allow:
-      - dependency-name: "petry-projects/*"
+      - dependency-name: "combsmith/*"
     labels:
       - "security"
   - package-ecosystem: "github-actions"
     directory: "/standards/other"
     ignore:
-      - dependency-name: "petry-projects/*"
+      - dependency-name: "combsmith/*"
         versions: ["1.x"]
       - dependency-name: "actions/checkout"
     allow:
@@ -192,7 +192,7 @@ updates:
 YAML
   run actions_entries
   [ "$status" -eq 0 ]
-  [ "$output" = "$(printf '/standards/workflows\t\n/standards/other\tpetry-projects/*,actions/checkout')" ]
+  [ "$output" = "$(printf '/standards/workflows\t\n/standards/other\tcombsmith/*,actions/checkout')" ]
 }
 
 @test "parser: a trailing YAML comment is not part of a directory or a dependency name" {
@@ -203,14 +203,14 @@ updates:
   - package-ecosystem: "github-actions" # actions
     directory: "/standards/workflows" # the published templates
     ignore:
-      - dependency-name: "petry-projects/*" # channel pins
+      - dependency-name: "combsmith/*" # channel pins
   - package-ecosystem: github-actions
     directory: /standards/plain   # unquoted
     directories: ["/a", "/b"] # inline list
 YAML
   run actions_entries
   [ "$status" -eq 0 ]
-  [ "$output" = "$(printf '/standards/workflows\tpetry-projects/*\n/standards/plain\t\n/a\t\n/b\t')" ]
+  [ "$output" = "$(printf '/standards/workflows\tcombsmith/*\n/standards/plain\t\n/a\t\n/b\t')" ]
 }
 
 @test "parser: a root-only config covers no standards directory (the #1172 state)" {

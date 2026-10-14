@@ -34,7 +34,7 @@ set -euo pipefail
 # NB: matching logic is implemented entirely in the embedded Python block
 # below. Earlier drafts had standalone bash `normalize_title` /
 # `jaccard_similarity` helpers that were never called; removed per Copilot
-# review on PR petry-projects/.github#85.
+# review on PR combsmith/.github#85.
 
 match_discussions_main() {
   local signals_path="$1"
@@ -43,7 +43,7 @@ match_discussions_main() {
 
   # Validate threshold is a parseable float in [0, 1] BEFORE handing it to
   # Python, so a typo doesn't surface as an opaque traceback. Caught by
-  # Copilot review on PR petry-projects/.github#85.
+  # Copilot review on PR combsmith/.github#85.
   if ! printf '%s' "$threshold" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
     printf '[match-discussions] MATCH_THRESHOLD must be a non-negative number, got: %s\n' "$threshold" >&2
     return 64
@@ -132,7 +132,7 @@ disc_norm = [
 # Instead we enumerate all (proposal, discussion) pairs, sort by similarity
 # descending (ties broken by original proposal index for stability), then
 # assign greedily. This guarantees globally higher-value matches are honoured
-# first. Caught by CodeRabbit review on PR petry-projects/.github#85.
+# first. Caught by CodeRabbit review on PR combsmith/.github#85.
 
 # Collect valid proposals with their original index (for tie-breaking + new_candidates).
 proposals_indexed: list[tuple[int, dict]] = []
