@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/petry-projects/.github/standards/personas/persona.schema.json",
+  "$id": "https://github.com/combsmith/.github/standards/personas/persona.schema.json",
   "title": "Agentic Persona Manifest",
-  "description": "The single index-of-record for one agentic persona. It ties together the persona's identity, the definition layer(s) that implement it, the skills it uses, its trigger surface, its trust/permission posture, its eval gate, and a pointer to its canary-rings entry. The manifest does NOT duplicate ring membership or gate knobs — those live in petry-projects/.github standards/canary-rings.json (the single source of truth). See standards/persona-standards.md.",
+  "description": "The single index-of-record for one agentic persona. It ties together the persona's identity, the definition layer(s) that implement it, the skills it uses, its trigger surface, its trust/permission posture, its eval gate, and a pointer to its canary-rings entry. The manifest does NOT duplicate ring membership or gate knobs — those live in combsmith/.github standards/canary-rings.json (the single source of truth). See standards/persona-standards.md.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "id", "name", "title", "summary", "status", "owner", "definition", "triggers", "trust", "canary"],
@@ -240,7 +240,7 @@
       "properties": {
         "registry": {
           "type": "string",
-          "description": "Path to the canonical ring registry (petry-projects/.github standards/canary-rings.json)."
+          "description": "Path to the canonical ring registry (combsmith/.github standards/canary-rings.json)."
         },
         "agent": {
           "type": "string",

@@ -53,7 +53,7 @@ FIX="${TT_FIXTURES_DIR}/expected"
 }
 
 @test "schema: invalid date-time scan_date FAILS validation (format checker enforced)" {
-  # Caught by Copilot review on PR petry-projects/.github#85:
+  # Caught by Copilot review on PR combsmith/.github#85:
   # Draft202012Validator does NOT enforce `format` keywords by default.
   # The validator must instantiate FormatChecker explicitly.
   bad_file="${BATS_TEST_TMPDIR}/bad-scan-date.json"
@@ -79,7 +79,7 @@ FIX="${TT_FIXTURES_DIR}/expected"
 }
 
 @test "schema: SCHEMA_VERSION constant matches schema file version comment" {
-  # CodeRabbit on PR petry-projects/.github#85: enforce that the
+  # CodeRabbit on PR combsmith/.github#85: enforce that the
   # SCHEMA_VERSION constant in collect-signals.sh stays in lockstep with
   # the version annotation in signals.schema.json. Bumping one without
   # the other is a compatibility break.

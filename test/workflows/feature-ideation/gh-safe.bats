@@ -70,7 +70,7 @@ teardown() {
 # ---------------------------------------------------------------------------
 
 @test "rest: EXITS NON-ZERO on auth failure (gh exit 4) and reports the failure category" {
-  # CodeRabbit on PR petry-projects/.github#85: the previous assertion
+  # CodeRabbit on PR combsmith/.github#85: the previous assertion
   # ended with `|| true`, so it always passed regardless of the message
   # content. Use --separate-stderr to capture stderr and assert the
   # structured `[gh-safe][rest-failure]` prefix is emitted.
@@ -169,7 +169,7 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
-# Regression tests for Copilot review feedback on PR petry-projects/.github#85
+# Regression tests for Copilot review feedback on PR combsmith/.github#85
 # ---------------------------------------------------------------------------
 
 @test "graphql: invalid --jq filter EXITS NON-ZERO instead of returning []" {

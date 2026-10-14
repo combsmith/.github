@@ -1,7 +1,7 @@
 # Agentic Persona Standards
 
 Standard for defining, onboarding, and rolling out a new **agentic persona**
-across the `petry-projects` fleet.
+across the `combsmith` fleet.
 
 A persona is a named agent role — Dev-Lead, PR-Reviewer, Bob (Scrum Master),
 Mary (Analyst), Murat (Test Architect) — that helps the org **design, build,
@@ -33,7 +33,7 @@ an eval gate, and a canary onboarding step.
    manifest layers on top of a vendored framework agent — it points *into*
    `frameworks/` at a pinned version and records any local override as an
    explicit upstream-contribution candidate. Vendored files are never
-   hand-edited (see [`prompts/bmad/README.md`](https://github.com/petry-projects/.github-private)
+   hand-edited (see [`prompts/bmad/README.md`](https://github.com/combsmith/.github-private)
    in `.github-private` and each `frameworks/*/VENDOR.md`).
 
 3. **Advisory by default; write is opt-in.** A new persona is assumed to be

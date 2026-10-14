@@ -1,7 +1,7 @@
 # Persona manifest — the single index-of-record for one agentic persona.
 # Copy this directory to `.github-private/personas/<id>/` and fill it in.
-# Validate: it must conform to petry-projects/.github standards/personas/persona.schema.json
-# Standard: petry-projects/.github standards/persona-standards.md
+# Validate: it must conform to combsmith/.github standards/personas/persona.schema.json
+# Standard: combsmith/.github standards/persona-standards.md
 #
 # Golden rules while editing:
 #   • The manifest POINTS AT things; it does not duplicate them.
@@ -27,7 +27,7 @@ summary: >-
 status: draft
 
 # Owning team, org/team form (matches CODEOWNERS). Team ownership only.
-owner: petry-projects/CHANGE-ME
+owner: combsmith/CHANGE-ME
 
 # --- How the persona is actually implemented ------------------------------
 definition:
@@ -118,7 +118,7 @@ trust:
 # --- CI wiring (omit entirely for advisory personas that run inside an
 #     existing workflow and ship no reusable of their own) ------------------
 # runtime:
-#   host: petry-projects/.github-private
+#   host: combsmith/.github-private
 #   reusable: .github/workflows/CHANGE-ME-reusable.yml
 #   caller_stub: .github/workflows/CHANGE-ME.yml
 #   run_workflow: CHANGE-ME                 # MUST match canary-rings.json run_workflow
@@ -134,7 +134,7 @@ evals:
 # --- Canary pointer (single source of truth is canary-rings.json) ---------
 # Do NOT restate rings/members/gate here — reference the registry entry by id.
 canary:
-  registry: petry-projects/.github/standards/canary-rings.json
+  registry: combsmith/.github/standards/canary-rings.json
   agent: change-me              # MUST equal `id`
 
 references: []
