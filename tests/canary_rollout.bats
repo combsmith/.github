@@ -152,7 +152,7 @@ setup() {
 # ── _reusable_differs: cross-repo host-aware blob compare (#613) ───────────────
 # When an agent's host != THIS_REPO (e.g. dev-lead hosted in .github-private while the
 # engine runs from .github), the reusable blob is NOT in the local checkout — the compare
-# must go through `gh api` on the host. agent-shield (host = petry-projects/.github) is the
+# must go through `gh api` on the host. agent-shield (host = combsmith/.github) is the
 # cross-repo agent here, with THIS_REPO forced to .github-private via GITHUB_REPOSITORY.
 @test "_reusable_differs: cross-repo agent resolves host blobs via gh api — differ → 1" {
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
@@ -162,7 +162,7 @@ setup() {
     echo '  *"ref=PRIOR"*) echo "bbbbbbbbbb" ;;'
     echo '  *) echo "" ;;'
     echo 'esac'; } > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && _reusable_differs agent-shield CAND PRIOR"
   [ "$status" -eq 0 ]; [ "$output" = "1" ]
 }
@@ -170,7 +170,7 @@ setup() {
 @test "_reusable_differs: cross-repo agent — identical host blob → 0" {
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
   printf '#!/usr/bin/env bash\necho "samesamesame"\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && _reusable_differs agent-shield CAND PRIOR"
   [ "$status" -eq 0 ]; [ "$output" = "0" ]
 }
@@ -178,7 +178,7 @@ setup() {
 @test "_reusable_differs: cross-repo agent — unresolvable blob fails CLOSED → 1" {
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
   printf '#!/usr/bin/env bash\necho ""\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && _reusable_differs agent-shield CAND PRIOR"
   [ "$status" -eq 0 ]; [ "$output" = "1" ]
 }
@@ -202,7 +202,7 @@ setup() {
 
 # ── canary-rings.json SoT shape (rings + gate knobs) ──────────────────────────
 @test "canary-rings.json: ci-failure-analyst onboarded (this-repo host, standard rings, #1159)" {
-  run jq -e '.agents["ci-failure-analyst"].host == "petry-projects/.github-private"' "$RINGS"
+  run jq -e '.agents["ci-failure-analyst"].host == "combsmith/.github-private"' "$RINGS"
   [ "$status" -eq 0 ]
   run jq -e '.agents["ci-failure-analyst"].reusable == ".github/workflows/ci-failure-analyst-reusable.yml"' "$RINGS"
   [ "$status" -eq 0 ]
@@ -218,11 +218,11 @@ setup() {
 }
 
 @test "canary-rings.json: valid JSON + dev-lead host + ordered rings" {
-  run jq -e '.agents["dev-lead"].host == "petry-projects/.github-private"' "$RINGS"
+  run jq -e '.agents["dev-lead"].host == "combsmith/.github-private"' "$RINGS"
   [ "$status" -eq 0 ]
   run bash -c "jq -r '.agents[\"dev-lead\"].rings | sort_by(.order) | map(.channel) | join(\",\")' '$RINGS'"
   [ "$output" = "next,ring0,ring1,stable" ]
-  run jq -e '.agents["dev-lead"].rings[] | select(.channel=="ring1") | (.members | index("petry-projects/TalkTerm")) and (.members | index("petry-projects/bmad-bgreat-suite"))' "$RINGS"
+  run jq -e '.agents["dev-lead"].rings[] | select(.channel=="ring1") | (.members | index("combsmith/TalkTerm")) and (.members | index("combsmith/bmad-bgreat-suite"))' "$RINGS"
   [ "$status" -eq 0 ]
 }
 
@@ -233,12 +233,12 @@ setup() {
   # TalkTerm/bmad traffic (organic or human-triggered) arrives.
   local a
   for a in initiative-planner idea-triage; do
-    run jq -e --arg a "$a" '.agents[$a].host == "petry-projects/.github"' "$RINGS"
+    run jq -e --arg a "$a" '.agents[$a].host == "combsmith/.github"' "$RINGS"
     [ "$status" -eq 0 ]
     run bash -c "jq -r --arg a '$a' '.agents[\$a].rings | sort_by(.order) | map(.channel) | join(\",\")' '$RINGS'"
     [ "$output" = "next,ring0,ring1,stable" ]
     # ring1 = the real consumers that gate ring1->stable
-    run jq -e --arg a "$a" '.agents[$a].rings[] | select(.channel=="ring1") | (.members|index("petry-projects/TalkTerm")) and (.members|index("petry-projects/bmad-bgreat-suite"))' "$RINGS"
+    run jq -e --arg a "$a" '.agents[$a].rings[] | select(.channel=="ring1") | (.members|index("combsmith/TalkTerm")) and (.members|index("combsmith/bmad-bgreat-suite"))' "$RINGS"
     [ "$status" -eq 0 ]
     # standard #548 gate: inner rings waive, ring1->stable needs >=1 real run
     run jq -e --arg a "$a" '.agents[$a].gate.transitions["next->ring0"].waive_sample_if_no_caller == true and .agents[$a].gate.transitions["ring0->ring1"].waive_sample == true and .agents[$a].gate.transitions["ring1->stable"].sample_min == 1' "$RINGS"
@@ -284,12 +284,12 @@ setup() {
 # ── orchestrator: resolve_members (host-relative tokens) ──────────────────────
 @test "orchestrator: resolve_members expands \$host / \$org_infra / * " {
   run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead next"
-  [ "$status" -eq 0 ]; [ "$output" = "petry-projects/.github-private" ]
+  [ "$status" -eq 0 ]; [ "$output" = "combsmith/.github-private" ]
   run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead ring0"
-  [ "$status" -eq 0 ]; [ "$output" = "petry-projects/.github" ]
+  [ "$status" -eq 0 ]; [ "$output" = "combsmith/.github" ]
   run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead ring1"
-  [[ "$output" == *"petry-projects/TalkTerm"* ]]
-  [[ "$output" == *"petry-projects/bmad-bgreat-suite"* ]]
+  [[ "$output" == *"combsmith/TalkTerm"* ]]
+  [[ "$output" == *"combsmith/bmad-bgreat-suite"* ]]
 }
 
 # ── orchestrator: evaluate / promote (read-only + dry-run) with stubs ─────────
@@ -583,7 +583,7 @@ _benign_stub() {
 }
 
 # ── orchestrator: cross-repo agents resolve tags on `host`, not the local checkout ─
-# (#1049) A cross-repo agent (host = petry-projects/.github) keeps its <name>/<channel>
+# (#1049) A cross-repo agent (host = combsmith/.github) keeps its <name>/<channel>
 # and <name>/vX.Y.Z tags on the HOST repo, not this checkout. `evaluate` must resolve them
 # there via `gh api` (dereferencing annotated tags) — reading the LOCAL refs makes every
 # ring resolve empty → "all rings equal → fully rolled out", which would falsely SKIP a
@@ -672,7 +672,7 @@ GITEOF
 }
 
 # ── orchestrator: cross-repo promote MOVES the channel tag on the HOST via gh api (#1054) ─
-# A cross-repo agent (host = petry-projects/.github) keeps its channel tags on the host, so
+# A cross-repo agent (host = combsmith/.github) keeps its channel tags on the host, so
 # the promote move must go through `gh api PATCH .../git/refs/tags/...`, NOT local `git tag -f`
 # (which fails "nonexistent object" for a host commit absent from this checkout — #1054).
 @test "orchestrator: cross-repo promote --dry-run shows the host gh-api move, not a local git tag (#1054)" {
@@ -680,7 +680,7 @@ GITEOF
   run env CANARY_RINGS="$RINGS" bash "$ORCH" promote auto-rebase --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"DRY-RUN"* ]]
-  [[ "$output" == *"gh api PATCH repos/petry-projects/.github/git/refs/tags/auto-rebase/stable"* ]]
+  [[ "$output" == *"gh api PATCH repos/combsmith/.github/git/refs/tags/auto-rebase/stable"* ]]
   [[ "$output" != *"git tag -f"* ]]
 }
 
@@ -731,17 +731,17 @@ GITEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"promoted auto-rebase/stable"* ]]
   # The move went through gh api PATCH on the HOST, never local git tag/push.
-  grep -q "PATCH repos/petry-projects/.github/git/refs/tags/auto-rebase/stable" "$MOVE_LOG"
+  grep -q "PATCH repos/combsmith/.github/git/refs/tags/auto-rebase/stable" "$MOVE_LOG"
   ! grep -q "^LOCAL:" "$MOVE_LOG"
   # The move is exposed for the workflow's GitHub Deployment step (#502).
   grep -q "promoted_agent=auto-rebase" "$out"
   grep -q "promoted_ring=stable" "$out"
   # promoted_host is the OWNING repo (the cross-repo host), so the deployment is created
   # where the moved commit exists — not GITHUB_REPOSITORY, which would 422 "No ref found" (#1059).
-  grep -q "promoted_host=petry-projects/.github" "$out"
+  grep -q "promoted_host=combsmith/.github" "$out"
   # The promotions log gets one TSV line per move (agent, ring, sha, owning-repo) so a
   # promote-all run can record a deployment for EVERY promotion, not just the last.
-  grep -qP "^auto-rebase\tstable\t[0-9a-f]+\tpetry-projects/\.github$" "$plog"
+  grep -qP "^auto-rebase\tstable\t[0-9a-f]+\tcombsmith/\.github$" "$plog"
 }
 
 @test "orchestrator: cross-repo promote --dry-run shows the host move but touches neither git nor the API (#1054)" {
@@ -750,7 +750,7 @@ GITEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"DRY-RUN"* ]]
   [[ "$output" == *"auto-rebase/stable"* ]]
-  [[ "$output" == *"petry-projects/.github"* ]]
+  [[ "$output" == *"combsmith/.github"* ]]
   [ ! -f "$MOVE_LOG" ]
 }
 
@@ -787,7 +787,7 @@ case "\$*" in
   *"run list"*) jq -nc --arg d "$run_iso" --arg c "$concl" '[range(3)|{conclusion:\$c,createdAt:\$d,databaseId:12345,workflowName:"Dev-Lead Agent"}]' ;;
   *"run view"*) echo '{"jobs":[{"steps":[{"name":"Some step","conclusion":"failure"}]}]}' ;;
   "issue list"*) echo '$blocker_list' ;;
-  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/petry-projects/.github-private/issues/777" ;;
+  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/combsmith/.github-private/issues/777" ;;
   "issue edit"*)   echo "EDIT|\$*"   >> "$ISSUE_LOG" ;;
   "issue close"*)  echo "CLOSE|\$*"  >> "$ISSUE_LOG" ;;
   "issue reopen"*) echo "REOPEN|\$*" >> "$ISSUE_LOG" ;;
@@ -806,7 +806,7 @@ GHEOF
   # Pin GITHUB_STEP_SUMMARY to a temp file — under CI the runner sets it, so the table lands
   # in the summary, not stdout; asserting the file keeps the test env-independent.
   local summ="$BATS_TEST_TMPDIR/summary.md"; : > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues --dry-run
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"would OPEN blocker issue for dev-lead"* ]]
   grep -q "Canary Rollout — fleet status" "$summ"   # table still renders under --dry-run
@@ -816,7 +816,7 @@ GHEOF
 @test "orchestrator: sync-issues opens ONE blocker issue (with evidence) + writes the fleet summary — no dashboard issue" {
   _sync_stub failure '[]'
   local summ="$BATS_TEST_TMPDIR/summary.md"; : > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"opened blocker issue #777 for dev-lead"* ]]
   [[ "$output" == *"wrote fleet-status table to the job summary"* ]]
@@ -838,7 +838,7 @@ GHEOF
   _sync_stub failure '[]'
   sed 's#"issue create"\*).*#"issue create"*) echo "gh: HTTP 403 (Issues:write?)" >\&2; exit 1 ;;#' "$STUB_BIN/gh" > "$STUB_BIN/gh.tmp" && mv "$STUB_BIN/gh.tmp" "$STUB_BIN/gh" && chmod +x "$STUB_BIN/gh"
   local summ="$BATS_TEST_TMPDIR/summary_fail.md"; : > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"could not open blocker issue for dev-lead (Issues:write on the App?)"* ]]
   [[ "$output" == *"wrote fleet-status table to the job summary"* ]]
@@ -849,7 +849,7 @@ GHEOF
 @test "orchestrator: sync-issues auto-closes a cleared agent's open blocker issue" {
   # dev-lead now clean (success → not BLOCKED) but an OPEN blocker issue #501 exists → close it.
   _sync_stub success '[{"number":501,"state":"OPEN","body":"<!-- canary-blocker:dev-lead -->"}]'
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"closed cleared blocker issue #501 for dev-lead"* ]]
   grep -q "CLOSE|.*501" "$ISSUE_LOG"
@@ -861,7 +861,7 @@ GHEOF
   _sync_stub success '[]'
   local summ="$BATS_TEST_TMPDIR/summary_sep.md"
   printf 'prior step output (no trailing newline)' > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   # The header must appear at the start of a line — not concatenated onto the prior content.
   grep -q '^# Canary Rollout' "$summ"
@@ -929,7 +929,7 @@ GITEOF
 }
 
 @test "orchestrator: autocut is a no-op when CANARY_AUTO_CUT is not 'true' (kill-switch off)" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0"
   run env CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -938,18 +938,18 @@ GITEOF
 }
 
 @test "orchestrator: autocut cuts a patch-bumped version + moves next when the reusable blob differs on main" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   # Highest existing tag is v2.1.0 → patch bump → v2.1.1, annotated tag cut from main HEAD on the
   # HOST repo (.github-private for dev-lead), then `next` force-moved onto the same commit — all gh-api.
-  grep -q "repos/petry-projects/.github-private/git/tags .*tag=dev-lead/v2.1.1 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "repos/combsmith/.github-private/git/tags .*tag=dev-lead/v2.1.1 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
 }
 
 @test "orchestrator: autocut is idempotent — identical blob on main and next is a clean no-op" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     sameBLOB sameBLOB aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -958,7 +958,7 @@ GITEOF
 }
 
 @test "orchestrator: autocut --dry-run prints the intended cut without writing any tag" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut --dry-run
   [ "$status" -eq 0 ]
@@ -968,25 +968,25 @@ GITEOF
 }
 
 @test "orchestrator: autocut honors the registry autocut.bump override (minor)" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" minor
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   # minor bump of v2.1.0 → v2.2.0
-  grep -q "repos/petry-projects/.github-private/git/tags .*tag=dev-lead/v2.2.0 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "repos/combsmith/.github-private/git/tags .*tag=dev-lead/v2.2.0 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
 }
 
 @test "orchestrator: autocut is cross-repo aware — cuts v2.1.1 for auto-rebase on the host repo (#1069)" {
-  # auto-rebase is hosted in petry-projects/.github; its next candidate + release tags live there,
+  # auto-rebase is hosted in combsmith/.github; its next candidate + release tags live there,
   # so the next commit is resolved via gh api (not local git) and BOTH the tag create and the
   # next move are written to that host — not GITHUB_REPOSITORY.
-  _autocut_stub auto-rebase petry-projects/.github .github/workflows/auto-rebase-reusable.yml \
+  _autocut_stub auto-rebase combsmith/.github .github/workflows/auto-rebase-reusable.yml \
     ece45480ece45480ece45480ece45480ece45480 2763750027637500276375002763750027637500 \
     ece45480ece45480ece45480ece45480ece45480 2763750027637500276375002763750027637500 "2.1.0"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
-  grep -q "repos/petry-projects/.github/git/tags .*tag=auto-rebase/v2.1.1 .*object=ece45480ece45480ece45480ece45480ece45480" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github/git/refs/tags/auto-rebase/next .*sha=ece45480ece45480ece45480ece45480ece45480" "$GH_LOG"
+  grep -q "repos/combsmith/.github/git/tags .*tag=auto-rebase/v2.1.1 .*object=ece45480ece45480ece45480ece45480ece45480" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github/git/refs/tags/auto-rebase/next .*sha=ece45480ece45480ece45480ece45480ece45480" "$GH_LOG"
 }
 
 @test "orchestrator: autocut — existing release tag matching mainsha skips create and still moves next (idempotent retry)" {
@@ -994,7 +994,7 @@ GITEOF
   # mainsha), but `next` was not yet moved. The idempotency branch must skip POST git/tags
   # and proceed straight to the PATCH for next without calling _gh_create_annotated_tag.
   local mainsha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT "$mainsha" cccccccccccccccccccccccccccccccccccccccc "2.1.0" "" "$mainsha"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -1012,7 +1012,7 @@ GITEOF
   # invariant. The engine must warn and skip rather than advance next to an untagged commit.
   local mainsha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   local stale_sha="dddddddddddddddddddddddddddddddddddddddd"
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT "$mainsha" cccccccccccccccccccccccccccccccccccccccc "2.1.0" "" "$stale_sha"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -1059,18 +1059,18 @@ GITEOF
 # The stub answers `gh api repos/<host>/contents/.github/workflows` with a per-host JSON
 # array (env HOSTPRIV_JSON / HOSTPUB_JSON); the orchestrator filters *-reusable.yml itself.
 _drift_stub() {
-  # $1 = JSON array for petry-projects/.github-private ; $2 = JSON array for petry-projects/.github
+  # $1 = JSON array for combsmith/.github-private ; $2 = JSON array for combsmith/.github
   local priv_json="$1" pub_json="${2:-[]}"
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
   # '.github' is a substring of '.github-private', so match the more specific repo FIRST.
   cat > "$STUB_BIN/gh" <<GHEOF
 #!/usr/bin/env bash
 case "\$*" in
-  *"repos/petry-projects/.github-private/contents/.github/workflows"*) cat <<'JSON'
+  *"repos/combsmith/.github-private/contents/.github/workflows"*) cat <<'JSON'
 $priv_json
 JSON
     ;;
-  *"repos/petry-projects/.github/contents/.github/workflows"*) cat <<'JSON'
+  *"repos/combsmith/.github/contents/.github/workflows"*) cat <<'JSON'
 $pub_json
 JSON
     ;;
@@ -1106,7 +1106,7 @@ _drift_rings_one_agent() {
   [[ "$output" == *"DRIFT[unregistered]"* ]]
   [[ "$output" == *".github/workflows/foo-reusable.yml"* ]]
   # the registered reusable and the non-reusable ci.yml are NOT flagged
-  [[ "$output" != *"DRIFT[unregistered] petry-projects/.github-private: .github/workflows/dev-lead-reusable.yml"* ]]
+  [[ "$output" != *"DRIFT[unregistered] combsmith/.github-private: .github/workflows/dev-lead-reusable.yml"* ]]
   [[ "$output" != *"ci.yml present on host"* ]]
 }
 
@@ -1115,7 +1115,7 @@ _drift_rings_one_agent() {
   DRIFT_RINGS="$BATS_TEST_TMPDIR/drift-rings-um.json"
   jq '{version, description, org_infra_repos, member_tokens,
        agents: {"dev-lead": .agents["dev-lead"]},
-       unmanaged: {"foo": {"host":"petry-projects/.github-private","reusable":".github/workflows/foo-reusable.yml","reason":"single-hop infra (#651)"}}}' \
+       unmanaged: {"foo": {"host":"combsmith/.github-private","reusable":".github/workflows/foo-reusable.yml","reason":"single-hop infra (#651)"}}}' \
     "$RINGS" > "$DRIFT_RINGS"
   # host has dev-lead (registered) + foo (unmanaged) + bar (genuinely unregistered)
   _drift_stub '[
@@ -1127,9 +1127,9 @@ _drift_rings_one_agent() {
   [ "$status" -eq 0 ]
   # foo is reported as unmanaged, NOT flagged as unregistered drift
   [[ "$output" == *"unmanaged (intentional"* ]]
-  [[ "$output" != *"DRIFT[unregistered] petry-projects/.github-private: .github/workflows/foo-reusable.yml"* ]]
+  [[ "$output" != *"DRIFT[unregistered] combsmith/.github-private: .github/workflows/foo-reusable.yml"* ]]
   # bar (neither registered nor unmanaged) IS still flagged, and it's the ONLY one
-  [[ "$output" == *"DRIFT[unregistered] petry-projects/.github-private: .github/workflows/bar-reusable.yml"* ]]
+  [[ "$output" == *"DRIFT[unregistered] combsmith/.github-private: .github/workflows/bar-reusable.yml"* ]]
   [[ "$output" == *"1 unregistered"* ]]
 }
 
@@ -1174,7 +1174,7 @@ _drift_rings_one_agent() {
   # A scaffold JSON object keyed by the derived agent name 'foo' the maintainer can fill in.
   [[ "$output" == *"\"foo\""* ]]
   [[ "$output" == *"\"reusable\": \".github/workflows/foo-reusable.yml\""* ]]
-  [[ "$output" == *"petry-projects/.github-private"* ]]
+  [[ "$output" == *"combsmith/.github-private"* ]]
 }
 
 @test "orchestrator: drift skips a host it cannot enumerate — no false missing-file avalanche" {

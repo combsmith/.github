@@ -69,7 +69,7 @@ STUB
 stub_pinning() {  # <ref> → base64 of a minimal stub pinning the reusable at <ref>
   local body="jobs:
   auto-rebase:
-    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@$1
+    uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@$1
     secrets: inherit"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }

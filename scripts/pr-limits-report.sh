@@ -19,7 +19,7 @@
 # (standards/pr-limits.json); nothing is hardcoded.
 #
 # Environment (all optional):
-#   ORG               — GitHub org slug to scope the search (default: petry-projects)
+#   ORG               — GitHub org slug to scope the search (default: combsmith)
 #   PR_LIMITS_CONFIG  — path to pr-limits.json (default: <repo>/standards/pr-limits.json,
 #                       resolved relative to this script so it works from any CWD)
 #   GH_TOKEN / GITHUB_TOKEN — token for `gh search prs` (github.token in CI)
@@ -35,7 +35,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_CONFIG="${SCRIPT_DIR}/../standards/pr-limits.json"
 CONFIG="${PR_LIMITS_CONFIG:-$DEFAULT_CONFIG}"
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 
 if [ ! -f "$CONFIG" ]; then
   echo "pr-limits-report: error: config not found at $CONFIG" >&2

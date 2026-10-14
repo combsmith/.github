@@ -1,7 +1,7 @@
 # Reusable Dependabot auto-merge workflow — single source of truth for the org.
 # Repo-level dependabot-automerge.yml files call this to avoid duplicating
 # eligibility logic and the GitHub App token dance.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/dependabot-policy.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/dependabot-policy.md
 #
 # Auto-approves and enables auto-merge for Dependabot PRs that are:
 #   - GitHub Actions updates (any version bump, including major)

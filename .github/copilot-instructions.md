@@ -1,13 +1,13 @@
-# Copilot Instructions — petry-projects/.github
+# Copilot Instructions — combsmith/.github
 
-> **Note:** This file applies to the `petry-projects/.github` repository only. Copilot
+> **Note:** This file applies to the `combsmith/.github` repository only. Copilot
 > instruction files are repository-scoped — there is no automatic org-wide propagation. Every
 > other repo in the org must have its own `.github/copilot-instructions.md`. Use this file as
 > the canonical template; the weekly compliance audit enforces deployment to each repo.
 
 ## Repository Overview
 
-This is the **org standards repository** for `petry-projects`. It contains org-wide AI agent
+This is the **org standards repository** for `combsmith`. It contains org-wide AI agent
 standards (`AGENTS.md`), canonical CI workflow templates (`standards/workflows/`), the
 compliance audit script, and the canonical Copilot instruction files that every repo should
 adopt.
