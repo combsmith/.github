@@ -1,5 +1,5 @@
 ---
-description: Go development standards for the Petry Projects organization, based on Effective Go and Google's Go Style Guide
+description: Go development standards for the CombSmith organization, based on Effective Go and Google's Go Style Guide
 applyTo: "**/*.go"
 ---
 
