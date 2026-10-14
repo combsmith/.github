@@ -44,10 +44,11 @@ clamp() {
 # Denominator must be > 0. Pure arithmetic, no bc.
 round_div() {
   local n="$1" d="$2"
-  # Normalize to base 10 before comparison so leading-zero decimals like "08"
-  # are not misread as octal.
+  # Reject a nonpositive denominator first: "10#-1" is a bash arithmetic error.
+  # Then normalize to base 10 so leading-zero decimals like "08" are not misread
+  # as octal.
+  if [[ "${d:-0}" == -* ]] || [[ "$((10#${d:-0}))" -le 0 ]]; then echo 0; return 1; fi
   d=$((10#${d:-0}))
-  if [[ "$d" -le 0 ]]; then echo 0; return 1; fi
   echo $(( (2 * n + d) / (2 * d) ))
 }
 
