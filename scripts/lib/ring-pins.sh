@@ -470,7 +470,7 @@ ring_repin_uses() {
     )
   fi
   sed -E \
-    "${neutral[@]+"${neutral[@]}"}" \
+    ${neutral[@]+"${neutral[@]}"} \
     -e "s#^([[:space:]]*uses:[[:space:]]*combsmith/[^@[:space:]]*/${file})@[^[:space:]]+#\1@${newref}#" \
     -e "s#^([[:space:]]*agent_ref:[[:space:]]*[\"']?)${base}/[^\"'[:space:]]+#\1${newref}#" \
     -e "s#^([[:space:]]*checkout_ref:[[:space:]]*[\"']?)${base}/[^\"'[:space:]]+#\1${newref}#"
