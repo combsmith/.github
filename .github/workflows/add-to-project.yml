@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/add-to-project.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md
-# Reusable:        petry-projects/.github/.github/workflows/add-to-project-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/add-to-project.yml
+# Standard:        combsmith/.github/standards/ci-standards.md
+# Reusable:        combsmith/.github/.github/workflows/add-to-project-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All noise-gate / reconcile logic lives
@@ -19,11 +19,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Adds qualifying issues, PRs, and Ideas-category discussions in
-# petry-projects/.github to the org-level Initiatives project
-# (https://github.com/orgs/petry-projects/projects/1).
+# combsmith/.github to the org-level Initiatives project
+# (https://github.com/orgs/combsmith/projects/1).
 #
-# Tracking: petry-projects/.github#387, #415
-# Discussion: petry-projects/.github#386
+# Tracking: combsmith/.github#387, #415
+# Discussion: combsmith/.github#386
 name: Auto-add to Initiatives project
 
 on:
@@ -56,7 +56,7 @@ jobs:
     uses: ./.github/workflows/add-to-project-reusable.yml  # local ref — always current (self-host)
     with:
       project_id: PVT_kwDOD2inqs4BZq3-
-      project_url: https://github.com/orgs/petry-projects/projects/1
+      project_url: https://github.com/orgs/combsmith/projects/1
       agent_ref: ${{ github.sha }}
     # Pass only the secrets the reusable declares (least privilege; avoids
     # `secrets: inherit` handing the reusable every org secret).

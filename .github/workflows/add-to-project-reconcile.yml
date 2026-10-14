@@ -1,4 +1,4 @@
-# Backlog reconcile for the Initiatives project (petry-projects/.github#518).
+# Backlog reconcile for the Initiatives project (combsmith/.github#518).
 #
 # The event-driven add-to-project automation misses qualifying items created by
 # the default GITHUB_TOKEN (GitHub doesn't fire workflows from default-token
@@ -7,7 +7,7 @@
 # discussions and reconciles them onto the board using the same gate + helpers
 # as the event path — so missed items land within one cycle.
 #
-# Runs centrally in petry-projects/.github (the scripts live here); mints the
+# Runs centrally in combsmith/.github (the scripts live here); mints the
 # petry-projects-planner App token for issues/PRs read + project write.
 name: Add-to-Project Reconcile
 
@@ -55,7 +55,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PROJECT_ID: PVT_kwDOD2inqs4BZq3-
-          PROJECT_URL: https://github.com/orgs/petry-projects/projects/1
+          PROJECT_URL: https://github.com/orgs/combsmith/projects/1
           REQUIRED_LABEL: dev-lead
           EXCLUDED_LABELS: compliance-audit,health-check,fleet-tracker,daily-report
           IDEAS_CATEGORY: Ideas

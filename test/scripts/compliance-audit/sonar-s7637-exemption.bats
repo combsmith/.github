@@ -3,7 +3,7 @@
 # the pure classifier behind check_sonar_s7637_exemption.
 #
 # Context (#498): SonarCloud's githubactions:S7637 ("pin actions to a full-length
-# commit SHA") fires on first-party petry-projects/.github(-private) reusable-ref
+# commit SHA") fires on first-party combsmith/.github(-private) reusable-ref
 # caller stubs that the org standard intentionally pins by moving channel/tag, not
 # SHA. The org reconciles this with a NARROW sonar.issue.ignore that suppresses
 # S7637 only on the thin caller-stub workflow files — never a blanket
