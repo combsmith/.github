@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # compliance-audit.sh — Weekly org-wide compliance audit
 #
-# Checks every petry-projects repository against the standards defined in:
+# Checks every combsmith repository against the standards defined in:
 #   standards/ci-standards.md
 #   standards/dependabot-policy.md
 #   standards/github-settings.md
@@ -23,7 +23,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-ORG="petry-projects"
+ORG="combsmith"
 AUDIT_LABEL="compliance-audit"
 AUDIT_LABEL_COLOR="7057ff"
 AUDIT_LABEL_DESC="Automated compliance audit finding"
@@ -310,13 +310,13 @@ check_action_pinning() {
 # ---------------------------------------------------------------------------
 # Check: Reusable workflow path syntax
 # ---------------------------------------------------------------------------
-# NOTE: The correct pattern IS petry-projects/.github/.github/workflows/...
+# NOTE: The correct pattern IS combsmith/.github/.github/workflows/...
 # because the first .github is the repository name, and the second .github
 # is the directory path within that repository. This check is disabled as
-# a known false positive per petry-projects/.github standards.
+# a known false positive per combsmith/.github standards.
 #
 # Reference: https://docs.github.com/en/actions/using-workflows/reusing-workflows
-# Example: uses: petry-projects/.github/.github/workflows/claude-code-reusable.yml@v1
+# Example: uses: combsmith/.github/.github/workflows/claude-code-reusable.yml@v1
 check_reusable_workflow_paths() {
   local repo="$1"
   # This check is intentionally disabled — the double .github/ pattern is correct
@@ -1007,8 +1007,8 @@ check_codeowners() {
   # Extract non-comment, non-blank owner lines for accurate matching.
   # Each such line has the form: <pattern> <owner1> [<owner2> ...]
   # Standard (codeowners-standard.md):
-  #   1. @petry-projects/org-leads MUST be the FIRST owner on every line.
-  #   2. Additional teams (@petry-projects/<slug>) are allowed.
+  #   1. @combsmith/org-leads MUST be the FIRST owner on every line.
+  #   2. Additional teams (@combsmith/<slug>) are allowed.
   #   3. Individual users (@username without "/") are forbidden.
   local owner_lines
   owner_lines=$(echo "$codeowners_content" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$')
@@ -1020,7 +1020,7 @@ check_codeowners() {
     return 0
   fi
 
-  # Rule 1: @petry-projects/org-leads MUST be the first owner on every line
+  # Rule 1: @combsmith/org-leads MUST be the first owner on every line
   # (the first whitespace-separated token after the pattern).
   local bad_first_owner=""
   while IFS= read -r line; do
@@ -1028,14 +1028,14 @@ check_codeowners() {
     # awk $2 = first owner token after the pattern
     local first_owner
     first_owner=$(echo "$line" | awk '{print $2}')
-    if [ "$first_owner" != "@petry-projects/org-leads" ]; then
+    if [ "$first_owner" != "@combsmith/org-leads" ]; then
       bad_first_owner="$line"
       break
     fi
   done <<< "$owner_lines"
   if [ -n "$bad_first_owner" ]; then
     add_finding "$repo" "settings" "codeowners-org-leads-not-first" "error" \
-      "CODEOWNERS owner lines must list \`@petry-projects/org-leads\` as the FIRST owner. Offending line: \`$bad_first_owner\`" \
+      "CODEOWNERS owner lines must list \`@combsmith/org-leads\` as the FIRST owner. Offending line: \`$bad_first_owner\`" \
       "standards/codeowners-standard.md"
   fi
 
@@ -1051,7 +1051,7 @@ check_codeowners() {
     local joined
     joined=$(echo "$individual_owners" | tr '\n' ' ')
     add_finding "$repo" "settings" "codeowners-individual-users" "error" \
-      "CODEOWNERS contains forbidden individual user owners: ${joined% } — only teams (@petry-projects/<slug>) are allowed; manage membership via teams" \
+      "CODEOWNERS contains forbidden individual user owners: ${joined% } — only teams (@combsmith/<slug>) are allowed; manage membership via teams" \
       "standards/codeowners-standard.md"
   fi
 
@@ -1084,7 +1084,7 @@ check_sonarcloud() {
 # Check: SonarCloud S7637 first-party reusable-ref exemption (#498)
 #
 # SonarCloud's githubactions:S7637 ("pin actions to a full-length commit SHA")
-# fires on first-party petry-projects/.github(-private) reusable-ref caller
+# fires on first-party combsmith/.github(-private) reusable-ref caller
 # stubs that the org standard intentionally pins by moving channel/tag rather
 # than SHA (see check_action_pinning's exemption and the Action Pinning Policy).
 # The two policies are otherwise mutually exclusive on a single pin, so each
@@ -1166,7 +1166,7 @@ classify_inline_s7637_marker() {
   # First-party reusable-workflow `uses:` lines (channel- or SHA-pinned).
   local uses_lines
   uses_lines=$(printf '%s\n' "$content" \
-    | grep -E '^[[:space:]]*uses:[[:space:]]*petry-projects/\.github(-private)?/\.github/workflows/[^@[:space:]]+@' || true)
+    | grep -E '^[[:space:]]*uses:[[:space:]]*combsmith/\.github(-private)?/\.github/workflows/[^@[:space:]]+@' || true)
 
   if [ -z "$uses_lines" ]; then
     echo "n/a"
@@ -1270,7 +1270,7 @@ check_sonar_s7637_exemption() {
 # ---------------------------------------------------------------------------
 # Check: CodeQL default setup is configured (and no stray codeql.yml exists)
 #
-# After petry-projects/.github#103, CodeQL is configured via GitHub's
+# After combsmith/.github#103, CodeQL is configured via GitHub's
 # managed default setup, not a per-repo workflow file. Two distinct findings:
 #
 #   1. codeql-default-setup-not-configured (error): the repo has not enabled
@@ -1421,7 +1421,7 @@ check_ci_concurrency() {
 #
 # For each workflow that the org has centralized into a reusable workflow,
 # verify the downstream repo's copy is a stub that delegates via:
-#   uses: petry-projects/.github/.github/workflows/<reusable>.yml@<version>
+#   uses: combsmith/.github/.github/workflows/<reusable>.yml@<version>
 #
 # This prevents drift: a repo that copies the inline pre-centralization
 # version (or pins to @main, or pins to a non-canonical tag) is flagged so
@@ -1433,7 +1433,7 @@ check_ci_concurrency() {
 # ---------------------------------------------------------------------------
 
 # stub_pin_acceptable <decoded> <reusable-basename> <canonical-ref> <legacy-csv>
-# True if a non-comment `uses:` line pins petry-projects/.github's <reusable> at
+# True if a non-comment `uses:` line pins combsmith/.github's <reusable> at
 # the canonical ref OR one of the comma-separated transitional legacy refs. The
 # legacy grace keeps a stub on its old @vN pin compliant while the fleet migrates
 # to the <name>/stable channel, so the audit neither flags nor reverts it
@@ -1452,12 +1452,12 @@ stub_pin_acceptable() {
     alt+="${alt:+|}$(escape_ere "$r")"
   done
 
-  local expected="petry-projects/\\.github/\\.github/workflows/${esc_reusable}\\.yml@(${alt})"
+  local expected="combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@(${alt})"
   printf '%s\n' "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*${expected}([[:space:]]|$)"
 }
 
 # ring_major_form_acceptable <decoded> <reusable-basename> <channel-base> <repo>
-# True if a non-comment `uses:` line pins petry-projects/.github's <reusable> at
+# True if a non-comment `uses:` line pins combsmith/.github's <reusable> at
 # the MAJOR-SCOPED channel form `<channel-base>/v<M>-<tier-for-repo>` for any
 # major M, where the tier matches <repo>'s ring tier (major-scoped-channels epic
 # #657, Phase F3). This is a backward-compatible ADD alongside stub_pin_acceptable's
@@ -1473,7 +1473,7 @@ ring_major_form_acceptable() {
 
   local pinned_ref
   pinned_ref=$(printf '%s\n' "$decoded" \
-    | sed -nE "s#^[[:space:]]*uses:[[:space:]]*petry-projects/\\.github/\\.github/workflows/${esc_reusable}\\.yml@([^[:space:]]+).*#\\1#p" \
+    | sed -nE "s#^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@([^[:space:]]+).*#\\1#p" \
     | head -n1)
   [ -n "$pinned_ref" ] || return 1
 
@@ -1507,7 +1507,7 @@ check_centralized_workflow_stubs() {
   #                         For RING reusables the per-repo legacy set (the other
   #                         ring channels — higher tiers) is computed below.
   # NOTE: dev-lead.yml is intentionally NOT listed here — its reusable lives in
-  # the private petry-projects/.github-private repo and is pinned to the
+  # the private combsmith/.github-private repo and is pinned to the
   # dev-lead/stable channel, validated by check_dev_lead_stub() below.
   local centralized=(
     "auto-rebase.yml:auto-rebase-reusable:RING"
@@ -1583,16 +1583,16 @@ check_centralized_workflow_stubs() {
     local esc_reusable why expected_pin="$canonical"
     esc_reusable=$(escape_ere "$reusable")
     [ "$is_ring" = 1 ] && expected_pin="${chan}/v<M>-$(ring_tier_for_repo "$repo")"
-    if echo "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*petry-projects/\\.github/\\.github/workflows/${esc_reusable}\\.yml@"; then
+    if echo "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@"; then
       why="references the reusable but is not pinned to the major-scoped channel \`@${expected_pin}\` (org standard — a bare \`@${canonical}\` tier pin is drift)"
-    elif echo "$decoded" | grep -qF "petry-projects/.github/.github/workflows/${reusable}"; then
+    elif echo "$decoded" | grep -qF "combsmith/.github/.github/workflows/${reusable}"; then
       why="references the reusable but the \`uses:\` line does not match the canonical stub"
     else
       why="is an inline copy instead of a thin caller stub — re-sync from \`standards/workflows/${wf}\`"
     fi
 
     add_finding "$repo" "ci-workflows" "non-stub-$wf" "error" \
-      "Centralized workflow \`$wf\` $why. Replace with the canonical stub from \`standards/workflows/${wf}\` which delegates to \`petry-projects/.github/.github/workflows/${reusable}.yml@${expected_pin}\`." \
+      "Centralized workflow \`$wf\` $why. Replace with the canonical stub from \`standards/workflows/${wf}\` which delegates to \`combsmith/.github/.github/workflows/${reusable}.yml@${expected_pin}\`." \
       "standards/ci-standards.md#centralization-tiers"
   done
 }
@@ -1604,9 +1604,9 @@ check_centralized_workflow_stubs() {
 # to the moving `dev-lead/stable` channel tag (not @main, not a frozen @vN — see
 # standards/ci-standards.md#dev-lead-agent for the self-host channel model), and
 # its concurrency + permissions are owned centrally. A stub drifts — and breaks —
-# in three ways this check catches (all root causes of petry-projects/.github#402):
+# in three ways this check catches (all root causes of combsmith/.github#402):
 #
-#   1. Wrong pin: not petry-projects/.github-private/.../dev-lead-reusable.yml@dev-lead/stable.
+#   1. Wrong pin: not combsmith/.github-private/.../dev-lead-reusable.yml@dev-lead/stable.
 #   2. Local concurrency block: per-stub concurrency drifts and cancels issue
 #      pickups; concurrency is owned by the reusable (per-issue/per-PR lanes).
 #   3. Missing `statuses: read`: the reusable requests it since #435, so without
@@ -1635,9 +1635,9 @@ check_dev_lead_stub() {
   #    Major-scoped channels (#657 F5, #861): the channel MUST carry the `v<M>-`
   #    major prefix — a bare `dev-lead/stable` is now drift; only `dev-lead/v<M>-<tier>`
   #    (any major) is accepted, mirroring the RING reusables above.
-  if ! printf '%s\n' "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*petry-projects/\\.github-private/\\.github/workflows/dev-lead-reusable\\.yml@dev-lead/v[0-9]+-(stable|next|ring[0-9]+)([[:space:]]|$)"; then
+  if ! printf '%s\n' "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\\.github-private/\\.github/workflows/dev-lead-reusable\\.yml@dev-lead/v[0-9]+-(stable|next|ring[0-9]+)([[:space:]]|$)"; then
     add_finding "$repo" "ci-workflows" "dev-lead-stub-pin" "error" \
-      "The \`dev-lead.yml\` caller stub must pin a major-scoped \`dev-lead\` channel tag — \`petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v<M>-<channel>\` where <channel> is \`stable\` (default), \`next\`, or \`ring<N>\` (a bare \`dev-lead/<channel>\` tier pin is drift). Re-sync from \`standards/workflows/dev-lead.yml\`." \
+      "The \`dev-lead.yml\` caller stub must pin a major-scoped \`dev-lead\` channel tag — \`combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v<M>-<channel>\` where <channel> is \`stable\` (default), \`next\`, or \`ring<N>\` (a bare \`dev-lead/<channel>\` tier pin is drift). Re-sync from \`standards/workflows/dev-lead.yml\`." \
       "standards/ci-standards.md#dev-lead-agent"
   fi
 
@@ -1646,7 +1646,7 @@ check_dev_lead_stub() {
   #    Same major-scoped channel form as the uses: pin above; must match the uses:
   #    channel exactly — including its major, so a `v3-stable` uses pin with a
   #    `v2-stable` agent_ref is caught.
-  uses_channel=$(printf '%s\n' "$decoded" | sed -nE 's#^[[:space:]]*uses:[[:space:]]*petry-projects/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(v[0-9]+-(stable|next|ring[0-9]+))([[:space:]]|$).*#\1#p')
+  uses_channel=$(printf '%s\n' "$decoded" | sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(v[0-9]+-(stable|next|ring[0-9]+))([[:space:]]|$).*#\1#p')
   if [ -n "$uses_channel" ]; then
     if ! printf '%s\n' "$decoded" | grep -qE "^[[:space:]]*agent_ref:[[:space:]]*dev-lead/$uses_channel([[:space:]]|$)"; then
       add_finding "$repo" "ci-workflows" "dev-lead-stub-agent-ref" "error" \
@@ -1664,7 +1664,7 @@ check_dev_lead_stub() {
   # 3) No per-stub concurrency block — concurrency is owned by the reusable.
   if echo "$decoded" | grep -qE "^concurrency:"; then
     add_finding "$repo" "ci-workflows" "dev-lead-stub-concurrency" "warning" \
-      "The \`dev-lead.yml\` stub defines its own \`concurrency:\` block. Concurrency is centralized in the reusable (per-issue/per-PR lanes); a per-stub block drifts and can cancel issue pickups. Remove it — see petry-projects/.github#402." \
+      "The \`dev-lead.yml\` stub defines its own \`concurrency:\` block. Concurrency is centralized in the reusable (per-issue/per-PR lanes); a per-stub block drifts and can cancel issue pickups. Remove it — see combsmith/.github#402." \
       "standards/ci-standards.md#dev-lead-agent"
   fi
 
@@ -1930,7 +1930,7 @@ check_centralized_check_names() {
     IFS=':' read -r old new <<< "$entry"
     if echo "$contexts" | grep -qxF "$old"; then
       add_finding "$repo" "rulesets" "stale-required-check-${old// /-}" "error" \
-        "Required-status-check ruleset references the stale check name \`$old\`. After workflow centralization (petry-projects/.github#87) this check is published as \`$new\`. Update the ruleset (and any classic branch protection) to use the new name." \
+        "Required-status-check ruleset references the stale check name \`$old\`. After workflow centralization (combsmith/.github#87) this check is published as \`$new\`. Update the ruleset (and any classic branch protection) to use the new name." \
         "standards/ci-standards.md#centralization-tiers"
     fi
   done
@@ -2020,9 +2020,9 @@ check_agents_md() {
 
     # Accept two forms of reference:
     #   1. Any path containing .github/AGENTS.md (relative link text or path reference)
-    #   2. GitHub blob URL format: /petry-projects/.github/blob/<ref>/AGENTS.md (in href)
+    #   2. GitHub blob URL format: /combsmith/.github/blob/<ref>/AGENTS.md (in href)
     # Both are treated as references to the org-level standards file.
-    if ! echo "$decoded" | grep -qE '(\.github/AGENTS\.md|petry-projects/\.github/blob/.+/AGENTS\.md)'; then
+    if ! echo "$decoded" | grep -qE '(\.github/AGENTS\.md|combsmith/\.github/blob/.+/AGENTS\.md)'; then
       add_finding "$repo" "standards" "agents-md-missing-org-ref" "error" \
         "\`AGENTS.md\` does not reference the org-level \`.github/AGENTS.md\` standards" \
         "AGENTS.md"
@@ -2110,7 +2110,7 @@ sys.exit(0 if found else 1)
 # Copilot specific context it cannot derive from code alone: the active
 # tech stack versions, project structure, exact local dev commands, required
 # environment variables, and testing thresholds. The org-level baseline in
-# petry-projects/.github supplies org-wide rules (SOLID, TDD, logging, CI
+# combsmith/.github supplies org-wide rules (SOLID, TDD, logging, CI
 # gates, PR workflow); repo-level files extend it with repo-specific detail.
 # Copilot prioritises repository instructions over org instructions, so the
 # repo-level file is the primary surface for per-project customisation.
@@ -2139,7 +2139,7 @@ check_copilot_instructions() {
 
   if [ -z "$content" ]; then
     add_finding "$repo" "standards" "missing-copilot-instructions" "error" \
-      "Missing \`.github/copilot-instructions.md\`. Every repo must have its own Copilot instructions file — Copilot instruction files are repository-scoped and do not propagate from the \`petry-projects/.github\` repo. Copy the canonical template from \`standards/copilot-instructions-standard.md\` in \`petry-projects/.github\`, then tailor it with this repo's specific tech stack, project structure, local dev commands, required environment variables, and testing configuration." \
+      "Missing \`.github/copilot-instructions.md\`. Every repo must have its own Copilot instructions file — Copilot instruction files are repository-scoped and do not propagate from the \`combsmith/.github\` repo. Copy the canonical template from \`standards/copilot-instructions-standard.md\` in \`combsmith/.github\`, then tailor it with this repo's specific tech stack, project structure, local dev commands, required environment variables, and testing configuration." \
       "standards/copilot-instructions-standard.md"
     return
   fi

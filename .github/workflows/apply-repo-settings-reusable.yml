@@ -1,8 +1,8 @@
 # Reusable repo-settings + branch-policy self-heal — single source of truth for the org.
 # Repo-level apply-repo-settings.yml stubs call this so the compliance self-heal runs
-# from ONE script/workflow pair instead of per-repo forks (petry-projects/.github#984).
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/github-settings.md
-#           https://github.com/petry-projects/.github/blob/main/standards/ruleset-remediation-runbook.md
+# from ONE script/workflow pair instead of per-repo forks (combsmith/.github#984).
+# Standard: https://github.com/combsmith/.github/blob/main/standards/github-settings.md
+#           https://github.com/combsmith/.github/blob/main/standards/ruleset-remediation-runbook.md
 #
 # Applies, to the CALLING repo:
 #   - merge settings, security_and_analysis, CodeQL default setup, labels, and
@@ -29,7 +29,7 @@ on:
         default: false
       checkout_ref:
         description: >-
-          Ref of petry-projects/.github to check out for the scripts, so the
+          Ref of combsmith/.github to check out for the scripts, so the
           logic runs at the same version as this reusable. Callers pin their
           ring's channel tag (mirrors dev-lead's agent_ref). Empty = default branch.
         type: string
@@ -72,10 +72,10 @@ jobs:
           fi
           echo "GH_PAT_DON_PETRY present — proceeding."
 
-      - name: Checkout petry-projects/.github (scripts at the pinned channel)
+      - name: Checkout combsmith/.github (scripts at the pinned channel)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: ${{ inputs.checkout_ref }}
           persist-credentials: false
 

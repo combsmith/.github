@@ -1,7 +1,7 @@
 # Agentic Persona Standards
 
 Standard for defining, onboarding, and rolling out a new **agentic persona**
-across the `petry-projects` fleet.
+across the `combsmith` fleet.
 
 A persona is an agent **role** — Dev Lead, PR Review, Scrum Master, Business
 Analyst, QA Lead — that helps the org **design, build, test, deliver, and
@@ -34,7 +34,7 @@ an eval gate, and a canary onboarding step.
    manifest layers on top of a vendored framework agent — it points *into*
    `frameworks/` at a pinned version and records any local override as an
    explicit upstream-contribution candidate. Vendored files are never
-   hand-edited (see [`prompts/bmad/README.md`](https://github.com/petry-projects/.github-private)
+   hand-edited (see [`prompts/bmad/README.md`](https://github.com/combsmith/.github-private)
    in `.github-private` and each `frameworks/*/VENDOR.md`).
 
 3. **Advisory by default; write is opt-in.** A new persona is assumed to be
@@ -61,8 +61,8 @@ an eval gate, and a canary onboarding step.
    we never mirror the person-name into our namespace. The reasons are practical,
    not stylistic:
 
-   - **A role is legible.** `@petry-projects/qa-lead` tells a reader in a PR
-     comment who is being addressed and why. `@petry-projects/murat` requires
+   - **A role is legible.** `@combsmith/qa-lead` tells a reader in a PR
+     comment who is being addressed and why. `@combsmith/murat` requires
      knowing the BMAD cast list.
    - **A role is stable.** Swapping the framework agent behind a persona, or
      replacing it with a first-party layer, must not change how it is addressed.
@@ -194,7 +194,7 @@ A persona that enables the `mention` surface MUST declare an `address` block
 
 ```yaml
 address:
-  handle: petry-projects/qa-lead   # an org TEAM — mentioned as @petry-projects/qa-lead
+  handle: combsmith/qa-lead   # an org TEAM — mentioned as @combsmith/qa-lead
 ```
 
 **The handle MUST be an org team, never a user account.** This is not a style
@@ -211,7 +211,7 @@ preference — it is the whole reason the block exists:
 An org team slug lives in the org's namespace and cannot collide. It also buys
 two things a bare convention cannot:
 
-- **Autocomplete** — typing `@petry-projects/` in any GitHub comment box lists
+- **Autocomplete** — typing `@combsmith/` in any GitHub comment box lists
   every persona. The addressing scheme *is* the discovery mechanism.
 - **A real link** — the mention renders as a resolvable team, not grey text.
 
@@ -234,19 +234,19 @@ two things a bare convention cannot:
 ### 4.1.1 Renames — and why there is no `aliases`
 
 An earlier draft of this standard let a persona declare `address.aliases[]` so a
-**renamed** role kept routing (`qa-lead` listing `petry-projects/murat`). That
+**renamed** role kept routing (`qa-lead` listing `combsmith/murat`). That
 field is gone. Two reasons, one structural and one measured:
 
 - **Index-free routing could never have honoured it.** The router resolves
-  `@petry-projects/murat` to `personas/murat/persona.yml` — a 404 after the
+  `@combsmith/murat` to `personas/murat/persona.yml` — a 404 after the
   rename. The alias is declared *inside the renamed persona's own manifest*,
   which the router never opens, because it does not know to look there.
 - **There is nothing live left to route.** GitHub stops rendering a renamed
   team's old handle as a mention at all — it becomes plain text. Measured:
 
   ```text
-  before rename:  <a class="team-mention" …>@petry-projects/probe</a>
-  after rename:   <p>@petry-projects/probe please review</p>
+  before rename:  <a class="team-mention" …>@combsmith/probe</a>
+  after rename:   <p>@combsmith/probe please review</p>
   ```
 
   So the old handle is not a silently-broken mention that looks live — the
@@ -257,7 +257,7 @@ field is gone. Two reasons, one structural and one measured:
 `opt_out_label`, `evals.path`, and the org team (its slug must keep matching
 `id`). In-flight mentions of the old handle stop resolving, visibly — which is
 the correct signal, not a regression. See
-[`.github#755`](https://github.com/petry-projects/.github/issues/755) finding 1.
+[`.github#755`](https://github.com/combsmith/.github/issues/755) finding 1.
 
 The **live** properties (rules 2 and 3 — does the team exist, is it closed, are
 notifications off?) need the network, and `validate-personas.py` is hermetic
@@ -283,7 +283,7 @@ equal `id` (rule 1) and `id` MUST equal the persona's directory name, a handle
 resolves to `personas/<slug>/persona.yml` by convention — the manifest is the
 index-of-record (§1.1), so nothing derives, caches, or duplicates it. A 404 is a
 meaningful answer: "not a persona". That is also how a real, non-persona team
-(`@petry-projects/org-leads`) falls through harmlessly rather than erroring.
+(`@combsmith/org-leads`) falls through harmlessly rather than erroring.
 
 > **Recursion is the hazard here.** Agent comments posted via a PAT re-trigger
 > workflows (unlike `GITHUB_TOKEN`), and `.github-private#860` burned 1,481
@@ -326,7 +326,7 @@ runtime:
 **Identity is not the address handle.** `address.handle` (§4.1) is the org *team*
 a human `@`-mentions to *route* work; `runtime.identity.account` is the *account*
 that *does* the work. They are orthogonal: a persona addressed as
-`@petry-projects/dev-lead` may act as `don-petry`.
+`@combsmith/dev-lead` may act as `don-petry`.
 
 **Why it is declarative and per-persona.** Before this field, every write persona
 derived its account from one shared `vars.BOT_USER` variable. Two personas that

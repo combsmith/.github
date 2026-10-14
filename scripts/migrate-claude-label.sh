@@ -24,7 +24,7 @@ set -euo pipefail
 # Environment:
 #   GH_TOKEN          — token with issues:write + repo admin (label delete) across
 #                       the org (e.g. ORG_SCORECARD_TOKEN). Required.
-#   ORG               — GitHub org (default: petry-projects)
+#   ORG               — GitHub org (default: combsmith)
 #   OLD_LABEL         — legacy label to retire (default: claude)
 #   NEW_LABEL         — canonical replacement label (default: dev-lead)
 #   NEW_LABEL_COLOR   — hex color for the new label (default: 8B5CF6)
@@ -33,7 +33,7 @@ set -euo pipefail
 #   DRY_RUN           — "true" to log without mutating (default: true — safe)
 #   TARGET_REPO       — limit to one repo (name or owner/name); blank = all repos
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 OLD_LABEL="${OLD_LABEL:-claude}"
 NEW_LABEL="${NEW_LABEL:-dev-lead}"
 NEW_LABEL_COLOR="${NEW_LABEL_COLOR:-8B5CF6}"

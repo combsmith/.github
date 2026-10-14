@@ -27,10 +27,10 @@
 #
 # Env:
 #   GH_TOKEN         classic PAT with repo scope — API reads + dispatch (required)
-#   SEARCH_OWNER     org to scan for open PRs           (default: petry-projects)
+#   SEARCH_OWNER     org to scan for open PRs           (default: combsmith)
 #   SWEEP_LABEL      PR label to sweep                  (default: standards-sync)
 #   MAX_PER_RUN      max PRs to dispatch per run        (default: 8)
-#   DISPATCH_REPO    repository_dispatch target repo    (default: petry-projects/.github-private)
+#   DISPATCH_REPO    repository_dispatch target repo    (default: combsmith/.github-private)
 #   DRY_RUN          "1" → log intended dispatches only
 #   DISPATCH_RETRIES     attempts per dispatch before giving up (default: 3)
 #   DISPATCH_RETRY_SLEEP seconds between dispatch retries       (default: 5)
@@ -42,10 +42,10 @@ _dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.github/scripts/pr-auto-review/lib/sweep.sh
 . "${_dir}/lib/sweep.sh"
 
-SEARCH_OWNER="${SEARCH_OWNER:-petry-projects}"
+SEARCH_OWNER="${SEARCH_OWNER:-combsmith}"
 SWEEP_LABEL="${SWEEP_LABEL:-standards-sync}"
 MAX_PER_RUN="${MAX_PER_RUN:-8}"
-DISPATCH_REPO="${DISPATCH_REPO:-petry-projects/.github-private}"
+DISPATCH_REPO="${DISPATCH_REPO:-combsmith/.github-private}"
 DRY_RUN="${DRY_RUN:-0}"
 DISPATCH_RETRIES="${DISPATCH_RETRIES:-3}"
 DISPATCH_RETRY_SLEEP="${DISPATCH_RETRY_SLEEP:-5}"

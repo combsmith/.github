@@ -67,7 +67,7 @@ _run_check() {
 }
 
 @test "successful read of a compliant CODEOWNERS → no missing/unreadable finding" {
-  b64="$(printf '* @petry-projects/org-leads\n' | base64 | tr -d '\n')"
+  b64="$(printf '* @combsmith/org-leads\n' | base64 | tr -d '\n')"
   run _run_check 'printf "{\"content\":\"'"$b64"'\"}\n"; exit 0'
   [ "$status" -eq 0 ]
   [[ "$output" != *"missing-codeowners"* ]]
