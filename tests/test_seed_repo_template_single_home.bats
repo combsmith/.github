@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 # Guard: this repo carries no `seed-repo-template.sh`
-# (petry-projects/.github-private#1927).
+# (combsmith/.github-private#1927).
 #
-# The seeder that writes the baseline scaffold into petry-projects/repo-template
-# lives in petry-projects/.github-private, the one home of that name. This repo
+# The seeder that writes the baseline scaffold into combsmith/repo-template
+# lives in combsmith/.github-private, the one home of that name. This repo
 # once had a different, smaller script under the same name. It only printed a
 # standard file, yet the two were read as diverged copies of one tool and nothing
 # said which was authoritative. That script is now scripts/emit-standard-file.sh.
@@ -21,13 +21,13 @@ seed_copies() {
     | grep -E '(^|/)seed-repo-template\.sh$' || true
 }
 
-@test "no seed-repo-template.sh exists in this repo — its one home is petry-projects/.github-private" {
+@test "no seed-repo-template.sh exists in this repo — its one home is combsmith/.github-private" {
   run seed_copies
   [ "$status" -eq 0 ]
   if [ -n "$output" ]; then
-    echo "Found a seed-repo-template.sh in petry-projects/.github:"
+    echo "Found a seed-repo-template.sh in combsmith/.github:"
     echo "$output"
-    echo "The seeder's one home is petry-projects/.github-private/scripts/seed-repo-template.sh."
+    echo "The seeder's one home is combsmith/.github-private/scripts/seed-repo-template.sh."
     echo "Change it there. To print a standard file from this repo, use scripts/emit-standard-file.sh."
     return 1
   fi
@@ -49,5 +49,5 @@ seed_copies() {
 
 @test "the emitter exists under its own name and says where the seeder lives" {
   [ -f "$REPO_ROOT/scripts/emit-standard-file.sh" ]
-  grep -q 'petry-projects/.github-private' "$REPO_ROOT/scripts/emit-standard-file.sh"
+  grep -q 'combsmith/.github-private' "$REPO_ROOT/scripts/emit-standard-file.sh"
 }

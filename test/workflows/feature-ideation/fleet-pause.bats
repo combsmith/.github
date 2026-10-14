@@ -2,7 +2,7 @@
 # Fleet pause gate of the reusable feature-ideation workflow (#1295).
 #
 # `AGENTS_PAUSED=true` is the Actions variable that pauses the agent fleet
-# (petry-projects/.github-private#1525, #2249). The caller stubs are frozen, so
+# (combsmith/.github-private#1525, #2249). The caller stubs are frozen, so
 # the gate lives in feature-ideation-reusable.yml: every job but the notice
 # carries `vars.AGENTS_PAUSED != 'true'`, and `fleet-paused` says why on the
 # complementary condition. The rule mirrors .github-private: only the word
