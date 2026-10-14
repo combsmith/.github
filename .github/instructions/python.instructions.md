@@ -1,5 +1,5 @@
 ---
-description: Python development standards for the Petry Projects organization
+description: Python development standards for the CombSmith organization
 applyTo: "**/*.py"
 ---
 

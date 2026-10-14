@@ -1,4 +1,4 @@
-# Petry Projects
+# CombSmith
 
 A collection of open-source tools and experiments spanning terminal UX, market data, AI content tooling,
 beekeeping tech, and agent orchestration.
