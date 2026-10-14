@@ -13,7 +13,7 @@
 # three-way inconsistency #482 exists to close. This file is sourced by both so
 # they can never drift again.
 #
-# Keep the topology in sync with petry-projects/.github-private's
+# Keep the topology in sync with combsmith/.github-private's
 # scripts/cut-release.sh channels and docs/release/.
 # ---------------------------------------------------------------------------
 

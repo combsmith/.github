@@ -25,7 +25,7 @@ C="agent-shield/stable"   # canonical channel for these tests (a stable-tier rep
 # Retained grace = the other ring channels (a repo pinned to a higher tier than
 # its own is never flagged). The pre-ring @v1/@v2 grace was dropped in #870.
 L="agent-shield/next,agent-shield/ring0,agent-shield/ring1"
-R="petry-projects/.github/.github/workflows/agent-shield-reusable.yml"
+R="combsmith/.github/.github/workflows/agent-shield-reusable.yml"
 
 @test "canonical channel pin is accepted" {
   accept "    uses: $R@$C" "$C" "$L"
@@ -58,7 +58,7 @@ R="petry-projects/.github/.github/workflows/agent-shield-reusable.yml"
 }
 
 @test "the wrong reusable is rejected" {
-  accept "    uses: petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@v1" "$C" "$L"
+  accept "    uses: combsmith/.github/.github/workflows/dependency-audit-reusable.yml@v1" "$C" "$L"
   [ "$status" -ne 0 ]
 }
 
@@ -85,7 +85,7 @@ accept_reusable() {
 
 @test "feature-ideation stub: @feature-ideation/stable accepted, @v1 rejected (#606)" {
   local reusable="feature-ideation-reusable"
-  local ref="petry-projects/.github/.github/workflows/${reusable}.yml"
+  local ref="combsmith/.github/.github/workflows/${reusable}.yml"
   accept_reusable "$reusable" "    uses: $ref@feature-ideation/stable" "feature-ideation/stable" ""
   [ "$status" -eq 0 ]
   accept_reusable "$reusable" "    uses: $ref@v1" "feature-ideation/stable" ""
@@ -94,7 +94,7 @@ accept_reusable() {
 
 @test "pr-auto-review stub: @pr-auto-review/stable accepted, @v2 rejected (#606)" {
   local reusable="pr-auto-review-reusable"
-  local ref="petry-projects/.github/.github/workflows/${reusable}.yml"
+  local ref="combsmith/.github/.github/workflows/${reusable}.yml"
   accept_reusable "$reusable" "    uses: $ref@pr-auto-review/stable" "pr-auto-review/stable" ""
   [ "$status" -eq 0 ]
   accept_reusable "$reusable" "    uses: $ref@v2" "pr-auto-review/stable" ""

@@ -112,9 +112,9 @@ assert_log_contains() {
 # ---------------------------------------------------------------------------
 
 @test "normalize_signature: lowercases and joins title | labels | repo" {
-  run normalize_signature "Fix The Thing" '[{"name":"auto-rebase"}]' "petry-projects/.github"
+  run normalize_signature "Fix The Thing" '[{"name":"auto-rebase"}]' "combsmith/.github"
   [ "$status" -eq 0 ]
-  [[ "$output" == "fix the thing | auto-rebase | petry-projects/.github" ]]
+  [[ "$output" == "fix the thing | auto-rebase | combsmith/.github" ]]
 }
 
 @test "normalize_signature: strips the dev-lead gate label but keeps real labels" {
@@ -146,13 +146,13 @@ assert_log_contains() {
 
 @test "classify_by_rules: the bare dev-lead label does NOT match dev-lead agent" {
   # Signature as normalize_signature would produce it: gate label already gone.
-  run classify_by_rules "some unrelated title |  | petry-projects/.github"
+  run classify_by_rules "some unrelated title |  | combsmith/.github"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "classify_by_rules: sonarcloud title → Org Standards" {
-  run classify_by_rules "sonarcloud: resolve remaining s7635 stubs |  | petry-projects/.github"
+  run classify_by_rules "sonarcloud: resolve remaining s7635 stubs |  | combsmith/.github"
   [ "$output" = "Org Standards" ]
 }
 
@@ -179,12 +179,12 @@ assert_log_contains() {
 @test "classify_by_rules: cross-cutting infra WINS over the product repo (SonarCloud in a product repo → Org Standards)" {
   # The key ordering guarantee: a SonarCloud sweep inside a product repo is
   # Org Standards work, not product work.
-  run classify_by_rules "sonarcloud: shell script hygiene cleanup |  | petry-projects/talkterm"
+  run classify_by_rules "sonarcloud: shell script hygiene cleanup |  | combsmith/talkterm"
   [ "$output" = "Org Standards" ]
 }
 
 @test "classify_by_rules: a genuine product feature in the product repo → the product initiative" {
-  run classify_by_rules "add spatial audio to the voice provider pipeline |  | petry-projects/talkterm"
+  run classify_by_rules "add spatial audio to the voice provider pipeline |  | combsmith/talkterm"
   [ "$output" = "TalkTerm" ]
 }
 
@@ -199,17 +199,17 @@ assert_log_contains() {
 }
 
 @test "classify_by_rules: feature-ideation → Business Analyst" {
-  run classify_by_rules "feat(feature-ideation): add curated source list for mary |  | petry-projects/.github"
+  run classify_by_rules "feat(feature-ideation): add curated source list for mary |  | combsmith/.github"
   [ "$output" = "Business Analyst" ]
 }
 
 @test "classify_by_rules: token cost report → Cost Observability, not Daily Reports" {
-  run classify_by_rules "org-wide weekly token cost observatory report |  | petry-projects/.github"
+  run classify_by_rules "org-wide weekly token cost observatory report |  | combsmith/.github"
   [ "$output" = "Cost Observability" ]
 }
 
 @test "classify_by_rules: claude-named agent work → dev-lead agent (claude was the old name)" {
-  run classify_by_rules "fix(claude-ci-fix): resolve pr via api when check_run payload empty |  | petry-projects/.github"
+  run classify_by_rules "fix(claude-ci-fix): resolve pr via api when check_run payload empty |  | combsmith/.github"
   [ "$output" = "dev-lead agent" ]
 }
 
@@ -219,22 +219,22 @@ assert_log_contains() {
 }
 
 @test "classify_by_rules: ContentTwin repo work → ContentTwin" {
-  run classify_by_rules "fix: content generation pipeline retry |  | petry-projects/contenttwin"
+  run classify_by_rules "fix: content generation pipeline retry |  | combsmith/contenttwin"
   [ "$output" = "ContentTwin" ]
 }
 
 @test "classify_by_rules: bmad-suite repo work → BMAD (not dev-lead)" {
-  run classify_by_rules "feat: add planning agent persona |  | petry-projects/bmad-bgreat-suite"
+  run classify_by_rules "feat: add planning agent persona |  | combsmith/bmad-bgreat-suite"
   [ "$output" = "BMAD" ]
 }
 
 @test "classify_by_rules: SonarCloud inside bmad-suite → Org Standards (infra wins)" {
-  run classify_by_rules "sonarcloud: shell hygiene cleanup |  | petry-projects/bmad-bgreat-suite"
+  run classify_by_rules "sonarcloud: shell hygiene cleanup |  | combsmith/bmad-bgreat-suite"
   [ "$output" = "Org Standards" ]
 }
 
 @test "classify_by_rules: dev-lead story churn still → dev-lead agent (not BMAD)" {
-  run classify_by_rules "dev-lead: story churn on phantom spec |  | petry-projects/.github-private"
+  run classify_by_rules "dev-lead: story churn on phantom spec |  | combsmith/.github-private"
   [ "$output" = "dev-lead agent" ]
 }
 
@@ -284,8 +284,8 @@ setup_sweep_stub() {
   local fields="${TT_TMP}/fields.json" items="${TT_TMP}/items.json"
   write_fields_schema "$fields"
   write_items_page "$items" \
-    '{"id":"PVTI_A","initiative":null,"content":{"__typename":"Issue","title":"SonarCloud: fix S7635 stubs","labels":{"nodes":[{"name":"dev-lead"}]},"repository":{"nameWithOwner":"petry-projects/.github"}}}' \
-    '{"id":"PVTI_B","initiative":{"name":"Auto-rebase"},"content":{"__typename":"PullRequest","title":"auto-rebase tweak","labels":{"nodes":[{"name":"dev-lead"}]},"repository":{"nameWithOwner":"petry-projects/.github"}}}' \
+    '{"id":"PVTI_A","initiative":null,"content":{"__typename":"Issue","title":"SonarCloud: fix S7635 stubs","labels":{"nodes":[{"name":"dev-lead"}]},"repository":{"nameWithOwner":"combsmith/.github"}}}' \
+    '{"id":"PVTI_B","initiative":{"name":"Auto-rebase"},"content":{"__typename":"PullRequest","title":"auto-rebase tweak","labels":{"nodes":[{"name":"dev-lead"}]},"repository":{"nameWithOwner":"combsmith/.github"}}}' \
     '{"id":"PVTI_C","initiative":null,"content":{"__typename":"DraftIssue","title":"zzq nonsense placeholder"}}'
   local script="${TT_TMP}/script.txt"
   {
@@ -359,67 +359,67 @@ setup_sweep_stub() {
 }
 
 # ---------------------------------------------------------------------------
-# Expanded rule coverage (petry-projects/.github initiative back-fill round 2):
+# Expanded rule coverage (combsmith/.github initiative back-fill round 2):
 # new patterns that closed the largest unmatched clusters, plus the
 # Agent Shield -> Security rename, plus a greediness regression guard.
 # ---------------------------------------------------------------------------
 
 @test "classify_by_rules: gemini/pricing model work → Model Selection" {
-  run classify_by_rules "prepare a date-versioned gemini-3.5-pro pricing row in model-pricing.tsv |  | petry-projects/.github-private"
+  run classify_by_rules "prepare a date-versioned gemini-3.5-pro pricing row in model-pricing.tsv |  | combsmith/.github-private"
   [ "$output" = "Model Selection" ]
 }
 
 @test "classify_by_rules: deep-review + rubber-duck tier work → pr-review agent" {
-  run classify_by_rules "rewire the deep-review + duck-tier prompts to consume pre-fed-context |  | petry-projects/.github-private"
+  run classify_by_rules "rewire the deep-review + duck-tier prompts to consume pre-fed-context |  | combsmith/.github-private"
   [ "$output" = "pr-review agent" ]
 }
 
 @test "classify_by_rules: concentric rings / stable tag → Release Strategy" {
-  run classify_by_rules "define concentric rings (0 self-host) + keep production duty on stable-tag |  | petry-projects/.github-private"
+  run classify_by_rules "define concentric rings (0 self-host) + keep production duty on stable-tag |  | combsmith/.github-private"
   [ "$output" = "Release Strategy" ]
 }
 
 @test "classify_by_rules: reusable-workflow shim identity → Org Standards" {
-  run classify_by_rules "epic: enforce identical reusable-workflow shims across the fleet |  | petry-projects/.github"
+  run classify_by_rules "epic: enforce identical reusable-workflow shims across the fleet |  | combsmith/.github"
   [ "$output" = "Org Standards" ]
 }
 
 @test "classify_by_rules: spec-drift detector → Org Standards" {
-  run classify_by_rules "spec-drift detector script + pure-classifier unit tests |  | petry-projects/.github-private"
+  run classify_by_rules "spec-drift detector script + pure-classifier unit tests |  | combsmith/.github-private"
   [ "$output" = "Org Standards" ]
 }
 
 @test "classify_by_rules: off-peak scheduling standard → Org Standards" {
-  run classify_by_rules "move all scheduled workflows off the top-of-the-hour |  | petry-projects/.github-private"
+  run classify_by_rules "move all scheduled workflows off the top-of-the-hour |  | combsmith/.github-private"
   [ "$output" = "Org Standards" ]
 }
 
 @test "classify_by_rules: agent rate-limit / circuit-breaker → Self-healing" {
-  run classify_by_rules "adr: agent rate-limit & circuit-breaker taxonomy |  | petry-projects/.github-private"
+  run classify_by_rules "adr: agent rate-limit & circuit-breaker taxonomy |  | combsmith/.github-private"
   [ "$output" = "Self-healing" ]
 }
 
 @test "classify_by_rules: kiro reconciliation → Tooling" {
-  run classify_by_rules "kiro capability reconciliation + gap decision record |  | petry-projects/.github-private"
+  run classify_by_rules "kiro capability reconciliation + gap decision record |  | combsmith/.github-private"
   [ "$output" = "Tooling" ]
 }
 
 @test "classify_by_rules: deepsec org scan → Security (renamed from Agent Shield)" {
-  run classify_by_rules "implement deepsec org scan |  | petry-projects/.github-private"
+  run classify_by_rules "implement deepsec org scan |  | combsmith/.github-private"
   [ "$output" = "Security" ]
 }
 
 @test "classify_by_rules: existing agent-security signal still routes to Security" {
-  run classify_by_rules "agent shield v2: ci prompt injection sentinel |  | petry-projects/.github-private"
+  run classify_by_rules "agent shield v2: ci prompt injection sentinel |  | combsmith/.github-private"
   [ "$output" = "Security" ]
 }
 
 @test "classify_by_rules: copilot cli triage failure → dev-lead agent" {
-  run classify_by_rules "fix: copilot cli triage command rejected with invalid command format |  | petry-projects/.github-private"
+  run classify_by_rules "fix: copilot cli triage command rejected with invalid command format |  | combsmith/.github-private"
   [ "$output" = "dev-lead agent" ]
 }
 
 @test "classify_by_rules: canary-rollout item is NOT stolen by shim/reusable patterns (stays Release Strategy)" {
-  run classify_by_rules "make canary-rollout semver-major aware — major-version channels + per-major shim pins |  | petry-projects/.github-private"
+  run classify_by_rules "make canary-rollout semver-major aware — major-version channels + per-major shim pins |  | combsmith/.github-private"
   [ "$output" = "Release Strategy" ]
 }

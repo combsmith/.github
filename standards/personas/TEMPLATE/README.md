@@ -2,9 +2,9 @@
 
 Copy `persona.yml` into **`.github-private/personas/<id>/`** to onboard a new
 agentic persona. It is governed by
-[`standards/persona-standards.md`](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md)
+[`standards/persona-standards.md`](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md)
 and validated against
-[`persona.schema.json`](https://github.com/petry-projects/.github/blob/main/standards/personas/persona.schema.json).
+[`persona.schema.json`](https://github.com/combsmith/.github/blob/main/standards/personas/persona.schema.json).
 (Links are absolute so they still resolve after this file is copied into the
 `.github-private` repo.)
 
@@ -56,7 +56,7 @@ inside `personas/<id>/`.
 8. **Roll out** `next → ring0 → ring1 → stable`, eval gate green before `stable`.
 
 The full gate is the **Definition of Done** checklist in
-[`persona-standards.md` §7](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+[`persona-standards.md` §7](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 
 ## Worked example
 

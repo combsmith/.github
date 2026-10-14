@@ -3,18 +3,18 @@
 > **These are org-level policy, applied per-repo.** Every JSON here is an
 > **organization-level** ruleset in intent — including `release-channel-tags`, whose
 > bypass actors are org-scoped identities (`OrganizationAdmin` + org-installed Apps).
-> GitHub's native **org-level rulesets require the Team plan**; `petry-projects` is on
-> Free (`GET /orgs/petry-projects/rulesets` → 403 *"Upgrade to GitHub Team"*), so
+> GitHub's native **org-level rulesets require the Team plan**; `combsmith` is on
+> Free (`GET /orgs/combsmith/rulesets` → 403 *"Upgrade to GitHub Team"*), so
 > `scripts/apply-rulesets.sh` **replicates each definition onto its target repos** as
 > repo-level rulesets. That per-repo projection is our stand-in for the paywalled
 > feature — do not mistake these for repo-specific config. If the org moves to Team,
 > the simplification is to define each once at `/orgs/{org}/rulesets` (with
 > repository-targeting conditions) and retire the replication loop.
 
-This directory holds the **org-wide compliance ruleset JSONs** for `petry-projects`.
+This directory holds the **org-wide compliance ruleset JSONs** for `combsmith`.
 `.github` owns org-wide standards and compliance policy; its canonical home is
 `standards/`. See [`AGENTS.md`](../../AGENTS.md#organization-standards) for the
-repo-boundary rule (codified in petry-projects/.github#576) and
+repo-boundary rule (codified in combsmith/.github#576) and
 [`standards/github-settings.md`](../github-settings.md#repository-rulesets) for how
 these rulesets are enforced.
 
@@ -51,8 +51,8 @@ GH_TOKEN=<admin-token> bash scripts/apply-rulesets.sh <repo> --dry-run
   release-management tags. It is applied by name, never swept fleet-wide:
 
   ```bash
-  GH_TOKEN=<admin> bash scripts/apply-rulesets.sh --repo petry-projects/.github release-channel-tags
-  GH_TOKEN=<admin> bash scripts/apply-rulesets.sh --repo petry-projects/.github-private release-channel-tags
+  GH_TOKEN=<admin> bash scripts/apply-rulesets.sh --repo combsmith/.github release-channel-tags
+  GH_TOKEN=<admin> bash scripts/apply-rulesets.sh --repo combsmith/.github-private release-channel-tags
   ```
 
 - **The default (no-name) set is the `FLEET_RULESETS` allowlist**, *not* every
