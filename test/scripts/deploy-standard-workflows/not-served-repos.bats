@@ -9,6 +9,7 @@
 
 bats_require_minimum_version 1.5.0
 
+# Set up test environment: create temp directory, gh command stub, and log file.
 setup() {
   TT_TMP="$(mktemp -d)"
   REPO_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/../../.." && pwd)"
@@ -24,6 +25,7 @@ STUB
   chmod +x "${TT_TMP}/bin/gh"
 }
 
+# Clean up temporary test files and directories.
 teardown() { rm -rf "$TT_TMP"; }
 
 @test "is_not_served_repo: software-factory and its canary are not served" {
