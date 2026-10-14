@@ -398,7 +398,7 @@ list_workflow_files() {
     out=$(gh api "repos/$ORG/$repo/contents/.github/workflows" --jq '.[].name' 2>"$errfile") || rc=$?
     [ "$rc" -eq 0 ] && break
     kind=$(agent_ingress_gh_error_kind "$(cat "$errfile")")
-    [ "$kind" = "$SETTING_MISSING_VALUE" ] && break
+    [[ "$kind" = "$SETTING_MISSING_VALUE" ]] && break
     [ "$attempt" -lt 3 ] && sleep $((attempt * 2))
   done
   if [ "$rc" -eq 0 ]; then
@@ -407,7 +407,7 @@ list_workflow_files() {
     return 0
   fi
   rm -f "$errfile"
-  [ "$kind" = "$SETTING_MISSING_VALUE" ] && return 2
+  [[ "$kind" = "$SETTING_MISSING_VALUE" ]] && return 2
   return 1
 }
 
