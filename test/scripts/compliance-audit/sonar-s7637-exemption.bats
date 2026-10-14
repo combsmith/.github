@@ -30,7 +30,7 @@ classify() {
 }
 
 @test "no issue-ignore config at all is missing" {
-  classify "$(printf 'sonar.projectKey=petry-projects_foo\nsonar.organization=petry-projects\n')"
+  classify "$(printf 'sonar.projectKey=combsmith_foo\nsonar.organization=combsmith\n')"
   [ "$status" -eq 0 ]
   [ "$output" = "missing" ]
 }
