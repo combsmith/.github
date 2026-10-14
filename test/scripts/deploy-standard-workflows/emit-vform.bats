@@ -100,7 +100,7 @@ stub_pinning_no_marker() {  # <ref> → base64 of the SAME stub but marker-less 
 devlead_stub_pinning() {  # <ref> → base64 of a .github dev-lead CONSUMER stub pinned at <ref>
   local body="jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@$1
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@$1
     with:
       agent_ref: $1
     secrets: inherit"

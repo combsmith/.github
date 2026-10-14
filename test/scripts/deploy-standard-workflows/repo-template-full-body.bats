@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Issue #1285 — the sweep compares the WHOLE stub body for petry-projects/repo-template.
+# Issue #1285 — the sweep compares the WHOLE stub body for combsmith/repo-template.
 #
 # For a ring-managed stub the sweep's compliance rule is pin-only (plus the S7635
 # marker), so a stub whose body differs from the template read as `already
@@ -80,7 +80,7 @@ stale_body_at() {  # <channel>
 # A ring registry copy with repo-template moved into dependabot-rebase's ring1.
 ring1_registry() {
   local out="${TT_TMP}/canary-rings.json"
-  jq '.agents["dependabot-rebase"].rings |= map(if .channel == "ring1" then .members += ["petry-projects/repo-template"] else . end)' \
+  jq '.agents["dependabot-rebase"].rings |= map(if .channel == "ring1" then .members += ["combsmith/repo-template"] else . end)' \
     "${REPO_ROOT}/standards/canary-rings.json" > "$out"
   printf '%s' "$out"
 }
@@ -91,7 +91,7 @@ deploy_capture() {
   bash -c '
     source "$1"
     set +e
-    ORG=petry-projects; DRY_RUN=false; FORCE=false; _OVERALL_FAILED=0
+    ORG=combsmith; DRY_RUN=false; FORCE=false; _OVERALL_FAILED=0
     WORKFLOWS=("$3")
     sd_deploy_files_via_pr() {
       shift 5
@@ -184,7 +184,7 @@ deploy_capture() {
 }
 
 @test "the full-body rule matches repo-template by name only, bare or org-qualified" {
-  run bash -c 'source "$1"; is_full_body_compare_repo repo-template && is_full_body_compare_repo petry-projects/repo-template' _ "$SCRIPT"
+  run bash -c 'source "$1"; is_full_body_compare_repo repo-template && is_full_body_compare_repo combsmith/repo-template' _ "$SCRIPT"
   [ "$status" -eq 0 ]
   run bash -c 'source "$1"; is_full_body_compare_repo broodly' _ "$SCRIPT"
   [ "$status" -eq 1 ]
@@ -228,6 +228,6 @@ refs/tags/idea-triage/v1-next
 refs/tags/idea-triage/v1-ring0
 refs/tags/idea-triage/v1-ring1"; export GH_MATCHING_REFS
   install_gh_stub
-  run bash -c 'source "$1"; is_already_compliant "$(< "$2")" "$3" petry-projects/repo-template' _ "$SCRIPT" "$existing" "$t"
+  run bash -c 'source "$1"; is_already_compliant "$(< "$2")" "$3" combsmith/repo-template' _ "$SCRIPT" "$existing" "$t"
   [ "$status" -eq 0 ]
 }

@@ -4,7 +4,7 @@
 # Every fleet pr-review caller pinned the legacy bare `@pr-review/stable` and had
 # no template, so the sweep never re-pinned it and no pr-review release could
 # reach the fleet. The sweep now owns the EXISTING callers only:
-#   - it never targets petry-projects/.github-private, whose pr-review.yml is the
+#   - it never targets combsmith/.github-private, whose pr-review.yml is the
 #     ENGINE (the reusable itself), not a caller;
 #   - it never seeds the file into a repo that has no caller today;
 #   - an existing caller is replaced with the template body, with BOTH pin lines
@@ -90,7 +90,7 @@ concurrency:
 
 jobs:
   review:
-    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/stable
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/stable
     with:
       agent_ref: pr-review/stable
     secrets: inherit
@@ -103,9 +103,9 @@ YAML
   [ -f "$TEMPLATE" ]
   grep -qE '^name: PR Review Agent$' "$TEMPLATE"
   grep -qE '^  review:$' "$TEMPLATE"
-  grep -qF 'SOURCE OF TRUTH: petry-projects/.github/standards/workflows/pr-review.yml' "$TEMPLATE"
+  grep -qF 'SOURCE OF TRUTH: combsmith/.github/standards/workflows/pr-review.yml' "$TEMPLATE"
   grep -qF 'AGENTS — READ BEFORE EDITING' "$TEMPLATE"
-  grep -qF 'uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable  # NOSONAR(githubactions:S7637)' "$TEMPLATE"
+  grep -qF 'uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable  # NOSONAR(githubactions:S7637)' "$TEMPLATE"
   grep -qE '^      agent_ref: pr-review/v1-stable$' "$TEMPLATE"
   grep -qF "if: \${{ github.actor != 'dependabot[bot]' }}" "$TEMPLATE"
   run grep -qE '^concurrency:' "$TEMPLATE"
@@ -119,7 +119,7 @@ YAML
 
 # ── guard 1: never target the engine host ───────────────────────────────────
 
-@test "guard: petry-projects/.github-private is never targeted, even with --force" {
+@test "guard: combsmith/.github-private is never targeted, even with --force" {
   GH_CONTENT_B64="$(printf 'name: PR Review Agent\non:\n  workflow_call:\n' | b64)"; export GH_CONTENT_B64
   install_gh_stub
   run env GH_TOKEN=x bash "$SCRIPT" --dry-run --force --repo .github-private --workflow pr-review.yml
@@ -222,7 +222,7 @@ deploy_capture() {
   bash -c '
     source "$1"
     set +e
-    ORG=petry-projects; DRY_RUN=false; FORCE=false; _OVERALL_FAILED=0
+    ORG=combsmith; DRY_RUN=false; FORCE=false; _OVERALL_FAILED=0
     WORKFLOWS=(pr-review.yml)
     sd_deploy_files_via_pr() {
       shift 5

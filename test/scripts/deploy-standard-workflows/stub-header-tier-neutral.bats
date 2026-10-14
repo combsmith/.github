@@ -88,7 +88,7 @@ ring_rendered_templates() {
     # Simulate an existing ring-1 stub that still carries the old stable-channel header
     old="$(printf '# pinned to the \`%s/v1-stable\` channel\n%s\n' "$base" "$rendered")"
     # Verify it is NOT compliant (would be processed, not skipped, by the sweep)
-    run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/test-repo' _ "$SCRIPT" "$old" "$t"
+    run bash -c 'source "$1"; is_already_compliant "$2" "$3" combsmith/test-repo' _ "$SCRIPT" "$old" "$t"
     [ "$status" -eq 1 ] || bad+="${t##*/}: stale header not flagged as non-compliant"$'\n'
   done <<< "$rows"
   if [ -n "$bad" ]; then printf '%s' "$bad"; return 1; fi
@@ -101,10 +101,10 @@ ring_rendered_templates() {
   grep -qE '^ +uses:.*persona-mention-reusable\.yml@persona-mention/v1-ring1' <<< "$swept"
   run grep -E 'persona-mention/(v[0-9]+-)?stable' <<< "$swept"
   [ "$status" -eq 1 ]
-  run bash -c 'source "$1"; stub_body_matches_template "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$swept" "$t"
+  run bash -c 'source "$1"; stub_body_matches_template "$2" "$3" combsmith/TalkTerm' _ "$SCRIPT" "$swept" "$t"
   [ "$status" -eq 0 ]
   # Still drift: the same stub left on the stable pin in a ring-1 repo.
-  run bash -c 'source "$1"; stub_body_matches_template "$(cat "$2")" "$2" petry-projects/TalkTerm' _ "$SCRIPT" "$t"
+  run bash -c 'source "$1"; stub_body_matches_template "$(cat "$2")" "$2" combsmith/TalkTerm' _ "$SCRIPT" "$t"
   [ "$status" -eq 1 ]
 }
 
@@ -116,7 +116,7 @@ ring_rendered_templates() {
   grep -qE '^ +agent_ref: *pr-review/v1-ring1' <<< "$swept"
   run grep -E 'pr-review/(v[0-9]+-)?stable' <<< "$swept"
   [ "$status" -eq 1 ]
-  run bash -c 'source "$1"; stub_body_matches_template "$2" "$3" petry-projects/bmad-bgreat-suite' _ "$SCRIPT" "$swept" "$t"
+  run bash -c 'source "$1"; stub_body_matches_template "$2" "$3" combsmith/bmad-bgreat-suite' _ "$SCRIPT" "$swept" "$t"
   [ "$status" -eq 0 ]
 }
 
@@ -125,9 +125,9 @@ ring_rendered_templates() {
   local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" swept old
   swept="$(bash -c 'source "$1"; ring_repin_uses persona-mention persona-mention/v1-ring1 < "$2"' _ "$SCRIPT" "$t")"
   old="$(printf '# pinned to the `persona-mention/v1-stable` channel\n%s\n' "$swept")"
-  run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$old" "$t"
+  run bash -c 'source "$1"; is_already_compliant "$2" "$3" combsmith/TalkTerm' _ "$SCRIPT" "$old" "$t"
   [ "$status" -eq 1 ]
-  run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$swept" "$t"
+  run bash -c 'source "$1"; is_already_compliant "$2" "$3" combsmith/TalkTerm' _ "$SCRIPT" "$swept" "$t"
   [ "$status" -eq 0 ]
 }
 
@@ -137,7 +137,7 @@ ring_rendered_templates() {
   stable="$(cat "$t")"
   old="$(printf '# pinned to the `persona-mention/v1-stable` channel\n%s\n' "$stable")"
   # Pass a stable-tier repo so the exemption applies
-  run bash -c 'source "$1"; stub_has_stale_stable_header "$2" "$3" petry-projects/stable-repo' _ "$SCRIPT" "$old" "$t"
+  run bash -c 'source "$1"; stub_has_stale_stable_header "$2" "$3" combsmith/stable-repo' _ "$SCRIPT" "$old" "$t"
   [ "$status" -eq 1 ]
 }
 
@@ -163,12 +163,12 @@ ring_rendered_templates() {
   swept="$(bash -c 'source "$1"; ring_repin_uses persona-mention persona-mention/v1-ring1 < "$2"' _ "$SCRIPT" "$t")"
   old="$(printf '# pinned to the \`persona-mention/v1-stable\` channel\n%s\n' "$swept")"
   # Verify the stub with stale header is NOT compliant
-  run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$old" "$t"
+  run bash -c 'source "$1"; is_already_compliant "$2" "$3" combsmith/TalkTerm' _ "$SCRIPT" "$old" "$t"
   [ "$status" -eq 1 ]
   # Verify that stripping the header makes it compliant
   local stripped
   stripped="$(bash -c 'source "$1"; strip_stale_stable_header persona-mention <<< "$2"' _ "$SCRIPT" "$old")"
-  run bash -c 'source "$1"; is_already_compliant "$2" "$3" petry-projects/TalkTerm' _ "$SCRIPT" "$stripped" "$t"
+  run bash -c 'source "$1"; is_already_compliant "$2" "$3" combsmith/TalkTerm' _ "$SCRIPT" "$stripped" "$t"
   [ "$status" -eq 0 ]
 }
 

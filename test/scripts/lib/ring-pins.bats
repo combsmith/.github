@@ -261,7 +261,7 @@ setup() {
 @test "ring_repin_uses: rewrites the reusable uses: ref, preserving the trailing comment" {
   local stub="jobs:
   auto-rebase:
-    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/stable  # NOSONAR keep
+    uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/stable  # NOSONAR keep
     secrets: inherit"
   run bash -c 'source "'"$REPO_ROOT"'/scripts/lib/ring-pins.sh"; ring_repin_uses auto-rebase auto-rebase/v2-stable <<<"$1"' _ "$stub"
   [ "$status" -eq 0 ]
@@ -270,7 +270,7 @@ setup() {
 }
 
 @test "ring_repin_uses: also rewrites a matching agent_ref (dev-lead stub)" {
-  local stub="    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
+  local stub="    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
     with:
       agent_ref: dev-lead/stable"
   run bash -c 'source "'"$REPO_ROOT"'/scripts/lib/ring-pins.sh"; ring_repin_uses dev-lead dev-lead/v4-ring1 <<<"$1"' _ "$stub"
@@ -284,7 +284,7 @@ setup() {
 # ref). Re-pinning uses: without also re-pinning checkout_ref would run the
 # ring-tier reusable while checking out the stable scripts — a version mismatch.
 @test "ring_repin_uses: also rewrites a matching checkout_ref in lockstep, preserving the trailing comment" {
-  local stub="    uses: petry-projects/.github/.github/workflows/apply-repo-settings-reusable.yml@apply-repo-settings/v1-stable  # NOSONAR keep
+  local stub="    uses: combsmith/.github/.github/workflows/apply-repo-settings-reusable.yml@apply-repo-settings/v1-stable  # NOSONAR keep
     with:
       checkout_ref: apply-repo-settings/v1-stable  # keep in lockstep with the uses: channel pin"
   run bash -c 'source "'"$REPO_ROOT"'/scripts/lib/ring-pins.sh"; ring_repin_uses apply-repo-settings apply-repo-settings/v1-ring1 <<<"$1"' _ "$stub"
@@ -298,7 +298,7 @@ setup() {
 # fleet caller's `uses:` line has no `-reusable` suffix. The re-pin must follow the
 # registry's reusable filename and move `uses:` and `agent_ref:` in lockstep (#1125).
 @test "ring_repin_uses: rewrites a grandfathered pr-review.yml pin and its agent_ref in lockstep (#1125)" {
-  local stub="    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/stable  # NOSONAR keep
+  local stub="    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/stable  # NOSONAR keep
     with:
       agent_ref: pr-review/stable"
   run bash -c 'source "'"$REPO_ROOT"'/scripts/lib/ring-pins.sh"; ring_repin_uses pr-review pr-review/v1-ring1 <<<"$1"' _ "$stub"
@@ -309,7 +309,7 @@ setup() {
 }
 
 @test "ring_repin_uses: a pr-review re-pin never touches a pr-review-mention pin (#1125)" {
-  local stub="    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v1-stable"
+  local stub="    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v1-stable"
   run bash -c 'source "'"$REPO_ROOT"'/scripts/lib/ring-pins.sh"; ring_repin_uses pr-review pr-review/v1-ring1 <<<"$1"' _ "$stub"
   [ "$status" -eq 0 ]
   [ "$output" = "$stub" ]
@@ -341,7 +341,7 @@ setup() {
   # channel consumer, so it must be re-pinned, not treated as self-host.
   local stub="jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/ring0
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/ring0
     with:
       agent_ref: dev-lead/ring0"
   run ring_stub_selfhosts dev-lead <<< "$stub"
@@ -391,23 +391,23 @@ refs/tags/dev-lead/v1-next
 refs/tags/dev-lead/v1-ring0
 refs/tags/dev-lead/v1-ring1"
   _install_gh_stub
-  [ "$(ring_host_current_channel_major petry-projects/.github-private dev-lead)" = "1" ]
+  [ "$(ring_host_current_channel_major combsmith/.github-private dev-lead)" = "1" ]
 }
 
 @test "ring_host_current_channel_major: empty when only release tags exist (#870)" {
   export GH_MATCHING_REFS="refs/tags/auto-rebase/v2.3.1
 refs/tags/auto-rebase/v1.0.0"
   _install_gh_stub
-  [ -z "$(ring_host_current_channel_major petry-projects/.github auto-rebase)" ]
+  [ -z "$(ring_host_current_channel_major combsmith/.github auto-rebase)" ]
 }
 
 @test "ring_tag_exists: true only for a ref present on the host (#870)" {
   export GH_EXISTING_TAGS="dev-lead/v1-ring1
 dev-lead/v1-stable"
   _install_gh_stub
-  run ring_tag_exists petry-projects/.github-private dev-lead/v1-ring1
+  run ring_tag_exists combsmith/.github-private dev-lead/v1-ring1
   [ "$status" -eq 0 ]
-  run ring_tag_exists petry-projects/.github-private dev-lead/v1-ring0
+  run ring_tag_exists combsmith/.github-private dev-lead/v1-ring0
   [ "$status" -ne 0 ]
 }
 
@@ -471,19 +471,19 @@ refs/tags/dev-lead/v139-ring0
 refs/tags/dev-lead/v139-next"
   _install_gh_stub
   local rc=0
-  ring_pin_current petry-projects/.github-private dev-lead broodminder-data dev-lead/v1-stable || rc=$?
+  ring_pin_current combsmith/.github-private dev-lead broodminder-data dev-lead/v1-stable || rc=$?
   [ "$rc" -eq 1 ]
   [ "$RING_EXPECTED_REF" = "dev-lead/v139-stable" ]
   rc=0
-  ring_pin_current petry-projects/.github-private dev-lead broodminder-data dev-lead/v139-stable || rc=$?
+  ring_pin_current combsmith/.github-private dev-lead broodminder-data dev-lead/v139-stable || rc=$?
   [ "$rc" -eq 0 ]
   [ "$RING_EXPECTED_REF" = "dev-lead/v139-stable" ]
   # wrong tier (current major) and bare tier are still drift
   rc=0
-  ring_pin_current petry-projects/.github-private dev-lead broodminder-data dev-lead/v139-ring1 || rc=$?
+  ring_pin_current combsmith/.github-private dev-lead broodminder-data dev-lead/v139-ring1 || rc=$?
   [ "$rc" -eq 1 ]
   rc=0
-  ring_pin_current petry-projects/.github-private dev-lead broodminder-data dev-lead/stable || rc=$?
+  ring_pin_current combsmith/.github-private dev-lead broodminder-data dev-lead/stable || rc=$?
   [ "$rc" -eq 1 ]
 }
 
@@ -495,17 +495,17 @@ refs/tags/dev-lead/v1-stable"
   _install_gh_stub
   local rc=0
   # stable repo on v1-stable: v2-stable does not exist → still current
-  ring_pin_current petry-projects/.github-private dev-lead markets dev-lead/v1-stable || rc=$?
+  ring_pin_current combsmith/.github-private dev-lead markets dev-lead/v1-stable || rc=$?
   [ "$rc" -eq 0 ]
   [ "$RING_EXPECTED_REF" = "dev-lead/v1-stable" ]
   # a pin on the uncut v2-stable is drift, never "current"
   rc=0
-  ring_pin_current petry-projects/.github-private dev-lead markets dev-lead/v2-stable || rc=$?
+  ring_pin_current combsmith/.github-private dev-lead markets dev-lead/v2-stable || rc=$?
   [ "$rc" -eq 1 ]
   [ "$RING_EXPECTED_REF" = "dev-lead/v1-stable" ]
   # ring0 repo (.github, for the .github-private-hosted dev-lead) on v1-ring0 → drift → v2-ring0
   rc=0
-  ring_pin_current petry-projects/.github-private dev-lead .github dev-lead/v1-ring0 || rc=$?
+  ring_pin_current combsmith/.github-private dev-lead .github dev-lead/v1-ring0 || rc=$?
   [ "$rc" -eq 1 ]
   [ "$RING_EXPECTED_REF" = "dev-lead/v2-ring0" ]
 }
@@ -517,7 +517,7 @@ refs/tags/dev-lead/v1-stable"
   chmod +x "$bin/gh"
   PATH="${bin}:${PATH}"
   local rc=0
-  ring_pin_current petry-projects/.github-private dev-lead broodly dev-lead/v1-stable 2>/dev/null || rc=$?
+  ring_pin_current combsmith/.github-private dev-lead broodly dev-lead/v1-stable 2>/dev/null || rc=$?
   [ "$rc" -eq 2 ]
   [ -z "$RING_EXPECTED_REF" ]
 }
@@ -526,7 +526,7 @@ refs/tags/dev-lead/v1-stable"
   export GH_MATCHING_REFS="refs/tags/auto-rebase/v2.3.1"
   _install_gh_stub
   local rc=0
-  ring_pin_current petry-projects/.github auto-rebase markets auto-rebase/stable || rc=$?
+  ring_pin_current combsmith/.github auto-rebase markets auto-rebase/stable || rc=$?
   [ "$rc" -eq 0 ]
   [ "$RING_EXPECTED_REF" = "auto-rebase/stable" ]
 }
