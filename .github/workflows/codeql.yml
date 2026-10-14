@@ -18,7 +18,7 @@
 # ⚠️ REQUIRED CUTOVER (repository setting, not a file change): code-scanning
 # default setup must be DISABLED while this workflow exists. GitHub rejects the
 # advanced-setup upload while default setup is enabled, which fails this check.
-#   gh api -X PATCH repos/petry-projects/.github/code-scanning/default-setup \
+#   gh api -X PATCH repos/combsmith/.github/code-scanning/default-setup \
 #     -f state=not-configured
 #
 # The required-check context produced here is `CodeQL` — do NOT rename the

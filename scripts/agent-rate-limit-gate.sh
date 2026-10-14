@@ -42,7 +42,7 @@
 # whole consultation is behind AGENT_TOKEN_BUDGET_ENABLED: unset (the default) ⇒
 # skipped entirely, so the output is byte-identical to before this change; it is
 # inert until a maintainer arms the flag AND wires the private telemetry seam
-# (petry-projects/.github-private#1565). Even armed, the weekly glide half stays
+# (combsmith/.github-private#1565). Even armed, the weekly glide half stays
 # inert until org_wide.token_budget.limits.weekly_all.enabled is flipped in config.
 #
 # Usage:

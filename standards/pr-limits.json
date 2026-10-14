@@ -11,11 +11,11 @@
   "exempt_actors": [
     "dependabot[bot]",
     "OrganizationAdmin",
-    "@petry-projects/org-leads",
+    "@combsmith/org-leads",
     "dependabot-automerge-petry"
   ],
   "exempt_labels": [
     "security"
   ],
-  "_exempt_note": "Actors/labels whose PRs must never be blocked by the cap (ADR §6, §7.4). dependabot[bot] is exempt because it is already bounded per-ecosystem and security PRs must never be starved; OrganizationAdmin / @petry-projects/org-leads are human break-glass and maintainer PRs; dependabot-automerge-petry operates on existing PRs (does not add to the queue); security-labeled PRs are urgent fixes that bypass any throttle."
+  "_exempt_note": "Actors/labels whose PRs must never be blocked by the cap (ADR §6, §7.4). dependabot[bot] is exempt because it is already bounded per-ecosystem and security PRs must never be starved; OrganizationAdmin / @combsmith/org-leads are human break-glass and maintainer PRs; dependabot-automerge-petry operates on existing PRs (does not add to the queue); security-labeled PRs are urgent fixes that bypass any throttle."
 }

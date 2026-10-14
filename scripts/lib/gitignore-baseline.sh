@@ -30,8 +30,8 @@ _GITIGNORE_BASELINE_SOURCED=1
 
 # Canonical markers — MUST match the ones committed in /.gitignore and documented
 # in standards/gitignore-standard.md. Compared as whole lines (grep -xF / awk ==).
-GIB_BEGIN_MARKER='# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>'
-GIB_END_MARKER='# <<< END petry-projects secrets baseline <<<'
+GIB_BEGIN_MARKER='# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>'
+GIB_END_MARKER='# <<< END combsmith secrets baseline <<<'
 
 # gib_extract_baseline_block <canonical_gitignore_file>
 # Print the marker-wrapped L1 block (BEGIN..END lines, inclusive) from a canonical

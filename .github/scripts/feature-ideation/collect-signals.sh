@@ -30,7 +30,7 @@ set -euo pipefail
 # compatibility break: validate-signals.py will reject the runtime output
 # if the constants drift, AND the bats `signals-schema: SCHEMA_VERSION
 # constant matches schema file` test enforces this in CI.
-# Caught by CodeRabbit review on PR petry-projects/.github#85.
+# Caught by CodeRabbit review on PR combsmith/.github#85.
 SCHEMA_VERSION="1.0.0"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,7 +61,7 @@ main() {
   # Validate that limit overrides are positive integers before forwarding to
   # GraphQL — a value like `ISSUE_LIMIT=foo` would cause an opaque downstream
   # failure instead of a clean usage error. Caught by CodeRabbit review on
-  # PR petry-projects/.github#85.
+  # PR combsmith/.github#85.
   local _lim_name _lim_val
   for _lim_name in ISSUE_LIMIT PR_LIMIT DISCUSSION_LIMIT; do
     case "$_lim_name" in
@@ -77,7 +77,7 @@ main() {
 
   # Strict owner/name format — reject leading/trailing slashes, empty segments,
   # and extra path parts (e.g. "org//repo", "/repo", "org/repo/extra").
-  # Caught by CodeRabbit review on PR petry-projects/.github#85.
+  # Caught by CodeRabbit review on PR combsmith/.github#85.
   if [[ ! $REPO =~ ^[^/]+/[^/]+$ ]]; then
     printf '[collect-signals] REPO must be in owner/name format, got: %s\n' "$REPO" >&2
     return 64
@@ -100,7 +100,7 @@ main() {
     --json number,title,labels,createdAt,author)
   # Compute truncation warning BEFORE bot filtering. If we filter out bots
   # first, the count could drop below the limit and mask a real truncation.
-  # Caught by Copilot review on PR petry-projects/.github#85.
+  # Caught by Copilot review on PR combsmith/.github#85.
   local raw_open_count
   raw_open_count=$(printf '%s' "$open_issues_raw" | jq 'length')
   if [[ "$raw_open_count" -ge "$issue_limit" ]]; then

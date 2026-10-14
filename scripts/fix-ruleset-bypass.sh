@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fix-ruleset-bypass.sh — Normalize ruleset bypass actors on petry-projects repos
+# fix-ruleset-bypass.sh — Normalize ruleset bypass actors on combsmith repos
 #
 # Companion to apply-rulesets.sh and compliance-audit.sh. Brings the bypass
 # actors of EVERY ruleset that targets the default branch into compliance with:
@@ -44,7 +44,7 @@
 
 set -euo pipefail
 
-ORG="petry-projects"
+ORG="combsmith"
 DRY_RUN=false
 OUT_DIR="${OUT_DIR:-${TMPDIR:-/tmp}/petry-ruleset-payloads}"
 

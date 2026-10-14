@@ -6,7 +6,7 @@
 # -----------
 # The `pr-quality` ruleset (standards/rulesets/pr-quality.json) requires a
 # code-owner approval, `require_last_push_approval`, and — implicitly — that the
-# approval is not the PR author's own. CODEOWNERS is `* @petry-projects/org-leads`
+# approval is not the PR author's own. CODEOWNERS is `* @combsmith/org-leads`
 # = {don-petry, donpetry-bot}. On a standards-sync PR author=don-petry (cannot
 # self-approve) and last-pusher=donpetry-bot (last-push-approval disqualifies its
 # own approval), so BOTH code-owners are disqualified and the only historical way
@@ -31,7 +31,7 @@
 #
 # Options:
 #   --repo <owner/repo>   Target repository (required). Works for the SKIP_REPOS
-#                         meta-repos too (e.g. petry-projects/.github-private).
+#                         meta-repos too (e.g. combsmith/.github-private).
 #   --pr <number>         Operate on a single PR. Omit to sweep every open PR that
 #                         carries the standards-sync label.
 #   --dry-run             Print intended actions; make no mutating gh calls.
