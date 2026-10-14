@@ -9,7 +9,7 @@
 # within one cycle.
 #
 # Runs centrally in combsmith/.github (the scripts live here); mints the
-# petry-projects-planner App token for issues/PRs read + project write.
+# combsmith-planner App token for issues/PRs read + project write.
 #
 # Two phases run in order each cycle:
 #   1. reconcile — ensure every qualifying issue/PR/Idea is ON the board.

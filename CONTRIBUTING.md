@@ -62,7 +62,7 @@ The board spans the org. To wire a second repo in, copy
 [`standards/workflows/add-to-project.yml`](./standards/workflows/add-to-project.yml)
 to `.github/workflows/add-to-project.yml` in that repo — it's a thin caller
 pinned to the `add-to-project/stable` channel of the reusable. The repo must
-be included in the `petry-projects-planner` app installation (see token
+be included in the `combsmith-planner` app installation (see token
 requirement below). The gate labels and Ideas category are reusable
 **inputs** (`required_label`, `excluded_labels`, `ideas_category`), so a repo
 can tune them without forking the logic.
@@ -90,7 +90,7 @@ operational items that would flood the board with noise:
 
 ### Token requirement
 
-The workflow authenticates using the **`petry-projects-planner` GitHub App**
+The workflow authenticates using the **`combsmith-planner` GitHub App**
 (App ID 3985527) via
 [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
 Two org-level secrets must be set — this is a one-time manual setup;
