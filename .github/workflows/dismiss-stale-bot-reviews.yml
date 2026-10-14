@@ -1,8 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/dismiss-stale-bot-reviews.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md
-# Decision core:   petry-projects/.github/scripts/lib/dismiss-stale-bot-reviews.sh
-#                  petry-projects/.github/scripts/dismiss-stale-bot-reviews.sh
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/dismiss-stale-bot-reviews.yml
+# Standard:        combsmith/.github/standards/ci-standards.md
+# Decision core:   combsmith/.github/scripts/lib/dismiss-stale-bot-reviews.sh
+#                  combsmith/.github/scripts/dismiss-stale-bot-reviews.sh
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a SELF-CONTAINED verbatim stub (the initiative-driver class),
@@ -12,8 +12,8 @@
 #     forever (#617 blocker 3). This workflow dismisses such reviews once a NEWER
 #     commit has been pushed.
 #   • All dismiss/keep decision logic lives in the decision core above, which is
-#     unit-tested by bats in petry-projects/.github. This stub fetches that core
-#     from petry-projects/.github@v1 at runtime and runs it — the same runtime
+#     unit-tested by bats in combsmith/.github. This stub fetches that core
+#     from combsmith/.github@v1 at runtime and runs it — the same runtime
 #     tooling-checkout pattern initiative-driver uses for the rate-limit gate.
 #   • You MUST NOT change: the trigger event types (synchronize + submitted), the
 #     fork guard, or the job-level `permissions:` block (pull-requests: write is
@@ -22,7 +22,7 @@
 #     allow-list, set the DSBR_BOT_ALLOWLIST repo/org variable (comma-separated
 #     logins) — it REPLACES the default list. Do not fork the decision logic here.
 #   • If you need different behaviour, open a PR against the decision core in
-#     petry-projects/.github — the change propagates everywhere on next run.
+#     combsmith/.github — the change propagates everywhere on next run.
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Dismiss stale bot reviews — self-contained org-standard workflow.
@@ -59,16 +59,16 @@ jobs:
       pull-requests: write   # dismissPullRequestReview via GITHUB_TOKEN
       contents: read         # checkout
     steps:
-      - name: Checkout decision-core tooling from petry-projects/.github
-        # The decision core lives in petry-projects/.github; a consumer repo does
+      - name: Checkout decision-core tooling from combsmith/.github
+        # The decision core lives in combsmith/.github; a consumer repo does
         # not carry it, so fetch it read-only at the pinned v1 tag into a scratch
-        # path. petry-projects/.github is public, so GITHUB_TOKEN suffices.
+        # path. combsmith/.github is public, so GITHUB_TOKEN suffices.
         # continue-on-error: a tooling-checkout outage must never fail the PR — the
         # run step then finds no script and no-ops (fail-closed: nothing dismissed).
         continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: v1
           path: .dsbr-tooling
           fetch-depth: 1
