@@ -1,7 +1,7 @@
 # Reusable AgentShield workflow — single source of truth for the org.
 # Repo-level agent-shield.yml files call this to avoid duplicating
 # the security scan and structural checks.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/agent-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/agent-standards.md
 #
 # Two-layer approach:
 #   1. ecc-agentshield CLI — deep security scan (102 rules across secrets,
@@ -37,7 +37,7 @@ on:
         description: "String AGENTS.md must reference (regex, basic grep -E)"
         required: false
         type: string
-        default: 'petry-projects/\.github'
+        default: 'combsmith/\.github'
 
 permissions:
   contents: read

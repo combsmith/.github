@@ -1,7 +1,7 @@
 # Reusable auto-rebase workflow — single source of truth for the org.
 # Repo-level auto-rebase.yml files call this to avoid duplicating
 # the branch-update logic.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 #
 # Problem: when branch protection requires branches to be up-to-date
 # (strict status checks), merging any PR makes other open PRs fall behind.
@@ -64,7 +64,7 @@ on:
         type: string
       tooling_ref:
         description: |
-          Ref of petry-projects/.github to source the auto-rebase scripts from.
+          Ref of combsmith/.github to source the auto-rebase scripts from.
           Defaults to `v1` to match the @v1 pin used by caller stubs. Override
           only to test a fork/PR branch (`tooling_ref: my-branch`) or main
           (`tooling_ref: main`) end-to-end.
@@ -86,7 +86,7 @@ jobs:
       - name: Checkout auto-rebase tooling
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: ${{ inputs.tooling_ref }}
           path: .auto-rebase-tooling
           fetch-depth: 1

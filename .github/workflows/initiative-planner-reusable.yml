@@ -1,11 +1,11 @@
 # Reusable Initiative Planner — Approval Trigger workflow.
 # Single source of truth for the org: all idea→initiative dispatch logic lives
 # here. Repo-level initiative-planner.yml files are thin caller stubs.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 #
 # Fires when a maintainer adds the `idea:approved` label to an Ideas Discussion
 # in a fleet repo. It does NOT plan inline — the BMAD Scrum Master (Bob) and the
-# vendored BMAD frameworks live centrally in petry-projects/.github-private, and
+# vendored BMAD frameworks live centrally in combsmith/.github-private, and
 # claude-code-action aborts on `discussion` event contexts ("Unsupported event
 # type: discussion"). So this reusable resolves the discussion number and
 # re-dispatches the CENTRAL initiative-planner via workflow_dispatch, passing the
@@ -17,7 +17,7 @@
 #   GitHub does not start new workflow runs from a workflow_dispatch fired with
 #   the default GITHUB_TOKEN (loop prevention). The dispatch MUST use a PAT with
 #   workflow scope (GH_PAT_WORKFLOWS), the same constraint documented in
-#   petry-projects/.github-private scripts/initiative-planner/redispatch.sh.
+#   combsmith/.github-private scripts/initiative-planner/redispatch.sh.
 #
 # Requires:
 #   GH_PAT_WORKFLOWS — org secret, classic PAT (repo + workflow scope) used to
@@ -30,7 +30,7 @@ on:
       planner_repo:
         description: "owner/repo hosting the central initiative-planner.yml workflow."
         required: false
-        default: "petry-projects/.github-private"
+        default: "combsmith/.github-private"
         type: string
     secrets:
       GH_PAT_WORKFLOWS:

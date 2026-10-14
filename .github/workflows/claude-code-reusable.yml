@@ -1,6 +1,6 @@
 # Reusable Claude Code workflow — single source of truth for the org.
 # Repo-level claude.yml files call this to avoid duplicating the prompt and config.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#4-claude-code-claudeyml
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#4-claude-code-claudeyml
 name: Claude Code (Reusable)
 
 on:
@@ -311,18 +311,18 @@ jobs:
             **Standards-conformance rules — read these before writing any code:**
 
             - **For workflow files** (`.github/workflows/*.yml`): if a template
-              exists in `petry-projects/.github/standards/workflows/` for what
+              exists in `combsmith/.github/standards/workflows/` for what
               you're adding, **copy it verbatim** rather than writing from
               scratch. Available templates: `agent-shield.yml`, `claude.yml`,
               `dependabot-automerge.yml`, `dependabot-rebase.yml`,
               `dependency-audit.yml`, `feature-ideation.yml`. Fetch via:
-              `gh api repos/petry-projects/.github/contents/standards/workflows/<file>.yml --jq '.content' | base64 -d`
+              `gh api repos/combsmith/.github/contents/standards/workflows/<file>.yml --jq '.content' | base64 -d`
               Adapt only when the file genuinely needs repo-specific content.
 
             - **For org standards** (labels, settings, rulesets, CODEOWNERS):
-              read `petry-projects/.github/standards/` first via `gh api`.
+              read `combsmith/.github/standards/` first via `gh api`.
               Match colors, names, and structure exactly. The full standards
-              tree is at `petry-projects/.github/tree/main/standards/`.
+              tree is at `combsmith/.github/tree/main/standards/`.
 
             - **For SHA pinning** (Action Pinning Policy in
               `standards/ci-standards.md`): never guess or fabricate SHAs.

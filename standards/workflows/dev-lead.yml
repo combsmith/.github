@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Dev-Lead Agent — thin caller stub
-# Standard:  petry-projects/.github/standards/ci-standards.md#5-dev-lead-agent
-# Reusable:  petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml
+# Standard:  combsmith/.github/standards/ci-standards.md#5-dev-lead-agent
+# Reusable:  combsmith/.github-private/.github/workflows/dev-lead-reusable.yml
 #
 # ADOPTING THIS WORKFLOW:
 #   1. Copy this file verbatim to .github/workflows/dev-lead.yml in your repo.
@@ -39,7 +39,7 @@ permissions: {}
 
 # Concurrency is centralised in the reusable workflow (dev-lead-reusable.yml) with
 # per-issue / per-PR lanes, so issue pickups are never cancelled by PR follow-up
-# traffic and the grouping can't drift per-repo. See petry-projects/.github#402.
+# traffic and the grouping can't drift per-repo. See combsmith/.github#402.
 
 jobs:
   dev-lead:
@@ -48,7 +48,7 @@ jobs:
     # dependency). Promotion is done by moving the dev-lead/stable tag centrally; this
     # caller is never edited on release. agent_ref threads the same channel into
     # dev-lead's own scripts/prompts checkout. See ci-standards.md#dev-lead-agent.
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
     with:
       agent_ref: dev-lead/stable
     secrets: inherit

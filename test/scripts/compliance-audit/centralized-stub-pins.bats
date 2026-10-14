@@ -23,7 +23,7 @@ accept() {
 
 C="agent-shield/stable"   # canonical channel for these tests
 L="v1,v2"                 # transitional legacy grace
-R="petry-projects/.github/.github/workflows/agent-shield-reusable.yml"
+R="combsmith/.github/.github/workflows/agent-shield-reusable.yml"
 
 @test "canonical channel pin is accepted" {
   accept "    uses: $R@$C" "$C" "$L"
@@ -51,7 +51,7 @@ R="petry-projects/.github/.github/workflows/agent-shield-reusable.yml"
 }
 
 @test "the wrong reusable is rejected" {
-  accept "    uses: petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@v1" "$C" "$L"
+  accept "    uses: combsmith/.github/.github/workflows/dependency-audit-reusable.yml@v1" "$C" "$L"
   [ "$status" -ne 0 ]
 }
 

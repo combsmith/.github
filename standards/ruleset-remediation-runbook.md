@@ -31,7 +31,7 @@ for the policy this enforces:
 ```bash
 gh auth status            # token must have admin:org + repo
 export GH_TOKEN="$(gh auth token)"
-ORG=petry-projects
+ORG=combsmith
 ```
 
 ## 1. Snapshot every ruleset (rollback insurance) — ALWAYS do this first

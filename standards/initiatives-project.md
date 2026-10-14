@@ -1,14 +1,14 @@
 # Initiatives Project — operator guide
 
 The **Initiatives** project board
-([orgs/petry-projects/projects/1](https://github.com/orgs/petry-projects/projects/1))
+([orgs/combsmith/projects/1](https://github.com/orgs/combsmith/projects/1))
 is the org's single cross-repo plane for strategic work — items that span
 multiple PRs, multiple repos, or multiple agents, the things an
 `gh issue list` filter would lose track of.
 
 This doc covers what belongs on the board, how items get there, and how to
 operate the project. The pilot itself is tracked in
-[#387](https://github.com/petry-projects/.github/issues/387).
+[#387](https://github.com/combsmith/.github/issues/387).
 
 ## What belongs on the board
 
@@ -19,8 +19,8 @@ view"**, not "every dev-lead-handled issue".
 
 | Content type | Conditions | Result |
 |---|---|---|
-| Issues / PRs in `petry-projects/.github` | Has label `dev-lead` AND none of `compliance-audit`, `health-check`, `fleet-tracker`, `daily-report` | Linked item appears on the board |
-| Discussions in `petry-projects/.github` | Category is `Ideas` | Draft `[Discussion #N] <title>` appears |
+| Issues / PRs in `combsmith/.github` | Has label `dev-lead` AND none of `compliance-audit`, `health-check`, `fleet-tracker`, `daily-report` | Linked item appears on the board |
+| Discussions in `combsmith/.github` | Category is `Ideas` | Draft `[Discussion #N] <title>` appears |
 
 The four excluded labels are the noise gate. They flag automation-generated
 work that, while real, doesn't belong on a strategic roll-up: routine
@@ -30,7 +30,7 @@ compliance fixes, fleet-monitor failures, daily status reports.
 > shape. The org's working consensus is that `dev-lead` is a
 > *work-assignment* signal (it tells the dev-lead agent to pick up the
 > work), not a *classification* signal. The follow-on in
-> [#415](https://github.com/petry-projects/.github/issues/415) will switch
+> [#415](https://github.com/combsmith/.github/issues/415) will switch
 > to topic labels (`agentic-framework`, `fleet-ops`, `compliance`,
 > `tooling`) as the qualifying signal, with `dev-lead` orthogonal.
 
@@ -113,7 +113,7 @@ propagated to other repos: CI baselines, CODEOWNERS, branch rulesets, push
 protection, scorecard/sonarcloud, repo settings, org secrets, org apps.
 
 Schema reviews go through
-[#387](https://github.com/petry-projects/.github/issues/387). Renaming or
+[#387](https://github.com/combsmith/.github/issues/387). Renaming or
 removing single-select options on a populated project is painful —
 coordinate before changing.
 
@@ -211,7 +211,7 @@ Multi-Project consumers of the same scripts would parameterize this.
 
 ## Deferred work (not in the pilot)
 
-Tracked in [#415](https://github.com/petry-projects/.github/issues/415).
+Tracked in [#415](https://github.com/combsmith/.github/issues/415).
 Summary:
 
 - **Multi-repo rollout** — workflow only fires for events in `.github`
@@ -234,17 +234,17 @@ times.
 
 ## Related
 
-- **Tracking:** [#387](https://github.com/petry-projects/.github/issues/387)
+- **Tracking:** [#387](https://github.com/combsmith/.github/issues/387)
 - **Founding discussion:**
-  [#386](https://github.com/petry-projects/.github/discussions/386)
+  [#386](https://github.com/combsmith/.github/discussions/386)
 - **Validation + 30-day review:**
-  [#414](https://github.com/petry-projects/.github/issues/414)
+  [#414](https://github.com/combsmith/.github/issues/414)
 - **Multi-repo follow-on:**
-  [#415](https://github.com/petry-projects/.github/issues/415)
+  [#415](https://github.com/combsmith/.github/issues/415)
 - **Pilot retrospective:**
-  [#416](https://github.com/petry-projects/.github/issues/416)
+  [#416](https://github.com/combsmith/.github/issues/416)
 - **Workflow fix — single-line if:**
-  [#418](https://github.com/petry-projects/.github/pull/418)
+  [#418](https://github.com/combsmith/.github/pull/418)
 - **Issue Fields rollout:** discussion
-  [#364](https://github.com/petry-projects/.github/discussions/364)
+  [#364](https://github.com/combsmith/.github/discussions/364)
   (waiting on Project schema to stabilize ~30 days)

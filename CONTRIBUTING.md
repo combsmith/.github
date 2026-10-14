@@ -1,7 +1,7 @@
-# Contributing to petry-projects/.github
+# Contributing to combsmith/.github
 
 This repository holds org-wide CI templates, workflow standards, and engineering
-guidelines for the `petry-projects` organization.
+guidelines for the `combsmith` organization.
 
 ## Getting started
 
@@ -15,7 +15,7 @@ guidelines for the `petry-projects` organization.
 ## GitHub Projects — Initiatives board
 
 The org maintains a single **Initiatives project** at
-<https://github.com/orgs/petry-projects/projects/1> that tracks cross-repo
+<https://github.com/orgs/combsmith/projects/1> that tracks cross-repo
 work across the following initiative buckets: Compliance Blitz, Agent Shield,
 Self-healing, Auto-rebase, Model fallback, Tooling, and Compliance program.
 
@@ -55,8 +55,8 @@ can tune them without forking the logic.
 > untrusted author** is still **skipped** even when a maintainer applies the
 > `dev-lead` label, because the `if:` gate can't safely evaluate the *labeler*.
 > Workaround: manually add such PRs from the
-> [Projects UI](https://github.com/orgs/petry-projects/projects/1). Tracked as
-> [#415](https://github.com/petry-projects/.github/issues/415) §4.
+> [Projects UI](https://github.com/orgs/combsmith/projects/1). Tracked as
+> [#415](https://github.com/combsmith/.github/issues/415) §4.
 
 ### Noise gate — excluded labels
 
@@ -75,7 +75,7 @@ The workflow authenticates using the **`petry-projects-planner` GitHub App**
 (App ID 3985527) via
 [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
 Two org-level secrets must be set — this is a one-time manual setup;
-see issue [#387](https://github.com/petry-projects/.github/issues/387) for details:
+see issue [#387](https://github.com/combsmith/.github/issues/387) for details:
 
 | Secret | Value |
 |---|---|
