@@ -1,12 +1,12 @@
 ---
-description: TypeScript and TSX development standards for the Petry Projects organization
+description: TypeScript and TSX development standards for the CombSmith organization
 applyTo: "**/*.ts,**/*.tsx"
 ---
 
 # TypeScript Development Standards
 
 These rules extend the org-level `copilot-instructions.md`. TypeScript is the primary language
-across all Petry Projects repositories.
+across all CombSmith repositories.
 
 ## Compiler Configuration
 
