@@ -11,14 +11,14 @@ compliance audit — and any contributor — reads the limits and their exemptio
 
 - **Decision record (why this exists / the verified mechanism):**
   [`docs/initiatives/agent-rate-limits-adr.md`](../docs/initiatives/agent-rate-limits-adr.md)
-  (Phase 1, [#637](https://github.com/petry-projects/.github/issues/637)).
+  (Phase 1, [#637](https://github.com/combsmith/.github/issues/637)).
 - **Single source of truth (the values):**
   [`standards/agent-rate-limits.json`](agent-rate-limits.json) (Phase 2,
-  [#638](https://github.com/petry-projects/.github/issues/638)).
+  [#638](https://github.com/combsmith/.github/issues/638)).
 - **Apply path (where it will be enforced):** a source-side gate library
   (`scripts/lib/agent-rate-limit.sh`) is Phase 3; the org-wide token-budget
   breaker (the public side — thresholds, policy, decision, and the telemetry
-  adapter seam) is Phase 5 ([#641](https://github.com/petry-projects/.github/issues/641),
+  adapter seam) is Phase 5 ([#641](https://github.com/combsmith/.github/issues/641),
   §4.1 below); the private telemetry poller + live-path wiring land separately
   (ADR §8). The per-agent-type limits and consecutive-failure breakers are now
   enforced at dispatch time (see §3); **the token-budget breaker is not yet
@@ -80,16 +80,16 @@ run in CI by
 
 The per-agent-type limits and consecutive-failure breakers are **signed off**
 (`status: signed-off`) — the maintainer sign-off comment on epic
-[#636](https://github.com/petry-projects/.github/issues/636) (2026-09-01) cleared
+[#636](https://github.com/combsmith/.github/issues/636) (2026-09-01) cleared
 the gate, mirroring the PR-Limits sign-off exactly (ADR §7,
 [`pr-limits.md`](pr-limits.md)). They are now **consumed at dispatch time** by the
 Phase-4 orchestrator
 [`scripts/agent-rate-limit-gate.sh`](../scripts/agent-rate-limit-gate.sh)
-([#640](https://github.com/petry-projects/.github/issues/640)), which wraps the
+([#640](https://github.com/combsmith/.github/issues/640)), which wraps the
 pure gate library.
 
 The org-wide token-budget breaker (§4) is now **wired into that same orchestrator's
-decision path but disarmed** ([#1155](https://github.com/petry-projects/.github/issues/1155)):
+decision path but disarmed** ([#1155](https://github.com/combsmith/.github/issues/1155)):
 `scripts/agent-rate-limit-gate.sh` consults both account-wide windows (`session`
 and `weekly_all`; `weekly_scoped` is never consulted, ADR §2.5) alongside the
 per-agent-type checks, and a `defer` from the token-budget half defers dispatch —
@@ -98,23 +98,23 @@ but the whole consultation is gated on `AGENT_TOKEN_BUDGET_ENABLED`, which stays
 per-agent-only behaviour. It is therefore **wired-but-disarmed**, not
 signed-off-and-armed: arming it is a deliberate maintainer change that must (a)
 set `AGENT_TOKEN_BUDGET_ENABLED` with the private telemetry seam wired
-(petry-projects/.github-private#1565),
+(combsmith/.github-private#1565),
 and (b) flip `org_wide.token_budget.limits.weekly_all.enabled` from `false` to arm
 the weekly glide-path half — each a separate, deliberately out-of-scope change
-([#994](https://github.com/petry-projects/.github/issues/994)). See §4.2 for the
+([#994](https://github.com/combsmith/.github/issues/994)). See §4.2 for the
 staged rollout.
 
 ### 3.1 Canary scope — enforcing vs log-only, and the promotion path (AC #5)
 
 Only **`initiative-driver` enforces** in this rollout: it is pure bash (no model
 spend) and the direct target of the dispatch-race defect
-[#443](https://github.com/petry-projects/.github/issues/443). Its stub
+[#443](https://github.com/combsmith/.github/issues/443). Its stub
 (`standards/workflows/initiative-driver.yml` and every enrolled repo's live copy)
 calls the orchestrator with `--mode enforce`; a `defer` decision simply skips the
 dispatch step (a clean no-op — never a cancel, never a job failure).
 
-**Gate tooling pin ([#1232](https://github.com/petry-projects/.github/issues/1232)).**
-An enrolled stub does not carry the gate, so it checks out `petry-projects/.github`
+**Gate tooling pin ([#1232](https://github.com/combsmith/.github/issues/1232)).**
+An enrolled stub does not carry the gate, so it checks out `combsmith/.github`
 into `.arl-gate-tooling` with the org PAT. That checkout is pinned to a **full
 commit SHA**, not a moving tag: the original `ref: v1` predated
 `scripts/agent-rate-limit-gate.sh`, so the gate was silently inert fleet-wide,
@@ -134,7 +134,7 @@ group, which may cancel a superseded run after its steps have started.
 **`feature-ideation` runs the gate in `--mode log-only`** (`feature-ideation-reusable.yml`):
 the decision is computed from run history and logged, but the emitted decision is
 always `allow`, so nothing is acted on. `dev-lead` and `compliance-audit` are not
-yet wired because their dispatch workflows live in `petry-projects/.github-private`
+yet wired because their dispatch workflows live in `combsmith/.github-private`
 and are out of scope for this rollout.
 
 **Because Actions runners are ephemeral, the orchestrator derives all counters
@@ -145,7 +145,7 @@ cooldown's last-run, the rolling daily count, and the breaker's
 `AGENT_RATE_LIMITS_STATE`.
 
 **On an ADR-0007 collapsed repo, run history comes from ingress role jobs**
-([#1226](https://github.com/petry-projects/.github/issues/1226)). A collapsed repo
+([#1226](https://github.com/combsmith/.github/issues/1226)). A collapsed repo
 serves an agent from one job of `.github/workflows/agent-ingress.yml`, so the
 per-role workflow does not exist. When `gh run list` reports that the workflow is
 **permanently** missing, or `--workflow` is `agent-ingress.yml` itself, the
@@ -189,7 +189,7 @@ follow-up change, one agent type at a time):
 The breaker reads the shared Claude subscription budget through the OAuth usage
 endpoint that is the telemetry **source of record** (ADR §4.1); because that
 endpoint authenticates with a credential that lives in
-`petry-projects/.github-private`, the **live budget read and the pause actuation
+`combsmith/.github-private`, the **live budget read and the pause actuation
 are private** — this public file holds only the thresholds and the policy (ADR
 §8). The threshold values themselves are in the config; the properties that must
 not drift into prose-restated numbers, but that a reader must understand, are:
@@ -222,7 +222,7 @@ not drift into prose-restated numbers, but that a reader must understand, are:
 
 The 5-hour `session` breaker is implemented in the source-side gate library
 [`scripts/lib/agent-rate-limit.sh`](../scripts/lib/agent-rate-limit.sh) (Phase 5,
-[#641](https://github.com/petry-projects/.github/issues/641)), alongside the
+[#641](https://github.com/combsmith/.github/issues/641)), alongside the
 per-agent-type controls:
 
 - `arl_token_budget_gate [window]` orchestrates the breaker for a window
@@ -240,7 +240,7 @@ per-agent-type controls:
   var set, the breaker fails safe to allow** (the disabled/degraded mode below).
 - The adapter reads both the `session` and `weekly_all` windows from one
   envelope, so the Phase 6 weekly glide-path breaker
-  ([#994](https://github.com/petry-projects/.github/issues/994)) extends it
+  ([#994](https://github.com/combsmith/.github/issues/994)) extends it
   rather than refactoring. Both breakers share one transport-level fail-safe
   (`arl_token_transport_decision`) so there is a single 429 / non-200 convention.
 - When the breaker trips, the pause is surfaced through the same human-clearable
@@ -252,7 +252,7 @@ per-agent-type controls:
 
 - `arl_token_weekly_glide_gate` orchestrates the **7-day glide-path** breaker on
   the account-wide `weekly_all` window (Phase 6,
-  [#994](https://github.com/petry-projects/.github/issues/994)). Rather than a
+  [#994](https://github.com/combsmith/.github/issues/994)). Rather than a
   static threshold it evaluates a **time-varying** one read entirely from config —
   `clamp(ceiling_pct − reserve_pct_per_day × days_until_reset, floor_pct,
   ceiling_pct)` — where `days_until_reset` derives from the telemetry payload's
@@ -342,7 +342,7 @@ treat them as policy, not drift.
 |---|---|---|
 | `dependabot[bot]` | actor | Already bounded per-ecosystem by `open-pull-requests-limit`; security update runs must never be starved by a general throttle. |
 | `OrganizationAdmin` | actor | Human break-glass / admin runs. |
-| `@petry-projects/org-leads` | actor | Maintainer traffic — human review, not automation backlog. |
+| `@combsmith/org-leads` | actor | Maintainer traffic — human review, not automation backlog. |
 | `dependabot-automerge-petry` | actor (App) | Operates on *existing* PRs; it does not add agentic run volume. |
 | `security` | label | Urgent security / hotfix work bypasses any throttle. |
 

@@ -8,8 +8,8 @@ produces a fully org-compliant repo, exercised under `DRY_RUN` with no drift.
 
 ## Primary onboarding path (one-click + one-command)
 
-1. **Use this template.** Create the repo from `petry-projects/repo-template`
-   (`seed-repo-template.sh`, in `petry-projects/.github-private`, keeps that template in sync with `petry-projects/.github`
+1. **Use this template.** Create the repo from `combsmith/repo-template`
+   (`seed-repo-template.sh`, in `combsmith/.github-private`, keeps that template in sync with `combsmith/.github`
    `standards/`). This seeds day-0 only: the thin-caller workflow stubs pinned to
    their published `@<name>/stable` channel tags plus the root/baseline files
    (CODEOWNERS, AGENTS.md/CLAUDE.md pointers, LICENSE, SECURITY.md, `.gitignore`,
@@ -43,30 +43,30 @@ intended-state surface with no write calls (#970 AC #2/#3)"_.
 ### Default ring (`stable`)
 
 ```text
-$ DRY_RUN=true GITHUB_ACTOR=octocat bash scripts/bootstrap-new-repo.sh petry-projects/acme-service
-[bootstrap] repo=petry-projects/acme-service dry_run=true ring=dev-lead/stable
+$ DRY_RUN=true GITHUB_ACTOR=octocat bash scripts/bootstrap-new-repo.sh combsmith/acme-service
+[bootstrap] repo=combsmith/acme-service dry_run=true ring=dev-lead/stable
 [bootstrap] (1/5) release ring confirmation (dev-lead/stable)
-  [ring-audit] repo=petry-projects/acme-service agent=dev-lead ring=stable operator=octocat at=... decision=recorded
+  [ring-audit] repo=combsmith/acme-service agent=dev-lead ring=stable operator=octocat at=... decision=recorded
   ring=stable — record-only; no central-file change required (covered by the '*' catch-all)
 [bootstrap] (2/5) repo settings + security/GHAS + push protection
-[dry-run] would patch security_and_analysis on petry-projects/acme-service: secret_scanning secret_scanning_push_protection secret_scanning_ai_detection secret_scanning_non_provider_patterns dependabot_security_updates
-[dry-run] would disable auto-trigger for apps 1236702 347564 on petry-projects/acme-service
+[dry-run] would patch security_and_analysis on combsmith/acme-service: secret_scanning secret_scanning_push_protection secret_scanning_ai_detection secret_scanning_non_provider_patterns dependabot_security_updates
+[dry-run] would disable auto-trigger for apps 1236702 347564 on combsmith/acme-service
 [bootstrap] (3/5) sanctioned fleet rulesets (pr-quality + code-quality)
-[apply-rulesets] repo=petry-projects/acme-service dir=<materialized from petry-projects/.github> dry_run=true
-  create ruleset 'code-quality' on petry-projects/acme-service
-    [dry-run] POST repos/petry-projects/acme-service/rulesets
-  create ruleset 'pr-quality' on petry-projects/acme-service
-    [dry-run] POST repos/petry-projects/acme-service/rulesets
+[apply-rulesets] repo=combsmith/acme-service dir=<materialized from combsmith/.github> dry_run=true
+  create ruleset 'code-quality' on combsmith/acme-service
+    [dry-run] POST repos/combsmith/acme-service/rulesets
+  create ruleset 'pr-quality' on combsmith/acme-service
+    [dry-run] POST repos/combsmith/acme-service/rulesets
 [apply-rulesets] done (2 ruleset(s))
 [bootstrap] (4/5) standard label set
-  [dry-run] would ensure label 'needs-human-review' on petry-projects/acme-service
-  [dry-run] would ensure label 'ack-test-deletion' on petry-projects/acme-service
-  [dry-run] would ensure label 'dependencies' on petry-projects/acme-service
-  [dry-run] would ensure label 'automerge' on petry-projects/acme-service
-[bootstrap] (5/5) verify CODEOWNERS team (@petry-projects/org-leads first owner)
-  [dry-run] would verify @petry-projects/org-leads is the first CODEOWNERS owner on petry-projects/acme-service
+  [dry-run] would ensure label 'needs-human-review' on combsmith/acme-service
+  [dry-run] would ensure label 'ack-test-deletion' on combsmith/acme-service
+  [dry-run] would ensure label 'dependencies' on combsmith/acme-service
+  [dry-run] would ensure label 'automerge' on combsmith/acme-service
+[bootstrap] (5/5) verify CODEOWNERS team (@combsmith/org-leads first owner)
+  [dry-run] would verify @combsmith/org-leads is the first CODEOWNERS owner on combsmith/acme-service
 
-[bootstrap] PASS — petry-projects/acme-service bootstrapped to org compliance (dry-run)
+[bootstrap] PASS — combsmith/acme-service bootstrapped to org compliance (dry-run)
 ```
 
 ### Non-stable ring (`--ring ring1`)
@@ -76,11 +76,11 @@ caller stub — and asserts no drift before writing:
 
 ```text
 [bootstrap] (1/5) release ring confirmation (dev-lead/ring1)
-  [ring-audit] repo=petry-projects/acme-service agent=dev-lead ring=ring1 operator=octocat at=... decision=registered
-  [dry-run] would add petry-projects/acme-service to dev-lead 'ring1' members in canary-rings.json
-  [ring] would register petry-projects/acme-service in petry-projects/.github:scripts/lib/ring-pins.sh for channel dev-lead/ring1 (cross-repo PR, keeps central files in sync)
-  [ring] would repin petry-projects/acme-service caller stub .github/workflows/dev-lead.yml to @dev-lead/ring1
-  ring consistency OK — petry-projects/acme-service sits in 'ring1' across both central files and its stub pins @dev-lead/ring1
+  [ring-audit] repo=combsmith/acme-service agent=dev-lead ring=ring1 operator=octocat at=... decision=registered
+  [dry-run] would add combsmith/acme-service to dev-lead 'ring1' members in canary-rings.json
+  [ring] would register combsmith/acme-service in combsmith/.github:scripts/lib/ring-pins.sh for channel dev-lead/ring1 (cross-repo PR, keeps central files in sync)
+  [ring] would repin combsmith/acme-service caller stub .github/workflows/dev-lead.yml to @dev-lead/ring1
+  ring consistency OK — combsmith/acme-service sits in 'ring1' across both central files and its stub pins @dev-lead/ring1
 ```
 
 ## Intended state covered (no drift)
@@ -90,19 +90,19 @@ caller stub — and asserts no drift before writing:
 | Repo settings + security/GHAS | `apply-repo-settings.sh` | `security_and_analysis` patch intent |
 | Secret-scanning push protection | `lib/push-protection.sh` | `secret_scanning_push_protection` in the patch set |
 | Check-suite auto-trigger (Claude/CodeRabbit) | `apply-repo-settings.sh` | `would disable auto-trigger for apps 1236702 347564` |
-| `pr-quality` ruleset + bypass actors | `petry-projects/.github` → `standards/rulesets/pr-quality.json` | created; bypass = OrganizationAdmin + Integration (`bypass_mode: always`) |
-| `code-quality` ruleset + required checks + bypass | `petry-projects/.github` → `standards/rulesets/code-quality.json` | created; required checks SonarCloud, CodeQL, agent-shield, dependency-audit; same bypass actors |
+| `pr-quality` ruleset + bypass actors | `combsmith/.github` → `standards/rulesets/pr-quality.json` | created; bypass = OrganizationAdmin + Integration (`bypass_mode: always`) |
+| `code-quality` ruleset + required checks + bypass | `combsmith/.github` → `standards/rulesets/code-quality.json` | created; required checks SonarCloud, CodeQL, agent-shield, dependency-audit; same bypass actors |
 | Required status checks | carried in the ruleset JSONs | not wired by bootstrap — live in `code-quality.json` |
 | Standard labels | `bootstrap-new-repo.sh` `BOOTSTRAP_LABELS` | needs-human-review, ack-test-deletion, dependencies, automerge |
-| CODEOWNERS team | new repo's `.github/CODEOWNERS` | first owner verified = `@petry-projects/org-leads` |
+| CODEOWNERS team | new repo's `.github/CODEOWNERS` | first owner verified = `@combsmith/org-leads` |
 | Recorded ring | `standards/canary-rings.json` (+ cross-repo `ring-pins.sh`) | audited; stable record-only / non-stable registered with no drift |
 | No drift | — | `DRY_RUN` emits **zero** write API calls |
 
-## AC #1 — cross-repo checklist cutover (petry-projects/.github)
+## AC #1 — cross-repo checklist cutover (combsmith/.github)
 
-The two onboarding checklists live in **`petry-projects/.github`**, not in this
+The two onboarding checklists live in **`combsmith/.github`**, not in this
 repo, so they are landed via the standards cross-repo PR pattern
-(`STANDARDS_REPO=petry-projects/.github`, as `aw-standards-sync.sh` does), not on
+(`STANDARDS_REPO=combsmith/.github`, as `aw-standards-sync.sh` does), not on
 this branch. The cutover content to apply:
 
 - **`standards/github-settings.md` — "Applying to a New Repository":** lead with
@@ -121,7 +121,7 @@ this branch. The cutover content to apply:
 ## See also
 
 - `scripts/bootstrap-new-repo.sh` — the orchestrator (issues #967, #968)
-- `scripts/seed-repo-template.sh` in `petry-projects/.github-private` — day-0 template seeding + the generated
+- `scripts/seed-repo-template.sh` in `combsmith/.github-private` — day-0 template seeding + the generated
   `BOOTSTRAP.md` (#966), with its suite `tests/test_seed_repo_template.bats` there. That repo is the one home of
   the seeder; this repo's `scripts/emit-standard-file.sh` only prints a standard file.
 - `tests/test_bootstrap_new_repo.bats` — the executable validation of the orchestrator

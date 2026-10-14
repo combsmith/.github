@@ -16,7 +16,7 @@ security posture than chasing every minor/patch release.
    affect application stability and staying current reduces CI attack surface.
 3. **Labels** `security` and `dependencies` on every Dependabot PR for filtering and audit.
 4. **Auto-merge** after all CI checks pass, approving and merging eligible PRs.
-   Approvals come from members of the `@petry-projects/org-leads` team listed
+   Approvals come from members of the `@combsmith/org-leads` team listed
    in every repo's `CODEOWNERS` file (see
    [codeowners-standard.md](codeowners-standard.md)), so they satisfy
    `require_code_owner_review` without any bypass. Eligible updates:
@@ -146,7 +146,7 @@ publishes workflow YAML from another directory adds one more `github-actions` en
 for that directory, where Dependabot reads the `*.yml` files directly. This
 repository does so for `standards/workflows/`, so the templates every consumer is
 seeded from do not fall behind the consumers (#1172). That entry ignores
-`petry-projects/*`: first-party reusables are pinned to a moving channel tag, and
+`combsmith/*`: first-party reusables are pinned to a moving channel tag, and
 release tooling moves those pins.
 
 ### Full-Stack Example
@@ -251,7 +251,7 @@ jobs:
   dependabot-rebase:
     permissions:
       pull-requests: write # call update-branch API on behind PRs and merge when ready
-    uses: petry-projects/.github/.github/workflows/dependabot-rebase-reusable.yml@b51e2edf830ea085be0277bcf3174c7b3ec8f958 # v1
+    uses: combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml@b51e2edf830ea085be0277bcf3174c7b3ec8f958 # v1
     secrets:
       APP_ID: ${{ secrets.APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
@@ -267,7 +267,7 @@ jobs:
 To manually flush the Dependabot PR queue after fixing a stalled pipeline:
 
 ```bash
-gh workflow run dependabot-rebase.yml --repo petry-projects/<repo>
+gh workflow run dependabot-rebase.yml --repo combsmith/<repo>
 ```
 
 ### Manual Rebase (Break-Glass)
@@ -277,8 +277,8 @@ user with push access can unblock it by posting `@dependabot rebase` directly:
 
 ```bash
 # Post @dependabot rebase as a user with push access (not a bot):
-gh pr list --repo petry-projects/<repo> --label dependencies --json number \
-  --jq '.[].number' | xargs -I{} gh pr comment {} --repo petry-projects/<repo> \
+gh pr list --repo combsmith/<repo> --label dependencies --json number \
+  --jq '.[].number' | xargs -I{} gh pr comment {} --repo combsmith/<repo> \
   --body "@dependabot rebase"
 ```
 
@@ -324,7 +324,7 @@ The workflow fails if any known vulnerability is found, blocking the PR from mer
 
    > **Note:** The rebase workflow is **not** required for `require_code_owner_review`.
    > The correct solution for CODEOWNERS enforcement is to list the
-   > `@petry-projects/org-leads` team in every CODEOWNERS pattern — see the
+   > `@combsmith/org-leads` team in every CODEOWNERS pattern — see the
    > [CODEOWNERS Standard](codeowners-standard.md). The earlier approach of
    > using `gh api .../merge` as a bypass was fragile and has been superseded.
 4. Add `workflows/dependency-audit.yml` to `.github/workflows/`.
@@ -336,7 +336,7 @@ The workflow fails if any known vulnerability is found, blocking the PR from mer
    installed-app settings.
 
 6. **GitHub App secrets** — `APP_ID` and `APP_PRIVATE_KEY` are managed at the
-   **organization level** (`gh secret set <name> --org petry-projects --visibility all`),
+   **organization level** (`gh secret set <name> --org combsmith --visibility all`),
    not per-repo. The caller stubs pass these explicitly via:
 
    ```yaml
@@ -352,7 +352,7 @@ The workflow fails if any known vulnerability is found, blocking the PR from mer
    **Verify before deleting per-repo copies.** Run
 
    ```bash
-   gh secret list --org petry-projects | grep -E '^(APP_ID|APP_PRIVATE_KEY)\s'
+   gh secret list --org combsmith | grep -E '^(APP_ID|APP_PRIVATE_KEY)\s'
    ```
 
    to confirm both org-level secrets exist with `visibility: all`. Only after

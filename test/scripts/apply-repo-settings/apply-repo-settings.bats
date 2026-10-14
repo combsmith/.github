@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/apply-repo-settings.sh — the persona opt-out label family
-# (petry-projects/.github#756).
+# (combsmith/.github#756).
 #
 # The <id>:hands-off labels are DERIVED from the persona manifests
 # (personas/<id>/persona.yml in the PUBLIC .github-private repo), never hand-listed:
