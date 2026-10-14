@@ -59,13 +59,13 @@ call() {
 
 # ── sonar_project_to_repo ──────────────────────────────────────────────────
 @test "strips org prefix" {
-  call sonar_project_to_repo "petry-projects_markets"; [ "$output" = "markets" ]
+  call sonar_project_to_repo "combsmith_markets"; [ "$output" = "markets" ]
 }
 @test "broodminder-export2 key maps to the real repo broodminder-export" {
-  call sonar_project_to_repo "petry-projects_broodminder-export2"; [ "$output" = "broodminder-export" ]
+  call sonar_project_to_repo "combsmith_broodminder-export2"; [ "$output" = "broodminder-export" ]
 }
 @test "dotted repo name survives prefix strip" {
-  call sonar_project_to_repo "petry-projects_.github"; [ "$output" = ".github" ]
+  call sonar_project_to_repo "combsmith_.github"; [ "$output" = ".github" ]
 }
 
 # ── severity_rank ordering ─────────────────────────────────────────────────
