@@ -45,7 +45,7 @@ sweep_verdict() {
 audit_verdict() {
   bash -c '
     source "$1/scripts/compliance-audit.sh" >/dev/null 2>&1
-    ORG=petry-projects
+    ORG=combsmith
     eval "$2"
     AGENT="$3"
     # Fake gh_api: args are the API path; lists the stub for AGENT, or serves FIXTURE_B64 as the file body.

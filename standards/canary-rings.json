@@ -2,8 +2,8 @@
   "version": 1,
   "description": "Ring membership for agent canary rollout (initiative #495, issues #500/#501). The promotion automation (scripts/canary-rollout.sh) reads this as the single source of truth. `next` is host-relative: it resolves to the repo that HOSTS the reusable; `ring0` covers the other org-infra repo (the host already sits in `next`).",
   "org_infra_repos": [
-    "petry-projects/.github",
-    "petry-projects/.github-private"
+    "combsmith/.github",
+    "combsmith/.github-private"
   ],
   "_reserved_tag_namespaces_note": "#1106 — tag prefixes that carry `<name>/v<M>-<tier>` channel tags on an infra repo but are NOT canary-managed agents, so the registry-completeness drift check (cmd_drift) must not flag them as missing agents. Today only `standards` (the standards-versioning release channel `standards/v1-stable`, #1091) — a single artifact with one moving channel, not a ringed agent.",
   "reserved_tag_namespaces": [
@@ -28,7 +28,7 @@
   },
   "agents": {
     "dev-lead": {
-      "host": "petry-projects/.github-private",
+      "host": "combsmith/.github-private",
       "reusable": ".github/workflows/dev-lead-reusable.yml",
       "run_workflow": "Dev-Lead Agent",
       "ingress_job": "dev-lead",
@@ -51,8 +51,8 @@
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -64,7 +64,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [
@@ -122,7 +122,7 @@
       }
     },
     "agent-shield": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/agent-shield-reusable.yml",
       "run_workflow": "AgentShield",
       "rings": [
@@ -130,22 +130,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -157,7 +157,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -185,7 +185,7 @@
       }
     },
     "auto-rebase": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/auto-rebase-reusable.yml",
       "run_workflow": "Auto-rebase non-Dependabot PRs",
       "rings": [
@@ -193,22 +193,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -220,7 +220,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [
@@ -255,7 +255,7 @@
       }
     },
     "dependency-audit": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/dependency-audit-reusable.yml",
       "run_workflow": "Dependency audit",
       "rings": [
@@ -263,22 +263,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -290,7 +290,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -318,7 +318,7 @@
       }
     },
     "dependabot-automerge": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/dependabot-automerge-reusable.yml",
       "run_workflow": "Dependabot auto-merge",
       "rings": [
@@ -326,22 +326,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -353,7 +353,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -381,7 +381,7 @@
       }
     },
     "apply-repo-settings": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/apply-repo-settings-reusable.yml",
       "run_workflow": "Apply repo settings",
       "rings": [
@@ -389,23 +389,23 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/markets",
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/markets",
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -417,8 +417,8 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 — graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
-        "_cadence_note": "This workflow is weekly-cron (petry-projects/.github#984), so sample floors starve during soak. next->ring0 waives the sample when no caller run exists yet; ring members feed the gate via a manual workflow_dispatch after the stub lands. Do NOT paper over a starved gate with --override.",
+        "_standard": "combsmith/.github#548 — graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_cadence_note": "This workflow is weekly-cron (combsmith/.github#984), so sample floors starve during soak. next->ring0 waives the sample when no caller run exists yet; ring members feed the gate via a manual workflow_dispatch after the stub lands. Do NOT paper over a starved gate with --override.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -445,7 +445,7 @@
       }
     },
     "dependabot-rebase": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/dependabot-rebase-reusable.yml",
       "run_workflow": "Dependabot update and merge",
       "rings": [
@@ -453,22 +453,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -480,7 +480,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -509,7 +509,7 @@
       "soak_start_ring": "ring0"
     },
     "pr-review-mention": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/pr-review-mention-reusable.yml",
       "run_workflow": "PR Review \u2014 Mention Trigger",
       "ingress_job": "pr-review-mention",
@@ -518,22 +518,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -545,7 +545,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -573,7 +573,7 @@
       }
     },
     "initiative-planner": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/initiative-planner-reusable.yml",
       "run_workflow": "Initiative Planner \u2014 Approval Trigger",
       "rings": [
@@ -581,22 +581,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -608,7 +608,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -636,7 +636,7 @@
       }
     },
     "idea-triage": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/idea-triage-reusable.yml",
       "run_workflow": "Idea Triage \u2014 Weekly Shortlist",
       "rings": [
@@ -644,22 +644,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -671,7 +671,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -699,7 +699,7 @@
       }
     },
     "ci-failure-analyst": {
-      "host": "petry-projects/.github-private",
+      "host": "combsmith/.github-private",
       "reusable": ".github/workflows/ci-failure-analyst-reusable.yml",
       "run_workflow": "CI Failure Analyst",
       "ingress_job": "ci-failure-analyst",
@@ -722,8 +722,8 @@
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -735,7 +735,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -763,7 +763,7 @@
       }
     },
     "idea-enhancer": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/idea-enhancer-reusable.yml",
       "run_workflow": "Idea Enhancer \u2014 Enrich Ideas",
       "rings": [
@@ -771,22 +771,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -798,7 +798,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -826,7 +826,7 @@
       }
     },
     "feature-ideation": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/feature-ideation-reusable.yml",
       "run_workflow": "Feature Research & Ideation (BMAD Analyst)",
       "rings": [
@@ -834,22 +834,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -861,7 +861,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -889,7 +889,7 @@
       }
     },
     "add-to-project": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/add-to-project-reusable.yml",
       "run_workflow": "Auto-add to Initiatives project",
       "rings": [
@@ -897,22 +897,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -924,7 +924,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [
@@ -959,7 +959,7 @@
       }
     },
     "pr-auto-review": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/pr-auto-review-reusable.yml",
       "run_workflow": "PR Auto-Review \u2014 Ready Check",
       "ingress_job": "pr-auto-review",
@@ -968,22 +968,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -995,7 +995,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -1030,7 +1030,7 @@
       }
     },
     "persona-mention": {
-      "host": "petry-projects/.github",
+      "host": "combsmith/.github",
       "reusable": ".github/workflows/persona-mention-reusable.yml",
       "run_workflow": "Persona \u2014 Mention Router",
       "rings": [
@@ -1038,22 +1038,22 @@
           "channel": "next",
           "order": 0,
           "members": [
-            "petry-projects/.github-private"
+            "combsmith/.github-private"
           ]
         },
         {
           "channel": "ring0",
           "order": 1,
           "members": [
-            "petry-projects/.github"
+            "combsmith/.github"
           ]
         },
         {
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -1065,7 +1065,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],
@@ -1093,8 +1093,8 @@
       }
     },
     "pr-review": {
-      "_note": "petry-projects/.github#1166 — the ring-0 self-host reviewer (#497). Its engine reusable `pr-review.yml` (grandfathered legacy name, #1127) lives in .github-private and is dogfooded there on `pr-review/next` via the `pr-review-trigger.yml` caller stub. It was absent from the registry, so autocut never cut/advanced its channel and a merged fix sat inert on main until a human ran cut-release.sh (two incidents in three days). run_workflow is the caller stub's DISPLAY NAME (the `name:` of pr-review-trigger.yml), NOT the engine or a *.yml filename: a workflow_call-only reusable has no runs of its own, so the gate reads the caller's run history via `gh run list --workflow`. It must be the display name because a repo without this workflow (every tier beyond the .github-private self-host) then returns the graceful 'could not find any workflows named …' (→ [], #747), whereas a *.yml filename would 404 and be mis-triaged as a transient fetch failure that fails the gate CLOSED. Registered host-relative like dev-lead/ci-failure-analyst: `next` = the host, so `next`+`ring0` span both org-infra repos. The self-host circular dependency (#497) is bounded by the soak gate — a candidate that breaks reviews on `next` (.github-private) fails there and is BLOCKED, never reaching ring0/stable.",
-      "host": "petry-projects/.github-private",
+      "_note": "combsmith/.github#1166 — the ring-0 self-host reviewer (#497). Its engine reusable `pr-review.yml` (grandfathered legacy name, #1127) lives in .github-private and is dogfooded there on `pr-review/next` via the `pr-review-trigger.yml` caller stub. It was absent from the registry, so autocut never cut/advanced its channel and a merged fix sat inert on main until a human ran cut-release.sh (two incidents in three days). run_workflow is the caller stub's DISPLAY NAME (the `name:` of pr-review-trigger.yml), NOT the engine or a *.yml filename: a workflow_call-only reusable has no runs of its own, so the gate reads the caller's run history via `gh run list --workflow`. It must be the display name because a repo without this workflow (every tier beyond the .github-private self-host) then returns the graceful 'could not find any workflows named …' (→ [], #747), whereas a *.yml filename would 404 and be mis-triaged as a transient fetch failure that fails the gate CLOSED. Registered host-relative like dev-lead/ci-failure-analyst: `next` = the host, so `next`+`ring0` span both org-infra repos. The self-host circular dependency (#497) is bounded by the soak gate — a candidate that breaks reviews on `next` (.github-private) fails there and is BLOCKED, never reaching ring0/stable.",
+      "host": "combsmith/.github-private",
       "reusable": ".github/workflows/pr-review.yml",
       "caller_stub": ".github/workflows/pr-review-trigger.yml",
       "run_workflow": "PR Review Agent — Trigger",
@@ -1118,8 +1118,8 @@
           "channel": "ring1",
           "order": 2,
           "members": [
-            "petry-projects/TalkTerm",
-            "petry-projects/bmad-bgreat-suite"
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
           ]
         },
         {
@@ -1131,7 +1131,7 @@
         }
       ],
       "gate": {
-        "_standard": "petry-projects/.github#548 — graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "_standard": "combsmith/.github#548 — graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
         "benign_failure_classes": [],

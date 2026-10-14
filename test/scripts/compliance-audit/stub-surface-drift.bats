@@ -53,7 +53,7 @@ permissions: {}
 
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR
     with:
       agent_ref: dev-lead/stable
     secrets: inherit
@@ -78,7 +78,7 @@ permissions:
 
 jobs:
   agent-shield:
-    uses: petry-projects/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/stable  # NOSONAR
+    uses: combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/stable  # NOSONAR
 EOF
 )
 
@@ -107,7 +107,7 @@ jobs:
     permissions:
       contents: read
       discussions: write
-    uses: petry-projects/.github/.github/workflows/feature-ideation-reusable.yml@feature-ideation/stable  # NOSONAR
+    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@feature-ideation/stable  # NOSONAR
     with:
       project_context: |
         TODO: Replace with a description of the project.
@@ -137,7 +137,7 @@ jobs:
       pull-requests: read
       checks: read
       actions: read
-    uses: petry-projects/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable  # NOSONAR
+    uses: combsmith/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable  # NOSONAR
     secrets:
       GH_PAT_WORKFLOWS: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
 EOF
