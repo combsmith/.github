@@ -1,6 +1,6 @@
 # OpenSSF Scorecard security posture review for all public repos.
 # Creates/updates/closes GitHub Issues for findings across the org.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#openssf-scorecard-org-scorecardyml
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#openssf-scorecard-org-scorecardyml
 name: Org Scorecard Review
 
 on:
@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ORG="petry-projects"
+          ORG="combsmith"
           SKIP_CHECKS="CII-Best-Practices,Contributors,Fuzzing,Maintained,Packaging,Signed-Releases"
           RESULTS_DIR=$(mktemp -d)
           SUMMARY_FILE="$RESULTS_DIR/summary.md"

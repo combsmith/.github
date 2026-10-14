@@ -12,7 +12,7 @@ set -euo pipefail
 date_days_ago() {
   # Guard arg count before reading $1: under set -u a zero-arg call would abort
   # the shell with "unbound variable" instead of reaching the validation path.
-  # Caught by CodeRabbit review on PR petry-projects/.github#85.
+  # Caught by CodeRabbit review on PR combsmith/.github#85.
   if [ "$#" -ne 1 ]; then
     printf '[date-utils] expected 1 arg (days), got: %d\n' "$#" >&2
     return 64
