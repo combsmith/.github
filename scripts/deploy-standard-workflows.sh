@@ -296,9 +296,11 @@ is_skipped_repo() {
 
 # True if <repo> is in NOT_SERVED_REPOS (the sweep never touches it).
 is_not_served_repo() {
-  local repo="$1" s
+  local repo s
+  # GitHub repo names are case-insensitive; compare lowercased.
+  repo=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
   for s in "${NOT_SERVED_REPOS[@]}"; do
-    [[ "$repo" == "$s" ]] && return 0
+    [[ "$repo" == "$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]')" ]] && return 0
   done
   return 1
 }

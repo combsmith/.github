@@ -31,6 +31,11 @@ teardown() { rm -rf "$TT_TMP"; }
   [ "$status" -eq 0 ]
 }
 
+@test "is_not_served_repo: matching is case-insensitive" {
+  run bash -c 'source "$1" >/dev/null 2>&1; is_not_served_repo Software-Factory && is_not_served_repo SOFTWARE-FACTORY-CANARY' _ "$SCRIPT"
+  [ "$status" -eq 0 ]
+}
+
 @test "is_not_served_repo: an ordinary repo, and the SKIP_REPOS, are served" {
   run bash -c 'source "$1" >/dev/null 2>&1; is_not_served_repo markets || is_not_served_repo .github || is_not_served_repo .github-private' _ "$SCRIPT"
   [ "$status" -eq 1 ]
