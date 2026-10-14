@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# apply-rulesets.sh — Apply standard repository rulesets to petry-projects repos
+# apply-rulesets.sh — Apply standard repository rulesets to combsmith repos
 #
 # Companion script to compliance-audit.sh. Creates or updates the rulesets defined in:
 #   standards/github-settings.md#repository-rulesets
@@ -25,7 +25,7 @@
 
 set -euo pipefail
 
-ORG="petry-projects"
+ORG="combsmith"
 DRY_RUN=false
 
 info()  { echo "[INFO]  $*"; }

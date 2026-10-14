@@ -7,7 +7,7 @@
 #     compliance-audit,health-check,fleet-tracker,daily-report) — the gate
 #     that keeps strategic work distinct from automation-generated work.
 #
-# Reconcile, not just add (petry-projects/.github#415 §2): if an item that
+# Reconcile, not just add (combsmith/.github#415 §2): if an item that
 # was on the board stops qualifying — `dev-lead` removed, or an excluded
 # label added — its project item is removed. This is the issue/PR analogue
 # of reconcile-discussion.sh's state machine, built on the shared

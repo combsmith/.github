@@ -1,7 +1,7 @@
 # Reusable auto-add-to-Initiatives-project workflow — single source of truth
 # for the org. Repo-level add-to-project.yml stubs call this so the
 # noise-gate / reconcile logic isn't duplicated per repo.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 #
 # What it does (driven by the caller's triggering event):
 #   - issues / pull_request_target → reconcile the item with the project:
@@ -14,10 +14,10 @@
 # App. Callers pass the App credentials with `secrets: inherit`:
 #   INITIATIVES_APP_ID, INITIATIVES_APP_PRIVATE_KEY.
 #
-# The scripts live in petry-projects/.github; this workflow checks them out
+# The scripts live in combsmith/.github; this workflow checks them out
 # at `agent_ref` so logic AND code run at the one pinned channel version
 # (per the org reusable-workflow versioning standard). The reusable's own
-# self-host caller (petry-projects/.github) passes its commit SHA so it
+# self-host caller (combsmith/.github) passes its commit SHA so it
 # dogfoods the exact version under test (Ring 0).
 #
 # Discussion API limitation: the Projects v2 GraphQL schema does not include
@@ -29,10 +29,10 @@
 # (head.repo.fork == false) or PRs whose author is OWNER/MEMBER/COLLABORATOR.
 # A maintainer-labeled PR from an *external fork by an untrusted author* is
 # still skipped here (the gate can't safely evaluate the labeler in an `if:`);
-# add such PRs from the Projects UI. Tracking: petry-projects/.github#415 §4.
+# add such PRs from the Projects UI. Tracking: combsmith/.github#415 §4.
 #
-# Tracking: petry-projects/.github#387 (pilot), #415 (multi-repo rollout)
-# Discussion: petry-projects/.github#386
+# Tracking: combsmith/.github#387 (pilot), #415 (multi-repo rollout)
+# Discussion: combsmith/.github#386
 name: Auto-add to Initiatives project (Reusable)
 
 on:
@@ -63,7 +63,7 @@ on:
         type: string
         default: "Ideas"
       agent_ref:
-        description: "Ref of petry-projects/.github to check out the scripts from (pin to add-to-project/stable; self-host passes its SHA)"
+        description: "Ref of combsmith/.github to check out the scripts from (pin to add-to-project/stable; self-host passes its SHA)"
         required: false
         type: string
         default: "add-to-project/stable"
@@ -95,7 +95,7 @@ jobs:
       - name: Checkout add-to-project scripts
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: ${{ inputs.agent_ref }}
           path: .add-to-project-src
           fetch-depth: 1
@@ -132,7 +132,7 @@ jobs:
       - name: Checkout add-to-project scripts
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: ${{ inputs.agent_ref }}
           path: .add-to-project-src
           fetch-depth: 1

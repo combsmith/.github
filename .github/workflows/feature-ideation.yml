@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/feature-ideation.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md#8
-# Reusable:        petry-projects/.github/.github/workflows/feature-ideation-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/feature-ideation.yml
+# Standard:        combsmith/.github/standards/ci-standards.md#8
+# Reusable:        combsmith/.github/.github/workflows/feature-ideation-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. The 5-phase ideation pipeline, the
@@ -75,15 +75,15 @@ jobs:
       discussions: write
       actions: read
       id-token: write
-    uses: petry-projects/.github/.github/workflows/feature-ideation-reusable.yml@0011a116be35a9fff7c6b45120d48483c63bf3a1 # v1
+    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@0011a116be35a9fff7c6b45120d48483c63bf3a1 # v1
     with:
       # On the `discussion: created` trigger this carries the new Discussion's
       # number → the reusable runs single-idea enhancement mode. Empty on
       # schedule/dispatch → normal scan.
       target_discussion: ${{ github.event.discussion.number }}
       project_context: |
-        petry-projects/.github is the org-level standards and tooling repository
-        for the petry-projects GitHub organisation. It owns the canonical CI/CD
+        combsmith/.github is the org-level standards and tooling repository
+        for the combsmith GitHub organisation. It owns the canonical CI/CD
         standards (ci-standards.md), all reusable GitHub Actions workflows
         (claude-code, feature-ideation, agent-shield, dependabot), the BMAD
         Method agentic development framework, and org-wide security and

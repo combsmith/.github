@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/idea-triage.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md
-# Reusable:        petry-projects/.github/.github/workflows/idea-triage-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/idea-triage.yml
+# Standard:        combsmith/.github/standards/ci-standards.md
+# Reusable:        combsmith/.github/.github/workflows/idea-triage-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All triage-dispatch logic lives in the
@@ -19,7 +19,7 @@
 # Idea Triage — weekly ripeness shortlist, thin caller for the org-level reusable.
 #
 # Weekly, this re-dispatches the CENTRAL idea-triage (BMAD analyst) in
-# petry-projects/.github-private with this repo as the target. It scores this
+# combsmith/.github-private with this repo as the target. It scores this
 # repo's open Ideas Discussions (Ripe / Soon / Not yet) and refreshes this repo's
 # "Idea Promotion Queue" tracking issue (label `idea-triage`). It never applies
 # `idea:approved` — that stays the human's pick.
@@ -30,7 +30,7 @@
 #   3. Confirm the org-level secret GH_PAT_WORKFLOWS is accessible.
 #   4. (Optional) Adjust the schedule cron.
 #
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 name: Idea Triage — Weekly Shortlist
 
 on:
@@ -42,5 +42,5 @@ permissions: {}
 
 jobs:
   idea-triage:
-    uses: petry-projects/.github/.github/workflows/idea-triage-reusable.yml@idea-triage/stable
+    uses: combsmith/.github/.github/workflows/idea-triage-reusable.yml@idea-triage/stable
     secrets: inherit

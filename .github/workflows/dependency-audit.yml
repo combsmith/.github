@@ -1,6 +1,6 @@
 # Dependency vulnerability audit.
 # Detects ecosystems and runs appropriate audit tools (npm, pnpm, Go, Rust, Python).
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/dependabot-policy.md#vulnerability-audit-ci-check
+# Standard: https://github.com/combsmith/.github/blob/main/standards/dependabot-policy.md#vulnerability-audit-ci-check
 #
 # Auto-detects ecosystems present in the repository and runs the appropriate
 # audit tool. Fails the build if any dependency has a known security advisory.
