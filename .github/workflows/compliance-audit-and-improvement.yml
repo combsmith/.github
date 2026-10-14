@@ -19,7 +19,7 @@
 #   - GitHub compares strings without regard to case, so `TRUE` pauses too.
 #     Unset, `false` or any other value runs the workflow exactly as before.
 #   - Same rule as feature-ideation-reusable.yml (#1295) and as
-#     dev-lead-reusable.yml in petry-projects/.github-private (#1525, #2249).
+#     dev-lead-reusable.yml in combsmith/.github-private (#1525, #2249).
 #     Tests: test/workflows/compliance-audit/fleet-pause.bats.
 #
 # Standard: https://github.com/${{ github.repository_owner }}/.github/tree/main/standards
