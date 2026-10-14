@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # reconcile-backlog.sh — periodic/manual backlog reconcile for add-to-project.
 #
-# Why this exists (petry-projects/.github#518): the event-driven add-to-project
+# Why this exists (combsmith/.github#518): the event-driven add-to-project
 # path misses qualifying items in two structural cases —
 #   1. issues/PRs created by the default GITHUB_TOKEN (app/github-actions):
 #      GitHub does not fire workflows from default-token events, so
