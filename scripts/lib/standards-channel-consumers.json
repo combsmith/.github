@@ -3,7 +3,7 @@
   "consumers": [
     {
       "id": "template-stub-drift",
-      "repo": "petry-projects/.github-private",
+      "repo": "combsmith/.github-private",
       "description": "repo-template drift guard: every seeded stub must match its emission at the candidate.",
       "ref_env": "STANDARDS_REF",
       "command": "bash scripts/template_stub_drift.sh",
@@ -12,7 +12,7 @@
     },
     {
       "id": "persona-schema-validator",
-      "repo": "petry-projects/.github-private",
+      "repo": "combsmith/.github-private",
       "description": "Persona manifests must validate against the persona schema at the candidate. Needs Python >= 3.10 with jsonschema and pyyaml; set PYTHON to choose the interpreter.",
       "ref_env": "PERSONA_SCHEMA_REF",
       "command": "\"${PYTHON:-python3}\" personas/validate-personas.py",

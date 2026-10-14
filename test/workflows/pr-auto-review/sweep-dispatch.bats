@@ -82,19 +82,19 @@ STUB
 setup() {
   write_gh_stub
   export GH_TOKEN="t"
-  export SEARCH_OWNER="petry-projects"
+  export SEARCH_OWNER="combsmith"
   export SWEEP_LABEL="standards-sync"
   export MAX_PER_RUN="8"
   export DRY_RUN="0"
-  export DISPATCH_REPO="petry-projects/.github-private"
+  export DISPATCH_REPO="combsmith/.github-private"
   # Keep retries bounded and instant so the suite stays fast + deterministic.
   export DISPATCH_RETRIES="2"
   export DISPATCH_RETRY_SLEEP="0"
   export STUB_COUNTER="${BATS_TEST_TMPDIR}/dispatch-count"
   # Two ready, non-draft PRs.
   export STUB_PR_LIST='[
-    {"url":"https://github.com/petry-projects/repo-a/pull/1","isDraft":false},
-    {"url":"https://github.com/petry-projects/repo-c/pull/3","isDraft":false}
+    {"url":"https://github.com/combsmith/repo-a/pull/1","isDraft":false},
+    {"url":"https://github.com/combsmith/repo-c/pull/3","isDraft":false}
   ]'
 }
 
@@ -105,38 +105,38 @@ run_sweep() { run bash "${TT_SCRIPTS_DIR}/sweep-dispatch.sh"; }
 @test "sweep: both ready PRs dispatch and the run succeeds" {
   run_sweep
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-a/pull/1'
-  echo "$output" | grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-c/pull/3'
+  echo "$output" | grep -q 'dispatched auto-review for https://github.com/combsmith/repo-a/pull/1'
+  echo "$output" | grep -q 'dispatched auto-review for https://github.com/combsmith/repo-c/pull/3'
   echo "$output" | grep -q 'dispatched 2 of 2'
 }
 
 # ── fault isolation: a transient dispatch failure must not abort the sweep ─────
 
 @test "sweep: a transient dispatch failure on one PR does not abort the run" {
-  export STUB_DISPATCH_FAIL_URL="https://github.com/petry-projects/repo-a/pull/1"
+  export STUB_DISPATCH_FAIL_URL="https://github.com/combsmith/repo-a/pull/1"
   run_sweep
   # The whole run must still succeed — a transient dispatch error is retried
   # next cycle, not a workflow failure.
   [ "$status" -eq 0 ]
   # repo-a persistently fails → warning, not an abort.
-  echo "$output" | grep -q 'failed to dispatch https://github.com/petry-projects/repo-a/pull/1'
+  echo "$output" | grep -q 'failed to dispatch https://github.com/combsmith/repo-a/pull/1'
   # repo-c is still reached and dispatched (loop was not aborted).
-  echo "$output" | grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-c/pull/3'
+  echo "$output" | grep -q 'dispatched auto-review for https://github.com/combsmith/repo-c/pull/3'
   echo "$output" | grep -q 'dispatched 1 of 2'
 }
 
 # ── fault isolation: a transient fact-fetch failure skips only that PR ─────────
 
 @test "sweep: a transient 'gh pr view' failure skips that PR and continues" {
-  export STUB_VIEW_FAIL_URL="https://github.com/petry-projects/repo-a/pull/1"
+  export STUB_VIEW_FAIL_URL="https://github.com/combsmith/repo-a/pull/1"
   run_sweep
   [ "$status" -eq 0 ]
   local sweep_output="$output"
   # repo-c still dispatches.
-  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-c/pull/3'
+  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/combsmith/repo-c/pull/3'
   echo "$sweep_output" | grep -q 'dispatched 1 of 2'
   # repo-a could not be evaluated → skipped, never dispatched.
-  run grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-a/pull/1' <<< "$sweep_output"
+  run grep -q 'dispatched auto-review for https://github.com/combsmith/repo-a/pull/1' <<< "$sweep_output"
   [ "$status" -eq 1 ]
 }
 
@@ -145,11 +145,11 @@ run_sweep() { run bash "${TT_SCRIPTS_DIR}/sweep-dispatch.sh"; }
 @test "sweep: a dispatch that fails once is retried and then succeeds" {
   export STUB_DISPATCH_FAIL_ONCE="1"
   # Only one PR so the single retry budget is spent on it deterministically.
-  export STUB_PR_LIST='[{"url":"https://github.com/petry-projects/repo-a/pull/1","isDraft":false}]'
+  export STUB_PR_LIST='[{"url":"https://github.com/combsmith/repo-a/pull/1","isDraft":false}]'
   run_sweep
   [ "$status" -eq 0 ]
   local sweep_output="$output"
-  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-a/pull/1'
+  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/combsmith/repo-a/pull/1'
   echo "$sweep_output" | grep -q 'dispatched 1 of 1'
   # No persistent-failure warning — the retry recovered it.
   run grep -q 'failed to dispatch' <<< "$sweep_output"
@@ -168,10 +168,10 @@ run_sweep() { run bash "${TT_SCRIPTS_DIR}/sweep-dispatch.sh"; }
   [ "$status" -eq 0 ]
   local sweep_output="$output"
   # repo-c is still reached and dispatched — null data on repo-a must not abort.
-  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-c/pull/3'
+  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/combsmith/repo-c/pull/3'
   echo "$sweep_output" | grep -q 'dispatched 1 of 2'
   # repo-a had null PR data → warning + skip, never dispatched.
-  run grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-a/pull/1' <<< "$sweep_output"
+  run grep -q 'dispatched auto-review for https://github.com/combsmith/repo-a/pull/1' <<< "$sweep_output"
   [ "$status" -eq 1 ]
 }
 
@@ -186,10 +186,10 @@ run_sweep() { run bash "${TT_SCRIPTS_DIR}/sweep-dispatch.sh"; }
   [ "$status" -eq 0 ]
   local sweep_output="$output"
   # repo-c is still reached and dispatched — errors on repo-a must not abort.
-  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-c/pull/3'
+  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/combsmith/repo-c/pull/3'
   echo "$sweep_output" | grep -q 'dispatched 1 of 2'
   # repo-a had GraphQL errors → warning + skip, never dispatched.
-  run grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-a/pull/1' <<< "$sweep_output"
+  run grep -q 'dispatched auto-review for https://github.com/combsmith/repo-a/pull/1' <<< "$sweep_output"
   [ "$status" -eq 1 ]
 }
 
@@ -204,9 +204,9 @@ run_sweep() { run bash "${TT_SCRIPTS_DIR}/sweep-dispatch.sh"; }
   [ "$status" -eq 0 ]
   local sweep_output="$output"
   # repo-c is still reached and dispatched — null threads on repo-a must not abort.
-  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-c/pull/3'
+  echo "$sweep_output" | grep -q 'dispatched auto-review for https://github.com/combsmith/repo-c/pull/3'
   echo "$sweep_output" | grep -q 'dispatched 1 of 2'
   # repo-a had null reviewThreads → warning + skip, never dispatched.
-  run grep -q 'dispatched auto-review for https://github.com/petry-projects/repo-a/pull/1' <<< "$sweep_output"
+  run grep -q 'dispatched auto-review for https://github.com/combsmith/repo-a/pull/1' <<< "$sweep_output"
   [ "$status" -eq 1 ]
 }

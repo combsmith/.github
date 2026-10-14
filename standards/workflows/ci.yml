@@ -1,9 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/ci.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md#1-ci-pipeline-ciyml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/ci.yml
+# Standard:        combsmith/.github/standards/ci-standards.md#1-ci-pipeline-ciyml
 #
 # ADOPTING THIS WORKFLOW:
-#   1. This ships verbatim into repos created from petry-projects/repo-template.
+#   1. This ships verbatim into repos created from combsmith/repo-template.
 #   2. It is a CUSTOMIZE-PER-STACK stub: it passes out of the box so a fresh repo
 #      is green on day 0. Replace the placeholder step with your stack's
 #      lint / format / typecheck / unit-test / coverage steps (see the standard).

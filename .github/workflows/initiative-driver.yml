@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/initiative-driver.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md
-# Central driver:  petry-projects/.github-private/.github/workflows/initiative-driver.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/initiative-driver.yml
+# Standard:        combsmith/.github/standards/ci-standards.md
+# Central driver:  combsmith/.github-private/.github/workflows/initiative-driver.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All dependency-aware release logic (the
@@ -12,23 +12,23 @@
 #     is pure-bash (no claude-code-action), so this stub dispatches the central
 #     workflow_dispatch DIRECTLY with `gh workflow run`. No LLM runs here.
 #   • You MUST NOT change: the dispatch target
-#     (-R petry-projects/.github-private -f target_repo=<this repo>),
+#     (-R combsmith/.github-private -f target_repo=<this repo>),
 #     the `initiative:auto` label filter, or the PAT guard.
 #   • If you need different release behaviour, open a PR against the central
-#     driver in petry-projects/.github-private — never by editing callers.
+#     driver in combsmith/.github-private — never by editing callers.
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Initiative Driver — per-repo dispatcher, thin caller for the central driver.
 #
 # On this repo's issues:[closed, labeled] (plus a safety-net off-peak schedule),
 # this stub dispatches the CENTRAL initiative-driver in
-# petry-projects/.github-private with target_repo=<this repo>. The central
+# combsmith/.github-private with target_repo=<this repo>. The central
 # driver then sweeps this repo's `initiative:auto` epics and releases their ready
 # sub-issues to dev-lead — so the central driver does not have to watch every
 # enrolled repo's events.
 #
 # Rate-limit gate (#640): before dispatching, this stub asks the source-side
-# agent-rate-limit gate (petry-projects/.github/scripts/agent-rate-limit-gate.sh)
+# agent-rate-limit gate (combsmith/.github/scripts/agent-rate-limit-gate.sh)
 # whether `initiative-driver` may dispatch right now. initiative-driver is the
 # canary that ENFORCES: the gate derives concurrency / cooldown / daily-budget /
 # consecutive-failure counters from this stub's own run history (no state
@@ -38,7 +38,7 @@
 # cancels a superseded run before any step (gate included) executes (#443/#402).
 # A `defer` simply skips the dispatch step — never a cancel, never a job failure.
 #
-# Gate tooling is fetched at a pinned commit SHA of petry-projects/.github (not
+# Gate tooling is fetched at a pinned commit SHA of combsmith/.github (not
 # a moving tag — the PAT is handed to that code). If the tooling is unavailable
 # or the gate errors, the gate step FAILS LOUDLY (::error:: annotation + step
 # summary, step marked failed) but the dispatch still runs (fail-open — an
@@ -49,12 +49,12 @@
 #   2. Ensure the `initiative:auto` label exists on the repo.
 #   3. Confirm the org-level secret GH_PAT_DON_PETRY (or the legacy fallback
 #      GH_PAT_WORKFLOWS) is accessible **and its owner has write access to
-#      petry-projects/.github-private** (to dispatch the central workflow) **and
+#      combsmith/.github-private** (to dispatch the central workflow) **and
 #      to this repo** (the central driver applies the `dev-lead` label
 #      cross-repo with that PAT; a label applied with GITHUB_TOKEN would not
 #      trigger dev-lead).
 #
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 name: Initiative Driver — Dispatch Central
 
 on:
@@ -100,7 +100,7 @@ jobs:
 
       - name: Checkout agent-rate-limit gate tooling
         # Phase-4 wiring (#640): the gate library + orchestrator live in
-        # petry-projects/.github; an enrolled caller stub does not carry them, so
+        # combsmith/.github; an enrolled caller stub does not carry them, so
         # fetch them read-only into a scratch path. Uses the same PAT as the
         # dispatch — the workflow's GITHUB_TOKEN cannot read another repo — so the
         # stub's `permissions:` block is unchanged.
@@ -108,14 +108,14 @@ jobs:
         # the gate step then finds no script, reports an ::error:: (fail loudly),
         # emits no decision, and the dispatch step's `!= 'defer'` guard falls
         # through to dispatching (fail-open).
-        # ref: pinned to an immutable commit SHA of petry-projects/.github (#1232)
+        # ref: pinned to an immutable commit SHA of combsmith/.github (#1232)
         # — a moving tag silently lagged the gate script (v1 predates it) and
         # would hand the PAT to whatever the tag next points at. Bump it in a
         # reviewed PR (see standards/agent-rate-limits.md §3.1).
         continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: cd0b16751454d2eb3486ec04477d7ee9cc96c425 # main @ 2026-10-02 (#1232)
           path: .arl-gate-tooling
           fetch-depth: 1
@@ -178,5 +178,5 @@ jobs:
           TARGET_REPO: ${{ github.repository }}
         run: |
           gh workflow run initiative-driver.yml \
-            -R petry-projects/.github-private \
+            -R combsmith/.github-private \
             -f target_repo="${TARGET_REPO}"

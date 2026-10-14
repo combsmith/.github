@@ -21,7 +21,7 @@ teardown() {
 # Computes the discussions count from the array length so the fixture
 # always satisfies the producer/consumer contract (even though the
 # matcher only reads .items, validating contracts in test fixtures
-# is good hygiene). CodeRabbit on PR petry-projects/.github#85.
+# is good hygiene). CodeRabbit on PR combsmith/.github#85.
 build_signals() {
   local discussions="$1"
   local count
@@ -30,7 +30,7 @@ build_signals() {
 {
   "schema_version": "1.0.0",
   "scan_date": "2026-04-07T00:00:00Z",
-  "repo": "petry-projects/talkterm",
+  "repo": "combsmith/talkterm",
   "open_issues": { "count": 0, "items": [] },
   "closed_issues_30d": { "count": 0, "items": [] },
   "ideas_discussions": { "count": ${count}, "items": ${discussions} },
@@ -168,7 +168,7 @@ build_proposals() {
 }
 
 @test "match: rejects non-numeric MATCH_THRESHOLD with usage error" {
-  # Caught by Copilot review on PR petry-projects/.github#85: previously
+  # Caught by Copilot review on PR combsmith/.github#85: previously
   # a typo in MATCH_THRESHOLD produced an opaque Python traceback.
   build_signals '[]'
   build_proposals '[{"title":"x"}]'
@@ -193,7 +193,7 @@ build_proposals() {
 }
 
 @test "match: malformed JSON in signals file exits non-zero" {
-  # Caught by CodeRabbit review on PR petry-projects/.github#85.
+  # Caught by CodeRabbit review on PR combsmith/.github#85.
   printf 'not valid json' >"${TT_TMP}/signals.json"
   build_proposals '[{"title":"x"}]'
   run bash "$MATCH" "${TT_TMP}/signals.json" "${TT_TMP}/proposals.json"
@@ -201,7 +201,7 @@ build_proposals() {
 }
 
 @test "match: malformed JSON in proposals file exits non-zero" {
-  # Caught by CodeRabbit review on PR petry-projects/.github#85.
+  # Caught by CodeRabbit review on PR combsmith/.github#85.
   build_signals '[]'
   printf 'not valid json' >"${TT_TMP}/proposals.json"
   run bash "$MATCH" "${TT_TMP}/signals.json" "${TT_TMP}/proposals.json"

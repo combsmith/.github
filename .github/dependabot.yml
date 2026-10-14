@@ -1,5 +1,5 @@
 # Dependabot configuration — GitHub Actions ecosystem only (docs-only repo).
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/dependabot-policy.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/dependabot-policy.md
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -28,4 +28,4 @@ updates:
     ignore:
       # First-party reusables are pinned to a moving `<agent>/v<M>-stable` channel
       # tag on purpose. Release tooling moves those pins, never Dependabot.
-      - dependency-name: "petry-projects/*"
+      - dependency-name: "combsmith/*"
