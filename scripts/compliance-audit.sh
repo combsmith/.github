@@ -410,7 +410,7 @@ list_workflow_files() {
     out=$(gh api "repos/$ORG/$repo/contents/.github/workflows" --jq '.[].name' 2>"$errfile") || rc=$?
     [ "$rc" -eq 0 ] && break
     kind=$(agent_ingress_gh_error_kind "$(cat "$errfile")")
-    [ "$kind" = "missing" ] && break
+    [ "$kind" = "$SETTING_MISSING_VALUE" ] && break
     [ "$attempt" -lt 3 ] && sleep $((attempt * 2))
   done
   if [ "$rc" -eq 0 ]; then
@@ -419,7 +419,7 @@ list_workflow_files() {
     return 0
   fi
   rm -f "$errfile"
-  [ "$kind" = "missing" ] && return 2
+  [ "$kind" = "$SETTING_MISSING_VALUE" ] && return 2
   return 1
 }
 
@@ -1637,7 +1637,7 @@ classify_sonar_s7637_exemption() {
     | sed -E 's/^[[:space:]]*sonar\.issue\.ignore\.multicriteria\.([A-Za-z0-9_]+)\.ruleKey.*/\1/' || true)
 
   if [[ -z "$keys" ]]; then
-    echo "missing"
+    echo "$SETTING_MISSING_VALUE"
     return 0
   fi
 
@@ -1713,7 +1713,7 @@ classify_inline_s7637_marker() {
   if [[ "$channel_seen" -eq 0 ]]; then
     echo "n/a"
   elif [[ "$missing" -eq 1 ]]; then
-    echo "missing"
+    echo "$SETTING_MISSING_VALUE"
   else
     echo "present"
   fi
@@ -2665,16 +2665,14 @@ check_agents_md() {
   decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
 
   # For repos other than .github, AGENTS.md should reference the org-level .github/AGENTS.md
-  if [[ "$repo" != ".github" ]]; then
-    # Accept two forms of reference:
-    #   1. Any path containing .github/AGENTS.md (relative link text or path reference)
-    #   2. GitHub blob URL format: /combsmith/.github/blob/<ref>/AGENTS.md (in href)
-    # Both are treated as references to the org-level standards file.
-    if ! echo "$decoded" | grep -qE '(\.github/AGENTS\.md|combsmith/\.github/blob/.+/AGENTS\.md)'; then
-      add_finding "$repo" "standards" "agents-md-missing-org-ref" "error" \
-        "\`AGENTS.md\` does not reference the org-level \`.github/AGENTS.md\` standards" \
-        "AGENTS.md"
-    fi
+  # Accept two forms of reference:
+  #   1. Any path containing .github/AGENTS.md (relative link text or path reference)
+  #   2. GitHub blob URL format: /combsmith/.github/blob/<ref>/AGENTS.md (in href)
+  # Both are treated as references to the org-level standards file.
+  if [[ "$repo" != ".github" ]] && ! echo "$decoded" | grep -qE '(\.github/AGENTS\.md|combsmith/\.github/blob/.+/AGENTS\.md)'; then
+    add_finding "$repo" "standards" "agents-md-missing-org-ref" "error" \
+      "\`AGENTS.md\` does not reference the org-level \`.github/AGENTS.md\` standards" \
+      "AGENTS.md"
   fi
 
   # Phase 3 (#645): run the structural linter over the fetched file, INFORMATIONAL
