@@ -129,7 +129,7 @@ required_contexts() {
     has_line "$f" "$line" || violations+=("${wf}: line '${line}' (context '${ctx}') not found")
     # The caller must actually call this reusable, or the pin above is moot.
     caller="${WF_DIR}/${wf%-reusable.yml}.yml"
-    grep -Eq "^    uses: (\./|petry-projects/\.github/)\.github/workflows/${wf}(@|[[:space:]]|\$)" "$caller" \
+    grep -Eq "^    uses: (\./|combsmith/\.github/)\.github/workflows/${wf}(@|[[:space:]]|\$)" "$caller" \
       || violations+=("${caller##*/}: does not call ${wf}")
   done
   if [ "${#violations[@]}" -ne 0 ]; then

@@ -1,7 +1,7 @@
 # Reusable auto-rebase workflow — single source of truth for the org.
 # Repo-level auto-rebase.yml files call this to avoid duplicating
 # the branch-update logic.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 #
 # Purpose: keep open PRs current with their base ONLY where being behind
 # actually blocks them. Updating a PR pushes a merge commit, which creates a new
@@ -77,7 +77,7 @@ on:
         type: string
       tooling_ref:
         description: |
-          Ref of petry-projects/.github to source the auto-rebase scripts from.
+          Ref of combsmith/.github to source the auto-rebase scripts from.
           Leave empty (the default) to source them from THIS reusable's own
           commit (`github.job_workflow_sha`) — that guarantees the predicate in
           lib/eligibility.sh always matches the version of this workflow the
@@ -108,7 +108,7 @@ jobs:
       - name: Checkout auto-rebase tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           # Source the scripts from this reusable's own commit so the predicate
           # always matches the pinned workflow version. `job_workflow_sha` is the
           # commit SHA of THIS reusable file for the run; `tooling_ref` overrides

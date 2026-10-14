@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 # scripts/lib/agent-ingress.sh — identity helpers for the ADR-0007 agent-ingress
-# collapse (petry-projects/.github#1226).
+# collapse (combsmith/.github#1226).
 #
 # A collapsed repo folds its per-role Class-1 caller stubs (dev-lead.yml,
 # pr-review-mention.yml, pr-auto-review.yml, …) into ONE
 # .github/workflows/agent-ingress.yml carrying EXACTLY ONE job per role, keyed by
-# the role name (ADR-0007; reference: petry-projects/.github-private
+# the role name (ADR-0007; reference: combsmith/.github-private
 # docs/architecture/reference/agent-ingress.yml). Every consumer that keyed agent
 # identity on the per-role workflow NAME/PATH must instead key on the role JOB:
 #

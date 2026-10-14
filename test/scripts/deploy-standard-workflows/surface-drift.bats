@@ -135,7 +135,7 @@ deployed() {
   workflow_dispatch:
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0
     with:
       agent_ref: dev-lead/v1-ring0
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable"
