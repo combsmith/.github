@@ -2,7 +2,7 @@
 # deploy-standard-workflows.sh — Deploy org-standard workflow stubs to all repos.
 #
 # Reads canonical stubs from standards/workflows/ and deploys them into every
-# repo in the petry-projects org by opening a pull request per repo (via the
+# repo in the combsmith org by opening a pull request per repo (via the
 # shared scripts/lib/standards-deploy.sh primitive). Only workflows that have a
 # template in standards/workflows/ AND appear in the DEPLOYABLE_WORKFLOWS list
 # below are eligible — tech-stack-specific workflows (ci.yml, sonarcloud.yml)
@@ -14,7 +14,7 @@
 # succeed. Opening a PR works uniformly on protected and unprotected repos and
 # leaves an auditable, CI-gated record. The PRs are labeled `standards-sync` and
 # left for the normal review/auto-merge pipeline — this script never merges and
-# never uses --admin. See petry-projects/.github#478.
+# never uses --admin. See combsmith/.github#478.
 #
 # Usage:
 #   deploy-standard-workflows.sh [options]
@@ -54,7 +54,7 @@ trap 'rm -f "${_TMPFILES[@]+"${_TMPFILES[@]}"}"' EXIT
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-ORG="petry-projects"
+ORG="combsmith"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 STANDARDS_DIR="$REPO_ROOT/standards/workflows"
 
@@ -542,7 +542,7 @@ reusable_base_of() {
 }
 
 # reusable_host_of <template> -> the org/repo that HOSTS the reusable (and thus
-# carries its release tags), e.g. `petry-projects/.github-private` for dev-lead.
+# carries its release tags), e.g. `combsmith/.github-private` for dev-lead.
 reusable_host_of() {
   local prefix; prefix="$(reusable_uses_of "$1")"; prefix="${prefix%@*}"
   cut -d/ -f1-2 <<< "$prefix"

@@ -1,6 +1,6 @@
-# petry-projects/.github
+# combsmith/.github
 
-Organization-wide GitHub configuration and workflows for the `petry-projects` org.
+Organization-wide GitHub configuration and workflows for the `combsmith` org.
 
 ## Contents
 
@@ -39,12 +39,12 @@ Scheduled workflows in this repo post audit reports and status digests as issues
 
 | Workflow | Purpose |
 |----------|---------|
-| [`compliance-audit-and-improvement.yml`](https://github.com/petry-projects/.github/blob/main/.github/workflows/compliance-audit-and-improvement.yml) | Weekly org standards compliance audit + runtime health survey, with per-finding remediation issues |
-| [`daily-org-status.yml`](https://github.com/petry-projects/.github/blob/main/.github/workflows/daily-org-status.yml) | Daily "Org Status" digest posted as an issue for maintainers |
-| [`org-scorecard.yml`](https://github.com/petry-projects/.github/blob/main/.github/workflows/org-scorecard.yml) | Weekly OpenSSF Scorecard security-posture review across public repos; findings tracked as issues |
-| [`standards-deploy.yml`](https://github.com/petry-projects/.github/blob/main/.github/workflows/standards-deploy.yml) | Weekly fleet sweep that opens standards-sync PRs for repos drifted off the org-standard workflow stubs |
+| [`compliance-audit-and-improvement.yml`](https://github.com/combsmith/.github/blob/main/.github/workflows/compliance-audit-and-improvement.yml) | Weekly org standards compliance audit + runtime health survey, with per-finding remediation issues |
+| [`daily-org-status.yml`](https://github.com/combsmith/.github/blob/main/.github/workflows/daily-org-status.yml) | Daily "Org Status" digest posted as an issue for maintainers |
+| [`org-scorecard.yml`](https://github.com/combsmith/.github/blob/main/.github/workflows/org-scorecard.yml) | Weekly OpenSSF Scorecard security-posture review across public repos; findings tracked as issues |
+| [`standards-deploy.yml`](https://github.com/combsmith/.github/blob/main/.github/workflows/standards-deploy.yml) | Weekly fleet sweep that opens standards-sync PRs for repos drifted off the org-standard workflow stubs |
 
 ## Related
 
-The companion repository [`petry-projects/.github-private`](https://github.com/petry-projects/.github-private) holds private automation:
+The companion repository [`combsmith/.github-private`](https://github.com/combsmith/.github-private) holds private automation:
 Copilot custom agents, agentic workflow scripts, installed frameworks, and scheduled CI.
