@@ -1,13 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/dependabot-rebase.yml
-# Standard:        petry-projects/.github/standards/dependabot-policy.md
-# Reusable:        petry-projects/.github/.github/workflows/dependabot-rebase-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/dependabot-rebase.yml
+# Standard:        combsmith/.github/standards/dependabot-policy.md
+# Reusable:        combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All rebase/merge serialization logic
 #     lives in the reusable workflow above.
 #   • You MAY change: the ref in the `uses:` line when upgrading the reusable
-#     workflow version (bump to latest commit SHA or tag of petry-projects/.github).
+#     workflow version (bump to latest commit SHA or tag of combsmith/.github).
 #   • You MUST NOT change: the concurrency group name, the explicit secrets
 #     block, or the job-level `permissions:` block — reusable workflows can be
 #     granted no more permissions than the calling job has, so removing the
@@ -44,7 +44,7 @@ jobs:
   dependabot-rebase:
     permissions:
       pull-requests: write # call update-branch API on behind PRs and merge when ready
-    uses: petry-projects/.github/.github/workflows/dependabot-rebase-reusable.yml@b51e2edf830ea085be0277bcf3174c7b3ec8f958 # v1
+    uses: combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml@b51e2edf830ea085be0277bcf3174c7b3ec8f958 # v1
     secrets:
       APP_ID: ${{ secrets.APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

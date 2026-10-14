@@ -2,7 +2,7 @@
 # deploy-standard-workflows.sh — Push org-standard workflow stubs to all repos.
 #
 # Reads canonical stubs from standards/workflows/ and upserts them into every
-# repo in the petry-projects org via the GitHub Contents API.  Only workflows
+# repo in the combsmith org via the GitHub Contents API.  Only workflows
 # that have a template in standards/workflows/ AND appear in the
 # DEPLOYABLE_WORKFLOWS list below are eligible for deployment — tech-stack-
 # specific workflows (ci.yml, sonarcloud.yml) must be set up manually.
@@ -24,7 +24,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-ORG="petry-projects"
+ORG="combsmith"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 STANDARDS_DIR="$REPO_ROOT/standards/workflows"
@@ -114,7 +114,7 @@ upsert_file() {
   local encoded
   encoded=$(base64 -w 0 "$template_path" 2>/dev/null || base64 -b 0 "$template_path")
 
-  local commit_msg="chore: sync org-standard ${path##*/} stub from petry-projects/.github"
+  local commit_msg="chore: sync org-standard ${path##*/} stub from combsmith/.github"
 
   local extra_args=()
   [[ -n "$sha" ]] && extra_args+=(--raw-field "sha=$sha")

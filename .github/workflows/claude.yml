@@ -1,6 +1,6 @@
 # Claude Code — thin caller that delegates to the org-level reusable workflow.
 # All logic and prompts are maintained centrally in claude-code-reusable.yml.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#4-claude-code-claudeyml
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#4-claude-code-claudeyml
 name: Claude Code
 
 on:
@@ -20,7 +20,7 @@ permissions: {}
 
 jobs:
   claude-code:
-    uses: petry-projects/.github/.github/workflows/claude-code-reusable.yml@main
+    uses: combsmith/.github/.github/workflows/claude-code-reusable.yml@main
     secrets: inherit
     permissions:
       contents: write

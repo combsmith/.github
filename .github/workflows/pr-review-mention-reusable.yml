@@ -1,11 +1,11 @@
 # Reusable PR Review — Mention Trigger workflow.
 # Single source of truth for the org: all review-dispatch logic lives here.
 # Repo-level pr-review-mention.yml files are thin caller stubs.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 #
 # Fires when @donpetry-bot is mentioned in a PR comment / review comment,
 # or when donpetry-bot is assigned as a reviewer on a PR. Dispatches a
-# repository_dispatch event to petry-projects/.github-private to trigger the
+# repository_dispatch event to combsmith/.github-private to trigger the
 # pr-review agent cascade.
 #
 # Requires: GH_PAT_WORKFLOWS org secret (classic PAT with repo scope).
@@ -129,7 +129,7 @@ jobs:
           gh api \
             --method POST \
             --header "Accept: application/vnd.github+json" \
-            /repos/petry-projects/.github-private/dispatches \
+            /repos/combsmith/.github-private/dispatches \
             --field event_type=pr-review-mention \
             --field "client_payload[pr_url]=$PR_URL"
           echo "Dispatch sent for $PR_URL"

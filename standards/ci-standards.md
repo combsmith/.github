@@ -1,6 +1,6 @@
 # CI/CD Standards
 
-Standard CI/CD configurations for all repositories in the **petry-projects** organization.
+Standard CI/CD configurations for all repositories in the **combsmith** organization.
 This document defines the required workflows, quality gates, and patterns that every
 repository must implement.
 
@@ -22,7 +22,7 @@ where to send a fix when behavior needs to change.
 
 | Tier | Examples | What lives in `standards/workflows/` | Where logic lives | Edits allowed in adopting repo |
 |---|---|---|---|---|
-| **1. Stub** | `claude.yml`, `dependency-audit.yml`, `dependabot-automerge.yml`, `dependabot-rebase.yml`, `agent-shield.yml`, `feature-ideation.yml` | A thin caller stub that delegates via `uses: petry-projects/.github/.github/workflows/<name>-reusable.yml@v1` | The matching `*-reusable.yml` in this repo (single source of truth) | **None** in normal use. May tune `with:` inputs where the reusable exposes them (e.g. `agent-shield` accepts `min-severity`, `required-files`; `feature-ideation` requires `project_context`). To change behavior, open a PR against the reusable in this repo — repos on `@v1` pick it up after the `v1` tag is bumped; repos on `@main` pick it up on their next run. |
+| **1. Stub** | `claude.yml`, `dependency-audit.yml`, `dependabot-automerge.yml`, `dependabot-rebase.yml`, `agent-shield.yml`, `feature-ideation.yml` | A thin caller stub that delegates via `uses: combsmith/.github/.github/workflows/<name>-reusable.yml@v1` | The matching `*-reusable.yml` in this repo (single source of truth) | **None** in normal use. May tune `with:` inputs where the reusable exposes them (e.g. `agent-shield` accepts `min-severity`, `required-files`; `feature-ideation` requires `project_context`). To change behavior, open a PR against the reusable in this repo — repos on `@v1` pick it up after the `v1` tag is bumped; repos on `@main` pick it up on their next run. |
 | **2. Per-repo template** | `ci.yml`, `sonarcloud.yml` | _(no template — see the patterns documented below)_ | In each repo, because the workflow is tech-stack-specific (language matrix, build tool, test framework) | **Limited.** Each adopting repo carries its own copy. Stay within the patterns in this document; do not change action SHAs, permission scopes, trigger events, or job names without raising a standards PR first. |
 | **GitHub-managed** | CodeQL default setup | _(no workflow file — managed via repo Settings → Code security)_ | GitHub | None. Configured via `apply-repo-settings.sh`; per-repo `codeql.yml` files are treated as drift by the compliance audit. See [§2 CodeQL Analysis](#2-codeql-analysis-github-managed-default-setup). |
 | **3. Free per-repo** | `release.yml`, project-specific automation | _(out of scope for this standard)_ | Per-repo | Free, but must still comply with the [Action Pinning Policy](#action-pinning-policy) and the [Required Workflows](#required-workflows) constraints. |
@@ -55,12 +55,12 @@ reusable, not a local edit.
 **Adapt only when the template genuinely requires repo-specific content** (e.g., a
 project name in a comment, a different cron schedule for a known reason). Anything
 beyond surface adaptation indicates either a missing template or a missing standard
-— file an issue against `petry-projects/.github` rather than diverging silently.
+— file an issue against `combsmith/.github` rather than diverging silently.
 
 **Fetching a template programmatically** (e.g., from a Claude Code automation run):
 
 ```bash
-gh api repos/petry-projects/.github/contents/standards/workflows/<file>.yml \
+gh api repos/combsmith/.github/contents/standards/workflows/<file>.yml \
   --jq '.content' | base64 -d > .github/workflows/<file>.yml
 ```
 
@@ -160,7 +160,7 @@ detects automatically outweighed the marginal supply-chain benefit.
 ```bash
 # State the desired configuration. Languages may be omitted to let
 # GitHub auto-detect, or enumerated explicitly.
-gh api -X PATCH "repos/petry-projects/<repo>/code-scanning/default-setup" \
+gh api -X PATCH "repos/combsmith/<repo>/code-scanning/default-setup" \
   -F state=configured \
   -F query_suite=default
 ```
@@ -270,7 +270,7 @@ require a valid license. Obtain a free license at [gitleaks.io](https://gitleaks
 3. Add the license as the org-level secret `GITLEAKS_LICENSE`:
 
    ```bash
-   gh secret set GITLEAKS_LICENSE --org petry-projects --body "<license-key>"
+   gh secret set GITLEAKS_LICENSE --org combsmith --body "<license-key>"
    ```
 
 **For personal/user repos:** The `GITLEAKS_LICENSE` environment variable is optional.
@@ -512,7 +512,7 @@ On each run the workflow:
 
 **No secrets required** — uses `GITHUB_TOKEN` only. Dependabot PRs are excluded because `dependabot-rebase.yml` handles those.
 
-**Compliance:** The compliance audit (`check_centralized_workflow_stubs`) verifies that repos adopting `auto-rebase.yml` use the canonical thin caller stub delegating to `petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@v1`.
+**Compliance:** The compliance audit (`check_centralized_workflow_stubs`) verifies that repos adopting `auto-rebase.yml` use the canonical thin caller stub delegating to `combsmith/.github/.github/workflows/auto-rebase-reusable.yml@v1`.
 
 ### 10. PR Review Mention (`pr-review-mention.yml`)
 
@@ -531,7 +531,7 @@ On each trigger the workflow:
 2. Verifies the actor is an OWNER, MEMBER, or COLLABORATOR — prevents external contributors
    from consuming review quota.
 3. Posts an acknowledgement comment so the requester knows the agent is starting.
-4. Fires a `repository_dispatch` event to `petry-projects/.github-private` with
+4. Fires a `repository_dispatch` event to `combsmith/.github-private` with
    `event_type=pr-review-mention` and `client_payload.pr_url`, which triggers the
    review cascade.
 
@@ -540,7 +540,7 @@ present as an org-level secret; no per-repo setup needed.
 
 **Compliance:** The compliance audit (`check_centralized_workflow_stubs`) verifies that
 repos have `pr-review-mention.yml` as a thin caller stub delegating to
-`petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@v1`.
+`combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@v1`.
 
 ---
 
@@ -683,7 +683,7 @@ understanding why they exist:**
 
 #### Reference implementation
 
-[`petry-projects/TalkTerm`](https://github.com/petry-projects/TalkTerm/blob/main/.github/workflows/feature-ideation.yml)
+[`combsmith/TalkTerm`](https://github.com/combsmith/TalkTerm/blob/main/.github/workflows/feature-ideation.yml)
 is the pilot adopter. The TalkTerm workflow is the standard caller stub
 with `project_context` set to a TalkTerm-specific paragraph — no other
 customisation.
@@ -838,15 +838,15 @@ incorrect pinned one.
 
 ### Exception: Internal Reusable Workflow References
 
-Calls to `petry-projects/.github` reusable workflows use tag references
+Calls to `combsmith/.github` reusable workflows use tag references
 (`@v1`, `@main`) — **not SHA pins** — and are exempt from this policy.
 
 ```yaml
 # CORRECT — tag ref for internal reusable workflow
-uses: petry-projects/.github/.github/workflows/claude-code-reusable.yml@v1
+uses: combsmith/.github/.github/workflows/claude-code-reusable.yml@v1
 
 # WRONG — do not SHA-pin internal reusable workflow refs
-uses: petry-projects/.github/.github/workflows/claude-code-reusable.yml@ee22b427cbce9ecadcf2b436acb57c3adf0cb63d
+uses: combsmith/.github/.github/workflows/claude-code-reusable.yml@ee22b427cbce9ecadcf2b436acb57c3adf0cb63d
 ```
 
 **Why:** Pinning the `uses:` line in a Tier 1 caller stub creates a diff from
@@ -855,7 +855,7 @@ the default branch. Anthropic's OIDC token endpoint validates that
 branch — any diff causes `401 Workflow validation failed` and Claude Code
 cannot run on that PR.
 
-The `@v1` tag on `petry-projects/.github` is managed deliberately (bumped only
+The `@v1` tag on `combsmith/.github` is managed deliberately (bumped only
 on backward-compatible releases) and is not subject to tag-force-push risk
 because the org controls the tag. **Do not open compliance PRs to pin these
 references.**
@@ -954,7 +954,7 @@ Changing a job name requires updating the branch protection configuration.
 
 ## Org-Level Workflows
 
-The [`.github` repository](https://github.com/petry-projects/.github) contains
+The [`.github` repository](https://github.com/combsmith/.github) contains
 org-level workflows that run across all repositories:
 
 ### OpenSSF Scorecard (`org-scorecard.yml`)

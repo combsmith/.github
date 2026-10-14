@@ -1,6 +1,6 @@
 # GitHub Repository Settings Standards
 
-Standard configurations for all repositories in the **petry-projects** organization.
+Standard configurations for all repositories in the **combsmith** organization.
 These settings are enforced via the GitHub UI, API, and repository rulesets.
 
 ---
@@ -10,7 +10,7 @@ These settings are enforced via the GitHub UI, API, and repository rulesets.
 | Setting | Value | Notes |
 |---------|-------|-------|
 | **Default repository permission** | `read` | Least privilege; grant write/admin via teams |
-| **Organization profile** | `petry-projects` | Public org (free plan) |
+| **Organization profile** | `combsmith` | Public org (free plan) |
 | **Default branch name** | `main` | Org-wide default for new repos |
 | **Members can create repos** | Yes (public + private) | |
 | **Two-factor requirement** | **Required** | All org members must have 2FA enabled |
@@ -144,10 +144,10 @@ verifies CI pass and `MERGEABLE` state before calling the merge API.
 
 ```bash
 # Get current ruleset (capture bypass_actors and rules arrays)
-gh api repos/petry-projects/<repo>/rulesets/<ruleset-id>
+gh api repos/combsmith/<repo>/rulesets/<ruleset-id>
 
 # PUT the full ruleset back, adding actor_id 3167543 to bypass_actors
-gh api repos/petry-projects/<repo>/rulesets/<ruleset-id> \
+gh api repos/combsmith/<repo>/rulesets/<ruleset-id> \
   -X PUT --input ruleset.json
 # where ruleset.json adds {"actor_id": 3167543, "actor_type": "Integration", "bypass_mode": "always"}
 # to the existing bypass_actors array alongside all existing rules and conditions.
@@ -156,9 +156,9 @@ gh api repos/petry-projects/<repo>/rulesets/<ruleset-id> \
 **Compliance check:** verify all rulesets on all repos have the bypass actor:
 
 ```bash
-for repo in $(gh repo list petry-projects --json name --jq '.[].name' --limit 1000); do
-  for rs_id in $(gh api "repos/petry-projects/$repo/rulesets" --jq '.[].id' 2>/dev/null); do
-    rs=$(gh api "repos/petry-projects/$repo/rulesets/$rs_id" 2>/dev/null)
+for repo in $(gh repo list combsmith --json name --jq '.[].name' --limit 1000); do
+  for rs_id in $(gh api "repos/combsmith/$repo/rulesets" --jq '.[].id' 2>/dev/null); do
+    rs=$(gh api "repos/combsmith/$repo/rulesets/$rs_id" 2>/dev/null)
     missing=$(echo "$rs" | jq '[.bypass_actors[]? | select(.actor_id == 3167543)] | length == 0')
     [[ "$missing" == "true" ]] && echo "MISSING: $repo / $(echo "$rs" | jq -r '.name')"
   done
@@ -237,7 +237,7 @@ but the categories are universal.
 > blocks every PR. Verify check names against actual workflow runs:
 >
 > ```bash
-> gh pr checks <PR-number> --repo petry-projects/<repo>
+> gh pr checks <PR-number> --repo combsmith/<repo>
 > ```
 
 #### Ecosystem-Specific Configuration
@@ -278,8 +278,8 @@ See [CI Standards](ci-standards.md) for workflow templates and patterns.
 |-----|---------|-----------|
 | **Claude** | AI code review and PR assistance via Claude Code Action | 2026-03-20 |
 | **dependabot-automerge-petry** | Provides approving review for Dependabot auto-merge | 2026-03-23 |
-| **petry-projects-pr-review-agent** | (deprecated) GitHub App formerly used for PR review — replaced by `donpetry-bot` machine user in `@petry-projects/org-leads` because Apps cannot be CODEOWNERS | 2026-04-01 |
-| **donpetry-bot** | Machine-user account in `@petry-projects/org-leads`; satisfies CODEOWNERS for automated PR review | 2026-05-04 |
+| **petry-projects-pr-review-agent** | (deprecated) GitHub App formerly used for PR review — replaced by `donpetry-bot` machine user in `@combsmith/org-leads` because Apps cannot be CODEOWNERS | 2026-04-01 |
+| **donpetry-bot** | Machine-user account in `@combsmith/org-leads`; satisfies CODEOWNERS for automated PR review | 2026-05-04 |
 | **SonarQube Cloud (SonarCloud)** | Code quality, security hotspots, coverage tracking | 2026-03-25 |
 | **CodeRabbit AI** | AI-powered code review on PRs | 2026-03-25 |
 
@@ -360,7 +360,7 @@ All repositories MUST have a `CODEOWNERS` file at `.github/CODEOWNERS`
 The full policy lives in [`codeowners-standard.md`](codeowners-standard.md).
 Summary:
 
-- The default owner line MUST be `* @petry-projects/org-leads`
+- The default owner line MUST be `* @combsmith/org-leads`
 - Direct listings of users or bot accounts (e.g.,
   `@petry-projects-pr-review-agent`, `@dependabot-automerge-petry`) are
   **forbidden** — manage membership through the team instead
@@ -371,19 +371,19 @@ Summary:
 
 ```gitignore
 # CODEOWNERS
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/codeowners-standard.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/codeowners-standard.md
 
-* @petry-projects/org-leads
+* @combsmith/org-leads
 ```
 
-Repos with finer-grained path ownership MUST include `@petry-projects/org-leads`
+Repos with finer-grained path ownership MUST include `@combsmith/org-leads`
 on every owner line so the team can always satisfy `require_code_owner_review`.
 
 ---
 
 ## Applying to a New Repository
 
-When creating a new repository in `petry-projects`:
+When creating a new repository in `combsmith`:
 
 1. **Create the repo** with standard settings (public, `main` branch, wiki disabled, discussions enabled)
 2. **Create the `pr-quality` ruleset** matching the standard configuration above, including:

@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/feature-ideation.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md#8
-# Reusable:        petry-projects/.github/.github/workflows/feature-ideation-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/feature-ideation.yml
+# Standard:        combsmith/.github/standards/ci-standards.md#8
+# Reusable:        combsmith/.github/.github/workflows/feature-ideation-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. The 5-phase ideation pipeline, the
@@ -63,11 +63,11 @@ jobs:
       discussions: write
       actions: read
       id-token: write
-    uses: petry-projects/.github/.github/workflows/feature-ideation-reusable.yml@ee22b427cbce9ecadcf2b436acb57c3adf0cb63d # v1
+    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@ee22b427cbce9ecadcf2b436acb57c3adf0cb63d # v1
     with:
       project_context: |
-        petry-projects/.github is the org-level standards and tooling repository
-        for the petry-projects GitHub organisation. It owns the canonical CI/CD
+        combsmith/.github is the org-level standards and tooling repository
+        for the combsmith GitHub organisation. It owns the canonical CI/CD
         standards (ci-standards.md), all reusable GitHub Actions workflows
         (claude-code, feature-ideation, agent-shield, dependabot), the BMAD
         Method agentic development framework, and org-wide security and

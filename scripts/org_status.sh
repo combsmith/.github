@@ -13,9 +13,9 @@ trap 'rm -rf "$DATA_DIR"' EXIT
 
 # ── Repo Discovery ────────────────────────────────────────────────────────────
 echo "::group::Discovering repos" >&2
-ORG_REPOS=$(gh repo list petry-projects --json name --limit 1000 | jq -r '.[].name' | sort)
+ORG_REPOS=$(gh repo list combsmith --json name --limit 1000 | jq -r '.[].name' | sort)
 PERSONAL_REPOS=$(gh repo list don-petry --json name --limit 1000 | jq -r '.[].name' | sort)
-echo "petry-projects: $(echo "$ORG_REPOS" | wc -l | tr -d ' ') repos  |  don-petry: $(echo "$PERSONAL_REPOS" | wc -l | tr -d ' ') repos" >&2
+echo "combsmith: $(echo "$ORG_REPOS" | wc -l | tr -d ' ') repos  |  don-petry: $(echo "$PERSONAL_REPOS" | wc -l | tr -d ' ') repos" >&2
 echo "::endgroup::" >&2
 
 # ── PR Collection + Classification ───────────────────────────────────────────
@@ -100,9 +100,9 @@ echo "::group::Collecting PR data" >&2
 # shell argument to jq, which hits ARG_MAX once the org accumulates ~200+ PRs.
 ALL_PR_NDJSON=""
 for repo in $ORG_REPOS; do
-  prs=$(collect_classify_prs "petry-projects" "$repo")
+  prs=$(collect_classify_prs "combsmith" "$repo")
   count=$(jq 'length' <<< "$prs")
-  [ "$count" -gt 0 ] && echo "  petry-projects/$repo: $count open PRs" >&2
+  [ "$count" -gt 0 ] && echo "  combsmith/$repo: $count open PRs" >&2
   if [ "$count" -gt 0 ]; then
     ALL_PR_NDJSON+=$(jq -c '.[]' <<< "$prs")
     ALL_PR_NDJSON+=$'\n'
@@ -178,7 +178,7 @@ ISSUE_PR_MAP=$(echo "$ALL_PRS" | jq '
 
 # ── Merge Activity ────────────────────────────────────────────────────────────
 echo "::group::Collecting merge activity" >&2
-ORG_MERGES=$(gh search prs --owner=petry-projects --merged --merged-at=">=$SINCE" \
+ORG_MERGES=$(gh search prs --owner=combsmith --merged --merged-at=">=$SINCE" \
   --json number,repository,closedAt --limit 1000 2>/dev/null || echo '[]')
 PERSONAL_MERGES=$(gh search prs --owner=don-petry --merged --merged-at=">=$SINCE" \
   --json number,repository,closedAt --limit 1000 2>/dev/null || echo '[]')
@@ -202,7 +202,7 @@ MERGE_DAILY=$(jq --arg since "$SINCE" --arg today "$TODAY" '
 MERGE_BY_REPO_DAY=$(jq --arg since "$SINCE" '
   .org as $org | .personal as $personal |
   def dates: [range(8) | ($since | strptime("%Y-%m-%d") | mktime) + (. * 86400) | strftime("%Y-%m-%d")];
-  (($org      | map({repo: ("petry-projects/" + .repository.name), date: .closedAt[:10]})) +
+  (($org      | map({repo: ("combsmith/" + .repository.name), date: .closedAt[:10]})) +
    ($personal | map({repo: ("don-petry/"      + .repository.name), date: .closedAt[:10]}))) |
   sort_by(.repo) | group_by(.repo) | map(
     . as $items |
@@ -218,12 +218,12 @@ echo "::endgroup::" >&2
 echo "::group::Collecting issues" >&2
 ISSUES_NDJSON=""
 for repo in $ORG_REPOS; do
-  issues=$(gh issue list --repo "petry-projects/$repo" --state open \
+  issues=$(gh issue list --repo "combsmith/$repo" --state open \
     --json number,title,createdAt,labels,url --limit 1000 2>/dev/null || echo '[]')
   count=$(jq 'length' <<< "$issues")
   if [ "$count" -gt 0 ]; then
-    echo "  petry-projects/$repo: $count open issues" >&2
-    ISSUES_NDJSON+=$(jq -c --arg repo "petry-projects/$repo" '{repo: $repo, count: length, issues: .}' <<< "$issues")
+    echo "  combsmith/$repo: $count open issues" >&2
+    ISSUES_NDJSON+=$(jq -c --arg repo "combsmith/$repo" '{repo: $repo, count: length, issues: .}' <<< "$issues")
     ISSUES_NDJSON+=$'\n'
   fi
 done
@@ -244,7 +244,7 @@ echo "::endgroup::" >&2
 echo "::group::Collecting discussions" >&2
 DISCUSSIONS=$(gh api graphql -f query='
 {
-  organization(login:"petry-projects"){
+  organization(login:"combsmith"){
     repositories(first:100){
       nodes{
         name hasDiscussionsEnabled
@@ -264,10 +264,10 @@ DISCUSSIONS=$(gh api graphql -f query='
   | select(.hasDiscussionsEnabled and .discussions.totalCount > 0)
   | . as $r
   | {
-      repo: ("petry-projects/" + .name),
+      repo: ("combsmith/" + .name),
       discussions: [
         .discussions.nodes[] | . + {
-          url: ("https://github.com/petry-projects/" + $r.name + "/discussions/" + (.number|tostring))
+          url: ("https://github.com/combsmith/" + $r.name + "/discussions/" + (.number|tostring))
         }
       ]
     }
@@ -378,7 +378,7 @@ Per-repo-per-day table using the Merge Activity — Per-Repo Per-Day data (omit 
 - Last column is Total (bold the number)
 - Add a **TOTAL** row summing each date column and grand total
 Daily org-level summary table (include zero rows):
-| Date | petry-projects | don-petry | Grand Total |
+| Date | combsmith | don-petry | Grand Total |
 Grand total and trend sentence. Trend: Increasing if avg(last 3 days) > avg(first 3 days), Decreasing if opposite, Flat otherwise.
 
 ### \`## Open Discussions\`

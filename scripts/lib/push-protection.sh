@@ -2,7 +2,7 @@
 # scripts/lib/push-protection.sh — Shared push-protection logic
 #
 # Sourceable Bash library that implements the apply + check functions for
-# the petry-projects Push Protection Standard:
+# the combsmith Push Protection Standard:
 #
 #   standards/push-protection.md
 #
@@ -18,7 +18,7 @@
 # parent script. It does NOT call `set` itself.
 #
 # Required by ALL functions:
-#   - $ORG          — GitHub org slug (e.g. "petry-projects")
+#   - $ORG          — GitHub org slug (e.g. "combsmith")
 #
 # Required by `pp_apply_*` functions (used by apply-repo-settings.sh):
 #   - info(), ok(), err(), skip()  — log helpers (string arg)

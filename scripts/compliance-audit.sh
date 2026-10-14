@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # compliance-audit.sh — Weekly org-wide compliance audit
 #
-# Checks every petry-projects repository against the standards defined in:
+# Checks every combsmith repository against the standards defined in:
 #   standards/ci-standards.md
 #   standards/dependabot-policy.md
 #   standards/github-settings.md
@@ -22,7 +22,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-ORG="petry-projects"
+ORG="combsmith"
 AUDIT_LABEL="compliance-audit"
 AUDIT_LABEL_COLOR="7057ff"
 AUDIT_LABEL_DESC="Automated compliance audit finding"
@@ -227,13 +227,13 @@ check_action_pinning() {
 # ---------------------------------------------------------------------------
 # Check: Reusable workflow path syntax
 # ---------------------------------------------------------------------------
-# NOTE: The correct pattern IS petry-projects/.github/.github/workflows/...
+# NOTE: The correct pattern IS combsmith/.github/.github/workflows/...
 # because the first .github is the repository name, and the second .github
 # is the directory path within that repository. This check is disabled as
-# a known false positive per petry-projects/.github standards.
+# a known false positive per combsmith/.github standards.
 #
 # Reference: https://docs.github.com/en/actions/using-workflows/reusing-workflows
-# Example: uses: petry-projects/.github/.github/workflows/claude-code-reusable.yml@v1
+# Example: uses: combsmith/.github/.github/workflows/claude-code-reusable.yml@v1
 check_reusable_workflow_paths() {
   local repo="$1"
   # This check is intentionally disabled — the double .github/ pattern is correct
@@ -429,8 +429,8 @@ check_codeowners() {
   # Extract non-comment, non-blank owner lines for accurate matching.
   # Each such line has the form: <pattern> <owner1> [<owner2> ...]
   # Standard (codeowners-standard.md):
-  #   1. @petry-projects/org-leads MUST be the FIRST owner on every line.
-  #   2. Additional teams (@petry-projects/<slug>) are allowed.
+  #   1. @combsmith/org-leads MUST be the FIRST owner on every line.
+  #   2. Additional teams (@combsmith/<slug>) are allowed.
   #   3. Individual users (@username without "/") are forbidden.
   local owner_lines
   owner_lines=$(echo "$codeowners_content" | grep -v '^\s*#' | grep -v '^\s*$')
@@ -442,7 +442,7 @@ check_codeowners() {
     return
   fi
 
-  # Rule 1: @petry-projects/org-leads MUST be the first owner on every line
+  # Rule 1: @combsmith/org-leads MUST be the first owner on every line
   # (the first whitespace-separated token after the pattern).
   local bad_first_owner=""
   while IFS= read -r line; do
@@ -450,14 +450,14 @@ check_codeowners() {
     # awk $2 = first owner token after the pattern
     local first_owner
     first_owner=$(echo "$line" | awk '{print $2}')
-    if [ "$first_owner" != "@petry-projects/org-leads" ]; then
+    if [ "$first_owner" != "@combsmith/org-leads" ]; then
       bad_first_owner="$line"
       break
     fi
   done <<< "$owner_lines"
   if [ -n "$bad_first_owner" ]; then
     add_finding "$repo" "settings" "codeowners-org-leads-not-first" "error" \
-      "CODEOWNERS owner lines must list \`@petry-projects/org-leads\` as the FIRST owner. Offending line: \`$bad_first_owner\`" \
+      "CODEOWNERS owner lines must list \`@combsmith/org-leads\` as the FIRST owner. Offending line: \`$bad_first_owner\`" \
       "standards/codeowners-standard.md"
   fi
 
@@ -473,7 +473,7 @@ check_codeowners() {
     local joined
     joined=$(echo "$individual_owners" | tr '\n' ' ')
     add_finding "$repo" "settings" "codeowners-individual-users" "error" \
-      "CODEOWNERS contains forbidden individual user owners: ${joined% } — only teams (@petry-projects/<slug>) are allowed; manage membership via teams" \
+      "CODEOWNERS contains forbidden individual user owners: ${joined% } — only teams (@combsmith/<slug>) are allowed; manage membership via teams" \
       "standards/codeowners-standard.md"
   fi
 
@@ -505,7 +505,7 @@ check_sonarcloud() {
 # ---------------------------------------------------------------------------
 # Check: CodeQL default setup is configured (and no stray codeql.yml exists)
 #
-# After petry-projects/.github#103, CodeQL is configured via GitHub's
+# After combsmith/.github#103, CodeQL is configured via GitHub's
 # managed default setup, not a per-repo workflow file. Two distinct findings:
 #
 #   1. codeql-default-setup-not-configured (error): the repo has not enabled
@@ -641,7 +641,7 @@ check_claude_workflow_checkout() {
 #
 # For each workflow that the org has centralized into a reusable workflow,
 # verify the downstream repo's copy is a stub that delegates via:
-#   uses: petry-projects/.github/.github/workflows/<reusable>.yml@v1
+#   uses: combsmith/.github/.github/workflows/<reusable>.yml@v1
 #
 # This prevents drift: a repo that copies the inline pre-centralization
 # version (or pins to @main, or pins to an older tag) is flagged so it
@@ -694,10 +694,10 @@ check_centralized_workflow_stubs() {
     [ -z "$decoded" ] && continue
 
     # Required pattern: a non-comment line whose `uses:` value is exactly
-    # petry-projects/.github/.github/workflows/<reusable>.yml@v1
+    # combsmith/.github/.github/workflows/<reusable>.yml@v1
     # Anchor to start-of-line + optional indent so a `# uses: ...` comment
     # cannot satisfy the check.
-    local expected="petry-projects/\\.github/\\.github/workflows/${reusable}\\.yml@v1"
+    local expected="combsmith/\\.github/\\.github/workflows/${reusable}\\.yml@v1"
 
     if echo "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*${expected}([[:space:]]|$)"; then
       continue  # stub is correctly pinned to @v1 — compliant
@@ -705,16 +705,16 @@ check_centralized_workflow_stubs() {
 
     # Determine why it's non-compliant for a more actionable message.
     local why
-    if echo "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*petry-projects/\\.github/\\.github/workflows/${reusable}\\.yml@"; then
+    if echo "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${reusable}\\.yml@"; then
       why="references the reusable but is not pinned to \`@v1\` (org standard)"
-    elif echo "$decoded" | grep -qF "petry-projects/.github/.github/workflows/${reusable}"; then
+    elif echo "$decoded" | grep -qF "combsmith/.github/.github/workflows/${reusable}"; then
       why="references the reusable but the \`uses:\` line does not match the canonical stub"
     else
       why="is an inline copy instead of a thin caller stub — re-sync from \`standards/workflows/${wf}\`"
     fi
 
     add_finding "$repo" "ci-workflows" "non-stub-$wf" "error" \
-      "Centralized workflow \`$wf\` $why. Replace with the canonical stub from \`standards/workflows/${wf}\` which delegates to \`petry-projects/.github/.github/workflows/${reusable}.yml@v1\`." \
+      "Centralized workflow \`$wf\` $why. Replace with the canonical stub from \`standards/workflows/${wf}\` which delegates to \`combsmith/.github/.github/workflows/${reusable}.yml@v1\`." \
       "standards/ci-standards.md#centralization-tiers"
   done
 }
@@ -799,7 +799,7 @@ check_centralized_check_names() {
     IFS=':' read -r old new <<< "$entry"
     if echo "$contexts" | grep -qxF "$old"; then
       add_finding "$repo" "rulesets" "stale-required-check-${old// /-}" "error" \
-        "Required-status-check ruleset references the stale check name \`$old\`. After workflow centralization (petry-projects/.github#87) this check is published as \`$new\`. Update the ruleset (and any classic branch protection) to use the new name." \
+        "Required-status-check ruleset references the stale check name \`$old\`. After workflow centralization (combsmith/.github#87) this check is published as \`$new\`. Update the ruleset (and any classic branch protection) to use the new name." \
         "standards/ci-standards.md#centralization-tiers"
     fi
   done
@@ -834,7 +834,7 @@ check_centralized_check_names() {
     fi
 
     add_finding "$repo" "rulesets" "$check_id" "error" \
-      "Required-status-check ruleset includes \`$context\`, which is incompatible with workflow-modifying PRs. claude-code-action's GitHub App refuses to mint an OAuth token for any PR whose diff includes a workflow file, so the check fails on every workflow PR and the merge gate becomes a deadlock. **Remove \`$context\` from required status checks** — do NOT rename it. The Claude review check still runs on normal PRs and surfaces feedback without being a merge gate. See \`scripts/apply-rulesets.sh\` (post petry-projects/.github#94) for the canonical required-checks list." \
+      "Required-status-check ruleset includes \`$context\`, which is incompatible with workflow-modifying PRs. claude-code-action's GitHub App refuses to mint an OAuth token for any PR whose diff includes a workflow file, so the check fails on every workflow PR and the merge gate becomes a deadlock. **Remove \`$context\` from required status checks** — do NOT rename it. The Claude review check still runs on normal PRs and surfaces feedback without being a merge gate. See \`scripts/apply-rulesets.sh\` (post combsmith/.github#94) for the canonical required-checks list." \
       "standards/ci-standards.md#centralization-tiers"
   done <<< "$contexts"
 }
@@ -888,9 +888,9 @@ check_agents_md() {
 
     # Accept two forms of reference:
     #   1. Any path containing .github/AGENTS.md (relative link text or path reference)
-    #   2. GitHub blob URL format: /petry-projects/.github/blob/<ref>/AGENTS.md (in href)
+    #   2. GitHub blob URL format: /combsmith/.github/blob/<ref>/AGENTS.md (in href)
     # Both are treated as references to the org-level standards file.
-    if ! echo "$decoded" | grep -qE '(\.github/AGENTS\.md|petry-projects/\.github/blob/.+/AGENTS\.md)'; then
+    if ! echo "$decoded" | grep -qE '(\.github/AGENTS\.md|combsmith/\.github/blob/.+/AGENTS\.md)'; then
       add_finding "$repo" "standards" "agents-md-missing-org-ref" "error" \
         "\`AGENTS.md\` does not reference the org-level \`.github/AGENTS.md\` standards" \
         "AGENTS.md"
