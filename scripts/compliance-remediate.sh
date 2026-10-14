@@ -31,7 +31,7 @@ if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
   exit 1
 fi
 
-ORG="petry-projects"
+ORG="combsmith"
 FINDINGS_FILE="${FINDINGS_FILE:-}"
 REPORT_DIR="${REPORT_DIR:-$(mktemp -d)}"
 DRY_RUN="${DRY_RUN:-false}"
@@ -273,7 +273,7 @@ ensure_compliance_label() {
 # PR-based: create or replace CODEOWNERS with the standard template
 #
 # Standard (codeowners-standard.md):
-#   * @petry-projects/org-leads
+#   * @combsmith/org-leads
 #
 # Individual user listings are forbidden. All ownership goes through the team.
 # ---------------------------------------------------------------------------
@@ -285,14 +285,14 @@ remediate_codeowners() {
   # Standard template per standards/codeowners-standard.md
   local codeowners_content
   codeowners_content="# CODEOWNERS
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/codeowners-standard.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/codeowners-standard.md
 
-* @petry-projects/org-leads
+* @combsmith/org-leads
 "
 
   if [ "$DRY_RUN" = "true" ]; then
     skip "[DRY] Would open CODEOWNERS PR in $ORG/$repo"
-    report_pr "$repo" "$check" "DRY: would open PR creating/updating \`.github/CODEOWNERS\` with \`@petry-projects/org-leads\`"
+    report_pr "$repo" "$check" "DRY: would open PR creating/updating \`.github/CODEOWNERS\` with \`@combsmith/org-leads\`"
     return 0
   fi
 
@@ -343,7 +343,7 @@ remediate_codeowners() {
   encoded_content=$(printf '%s' "$codeowners_content" | b64_encode)
 
   local api_args=(-X PUT "repos/$ORG/$repo/contents/$existing_path"
-    -f message="fix: update CODEOWNERS to use @petry-projects/org-leads team (compliance remediation)"
+    -f message="fix: update CODEOWNERS to use @combsmith/org-leads team (compliance remediation)"
     -f content="$encoded_content"
     -f branch="$branch_name")
   # If the file already exists, we need to supply its SHA so the PUT updates rather than creates
@@ -370,7 +370,7 @@ remediate_codeowners() {
     --title "fix: update CODEOWNERS to use org-leads team (compliance)" \
     --body "## Summary
 
-$action_verb \`$existing_path\` to use the \`@petry-projects/org-leads\` team per the org CODEOWNERS standard.
+$action_verb \`$existing_path\` to use the \`@combsmith/org-leads\` team per the org CODEOWNERS standard.
 
 **Finding resolved:** \`$check\`
 
@@ -378,13 +378,13 @@ $action_verb \`$existing_path\` to use the \`@petry-projects/org-leads\` team pe
 
 \`\`\`
 # CODEOWNERS
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/codeowners-standard.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/codeowners-standard.md
 
-* @petry-projects/org-leads
+* @combsmith/org-leads
 \`\`\`
 
-The \`@petry-projects/org-leads\` team contains \`@don-petry\` and \`@donpetry-bot\`.
-If you need finer-grained path ownership, add additional lines — but **\`@petry-projects/org-leads\` must be the first owner on every line**.
+The \`@combsmith/org-leads\` team contains \`@don-petry\` and \`@donpetry-bot\`.
+If you need finer-grained path ownership, add additional lines — but **\`@combsmith/org-leads\` must be the first owner on every line**.
 Individual user listings are forbidden per the CODEOWNERS standard.
 
 Ref: \`standards/codeowners-standard.md\`

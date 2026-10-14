@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/apply-rulesets.sh — the codified, file-driven applier that
-# replaced the retired detection-based builder (petry-projects/.github#580 / #575).
+# replaced the retired detection-based builder (combsmith/.github#580 / #575).
 
 SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
 APPLY="$SCRIPT_DIR/scripts/apply-rulesets.sh"
@@ -53,7 +53,7 @@ EOF
 @test "apply --repo: creates rulesets when absent (POST per file)" {
   _stub_gh
   export RULESETS_LIST='[]'
-  run bash "$APPLY" --repo petry-projects/acme
+  run bash "$APPLY" --repo combsmith/acme
   [ "$status" -eq 0 ]
   [[ "$output" == *"done (2 ruleset(s))"* ]]
   [ "$(grep -c 'method POST' "$CALLS")" -eq 2 ]
@@ -63,7 +63,7 @@ EOF
 @test "apply --repo: updates when present (PUT by id)" {
   _stub_gh
   export RULESETS_LIST='[{"id":7,"name":"code-quality"},{"id":9,"name":"pr-quality"}]'
-  run bash "$APPLY" --repo petry-projects/acme
+  run bash "$APPLY" --repo combsmith/acme
   [ "$status" -eq 0 ]
   grep -q 'method PUT' "$CALLS"
   ! grep -q 'method POST' "$CALLS"
@@ -72,7 +72,7 @@ EOF
 @test "apply: --dry-run makes no write calls" {
   _stub_gh
   export RULESETS_LIST='[]'
-  run bash "$APPLY" --repo petry-projects/acme --dry-run
+  run bash "$APPLY" --repo combsmith/acme --dry-run
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS" ]
   [[ "$output" == *"dry-run"* ]]
@@ -84,13 +84,13 @@ EOF
   export RULESETS_LIST='[]'
   run bash "$APPLY" acme --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"repo=petry-projects/acme"* ]]
+  [[ "$output" == *"repo=combsmith/acme"* ]]
 }
 
 @test "apply: a name filter applies only that ruleset" {
   _stub_gh
   export RULESETS_LIST='[]'
-  run bash "$APPLY" --repo petry-projects/acme code-quality --dry-run
+  run bash "$APPLY" --repo combsmith/acme code-quality --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"code-quality"* ]]
   [[ "$output" != *"pr-quality"* ]]
@@ -99,7 +99,7 @@ EOF
 
 @test "apply: unknown ruleset name errors" {
   _stub_gh
-  run bash "$APPLY" --repo petry-projects/acme no-such-ruleset
+  run bash "$APPLY" --repo combsmith/acme no-such-ruleset
   [ "$status" -ne 0 ]
   [[ "$output" == *"no ruleset file no-such-ruleset.json"* ]]
 }
@@ -110,14 +110,14 @@ EOF
   export RULESETS_LIST='[]' REPO_LIST=$'alpha\nbeta'
   run bash "$APPLY" --all --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"repo=petry-projects/alpha"* ]]
-  [[ "$output" == *"repo=petry-projects/beta"* ]]
+  [[ "$output" == *"repo=combsmith/alpha"* ]]
+  [[ "$output" == *"repo=combsmith/beta"* ]]
   [[ "$output" == *"across the fleet"* ]]
 }
 
 @test "apply: --all and --repo are mutually exclusive" {
   _stub_gh
-  run bash "$APPLY" --all --repo petry-projects/acme
+  run bash "$APPLY" --all --repo combsmith/acme
   [ "$status" -ne 0 ]
   [[ "$output" == *"mutually exclusive"* ]]
 }
@@ -134,6 +134,6 @@ EOF
 @test "ruleset_id_by_name: resolves id from the list" {
   _stub_gh
   export RULESETS_LIST='[{"id":42,"name":"pr-quality"},{"id":7,"name":"code-quality"}]'
-  run bash -c "source '$APPLY' && ruleset_id_by_name petry-projects/acme code-quality"
+  run bash -c "source '$APPLY' && ruleset_id_by_name combsmith/acme code-quality"
   [ "$status" -eq 0 ]; [ "$output" = "7" ]
 }

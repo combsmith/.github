@@ -31,18 +31,18 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 # ---------------------------------------------------------------------------
 
 @test "a sole catch-all line is detected" {
-  run _has_catchall '* @petry-projects/org-leads'
+  run _has_catchall '* @combsmith/org-leads'
   [ "$status" -eq 0 ]
 }
 
 @test "a catch-all alongside path-specific rules is detected" {
-  body=$'* @petry-projects/org-leads\n/security/ @petry-projects/org-leads @petry-projects/security-leads'
+  body=$'* @combsmith/org-leads\n/security/ @combsmith/org-leads @combsmith/security-leads'
   run _has_catchall "$body"
   [ "$status" -eq 0 ]
 }
 
 @test "comments and blank lines around the catch-all do not hide it" {
-  body=$'# CODEOWNERS\n\n# Default catch-all\n* @petry-projects/org-leads\n'
+  body=$'# CODEOWNERS\n\n# Default catch-all\n* @combsmith/org-leads\n'
   run _has_catchall "$body"
   [ "$status" -eq 0 ]
 }
@@ -52,19 +52,19 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 # ---------------------------------------------------------------------------
 
 @test "only path-specific rules (no catch-all) is reported" {
-  body=$'/docs/ @petry-projects/org-leads\n/security/ @petry-projects/org-leads @petry-projects/security-leads'
+  body=$'/docs/ @combsmith/org-leads\n/security/ @combsmith/org-leads @combsmith/security-leads'
   run _has_catchall "$body"
   [ "$status" -eq 1 ]
 }
 
 @test "a commented-out catch-all does not count" {
-  body=$'# * @petry-projects/org-leads\n/docs/ @petry-projects/org-leads'
+  body=$'# * @combsmith/org-leads\n/docs/ @combsmith/org-leads'
   run _has_catchall "$body"
   [ "$status" -eq 1 ]
 }
 
 @test "a pattern merely containing '*' (not equal to it) does not count" {
-  run _has_catchall '*.md @petry-projects/org-leads'
+  run _has_catchall '*.md @combsmith/org-leads'
   [ "$status" -eq 1 ]
 }
 

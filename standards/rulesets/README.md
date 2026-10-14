@@ -1,9 +1,9 @@
 # Repository Rulesets — codified source of truth
 
-This directory holds the **org-wide compliance ruleset JSONs** for `petry-projects`.
+This directory holds the **org-wide compliance ruleset JSONs** for `combsmith`.
 `.github` owns org-wide standards and compliance policy; its canonical home is
 `standards/`. See [`AGENTS.md`](../../AGENTS.md#organization-standards) for the
-repo-boundary rule (codified in petry-projects/.github#576) and
+repo-boundary rule (codified in combsmith/.github#576) and
 [`standards/github-settings.md`](../github-settings.md#repository-rulesets) for how
 these rulesets are enforced.
 
@@ -31,7 +31,7 @@ GH_TOKEN=<admin-token> bash scripts/apply-rulesets.sh <repo> --dry-run
 
 - **Fleet-wide → here.** `pr-quality` / `code-quality` are org-wide policy.
 - **Protects an agent/skill's own assets → stays in `.github-private`.**
-  `release-channel-tags` lives in `petry-projects/.github-private` because it
+  `release-channel-tags` lives in `combsmith/.github-private` because it
   protects that repo's own `pr-review/**` and `dev-lead/**` release tags.
 
 ## Changing the required-check set

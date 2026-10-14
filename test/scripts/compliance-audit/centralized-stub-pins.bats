@@ -25,7 +25,7 @@ C="agent-shield/stable"   # canonical channel for these tests (a stable-tier rep
 # Retained grace = the other ring channels (a repo pinned to a higher tier than
 # its own is never flagged). The pre-ring @v1/@v2 grace was dropped in #870.
 L="agent-shield/next,agent-shield/ring0,agent-shield/ring1"
-R="petry-projects/.github/.github/workflows/agent-shield-reusable.yml"
+R="combsmith/.github/.github/workflows/agent-shield-reusable.yml"
 
 @test "canonical channel pin is accepted" {
   accept "    uses: $R@$C" "$C" "$L"
@@ -58,7 +58,7 @@ R="petry-projects/.github/.github/workflows/agent-shield-reusable.yml"
 }
 
 @test "the wrong reusable is rejected" {
-  accept "    uses: petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@v1" "$C" "$L"
+  accept "    uses: combsmith/.github/.github/workflows/dependency-audit-reusable.yml@v1" "$C" "$L"
   [ "$status" -ne 0 ]
 }
 

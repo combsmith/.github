@@ -10,7 +10,7 @@ load 'helpers/setup'
 setup() {
   tt_make_tmpdir
   tt_install_gh_stub
-  export REPO="petry-projects/talkterm"
+  export REPO="combsmith/talkterm"
   export GH_TOKEN="fake-token-for-tests"
   export SIGNALS_OUTPUT="${TT_TMP}/signals.json"
 }
@@ -164,7 +164,7 @@ build_happy_script() {
 # ---------------------------------------------------------------------------
 
 @test "collect-signals: open-issue truncation is detected BEFORE bot filtering" {
-  # Caught by Copilot review on PR petry-projects/.github#85: previously the
+  # Caught by Copilot review on PR combsmith/.github#85: previously the
   # truncation check ran AFTER filter_bots_apply, so a result set composed
   # entirely of bots could drop below ISSUE_LIMIT and mask real truncation.
   # Build a fixture with ISSUE_LIMIT=3 raw items, all bot-authored. Bot

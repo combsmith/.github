@@ -2,7 +2,7 @@
 set -euo pipefail
 # apply-rulesets.sh — codified, idempotent application of the org compliance rulesets.
 #
-# CANONICAL org tooling (petry-projects/.github#580 / #575). Reads the codified source
+# CANONICAL org tooling (combsmith/.github#580 / #575). Reads the codified source
 # of truth in standards/rulesets/*.json (code-quality.json, pr-quality.json) and
 # creates/updates the named ruleset on the target repo(s). Re-running converges to the
 # file's desired state (a no-op when already in sync).
@@ -33,12 +33,12 @@ set -euo pipefail
 #
 # Env:
 #   GH_TOKEN       token with administration:write on the target repo(s) (required for writes)
-#   ORG            org for --all and bare repo names (default: petry-projects)
+#   ORG            org for --all and bare repo names (default: combsmith)
 #   RULESETS_DIR   directory of ruleset JSONs (default: <repo-root>/standards/rulesets)
 #   DRY_RUN        "true" → print intent, make no write calls
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 RULESETS_DIR="${RULESETS_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)/standards/rulesets}"
 DRY_RUN="${DRY_RUN:-false}"
 
