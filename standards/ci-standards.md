@@ -1,6 +1,6 @@
 # CI/CD Standards
 
-Standard CI/CD configurations for all repositories in the **petry-projects** organization.
+Standard CI/CD configurations for all repositories in the **combsmith** organization.
 This document defines the required workflows, quality gates, and patterns that every
 repository must implement.
 
@@ -150,7 +150,7 @@ defined **soak window**:
 and `ring0` is the other — so `next` + `ring0` always span `.github` + `.github-private`.
 For `dev-lead` (hosted in `.github-private`): `next` = `.github-private`, `ring0` = `.github`,
 `ring1` = `{TalkTerm, bmad-bgreat-suite}`, `stable` = the rest. The machine-readable source
-of truth is [`standards/canary-rings.json`](https://github.com/petry-projects/.github-private/blob/main/standards/canary-rings.json)
+of truth is [`standards/canary-rings.json`](https://github.com/combsmith/.github-private/blob/main/standards/canary-rings.json)
 in the host repo, consumed by the promotion automation.
 
 How it works:
@@ -175,7 +175,7 @@ exercised on `next`, so a broken candidate can never gate its own fix.
 > channels, immutable `<agent>/vX.Y.Z` releases, and promotion by a central tag move
 > — is **implemented and in production** for `dev-lead` (the pathfinder; `v1.4.0`
 > rolled out canary → rings → `stable` and verified). It is managed in
-> `petry-projects/.github-private` (the canary/ring versioning initiative, epic #495):
+> `combsmith/.github-private` (the canary/ring versioning initiative, epic #495):
 >
 > - `scripts/cut-release.sh` cuts immutable releases.
 > - `standards/canary-rings.json` is the ring-membership source of truth.
@@ -201,7 +201,7 @@ current pin until it migrates, at which point its callers re-pin once and the
 compliance audit (`scripts/compliance-audit.sh`) tightens to the channel for
 that reusable. The reference implementation and the full rationale live in the
 release-strategy initiative
-(`petry-projects/.github-private/docs/initiatives/agentic-release-strategy.md`).
+(`combsmith/.github-private/docs/initiatives/agentic-release-strategy.md`).
 
 #### The same model for the `standards/` artifact
 
@@ -269,7 +269,7 @@ standard):
 **`workflow_call` and nothing else** — MUST be set to `disabled_manually` in the
 Actions UI, and MUST be named with a **`-reusable.yml`** suffix. Both apply to
 the single-source-of-truth reusable definition files hosted in
-`petry-projects/.github` and `petry-projects/.github-private`.
+`combsmith/.github` and `combsmith/.github-private`.
 
 **Naming.** The `-reusable.yml` suffix makes the "this is a library, safe to
 disable, never runnable on its own" property legible from the filename alone — a
@@ -281,7 +281,7 @@ When you extract logic into a new reusable, name it `<purpose>-reusable.yml` fro
 the start. *Grandfathered exception:* `.github-private/.github/workflows/pr-review.yml`
 is a pure reusable that keeps its legacy name until it can be renamed in lockstep
 with its caller path and `pr-review/*` release-channel tags — tracked in
-`petry-projects/.github-private#1127`.
+`combsmith/.github-private#1127`.
 
 **Why.** A pure reusable has no independent event triggers, so it can never run
 on its own — it executes **only** when another workflow invokes it via `uses:`.
@@ -315,9 +315,9 @@ Disabling the engine does not stop reviews — the stub still fires and calls it
 **How to disable.**
 
 ```bash
-gh workflow disable <name>-reusable.yml -R petry-projects/<repo>
+gh workflow disable <name>-reusable.yml -R combsmith/<repo>
 # verify:
-gh api repos/petry-projects/<repo>/actions/workflows/<name>-reusable.yml --jq '.state'  # -> disabled_manually
+gh api repos/combsmith/<repo>/actions/workflows/<name>-reusable.yml --jq '.state'  # -> disabled_manually
 ```
 
 **Compliance.** `check_reusable_workflows_disabled` in
@@ -329,7 +329,7 @@ this check catches on the next audit.
 
 It also flags, as a separate `warning` finding, any pure reusable whose
 filename doesn't carry the `-reusable.yml` suffix (grandfathered exception:
-`pr-review.yml`, tracked in `petry-projects/.github-private#1127`).
+`pr-review.yml`, tracked in `combsmith/.github-private#1127`).
 
 ### Available templates
 
@@ -346,19 +346,19 @@ filename doesn't carry the `-reusable.yml` suffix (grandfathered exception:
 | [`pr-auto-review.yml`](workflows/pr-auto-review.yml) | 1 | Automated AI code review on PRs — **required org-wide** (#844) |
 | [`initiative-driver.yml`](workflows/initiative-driver.yml) | 1 | Dispatches the central initiative-driver to release ready sub-issues of `initiative:auto` epics to dev-lead — **required org-wide** (#844) |
 | [`pr-review-mention.yml`](workflows/pr-review-mention.yml) | 1 | Trigger the pr-review agent when `@donpetry-bot` is mentioned or `donpetry-bot` is assigned as reviewer |
-| [`persona-mention.yml`](workflows/persona-mention.yml) | 1 | Route `@petry-projects/<role>` mentions to the addressed persona — one router for **all** personas ([persona-standards.md §4.1](persona-standards.md)) |
+| [`persona-mention.yml`](workflows/persona-mention.yml) | 1 | Route `@combsmith/<role>` mentions to the addressed persona — one router for **all** personas ([persona-standards.md §4.1](persona-standards.md)) |
 | [`apply-repo-settings.yml`](workflows/apply-repo-settings.yml) | 1 | Weekly branch-policy compliance self-heal — applies standard repo settings + `pr-quality`/`code-quality` rulesets ([github-settings.md](github-settings.md), [ruleset-remediation-runbook.md](ruleset-remediation-runbook.md)). Requires org secret `GH_PAT_DON_PETRY`. |
 | [`copilot-setup-steps.yml`](workflows/copilot-setup-steps.yml) | 2 | Pre-install tools and dependencies for Copilot cloud agent sessions |
 
 **Adapt only when the template genuinely requires repo-specific content** (e.g., a
 project name in a comment, a different cron schedule for a known reason). Anything
 beyond surface adaptation indicates either a missing template or a missing standard
-— file an issue against `petry-projects/.github` rather than diverging silently.
+— file an issue against `combsmith/.github` rather than diverging silently.
 
 **Fetching a template programmatically** (e.g., from a Claude Code automation run):
 
 ```bash
-gh api repos/petry-projects/.github/contents/standards/workflows/<file>.yml \
+gh api repos/combsmith/.github/contents/standards/workflows/<file>.yml \
   --jq '.content' | base64 -d > .github/workflows/<file>.yml
 ```
 
@@ -380,7 +380,7 @@ whose ruleset enforces required status checks — the Contents API does **not**
 honor the org-admin ruleset bypass. It also skips review and CI on the repos
 where it *would* succeed. A PR works uniformly on protected and unprotected
 repos, runs CI against the change (e.g. AgentShield scans the new workflow), and
-leaves an auditable record. (Background: [#478](https://github.com/petry-projects/.github/issues/478).)
+leaves an auditable record. (Background: [#478](https://github.com/combsmith/.github/issues/478).)
 
 ```bash
 # Plan only — opens nothing:
@@ -404,7 +404,7 @@ identity `dev-lead.yml` / `pr-auto-review.yml` / `initiative-driver.yml` already
 author cross-repo PRs with. It **must not** use `ORG_SCORECARD_TOKEN`: that is the
 **audit** identity (a fine-grained PAT with **Contents: Read-only**), so its
 content PUTs 422 and every deploy fails with an opaque `put-failed`
-([#864](https://github.com/petry-projects/.github/issues/864)). The deploy identity
+([#864](https://github.com/combsmith/.github/issues/864)). The deploy identity
 is also deliberately **not `donpetry-bot`** (it acts as `don-petry`): the PRs it
 opens are authored by a distinct code-owner, so `donpetry-bot` can approve them via
 the pr-review agent and they land through native auto-merge with **no `--admin`**. A
@@ -440,7 +440,7 @@ do so, and every such workflow MUST use one of them:
    workflow filename → space-separated repos). The sweep then deploys *that* stub
    — pinned at the repo's computed canary tier — while the repo stays exempt from
    all other stubs. This is how `.github-private` receives `pr-auto-review.yml`
-   (reconciled in [#847](https://github.com/petry-projects/.github/issues/847))
+   (reconciled in [#847](https://github.com/combsmith/.github/issues/847))
    and `add-to-project.yml`.
 
 A required-and-deployable workflow left in **neither** bucket is drift: the sweep
@@ -479,7 +479,7 @@ below — copy and adapt the examples to each repo's tech stack. CodeQL is
 
 `feature-ideation.yml`, `pr-auto-review.yml`, and `initiative-driver.yml` were
 promoted from optional/BMAD-conditional to **required org-wide** in
-[#844](https://github.com/petry-projects/.github/issues/844). All three ship as
+[#844](https://github.com/combsmith/.github/issues/844). All three ship as
 thin caller stubs deployed by `deploy-standard-workflows.sh`.
 
 **ADR-0007 agent-ingress collapse.** A repo that has collapsed its per-role
@@ -490,7 +490,7 @@ audit counts such a role as present. `deploy-standard-workflows.sh` never
 re-seeds or re-pins that role's stub, because a resurrected stub would
 double-dispatch every event. Both read the repo's live ingress state, so no
 per-repo configuration is needed for ordinary repos as the collapse fans out
-([#1226](https://github.com/petry-projects/.github/issues/1226)); `SKIP_REPOS`
+([#1226](https://github.com/combsmith/.github/issues/1226)); `SKIP_REPOS`
 still require a `SKIP_SELF_MANAGED` or `SKIP_OVERRIDES` declaration under the
 guard above. A role that the ingress does **not** carry still needs its own
 stub. `feature-ideation.yml` is outside this collapse: it is schedule-driven and
@@ -604,7 +604,7 @@ detects automatically outweighed the marginal supply-chain benefit.
 ```bash
 # State the desired configuration. Languages may be omitted to let
 # GitHub auto-detect, or enumerated explicitly.
-gh api -X PATCH "repos/petry-projects/<repo>/code-scanning/default-setup" \
+gh api -X PATCH "repos/combsmith/<repo>/code-scanning/default-setup" \
   -F state=configured \
   -F query_suite=default
 ```
@@ -696,7 +696,7 @@ fail, so a single transient CDN error no longer trips the workflow.
 
 SonarCloud's GitHub Actions rule **`githubactions:S7637`** ("pin actions to a
 full-length commit SHA") fires on first-party
-`petry-projects/.github(-private)` reusable-workflow refs in thin caller stubs.
+`combsmith/.github(-private)` reusable-workflow refs in thin caller stubs.
 Those refs are **intentionally not SHA-pinned** — the org pins them to a moving
 channel/tag (`@<name>/stable`, `@v1`/`@v2`) by design (see the
 [Action Pinning Policy exemption](#exception-internal-reusable-workflow-references)).
@@ -712,7 +712,7 @@ channel-pinned `uses:` line in every caller stub MUST carry an inline
 jobs:
   dev-lead:
     # First-party channel tag — do NOT SHA-pin (AGENTS.md mutable-ref exception).
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR(githubactions:S7637) first-party channel ref
 ```
 
 SonarCloud honors the inline comment and suppresses S7637 on exactly that line,
@@ -734,7 +734,7 @@ therefore the inline marker): `dev-lead.yml`, `agent-shield.yml`,
 `dependabot-rebase.yml`, `dependabot-automerge.yml`, `dependency-audit.yml`,
 `add-to-project.yml`, `idea-triage.yml`, `idea-enhancer.yml`,
 `initiative-planner.yml`. Copy each template verbatim from
-[`standards/workflows/`](https://github.com/petry-projects/.github/tree/main/standards/workflows)
+[`standards/workflows/`](https://github.com/combsmith/.github/tree/main/standards/workflows)
 and the marker comes with it.
 
 **Legacy (per-file `sonar-project.properties` — optional, transitional):** the
@@ -778,7 +778,7 @@ first-party caller stub that uses `secrets: inherit` MUST carry an inline
 ```yaml
 jobs:
   idea-triage:
-    uses: petry-projects/.github/.github/workflows/idea-triage-reusable.yml@idea-triage/stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/idea-triage-reusable.yml@idea-triage/stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
 ```
 
@@ -795,7 +795,7 @@ marker: `initiative-planner.yml`, `idea-triage.yml`, `idea-enhancer.yml`,
 `persona-mention.yml`, `dev-lead.yml`, `auto-rebase.yml`,
 `dependabot-automerge.yml`. Every template with a `secrets: inherit` line now
 carries the marker; the
-[`s7635-secrets-inherit.bats`](https://github.com/petry-projects/.github/blob/main/test/scripts/standards-templates/s7635-secrets-inherit.bats)
+[`s7635-secrets-inherit.bats`](https://github.com/combsmith/.github/blob/main/test/scripts/standards-templates/s7635-secrets-inherit.bats)
 template guard fails CI if any such line drops it (mirrors the S7637 v-form pin
 guard).
 
@@ -842,7 +842,7 @@ require a valid license. Obtain a free license at [gitleaks.io](https://gitleaks
 3. Add the license as the org-level secret `GITLEAKS_LICENSE`:
 
    ```bash
-   gh secret set GITLEAKS_LICENSE --org petry-projects --body "<license-key>"
+   gh secret set GITLEAKS_LICENSE --org combsmith --body "<license-key>"
    ```
 
 **For personal/user repos:** The `GITLEAKS_LICENSE` environment variable is optional.
@@ -857,7 +857,7 @@ If omitted, gitleaks runs in open-source mode (free, no license needed).
 
 ### 5. Claude Code (`claude.yml`) — *Deprecated 2026-05*
 
-> **Deprecated.** `claude.yml` has been removed from all `petry-projects` repos and replaced by
+> **Deprecated.** `claude.yml` has been removed from all `combsmith` repos and replaced by
 > `dev-lead.yml`. See [Adopting the Dev-Lead Agent](#adopting-the-dev-lead-agent) and
 > [Migration from `claude.yml`](#migration-from-claudeyml). The content below is preserved for
 > historical reference only.
@@ -1108,7 +1108,7 @@ comments posted with `GITHUB_TOKEN` do not fire `issue_comment` workflow runs (G
 Without it the sentinel comment still appears but no automatic resolution will run.
 Dependabot PRs are excluded because `dependabot-rebase.yml` handles those.
 
-**Compliance:** The compliance audit (`check_centralized_workflow_stubs`) verifies that repos adopting `auto-rebase.yml` use the canonical thin caller stub delegating to `petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@v1`.
+**Compliance:** The compliance audit (`check_centralized_workflow_stubs`) verifies that repos adopting `auto-rebase.yml` use the canonical thin caller stub delegating to `combsmith/.github/.github/workflows/auto-rebase-reusable.yml@v1`.
 
 ### 10. PR Review Mention (`pr-review-mention.yml`)
 
@@ -1127,7 +1127,7 @@ On each trigger the workflow:
 2. Verifies the actor is an OWNER, MEMBER, or COLLABORATOR — prevents external contributors
    from consuming review quota.
 3. Posts an acknowledgement comment so the requester knows the agent is starting.
-4. Fires a `repository_dispatch` event to `petry-projects/.github-private` with
+4. Fires a `repository_dispatch` event to `combsmith/.github-private` with
    `event_type=pr-review-mention` and `client_payload.pr_url`, which triggers the
    review cascade.
 
@@ -1136,7 +1136,7 @@ present as an org-level secret; no per-repo setup needed.
 
 **Compliance:** The compliance audit (`check_centralized_workflow_stubs`) verifies that
 repos have `pr-review-mention.yml` as a thin caller stub delegating to
-`petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@v2`.
+`combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@v2`.
 
 ### 11. Copilot Cloud Agent Setup (`copilot-setup-steps.yml`)
 
@@ -1208,7 +1208,7 @@ on:
 **Fetching the template programmatically:**
 
 ```bash
-gh api repos/petry-projects/.github/contents/standards/workflows/copilot-setup-steps.yml \
+gh api repos/combsmith/.github/contents/standards/workflows/copilot-setup-steps.yml \
   --jq '.content' | base64 -d > .github/workflows/copilot-setup-steps.yml
 ```
 
@@ -1227,7 +1227,7 @@ These workflows are required only when a specific ecosystem is detected.
 
 > **Note:** `feature-ideation.yml` (§9) is **no longer** ecosystem-conditional —
 > it was promoted to **required org-wide** in
-> [#844](https://github.com/petry-projects/.github/issues/844) and is listed in
+> [#844](https://github.com/combsmith/.github/issues/844) and is listed in
 > [Required Workflows](#required-workflows) above. The `initiative-driver.yml`
 > stub in §10 was likewise promoted to required org-wide. The remaining §10 stubs
 > (`initiative-planner.yml`, `idea-triage.yml`, `idea-enhancer.yml`) stay
@@ -1235,7 +1235,7 @@ These workflows are required only when a specific ecosystem is detected.
 
 ### 9. Feature Ideation (`feature-ideation.yml`) — BMAD Method repos
 
-**Status:** **Required org-wide** as of [#844](https://github.com/petry-projects/.github/issues/844)
+**Status:** **Required org-wide** as of [#844](https://github.com/combsmith/.github/issues/844)
 (previously BMAD-conditional). Every repo MUST carry the stub, and its
 `project_context` MUST be a real per-repo description — a stub still on the seed
 `TODO:`/`Example:` placeholder is flagged `feature-ideation-placeholder-context`
@@ -1442,7 +1442,7 @@ understanding why they exist:**
 
 #### Reference implementation
 
-[`petry-projects/TalkTerm`](https://github.com/petry-projects/TalkTerm/blob/main/.github/workflows/feature-ideation.yml)
+[`combsmith/TalkTerm`](https://github.com/combsmith/TalkTerm/blob/main/.github/workflows/feature-ideation.yml)
 is the pilot adopter. The TalkTerm workflow is the standard caller stub
 with `project_context` set to a TalkTerm-specific paragraph — no other
 customisation.
@@ -1464,7 +1464,7 @@ plans them.
 
 Unlike feature-ideation (which runs the analyst inline), the BMAD Scrum Master
 planner and the vendored BMAD frameworks live **once** in
-`petry-projects/.github-private`. `claude-code-action` aborts on `discussion`
+`combsmith/.github-private`. `claude-code-action` aborts on `discussion`
 event contexts, so each stub's reusable **re-dispatches** the central
 `workflow_dispatch` with the host repo passed as `target_repo`, rather than
 planning inline. Three stub + reusable pairs, all pinned to their `<name>/stable`
@@ -1487,8 +1487,8 @@ Where a planner-created epic lands depends on the repo:
 
 - **Consumer (fleet) repos** → the repo's **own** project board. Point the repo's
   [`add-to-project`](workflows/add-to-project.yml) at its repo-level project.
-- **`petry-projects/.github` and `petry-projects/.github-private`** → the
-  **org-level** project (`orgs/petry-projects/projects/1`, "Initiatives").
+- **`combsmith/.github` and `combsmith/.github-private`** → the
+  **org-level** project (`orgs/combsmith/projects/1`, "Initiatives").
 
 #### Adopting in a new repo
 
@@ -1526,7 +1526,7 @@ Where a planner-created epic lands depends on the repo:
 
 The cross-repo trigger is watched by the central
 `initiative-planner-canary.yml` and Fleet Monitor stub-drift checks, so a silent
-regression (e.g. the [#655](https://github.com/petry-projects/.github-private/issues/655)
+regression (e.g. the [#655](https://github.com/combsmith/.github-private/issues/655)
 stale-base revert class) surfaces on the first approval rather than going unnoticed.
 
 ---
@@ -1535,7 +1535,7 @@ stale-base revert class) surfaces on the first approval rather than going unnoti
 
 **Origin.** This is the org-wide promotion of the repo-local "Scheduled
 workflows" convention first established in
-[`petry-projects/.github-private`](https://github.com/petry-projects/.github-private)
+[`combsmith/.github-private`](https://github.com/combsmith/.github-private)
 (epic `#722`, story `#726`), where it took that repo from a fleet-worst offender
 to **0 minute-0 crons out of 20**. This section is the canonical, fleet-wide
 statement of the rule; the `.github-private` repo-local section defers to it, and
@@ -1594,7 +1594,7 @@ same everywhere and defers to this section for its rationale.
 > **Templates in `standards/workflows/` are deliberately not swept by this
 > repo's check.** Retiming a template's cron changes what every consumer repo
 > receives, i.e. downstream fan-out — tracked separately in
-> [`petry-projects/.github-private#726`](https://github.com/petry-projects/.github-private/issues/726),
+> [`combsmith/.github-private#726`](https://github.com/combsmith/.github-private/issues/726),
 > not folded into a source-of-truth timing fix.
 
 ---
@@ -1747,7 +1747,7 @@ incorrect pinned one.
 
 ### Exception: Internal Reusable Workflow References
 
-Calls to first-party `petry-projects/*` reusable workflows are **exempt from
+Calls to first-party `combsmith/*` reusable workflows are **exempt from
 SHA-pinning** — they are refs to workflows the org owns, not third-party
 actions. Per [Reusable workflow versioning](#reusable-workflow-versioning--the-stable-channel),
 pin them to the reusable's moving `stable` channel tag (a reusable still being
@@ -1756,13 +1756,13 @@ SHA.
 
 ```yaml
 # CORRECT — pin a reusable workflow to its moving `stable` channel tag (pin once)
-uses: petry-projects/<repo>/.github/workflows/<name>-reusable.yml@<name>/stable
+uses: combsmith/<repo>/.github/workflows/<name>-reusable.yml@<name>/stable
 
 # WRONG — a branch ref has no version boundary; a bad commit is instantly live for all callers
-uses: petry-projects/<repo>/.github/workflows/<name>-reusable.yml@main
+uses: combsmith/<repo>/.github/workflows/<name>-reusable.yml@main
 
 # WRONG — do not SHA-pin first-party reusable workflow refs (and a frozen pin needs a per-caller edit to roll out)
-uses: petry-projects/<repo>/.github/workflows/<name>-reusable.yml@ee22b427cbce9ecadcf2b436acb57c3adf0cb63d
+uses: combsmith/<repo>/.github/workflows/<name>-reusable.yml@ee22b427cbce9ecadcf2b436acb57c3adf0cb63d
 ```
 
 **Why:** Pinning the `uses:` line in a Tier 1 caller stub creates a diff from
@@ -1770,7 +1770,7 @@ the default branch. Anthropic's OIDC token endpoint validates that the
 workflow file on a PR branch is identical to the default branch — any diff
 causes `401 Workflow validation failed` and the agent cannot run on that PR.
 
-The canonical tags (e.g. `@v1`, `@v2`) on `petry-projects/.github` are managed
+The canonical tags (e.g. `@v1`, `@v2`) on `combsmith/.github` are managed
 deliberately (bumped only on backward-compatible releases) and are not subject
 to tag-force-push risk because the org controls the tag. **Do not open
 compliance PRs to pin these references.**
@@ -1876,7 +1876,7 @@ Changing a job name requires updating the branch protection configuration.
 
 ## Org-Level Workflows
 
-The [`.github` repository](https://github.com/petry-projects/.github) contains
+The [`.github` repository](https://github.com/combsmith/.github) contains
 org-level workflows that run across all repositories:
 
 ### OpenSSF Scorecard (`org-scorecard.yml`)
@@ -2039,10 +2039,10 @@ centrally so they cannot drift per repo:
   `cancel-in-progress: false`). This keeps a labeled-issue pickup from being
   cancelled by unrelated PR follow-up traffic — per-stub concurrency previously
   drifted into three incompatible variants and starved issue pickups
-  (petry-projects/.github#402). Running lanes in parallel is safe because the
-  agent checks out PR branches in an isolated worktree (petry-projects/.github-private#448).
+  (combsmith/.github#402). Running lanes in parallel is safe because the
+  agent checks out PR branches in an isolated worktree (combsmith/.github-private#448).
 - **Pin.** The stub pins the reusable's moving `stable` channel tag —
-  `petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable`
+  `combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable`
   — and passes `with: { agent_ref: dev-lead/stable }` so dev-lead's own
   scripts/prompts checkout runs at the same pinned channel (it defaults to `main`
   when omitted). This is the org reusable-workflow versioning standard; see
@@ -2077,7 +2077,7 @@ event on it.
 
 When a labeled-issue implementation fails at the engine step **before a PR
 exists** (e.g. a transient timeout — `124` — or a one-off engine error), the
-agent no longer fails silently (petry-projects/.github-private#781):
+agent no longer fails silently (combsmith/.github-private#781):
 
 - The failure is classified (`rate-limited` / `missing-binary` / `engine-error`)
   and surfaced **on the issue** with the cause, a run deep-link, and a redacted
@@ -2102,7 +2102,7 @@ The cron's three `repository_dispatch` retry types — `dev-lead-ci-failure`,
 
 1. Copy `standards/workflows/dev-lead.yml` verbatim to `.github/workflows/dev-lead.yml` in your repo.
 2. Set `CLAUDE_CODE_OAUTH_TOKEN` as an org or repo secret (required).
-3. Set `GH_PAT_WORKFLOWS` — a PAT with read access to `petry-projects/.github-private` — as an org or repo secret (required for cross-repo script access).
+3. Set `GH_PAT_WORKFLOWS` — a PAT with read access to `combsmith/.github-private` — as an org or repo secret (required for cross-repo script access).
 4. Optionally set `vars.DEV_LEAD_ENGINE` to `claude` (default), `gemini`, or `copilot`.
 5. Optionally set `vars.DEV_LEAD_DRY_RUN=true` during the initial rollout period.
 6. **If the repo is SonarCloud-gated**, the S7637 exemption is already baked
@@ -2142,7 +2142,7 @@ failed-run log line against the table below and act in the indicated repo.
 
 | Log signature in failing run | Root cause | Where to fix |
 |------------------------------|-----------|--------------|
-| `Process completed with exit code 124` after a long-running `dispatch` step | Engine call timed out inside the reusable (per-tier `timeout`). For a **labeled-issue** run this now posts a cause-bearing marker and is auto-retried up to 3× before escalating to `dev-lead:needs-human` (see [Failed issue implementations](#failed-issue-implementations-visibility--bounded-auto-retry)) | `petry-projects/.github-private` — engine timeout / step-level `timeout-minutes` in `dev-lead-reusable.yml` |
+| `Process completed with exit code 124` after a long-running `dispatch` step | Engine call timed out inside the reusable (per-tier `timeout`). For a **labeled-issue** run this now posts a cause-bearing marker and is auto-retried up to 3× before escalating to `dev-lead:needs-human` (see [Failed issue implementations](#failed-issue-implementations-visibility--bounded-auto-retry)) | `combsmith/.github-private` — engine timeout / step-level `timeout-minutes` in `dev-lead-reusable.yml` |
 | `_ApiError ... code:429 ... Resource has been exhausted` / `RetryableQuotaError` | `GOOGLE_API_KEY` project is out of quota or prepayment credits | Google AI Studio billing for the project backing `GOOGLE_API_KEY`; until refilled, the Gemini step of the engine-fallback cascade will keep failing |
 | `Error: Classic Personal Access Tokens (ghp_) are not supported by Copilot` | `GH_PAT` is a Classic PAT and the engine cascade fell through to Copilot | Rotate `GH_PAT` to a fine-grained PAT at the org-secret level |
 | `startup_failure` with no step logs | Stub is missing a permission the reusable now requests | Update **the template** in `standards/workflows/dev-lead.yml` and every adopting stub *before* the reusable starts requesting the scope (see [Concurrency, pinning, and the permission contract](#concurrency-pinning-and-the-permission-contract)) |
@@ -2165,7 +2165,7 @@ The dev-lead agent supersedes `claude.yml`. Migration steps:
 3. Confirm no regressions via the Actions run history.
 4. Delete `claude.yml`.
 
-See tracking issue petry-projects/.github-private#180 for the shadow period status of `.github-private` itself.
+See tracking issue combsmith/.github-private#180 for the shadow period status of `.github-private` itself.
 
 ### Key differences from `claude.yml`
 

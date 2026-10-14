@@ -74,7 +74,7 @@ STUB
           circuit_breaker: { consecutive_failure_threshold: $cb_threshold, backoff_minutes: $cb_backoff }
         } },
         org_wide: {},
-        exempt_actors: ["dependabot[bot]", "@petry-projects/org-leads"],
+        exempt_actors: ["dependabot[bot]", "@combsmith/org-leads"],
         exempt_labels: ["security"]
       }' >"$AGENT_RATE_LIMITS_CONFIG"
   }
@@ -102,7 +102,7 @@ STUB
           weekly_scoped: { kind: "weekly_scoped", pause_worthy: false }
         }
       } },
-      exempt_actors: ["dependabot[bot]", "@petry-projects/org-leads"],
+      exempt_actors: ["dependabot[bot]", "@combsmith/org-leads"],
       exempt_labels: ["security"]
     }' >"$AGENT_RATE_LIMITS_CONFIG"
   }
@@ -129,7 +129,7 @@ STUB
           weekly_scoped: { kind: "weekly_scoped", pause_worthy: false }
         }
       } },
-      exempt_actors: ["dependabot[bot]", "@petry-projects/org-leads"],
+      exempt_actors: ["dependabot[bot]", "@combsmith/org-leads"],
       exempt_labels: ["security"]
     }' >"$AGENT_RATE_LIMITS_CONFIG"
   }
@@ -381,7 +381,7 @@ refute_mutated() {
   export GH_RUNS_JSON
   GH_RUNS_JSON="$(runs_json 'failure@2026-09-01T00:04:00Z' 'failure@2026-09-01T00:03:00Z' 'failure@2026-09-01T00:02:00Z')"
   export GH_ISSUE_BODY="tracking issue, no marker yet"
-  run bash -c "SOURCE_NOW=1788221100 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo petry-projects/.github --tracking-issue 636"
+  run bash -c "SOURCE_NOW=1788221100 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo combsmith/.github --tracking-issue 636"
   [ "$status" -eq 0 ]
   [[ "$output" == *"decision=defer"* ]]
   # Exactly one comment posting the breaker marker, and the label applied.
@@ -398,7 +398,7 @@ refute_mutated() {
   # Body already carries the marker for initiative-driver → no second post.
   export GH_ISSUE_BODY
   GH_ISSUE_BODY="prior escalation $(bash -c "source '$(cd "$BATS_TEST_DIRNAME/.." && pwd)/scripts/lib/agent-rate-limit.sh'; arl_breaker_marker initiative-driver")"
-  run bash -c "SOURCE_NOW=1788221100 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo petry-projects/.github --tracking-issue 636"
+  run bash -c "SOURCE_NOW=1788221100 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo combsmith/.github --tracking-issue 636"
   [ "$status" -eq 0 ]
   [[ "$output" == *"decision=defer"* ]]
   run grep -c 'issue comment' "$GH_STUB_LOG"
@@ -413,7 +413,7 @@ refute_mutated() {
   export GH_RUNS_JSON
   GH_RUNS_JSON="$(runs_json 'failure@2026-09-01T00:04:00Z' 'failure@2026-09-01T00:03:00Z' 'failure@2026-09-01T00:02:00Z')"
   export GH_ISSUE_BODY="no marker"
-  run bash -c "DRY_RUN=true SOURCE_NOW=1788221100 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo petry-projects/.github --tracking-issue 636"
+  run bash -c "DRY_RUN=true SOURCE_NOW=1788221100 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo combsmith/.github --tracking-issue 636"
   [ "$status" -eq 0 ]
   [[ "$output" == *"decision=allow"* ]]
   refute_mutated
@@ -463,7 +463,7 @@ refute_mutated() {
 @test "enforce: an allow decision issues no mutating gh subcommand" {
   write_config "initiative-driver" 1 10 20 3 30
   export GH_RUNS_JSON; GH_RUNS_JSON="[]"
-  run bash -c "SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo petry-projects/.github --tracking-issue 636"
+  run bash -c "SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo combsmith/.github --tracking-issue 636"
   [ "$status" -eq 0 ]
   [[ "$output" == *"decision=allow"* ]]
   refute_mutated
@@ -616,7 +616,7 @@ refute_mutated() {
   write_telemetry "$(envelope_limits 95 40)"
   export GH_RUNS_JSON; GH_RUNS_JSON="[]"
   export GH_ISSUE_BODY="tracking issue, no token marker yet"
-  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo petry-projects/.github --tracking-issue 636"
+  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo combsmith/.github --tracking-issue 636"
   [ "$status" -eq 0 ]
   [[ "$output" == *"decision=defer"* ]]
   run grep -c 'issue comment' "$GH_STUB_LOG"
@@ -631,7 +631,7 @@ refute_mutated() {
   export GH_RUNS_JSON; GH_RUNS_JSON="[]"
   export GH_ISSUE_BODY
   GH_ISSUE_BODY="prior escalation $(bash -c "source '$(cd "$BATS_TEST_DIRNAME/.." && pwd)/scripts/lib/agent-rate-limit.sh'; arl_token_breaker_marker session")"
-  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo petry-projects/.github --tracking-issue 636"
+  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo combsmith/.github --tracking-issue 636"
   [ "$status" -eq 0 ]
   [[ "$output" == *"decision=defer"* ]]
   run grep -c 'issue comment' "$GH_STUB_LOG"
@@ -648,7 +648,7 @@ refute_mutated() {
   export GH_ISSUE_BODY="tracking issue, no token marker in body"
   export GH_ISSUE_COMMENTS_JSON
   GH_ISSUE_COMMENTS_JSON="$(jq -n --arg m "$(bash -c "source '$(cd "$BATS_TEST_DIRNAME/.." && pwd)/scripts/lib/agent-rate-limit.sh'; arl_token_breaker_marker session")" '[{body: ("prior escalation " + $m)}]')"
-  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo petry-projects/.github --tracking-issue 636"
+  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot --tracking-repo combsmith/.github --tracking-issue 636"
   [ "$status" -eq 0 ]
   [[ "$output" == *"decision=defer"* ]]
   run grep -c 'issue comment' "$GH_STUB_LOG"
@@ -660,7 +660,7 @@ refute_mutated() {
   write_telemetry "$(envelope_limits 95 40)"
   export GH_RUNS_JSON; GH_RUNS_JSON="[]"
   export GH_ISSUE_BODY="tracking issue, no token marker yet"
-  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' feature-ideation --mode log-only --actor donpetry-bot --tracking-repo petry-projects/.github --tracking-issue 636"
+  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' feature-ideation --mode log-only --actor donpetry-bot --tracking-repo combsmith/.github --tracking-issue 636"
   [ "$status" -eq 0 ]
   [[ "$output" == *"decision=allow"* ]]
   refute_mutated

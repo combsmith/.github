@@ -9,7 +9,7 @@ set -euo pipefail
 # Usage: check-cron-timing.sh [workflow-dir]
 #   workflow-dir defaults to the repo's own .github/workflows/. The templates in
 #   standards/workflows/ are deliberately out of scope — retiming them is
-#   downstream fan-out (tracked in petry-projects/.github-private#726), not this
+#   downstream fan-out (tracked in combsmith/.github-private#726), not this
 #   repo obeying the convention.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

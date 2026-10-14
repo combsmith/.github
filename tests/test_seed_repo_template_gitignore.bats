@@ -21,8 +21,8 @@ emit() { STANDARDS_DIR="$REPO_ROOT" bash "$SEED" --emit-baseline .gitignore; }
 @test "template .gitignore leads with the marker-wrapped L1 block" {
   run emit
   [ "$status" -eq 0 ]
-  [ "${lines[0]}" = '# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>' ]
-  echo "$output" | grep -qxF '# <<< END petry-projects secrets baseline <<<'
+  [ "${lines[0]}" = '# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>' ]
+  echo "$output" | grep -qxF '# <<< END combsmith secrets baseline <<<'
 }
 
 @test "template .gitignore passes the STORY3 anchor check (.env, *.pem, *.key present)" {
@@ -37,7 +37,7 @@ emit() { STANDARDS_DIR="$REPO_ROOT" bash "$SEED" --emit-baseline .gitignore; }
   run emit
   [ "$status" -eq 0 ]
   local end_ln node_ln
-  end_ln="$(printf '%s\n' "$output" | grep -nxF '# <<< END petry-projects secrets baseline <<<' | head -1 | cut -d: -f1)"
+  end_ln="$(printf '%s\n' "$output" | grep -nxF '# <<< END combsmith secrets baseline <<<' | head -1 | cut -d: -f1)"
   node_ln="$(printf '%s\n' "$output" | grep -nxF 'node_modules/' | head -1 | cut -d: -f1)"
   [ -n "$end_ln" ] && [ -n "$node_ln" ]
   [ "$end_ln" -lt "$node_ln" ]
@@ -50,7 +50,7 @@ emit() { STANDARDS_DIR="$REPO_ROOT" bash "$SEED" --emit-baseline .gitignore; }
   # The baseline re-allows .env.example via `!.env.example`; an L2 `.env.*` would
   # silently re-hide it. Assert no L2 line re-ignores it.
   local end_ln l2
-  end_ln="$(printf '%s\n' "$output" | grep -nxF '# <<< END petry-projects secrets baseline <<<' | head -1 | cut -d: -f1)"
+  end_ln="$(printf '%s\n' "$output" | grep -nxF '# <<< END combsmith secrets baseline <<<' | head -1 | cut -d: -f1)"
   l2="$(printf '%s\n' "$output" | tail -n +"$((end_ln + 1))")"
   ! printf '%s\n' "$l2" | grep -qxF '.env.*'
   ! printf '%s\n' "$l2" | grep -qxF '.env'

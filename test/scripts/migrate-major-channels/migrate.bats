@@ -19,15 +19,15 @@ setup() {
   RINGS="${TT_TMP}/canary-rings.json"; export RINGS
   cat > "$RINGS" <<'JSON'
 {
-  "org_infra_repos": ["petry-projects/.github", "petry-projects/.github-private"],
+  "org_infra_repos": ["combsmith/.github", "combsmith/.github-private"],
   "agents": {
     "foo": {
-      "host": "petry-projects/repoA",
+      "host": "combsmith/repoA",
       "reusable": ".github/workflows/foo-reusable.yml",
       "rings": [
         { "channel": "next",   "order": 0, "members": ["$host"] },
         { "channel": "ring0",  "order": 1, "members": ["$org_infra"] },
-        { "channel": "ring1",  "order": 2, "members": ["petry-projects/consumerX"] },
+        { "channel": "ring1",  "order": 2, "members": ["combsmith/consumerX"] },
         { "channel": "stable", "order": 3, "members": ["*"] }
       ]
     }
@@ -91,9 +91,9 @@ case "$path" in
       printf '{"content":"","encoding":"none"}'; exit 0
     fi
     if [ "$uref" = "other" ]; then       # calls an unrelated reusable — the scan must skip it
-      body="    uses: petry-projects/.github/.github/workflows/bar-reusable.yml@bar/stable"
+      body="    uses: combsmith/.github/.github/workflows/bar-reusable.yml@bar/stable"
     else
-      body="    uses: petry-projects/.github/.github/workflows/foo-reusable.yml@${uref}"
+      body="    uses: combsmith/.github/.github/workflows/foo-reusable.yml@${uref}"
       # agent_ref: line — explicit per-file <agent_ref>, else the AGENT_REF knob, else the
       # uses-ref. NO_AGENT_REF omits it (a stub with a uses: pin but no agent_ref input).
       if [ "${NO_AGENT_REF:-false}" != "true" ]; then

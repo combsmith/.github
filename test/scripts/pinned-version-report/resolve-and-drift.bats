@@ -25,13 +25,13 @@ setup() {
   export PATH
   export GH_STUB_LOG="$TMP/gh.log"
   : >"$GH_STUB_LOG"
-  export ORG="petry-projects"
+  export ORG="combsmith"
   # Default: one stable-tier repo (anything not in the explicit ring lists)
   export GH_STUB_REPOS="my-fleet-repo"
   # Workflow content: a stub that pins dev-lead-reusable.yml@dev-lead/stable.
   # The script base64-decodes the content, so the stub returns base64 text.
   export GH_STUB_CONTENTS
-  GH_STUB_CONTENTS="$(printf 'jobs:\n  dev-lead:\n    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable\n    secrets: inherit\n' | base64)"
+  GH_STUB_CONTENTS="$(printf 'jobs:\n  dev-lead:\n    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable\n    secrets: inherit\n' | base64)"
   # Default: no tags (unresolved channel)
   export GH_STUB_TAGS_TSV=""
 }

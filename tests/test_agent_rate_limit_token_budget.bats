@@ -81,7 +81,7 @@ write_token_config() {
           }
         }
       },
-      exempt_actors: ["dependabot[bot]", "@petry-projects/org-leads"],
+      exempt_actors: ["dependabot[bot]", "@combsmith/org-leads"],
       exempt_labels: ["security"]
     }' >"$AGENT_RATE_LIMITS_CONFIG"
 }

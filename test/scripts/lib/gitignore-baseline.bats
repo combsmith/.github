@@ -19,7 +19,7 @@ setup() {
   BLOCK="${TT_TMP}/canonical.gitignore"
   cat > "$BLOCK" <<EOF
 ${GIB_BEGIN_MARKER}
-# petry-projects baseline — SECRETS ONLY
+# combsmith baseline — SECRETS ONLY
 .env
 !.env.example
 *.pem
@@ -347,7 +347,7 @@ EOF
   # the repo's own comment stays put.
   local existing="${TT_TMP}/migrated"
   cat > "$existing" <<EOF
-# petry-projects baseline — SECRETS ONLY
+# combsmith baseline — SECRETS ONLY
 .env
 !.env.example
 *.pem
@@ -360,9 +360,9 @@ EOF
   l2="$(printf '%s\n' "$out" | awk -v e="$GIB_END_MARKER" 'seen{print} $0==e{seen=1}')"
 
   # The block-identical section comment is dropped from L2 (folded away)…
-  [ "$(printf '%s\n' "$l2" | grep -cxF '# petry-projects baseline — SECRETS ONLY')" -eq 0 ]
+  [ "$(printf '%s\n' "$l2" | grep -cxF '# combsmith baseline — SECRETS ONLY')" -eq 0 ]
   # …but the block still carries it exactly once (inside the block).
-  [ "$(printf '%s\n' "$out" | grep -cxF '# petry-projects baseline — SECRETS ONLY')" -eq 1 ]
+  [ "$(printf '%s\n' "$out" | grep -cxF '# combsmith baseline — SECRETS ONLY')" -eq 1 ]
   # The repo's own comment and genuine L2 survive.
   grep -qxF "# repo's own note" <<< "$l2"
   grep -qxF 'node_modules/' <<< "$l2"
