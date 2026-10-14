@@ -26,7 +26,7 @@
 #   - The two critical gotchas (github_token override, ANTHROPIC_MODEL env var)
 #     are baked in here so callers cannot accidentally regress them.
 #
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#8-feature-ideation-feature-ideationyml--bmad-method-repos
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#8-feature-ideation-feature-ideationyml--bmad-method-repos
 name: Feature Ideation (Reusable)
 
 on:
@@ -88,7 +88,7 @@ on:
         type: boolean
       tooling_ref:
         description: |
-          Ref of petry-projects/.github to source the feature-ideation scripts from.
+          Ref of combsmith/.github to source the feature-ideation scripts from.
           Defaults to `v1` to align with the @v1 pin convention used by caller stubs
           (see standards/ci-standards.md tier model). When the v1 tag is moved
           forward to a new release, callers automatically pick up the matching
@@ -104,7 +104,7 @@ on:
         description: |
           Path (relative to repo root) of the repo-local reputable source list.
           Defaults to .github/feature-ideation-sources.md. Copy
-          standards/feature-ideation-sources.md from petry-projects/.github as
+          standards/feature-ideation-sources.md from combsmith/.github as
           a starting point and customise it for your project. If the file is
           absent Mary falls back to open web search automatically.
         required: false
@@ -142,7 +142,7 @@ jobs:
       - name: Checkout feature-ideation tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: ${{ inputs.tooling_ref }}
           path: .feature-ideation-tooling
           fetch-depth: 1
@@ -194,7 +194,7 @@ jobs:
       - name: Checkout feature-ideation tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: ${{ inputs.tooling_ref }}
           path: .feature-ideation-tooling
           fetch-depth: 1

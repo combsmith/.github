@@ -14,7 +14,7 @@
 # dev-lead on persistent findings; groups that drop to zero are auto-closed.
 #
 # Env:
-#   ORG            GitHub owner            (default: petry-projects)
+#   ORG            GitHub owner            (default: combsmith)
 #   SONAR_ORG      SonarCloud organization (default: petry-projects)
 #   SONAR_URL      SonarCloud base URL     (default: https://sonarcloud.io)
 #   SONAR_TOKEN    optional; enables auth (private projects, higher rate limits)
@@ -26,7 +26,7 @@
 # Standard: https://github.com/<owner>/.github/tree/main/standards
 set -euo pipefail
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 SONAR_ORG="${SONAR_ORG:-petry-projects}"
 SONAR_URL="${SONAR_URL:-https://sonarcloud.io}"
 SONAR_AUDIT_LABEL="sonarcloud-audit"
