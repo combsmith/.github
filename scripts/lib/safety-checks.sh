@@ -14,7 +14,7 @@
 #                  fail closed (return non-zero) so the caller escalates to a
 #                  human rather than scoring the PR "not spam".
 #
-# Related: epic petry-projects/.github#1200 (spam-pr-guard), story #1202 (this
+# Related: epic combsmith/.github#1200 (spam-pr-guard), story #1202 (this
 # function), story #1203 (the scorer that will consume these signals).
 
 # ---------------------------------------------------------------------------

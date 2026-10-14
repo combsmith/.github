@@ -18,7 +18,7 @@ membership, no soak gate.
 Before this channel, no `standards/*` tag had ever been cut, so every consumer
 effectively tracked `main`. A tightening commit to a live schema then took every
 consumer red the moment it merged (the propagation outage tracked in
-`petry-projects/.github-private#1707`). A published, promotable channel gives
+`combsmith/.github-private#1707`). A published, promotable channel gives
 standards a **version boundary**: `main` can move freely while consumers only
 see what the channel points at, and a bad promotion is one tag move away from
 rollback.
@@ -101,7 +101,7 @@ fail.
 The consumers are data, in
 [`scripts/lib/standards-channel-consumers.json`](../scripts/lib/standards-channel-consumers.json).
 Today they are the repo-template drift guard and the persona manifest validator,
-both in `petry-projects/.github-private`. **Add a row for every new reader of
+both in `combsmith/.github-private`. **Add a row for every new reader of
 `STANDARDS_CHANNEL` or `PERSONA_SCHEMA_CHANNEL`.**
 
 What the operator's machine needs:
@@ -146,7 +146,7 @@ by an identity with the `release-channel-tags` bypass.
 
 ## N-1 resolvability
 
-Policy precedent `petry-projects/.github-private#1448` requires the
+Policy precedent `combsmith/.github-private#1448` requires the
 compliance/drift check to accept **N-1** — the current published version _or_
 the one before it — so a promotion does not instantly fail every consumer during
 propagation. A consumer determines both without hardcoding anything:
@@ -165,7 +165,7 @@ degrades cleanly to "accepts current" while `previous` is empty.
 ## Opting in (and staying out)
 
 - **Opt in** by pinning the channel: fetch `standards/` at `standards/v1-stable`
-  (the drift/seed tooling in consumer repos is `petry-projects/.github-private#1707`,
+  (the drift/seed tooling in consumer repos is `combsmith/.github-private#1707`,
   which this unblocks — out of scope here).
 - **No behavior change for anything that does not opt in.** Scripts and repos
   that pass an explicit ref or a local standards directory keep resolving exactly

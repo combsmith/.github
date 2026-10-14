@@ -2,7 +2,7 @@
 # Fleet pause gate of the weekly compliance audit workflow (#1309).
 #
 # `AGENTS_PAUSED=true` is the Actions variable that pauses the agent fleet
-# (petry-projects/.github-private#1525, #2249). In
+# (combsmith/.github-private#1525, #2249). In
 # compliance-audit-and-improvement.yml only `analyze` calls a model, so only
 # `analyze` carries `vars.AGENTS_PAUSED != 'true'`, and `fleet-paused` says why
 # on the complementary condition. `audit` and `health-survey` call no model and

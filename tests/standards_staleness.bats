@@ -145,7 +145,7 @@ esac
 GH
   chmod +x "$STUB/gh"
   export PATH="$STUB:$PATH"
-  export SS_REPO="petry-projects/.github"
+  export SS_REPO="combsmith/.github"
   unset SS_CHANNEL SS_BRANCH DRY_RUN STANDARDS_STALENESS_MAX_DAYS GITHUB_STEP_SUMMARY CH_SHA_REPLY
 }
 
@@ -193,7 +193,7 @@ _compare() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"decision: STALE workflows"* ]]
   run cat "$STUB/writes.log"
-  [[ "$output" == "issue create --repo petry-projects/.github --title Standards channel standards/v1-stable is behind main — promote it --body-file "* ]]
+  [[ "$output" == "issue create --repo combsmith/.github --title Standards channel standards/v1-stable is behind main — promote it --body-file "* ]]
   [ "$(wc -l < "$STUB/writes.log")" -eq 1 ]
   run cat "$STUB/body.md"
   [[ "$output" == *"standards/workflows/agent-shield.yml"* ]]

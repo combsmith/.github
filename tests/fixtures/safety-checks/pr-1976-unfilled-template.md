@@ -1,6 +1,6 @@
 <!--
   Representative unfilled PR template body — mirrors the shape of
-  petry-projects/.github-private#1976 that motivated epic #1200. All five
+  combsmith/.github-private#1976 that motivated epic #1200. All five
   canonical sections are present as headings with inline help comments, but
   the contributor added no real body text under any of them. A naive
   keyword grep on the raw body matches all five and scores 0/5 missing,

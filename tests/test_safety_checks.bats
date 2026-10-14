@@ -8,7 +8,7 @@
 # template as 0/5 missing. The template's own headings and HTML comments
 # contain all five keywords, so the raw-body matcher reported "complete"
 # on an empty template — the exact regression that let
-# petry-projects/.github-private#1976 ship through automation.
+# combsmith/.github-private#1976 ship through automation.
 #
 # These cases cover:
 #   - the #1976 fixture reports a near-max missing count (regression anchor);

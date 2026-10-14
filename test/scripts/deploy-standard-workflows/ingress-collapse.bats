@@ -2,7 +2,7 @@
 # Issue #1226 (Gap 1) — the standards sweep must never RESURRECT a per-role stub
 # that an ADR-0007 collapse folded into `agent-ingress.yml`.
 #
-# A collapsed repo (the pilot is petry-projects/markets) deletes its per-role
+# A collapsed repo (the pilot is combsmith/markets) deletes its per-role
 # Class-1 caller stubs and serves each role from ONE job of agent-ingress.yml.
 # `markets` is not a SKIP_REPO, so before this fix the next sweep re-deployed
 # dev-lead.yml / pr-review-mention.yml / pr-auto-review.yml from the templates —
@@ -78,7 +78,7 @@ jobs:"
   # ── ${role} ──
   ${role}:
     if: github.event_name == 'issue_comment'
-    uses: petry-projects/.github/.github/workflows/${role}-reusable.yml@${role}/stable  # NOSONAR
+    uses: combsmith/.github/.github/workflows/${role}-reusable.yml@${role}/stable  # NOSONAR
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable"
   done
   printf '%s\n' "$body" | b64
@@ -117,7 +117,7 @@ jobs:"
 @test "collapsed repo: a leftover legacy stub for a served role is not re-pinned either" {
   GH_INGRESS_B64="$(ingress_with dev-lead)"; export GH_INGRESS_B64
   # A drifted (old-pin) dev-lead.yml still present mid-migration.
-  GH_CONTENT_B64="$(printf 'jobs:\n  dev-lead:\n    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@v1\n' | b64)"
+  GH_CONTENT_B64="$(printf 'jobs:\n  dev-lead:\n    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@v1\n' | b64)"
   export GH_CONTENT_B64
   install_gh_stub
   run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo markets --workflow dev-lead.yml

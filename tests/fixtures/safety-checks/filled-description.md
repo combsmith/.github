@@ -1,7 +1,7 @@
 ## Problem
 
 The compliance audit script crashed on repos without a default branch set.
-Repro: `scripts/compliance-audit.sh --repo petry-projects/empty-fixture`.
+Repro: `scripts/compliance-audit.sh --repo combsmith/empty-fixture`.
 
 ## Risk
 

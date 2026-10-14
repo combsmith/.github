@@ -161,7 +161,7 @@ YML
 
 # ---------------------------------------------------------------------------
 # Exit-code precedence: file errors (2) must not be downgraded by later lint
-# findings (1). Caught by CodeRabbit review on PR petry-projects/.github#85.
+# findings (1). Caught by CodeRabbit review on PR combsmith/.github#85.
 # ---------------------------------------------------------------------------
 
 @test "lint-prompt: missing file before lint-failing file still exits 2" {
@@ -199,7 +199,7 @@ YML
 @test "lint-prompt: GitHub Actions expressions with nested braces do not false-positive" {
   # ${{ format('${FOO}', github.ref) }} should be stripped entirely so ${FOO}
   # inside the expression is not flagged as a bare shell expansion.
-  # Caught by CodeRabbit review on PR petry-projects/.github#85.
+  # Caught by CodeRabbit review on PR combsmith/.github#85.
   write_yml "${TT_TMP}/nested-expr.yml" <<'YML'
 jobs:
   analyze:

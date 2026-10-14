@@ -4,7 +4,7 @@
 #
 # Scope: tests sc_description_missing, which replaces the naive keyword grep
 # that let an unfilled PR template score 0/5 missing — the regression that
-# allowed petry-projects/.github-private#1976 through automation.
+# allowed combsmith/.github-private#1976 through automation.
 #
 # Pattern mirrors .github/workflows/agents-md-rules-tests.yml: pinned
 # actions/checkout, path-filtered triggers, read-only token, bats runner.
