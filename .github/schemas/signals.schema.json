@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/combsmith/.github/blob/main/.github/schemas/signals.schema.json",
+  "$id": "https://github.com/petry-projects/.github/blob/main/.github/schemas/signals.schema.json",
   "$comment": "version: 1.0.0 — must match SCHEMA_VERSION in collect-signals.sh; enforced by bats",
   "title": "Feature Ideation Signals",
   "description": "Canonical contract between collect-signals.sh and the BMAD Analyst (Mary) prompt. Any change to this schema is a breaking change to the workflow.",

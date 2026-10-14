@@ -1,14 +1,14 @@
 # ADR: Agent releases roll out via host-relative canary rings with a health-gated promotion
 
 - **Status:** Accepted (dev-lead pathfinder in production, 2026-06)
-- **Initiative:** Safe Release Strategy for Agentic Workflows (epic combsmith/.github-private#495)
+- **Initiative:** Safe Release Strategy for Agentic Workflows (epic petry-projects/.github-private#495)
 - **Supersedes:** the "deploy by rewriting every consumer's `main` at once" model.
 
 ## Context
 
 The org's reusable agent workflows (`dev-lead`, `pr-review`, …) are *self-hosting*:
 the agent that validates and fixes PRs is itself shipped by a reusable workflow in
-`combsmith/.github-private`. Deploying a new version by clobbering all consumers'
+`petry-projects/.github-private`. Deploying a new version by clobbering all consumers'
 files at once meant a bad version could break its own fix pipeline (the circular
 dependency) with org-wide blast radius and no staged validation or fast rollback.
 
@@ -57,5 +57,5 @@ known-good version while the candidate soaks, and (d) roll back in one move.
   reusables adopt the same model incrementally (#499/#616/#688).
 
 The authoritative operational detail lives in
-[`docs/release/versioning.md` + `runbook.md`](https://github.com/combsmith/.github-private/tree/main/docs/release)
+[`docs/release/versioning.md` + `runbook.md`](https://github.com/petry-projects/.github-private/tree/main/docs/release)
 in the host repo; this ADR records the decision and its rationale.

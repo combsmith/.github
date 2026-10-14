@@ -11,7 +11,7 @@ setup() {
   export PATH="$STUB_BIN:$PATH"
   CALLS="$STUB_BIN/calls.log"; export CALLS
   STUB_DIR="$(mktemp -d)" || { echo "Failed to create STUB_DIR" >&2; exit 1; }
-  # Fleet rulesets (code-quality, pr-quality) now live in combsmith/.github
+  # Fleet rulesets (code-quality, pr-quality) now live in petry-projects/.github
   # (relocated under #575), so the REAL apply-rulesets.sh runs in fleet mode. Point
   # it at a local fixture so resolution needs no network; the authoritative content
   # is validated in .github. release-channel-tags stays repo-local and is NOT
@@ -20,7 +20,7 @@ setup() {
   printf '{"name":"code-quality","target":"branch","enforcement":"active"}\n' > "$FLEET_DIR/code-quality.json"
   printf '{"name":"pr-quality","target":"branch","enforcement":"active"}\n'   > "$FLEET_DIR/pr-quality.json"
   export FLEET_RULESETS_DIR="$FLEET_DIR"
-  # Canonical apply-repo-settings.sh (combsmith/.github) requires a token and
+  # Canonical apply-repo-settings.sh (petry-projects/.github) requires a token and
   # fetches current state even under dry-run (to diff). gh is stubbed, so this dummy
   # is never used for a real call — it only satisfies the guard.
   export GH_TOKEN=dummy
@@ -83,7 +83,7 @@ EOF
 
 # NOTE: the codified pr-quality.json / code-quality.json shape assertions moved out
 # of this suite with the JSONs themselves — the fleet rulesets are now owned by
-# combsmith/.github (standards/rulesets/, relocated under #575) and their
+# petry-projects/.github (standards/rulesets/, relocated under #575) and their
 # content is validated there. This suite covers bootstrap's ORCHESTRATION: that it
 # applies exactly the two fleet rulesets (via fleet-mode apply-rulesets.sh) and not
 # the repo-local release-channel-tags.
@@ -211,9 +211,9 @@ _ring_sot_copy() {
   # central file 1: this repo's canary-rings.json
   [[ "$output" == *"would add owner/new-repo"* ]]
   [[ "$output" == *"ring1"* ]]
-  # central file 2: cross-repo ring-pins.sh in combsmith/.github
+  # central file 2: cross-repo ring-pins.sh in petry-projects/.github
   [[ "$output" == *"ring-pins.sh"* ]]
-  [[ "$output" == *"combsmith/.github"* ]]
+  [[ "$output" == *"petry-projects/.github"* ]]
   # stub repin to the matching channel tag
   [[ "$output" == *"@dev-lead/ring1"* ]]
   # dry-run makes no write API calls and does not mutate the SoT
@@ -242,7 +242,7 @@ _ring_sot_copy() {
   _stub_gh
   _ring_sot_copy
   run env DRY_RUN=true GITHUB_ACTOR=octocat CANARY_RINGS="$RING_SOT" \
-    bash "$BOOTSTRAP" combsmith/acme-service
+    bash "$BOOTSTRAP" petry-projects/acme-service
   [ "$status" -eq 0 ]
 
   # (1/5) ring — auditable record, default stable, record-only.
@@ -275,8 +275,8 @@ _ring_sot_copy() {
 
   # (6/6) .gitignore secrets baseline — the marker-wrapped L1 block is seeded.
   [[ "$output" == *".gitignore"* ]]
-  [[ "$output" == *">>> BEGIN combsmith secrets baseline"* ]]
-  [[ "$output" == *"<<< END combsmith secrets baseline"* ]]
+  [[ "$output" == *">>> BEGIN petry-projects secrets baseline"* ]]
+  [[ "$output" == *"<<< END petry-projects secrets baseline"* ]]
 
   # PASS summary + the no-drift invariant: a pure DRY_RUN makes no write API calls.
   [[ "$output" == *"PASS"* ]]
@@ -296,8 +296,8 @@ _ring_sot_copy() {
   run env DRY_RUN=true CANARY_RINGS="$RING_SOT" bash "$BOOTSTRAP" owner/new-repo
   [ "$status" -eq 0 ]
   [[ "$output" == *".gitignore"* ]]
-  [[ "$output" == *">>> BEGIN combsmith secrets baseline"* ]]
-  [[ "$output" == *"<<< END combsmith secrets baseline"* ]]
+  [[ "$output" == *">>> BEGIN petry-projects secrets baseline"* ]]
+  [[ "$output" == *"<<< END petry-projects secrets baseline"* ]]
   # STORY3 anchors ride inside the seeded block.
   [[ "$output" == *"*.pem"* ]]
   [[ "$output" == *"*.key"* ]]

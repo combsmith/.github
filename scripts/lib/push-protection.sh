@@ -2,7 +2,7 @@
 # scripts/lib/push-protection.sh — Shared push-protection logic
 #
 # Sourceable Bash library that implements the apply + check functions for
-# the combsmith Push Protection Standard:
+# the petry-projects Push Protection Standard:
 #
 #   standards/push-protection.md
 #
@@ -18,7 +18,7 @@
 # parent script. It does NOT call `set` itself.
 #
 # Required by ALL functions:
-#   - $ORG          — GitHub org slug (e.g. "combsmith")
+#   - $ORG          — GitHub org slug (e.g. "petry-projects")
 #
 # Required by `pp_apply_*` functions (used by apply-repo-settings.sh):
 #   - info(), ok(), err(), skip()  — log helpers (string arg)
@@ -70,8 +70,8 @@ PP_GHAS_GATED_KEYS=(
 # copied verbatim from this repo's /.gitignore; everything BELOW the END marker
 # is per-repo L2 (ecosystem/OS) and is never inspected. See
 # standards/gitignore-standard.md#managed-block-markers.
-PP_GITIGNORE_BEGIN_MARKER='# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>'
-PP_GITIGNORE_END_MARKER='# <<< END combsmith secrets baseline <<<'
+PP_GITIGNORE_BEGIN_MARKER='# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>'
+PP_GITIGNORE_END_MARKER='# <<< END petry-projects secrets baseline <<<'
 
 # Path to the org canonical /.gitignore — the source of truth the baseline
 # drift check hashes against. Defaults to this repo's root .gitignore (this
@@ -448,7 +448,7 @@ pp_check_gitignore_baseline() {
 
   if [ -z "$repo_block" ]; then
     add_finding "$repo" "push-protection" "gitignore_baseline" "error" \
-      "\`.gitignore\` is missing the \`BEGIN … END combsmith secrets baseline\` block — copy it verbatim from the org \`/.gitignore\`" \
+      "\`.gitignore\` is missing the \`BEGIN … END petry-projects secrets baseline\` block — copy it verbatim from the org \`/.gitignore\`" \
       "$PP_GITIGNORE_STANDARD_REF#managed-block-markers"
     return
   fi

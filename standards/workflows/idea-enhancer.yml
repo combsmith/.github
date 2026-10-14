@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github/standards/workflows/idea-enhancer.yml
-# Standard:        combsmith/.github/standards/ci-standards.md
-# Reusable:        combsmith/.github/.github/workflows/idea-enhancer-reusable.yml
+# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/idea-enhancer.yml
+# Standard:        petry-projects/.github/standards/ci-standards.md
+# Reusable:        petry-projects/.github/.github/workflows/idea-enhancer-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All enhancement-dispatch logic (including
@@ -20,7 +20,7 @@
 #
 # When a human opens a new Ideas Discussion in this repo (or on a weekly sweep),
 # this re-dispatches the CENTRAL idea-enhancer (BMAD analyst) in
-# combsmith/.github-private with this repo as the target. It posts one
+# petry-projects/.github-private with this repo as the target. It posts one
 # enrichment comment per open, human-authored, not-yet-enhanced idea. It is
 # idempotent (a hidden marker prevents re-enhancement) and never approves,
 # labels, or promotes — that stays with triage and the human gates.
@@ -31,7 +31,7 @@
 #   3. Confirm the org-level secret GH_PAT_WORKFLOWS is accessible.
 #   4. (Optional) Adjust the schedule cron.
 #
-# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
 name: Idea Enhancer — Enrich Ideas
 
 on:
@@ -45,5 +45,5 @@ permissions: {}
 
 jobs:
   idea-enhancer:
-    uses: combsmith/.github/.github/workflows/idea-enhancer-reusable.yml@idea-enhancer/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: petry-projects/.github/.github/workflows/idea-enhancer-reusable.yml@idea-enhancer/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable

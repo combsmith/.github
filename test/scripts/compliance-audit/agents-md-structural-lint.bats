@@ -38,7 +38,7 @@ VALID_DOWNSTREAM=$(cat <<'EOF'
 # Example Repo AGENTS.md
 
 Imports the org standards from
-[combsmith/.github](https://github.com/combsmith/.github/blob/main/AGENTS.md).
+[petry-projects/.github](https://github.com/petry-projects/.github/blob/main/AGENTS.md).
 See [the standards](#development-standards).
 
 ## Development Standards
@@ -60,7 +60,7 @@ EOF
 SKIPPED_HEADING=$(cat <<'EOF'
 # Example Repo AGENTS.md
 
-Imports [combsmith/.github](https://github.com/combsmith/.github/blob/main/AGENTS.md).
+Imports [petry-projects/.github](https://github.com/petry-projects/.github/blob/main/AGENTS.md).
 
 ## Section A
 

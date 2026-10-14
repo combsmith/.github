@@ -44,7 +44,7 @@ unset _cmd
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-ORG="combsmith"
+ORG="petry-projects"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Canonical source of the marker-wrapped L1 block; overridable as a test seam.
 GITIGNORE_CANONICAL="${GITIGNORE_CANONICAL:-$REPO_ROOT/.gitignore}"

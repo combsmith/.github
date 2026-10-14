@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # standards-deploy-driver.sh — scheduled fleet-sweep driver for the org-standard
-# workflow deployer (combsmith/.github#851, Epic #850).
+# workflow deployer (petry-projects/.github#851, Epic #850).
 #
 # The compliance audit only *files* remediation issues; bringing the fleet to
 # standard still required a human running deploy-standard-workflows.sh by hand.
@@ -25,7 +25,7 @@
 # Requires GH_TOKEN to be a cross-repo WRITE identity — contents:write +
 # pull_requests:write on the target repos (e.g. GH_PAT_DON_PETRY / the legacy
 # GH_PAT_WORKFLOWS). The audit token (ORG_SCORECARD_TOKEN) is read-only for
-# Contents and cannot deploy stubs — see combsmith/.github#864.
+# Contents and cannot deploy stubs — see petry-projects/.github#864.
 
 set -euo pipefail
 

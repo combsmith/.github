@@ -24,9 +24,9 @@ setup() {
 
 # Three open PRs, the middle one a draft.
 LIST='[
-  {"url":"https://github.com/combsmith/repo-a/pull/1","isDraft":false},
-  {"url":"https://github.com/combsmith/repo-b/pull/2","isDraft":true},
-  {"url":"https://github.com/combsmith/repo-c/pull/3","isDraft":false}
+  {"url":"https://github.com/petry-projects/repo-a/pull/1","isDraft":false},
+  {"url":"https://github.com/petry-projects/repo-b/pull/2","isDraft":true},
+  {"url":"https://github.com/petry-projects/repo-c/pull/3","isDraft":false}
 ]'
 
 # ── draft exclusion ──────────────────────────────────────────────────────────
@@ -34,8 +34,8 @@ LIST='[
 @test "candidates: drafts are excluded, non-drafts kept in input order" {
   run pr_auto_review_sweep_candidates 10 <<<"$LIST"
   [ "$status" -eq 0 ]
-  [ "${lines[0]}" = "https://github.com/combsmith/repo-a/pull/1" ]
-  [ "${lines[1]}" = "https://github.com/combsmith/repo-c/pull/3" ]
+  [ "${lines[0]}" = "https://github.com/petry-projects/repo-a/pull/1" ]
+  [ "${lines[1]}" = "https://github.com/petry-projects/repo-c/pull/3" ]
   [ "${#lines[@]}" -eq 2 ]
 }
 
@@ -45,7 +45,7 @@ LIST='[
   run pr_auto_review_sweep_candidates 1 <<<"$LIST"
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 1 ]
-  [ "${lines[0]}" = "https://github.com/combsmith/repo-a/pull/1" ]
+  [ "${lines[0]}" = "https://github.com/petry-projects/repo-a/pull/1" ]
 }
 
 @test "candidates: MAX larger than the candidate count returns all non-drafts" {
@@ -91,14 +91,14 @@ LIST='[
 }
 
 @test "candidates: an object missing isDraft is treated as non-draft" {
-  run pr_auto_review_sweep_candidates 10 <<<'[{"url":"https://github.com/combsmith/repo-a/pull/7"}]'
+  run pr_auto_review_sweep_candidates 10 <<<'[{"url":"https://github.com/petry-projects/repo-a/pull/7"}]'
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 1 ]
-  [ "${lines[0]}" = "https://github.com/combsmith/repo-a/pull/7" ]
+  [ "${lines[0]}" = "https://github.com/petry-projects/repo-a/pull/7" ]
 }
 
 @test "candidates: all drafts → nothing" {
-  run pr_auto_review_sweep_candidates 10 <<<'[{"url":"https://github.com/combsmith/repo-a/pull/1","isDraft":true}]'
+  run pr_auto_review_sweep_candidates 10 <<<'[{"url":"https://github.com/petry-projects/repo-a/pull/1","isDraft":true}]'
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 0 ]
 }

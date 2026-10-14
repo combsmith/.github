@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests for reconcile-backlog.sh — the periodic/manual backlog reconcile
-# (combsmith/.github#518). Runs the script with a tailored `gh` stub and
+# (petry-projects/.github#518). Runs the script with a tailored `gh` stub and
 # DRY_RUN=1, and asserts it scans a repo's open issues/PRs and reconciles them
 # via the shared event-path helpers (logging intended adds, not mutating).
 # Issues are un-gated; PRs keep the required-label gate. Discussions untracked.
@@ -42,7 +42,7 @@ setup() {
   tt_make_tmpdir
   write_issue_stub 'I_node1\thttps://example.invalid/issues/1\t[{"name":"bug"}]\tissue\n'
   export PROJECT_ID="PVT_test" PROJECT_URL="https://example.invalid/p/1" GH_TOKEN="t"
-  export RECON_REPOS="combsmith/demo"   # skip installation lookup
+  export RECON_REPOS="petry-projects/demo"   # skip installation lookup
   export DRY_RUN="1"
 }
 teardown() { tt_cleanup_tmpdir; }

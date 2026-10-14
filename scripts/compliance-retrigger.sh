@@ -37,13 +37,13 @@ set -euo pipefail
 #
 # Environment:
 #   GH_TOKEN      — must have issues:write and contents:read across the org
-#   ORG           — GitHub org name (default: combsmith)
+#   ORG           — GitHub org name (default: petry-projects)
 #   STALE_DAYS    — issues older than this are considered stale (default: 2)
 #   DRY_RUN       — set to "true" to log actions without executing them
 #   AUDIT_LABEL   — label used to tag compliance findings (default: compliance-audit)
 #   TRIGGER_LABEL — label used to trigger dev-lead (default: dev-lead)
 
-ORG="${ORG:-combsmith}"
+ORG="${ORG:-petry-projects}"
 STALE_DAYS="${STALE_DAYS:-2}"
 DRY_RUN="${DRY_RUN:-false}"
 AUDIT_LABEL="${AUDIT_LABEL:-compliance-audit}"

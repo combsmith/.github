@@ -27,7 +27,7 @@ if an existing agent-created PR touches them, close it without merging.
 | `.github/workflows/agent-shield.yml` | Security boundary — agents are not permitted to weaken security scanning; changes require explicit human review |
 
 These files must be adopted verbatim from `standards/workflows/` and updated
-only by merging a standards PR from `combsmith/.github`, which propagates
+only by merging a standards PR from `petry-projects/.github`, which propagates
 to all repos via the `@v1` tag bump.
 
 ### CLAUDE.md Requirements
@@ -39,7 +39,7 @@ to all repos via the `@v1` tag bump.
 
 ### AGENTS.md Requirements
 
-- MUST reference the org-level standards: `combsmith/.github/AGENTS.md`
+- MUST reference the org-level standards: `petry-projects/.github/AGENTS.md`
 - MUST define project-specific development standards (testing, code style, architecture)
 - MUST NOT override org-level security policies
 
@@ -77,14 +77,14 @@ the build if findings at or above `high` severity are detected.
 
 ### Layer 2: Org-specific structural checks
 
-Custom checks that enforce combsmith conventions not covered by the
+Custom checks that enforce petry-projects conventions not covered by the
 generic AgentShield scanner:
 
 | Rule | Severity | Description |
 |------|----------|-------------|
 | `required-files` | error | CLAUDE.md and AGENTS.md must exist |
 | `claude-reference` | error | CLAUDE.md must reference AGENTS.md |
-| `org-reference` | error | AGENTS.md must reference `combsmith/.github/AGENTS.md` |
+| `org-reference` | error | AGENTS.md must reference `petry-projects/.github/AGENTS.md` |
 | `valid-frontmatter` | error | All SKILL.md files must have YAML frontmatter with `name` and `description` |
 
 ## AgentShield CI Workflow

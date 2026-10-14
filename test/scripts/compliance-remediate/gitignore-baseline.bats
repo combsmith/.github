@@ -40,7 +40,7 @@ case "$sub" in
       list)   printf '%s' "${GH_EXISTING_PR:-}" ;;
       create)
         [ "${GH_PR_CREATE_RC:-0}" -ne 0 ] && exit "${GH_PR_CREATE_RC}"
-        printf '%s\n' "${GH_PR_URL:-https://github.com/combsmith/markets/pull/7}" ;;
+        printf '%s\n' "${GH_PR_URL:-https://github.com/petry-projects/markets/pull/7}" ;;
     esac
     ;;
   label) exit 0 ;;
@@ -139,8 +139,8 @@ run_remediate() {
   ! grep -q 'gitignore_baseline' "${TT_TMP}/report/skipped.md"
 
   # Full PR flow ran against the target repo.
-  grep -q 'gh api repos/combsmith/markets/contents/.gitignore --method PUT' "$GH_CALLS"
-  grep -q 'gh pr create --repo combsmith/markets' "$GH_CALLS"
+  grep -q 'gh api repos/petry-projects/markets/contents/.gitignore --method PUT' "$GH_CALLS"
+  grep -q 'gh pr create --repo petry-projects/markets' "$GH_CALLS"
 }
 
 # ---------------------------------------------------------------------------
@@ -149,10 +149,10 @@ run_remediate() {
 # ---------------------------------------------------------------------------
 @test "opens a PR to REFRESH a drifted block and preserves L2 below END" {
   printf '%s\n' \
-    '# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>' \
+    '# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>' \
     '.env' \
     'STALE-DRIFTED-ENTRY' \
-    '# <<< END combsmith secrets baseline <<<' \
+    '# <<< END petry-projects secrets baseline <<<' \
     'node_modules/' \
     'dist/' > "${TT_TMP}/existing"
   GH_GITIGNORE_B64="$(b64 < "${TT_TMP}/existing")"; export GH_GITIGNORE_B64
@@ -171,7 +171,7 @@ run_remediate() {
   decoded="$(printf '%s' "$put_b64" | base64 -d)"
   printf '%s\n' "$decoded" | grep -qxF 'node_modules/'
   printf '%s\n' "$decoded" | grep -qxF 'dist/'
-  printf '%s\n' "$decoded" | grep -qxF '# <<< END combsmith secrets baseline <<<'
+  printf '%s\n' "$decoded" | grep -qxF '# <<< END petry-projects secrets baseline <<<'
   ! printf '%s\n' "$decoded" | grep -qxF 'STALE-DRIFTED-ENTRY'
 }
 
@@ -193,7 +193,7 @@ run_remediate() {
   decoded="$(printf '%s' "$put_b64" | base64 -d)"
   printf '%s\n' "$decoded" | grep -qxF 'node_modules/'
   printf '%s\n' "$decoded" | grep -qxF '.DS_Store'
-  printf '%s\n' "$decoded" | grep -qxF '# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>'
+  printf '%s\n' "$decoded" | grep -qxF '# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>'
 }
 
 # ---------------------------------------------------------------------------
@@ -268,7 +268,7 @@ run_remediate() {
 @test "incomplete canonical baseline block is reported as a failure" {
   GITIGNORE_CANONICAL="${TT_TMP}/broken-canonical"; export GITIGNORE_CANONICAL
   printf '%s\n' \
-    '# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>' \
+    '# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>' \
     '.env' > "$GITIGNORE_CANONICAL"  # missing END marker
 
   findings="$(tt_write_finding "markets" "push-protection" "gitignore_baseline")"
@@ -284,7 +284,7 @@ run_remediate() {
 # ---------------------------------------------------------------------------
 @test "half-open existing .gitignore (one marker) is reported as a failure" {
   printf '%s\n' \
-    '# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>' \
+    '# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>' \
     '.env' \
     'node_modules/' > "${TT_TMP}/half-open"  # missing END marker
   GH_GITIGNORE_B64="$(b64 < "${TT_TMP}/half-open")"; export GH_GITIGNORE_B64

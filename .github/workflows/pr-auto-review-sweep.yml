@@ -13,11 +13,11 @@
 # MAX_PER_RUN provides back-pressure so a burst drains over a few cycles rather
 # than firing every dispatch at once (donpetry-bot token/capacity).
 #
-# Runs centrally in combsmith/.github (the scripts live here); a single
+# Runs centrally in petry-projects/.github (the scripts live here); a single
 # `gh search prs` call spans every repo the PAT can see.
 #
 # Requires: GH_PAT_WORKFLOWS org secret (classic PAT, repo scope) for API reads
-# and the repository_dispatch to combsmith/.github-private.
+# and the repository_dispatch to petry-projects/.github-private.
 name: PR Auto-Review — Catch-up Sweep
 
 on:

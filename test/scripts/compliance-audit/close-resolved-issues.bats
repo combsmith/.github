@@ -123,7 +123,7 @@ _run_close() {
 }
 
 @test "legacy generated-by footer (no explicit marker) is still recognised as machine-created" {
-  local footer='*This issue was automatically created by the [weekly compliance audit](https://github.com/combsmith/.github/blob/main/.github/workflows/compliance-audit.yml).*'
+  local footer='*This issue was automatically created by the [weekly compliance audit](https://github.com/petry-projects/.github/blob/main/.github/workflows/compliance-audit.yml).*'
   findings='[{"repo":"demo-repo","check":"missing-ci.yml"}]'
   issues="[$(_issue 3003 'Compliance: settings-has_wiki' "body ... $footer")]"
   run _run_close "$findings" "$issues" "demo-repo"

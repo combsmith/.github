@@ -21,10 +21,10 @@ GATE_STEP='Agent rate-limit admission gate (enforcing)'
   [ "$output" = 'cd0b16751454d2eb3486ec04477d7ee9cc96c425' ]
 }
 
-@test "stub: gate tooling checkout still targets combsmith/.github" {
+@test "stub: gate tooling checkout still targets petry-projects/.github" {
   run yq -r ".jobs.dispatch.steps[] | select(.name == \"${CHECKOUT_STEP}\") | .with.repository" "$STUB"
   [ "$status" -eq 0 ]
-  [ "$output" = 'combsmith/.github' ]
+  [ "$output" = 'petry-projects/.github' ]
 }
 
 @test "stub: gate step detects a missing gate script and reports an ::error::" {

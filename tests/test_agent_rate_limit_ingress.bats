@@ -243,9 +243,9 @@ seed_collapsed() {
 
 @test "concurrency: AGENT_RATE_LIMITS_ORG_REPOS tallies a mixed collapsed/non-collapsed fleet" {
   runs_fixture _local dev-lead '[{"status":"in_progress"},{"status":"in_progress"}]'      # legacy: 2
-  seed_collapsed combsmith/markets                                                   # collapsed: 2
-  runs_fixture combsmith/other dev-lead '[{"status":"queued"},{"status":"completed"}]' # legacy: 1
-  export AGENT_RATE_LIMITS_ORG_REPOS="combsmith/markets, combsmith/other"
+  seed_collapsed petry-projects/markets                                                   # collapsed: 2
+  runs_fixture petry-projects/other dev-lead '[{"status":"queued"},{"status":"completed"}]' # legacy: 1
+  export AGENT_RATE_LIMITS_ORG_REPOS="petry-projects/markets, petry-projects/other"
   run --separate-stderr bash -c 'source "$1"; arl_count_concurrent_runs dev-lead' _ "$LIB"
   [ "$status" -eq 0 ]
   [ "$output" = "5" ]
@@ -253,16 +253,16 @@ seed_collapsed() {
 
 @test "concurrency: an unresolved OTHER org repo counts 0 with a warning (no org-wide wedge)" {
   runs_fixture _local dev-lead '[{"status":"in_progress"}]'
-  export AGENT_RATE_LIMITS_ORG_REPOS="combsmith/ghost"
+  export AGENT_RATE_LIMITS_ORG_REPOS="petry-projects/ghost"
   run --separate-stderr bash -c 'source "$1"; arl_count_concurrent_runs dev-lead' _ "$LIB"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
-  [[ "$stderr" == *"combsmith/ghost"* ]]
+  [[ "$stderr" == *"petry-projects/ghost"* ]]
 }
 
 @test "concurrency: the gated (current) repo unresolved still fails closed even with healthy org repos" {
-  seed_collapsed combsmith/markets
-  export AGENT_RATE_LIMITS_ORG_REPOS="combsmith/markets"
+  seed_collapsed petry-projects/markets
+  export AGENT_RATE_LIMITS_ORG_REPOS="petry-projects/markets"
   run --separate-stderr bash -c 'source "$1"; arl_count_concurrent_runs dev-lead' _ "$LIB"
   [ "$status" -eq 3 ]
   [ "$output" = "unresolved" ]
@@ -270,9 +270,9 @@ seed_collapsed() {
 
 @test "concurrency: a permission-caused bare 404 on a private org repo is transient, not permanently missing" {
   runs_fixture _local dev-lead '[{"status":"in_progress"}]'
-  : >"$GH_FIX/runs/combsmith_private__dev-lead.forbidden"
-  : >"$GH_FIX/runs/combsmith_private__agent-ingress.yml.forbidden"
-  export AGENT_RATE_LIMITS_ORG_REPOS="combsmith/private"
+  : >"$GH_FIX/runs/petry-projects_private__dev-lead.forbidden"
+  : >"$GH_FIX/runs/petry-projects_private__agent-ingress.yml.forbidden"
+  export AGENT_RATE_LIMITS_ORG_REPOS="petry-projects/private"
   run --separate-stderr bash -c 'source "$1"; arl_count_concurrent_runs dev-lead' _ "$LIB"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
@@ -317,8 +317,8 @@ seed_collapsed() {
 
 @test "concurrency: a transient repo in AGENT_RATE_LIMITS_ORG_REPOS degrades only that repo" {
   runs_fixture _local dev-lead '[{"status":"in_progress"}]'
-  transient_fixture combsmith/flaky dev-lead
-  export AGENT_RATE_LIMITS_ORG_REPOS="combsmith/flaky"
+  transient_fixture petry-projects/flaky dev-lead
+  export AGENT_RATE_LIMITS_ORG_REPOS="petry-projects/flaky"
   run --separate-stderr bash -c 'source "$1"; arl_count_concurrent_runs dev-lead' _ "$LIB"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]

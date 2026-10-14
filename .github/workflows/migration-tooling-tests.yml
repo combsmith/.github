@@ -11,7 +11,7 @@
 #                   bare-tier retirement path
 #
 # Standard: the migration helper is DRY_RUN-aware and mutates only through the gh
-# Git-refs API (never a direct push). See combsmith/.github#698.
+# Git-refs API (never a direct push). See petry-projects/.github#698.
 
 name: Migration Tooling Tests
 

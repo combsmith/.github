@@ -37,12 +37,12 @@ filter_bots_build_list() {
   if [ -n "${FEATURE_IDEATION_BOT_AUTHORS:-}" ]; then
     # Use `IFS=',' read` (not unquoted expansion) to avoid pathname-globbing
     # against the filesystem if any entry contains wildcard characters.
-    # Caught by CodeRabbit review on PR combsmith/.github#85.
+    # Caught by CodeRabbit review on PR petry-projects/.github#85.
     local extras=()
     IFS=',' read -r -a extras <<<"${FEATURE_IDEATION_BOT_AUTHORS}"
     # Trim leading/trailing whitespace from each comma-separated entry so
     # `"bot1, bot2"` resolves to `bot1` and `bot2`, not `bot1` and ` bot2`.
-    # Caught by CodeRabbit review on PR combsmith/.github#85.
+    # Caught by CodeRabbit review on PR petry-projects/.github#85.
     local trimmed=()
     local entry
     for entry in "${extras[@]}"; do

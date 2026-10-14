@@ -39,7 +39,7 @@ def _strip_github_expressions(s: str) -> str:
     containing `}` inside string literals (e.g. format() calls) are fully
     consumed rather than prematurely terminated. This prevents false-positive
     shell-expansion matches on content that is actually inside a GH expression.
-    Caught by CodeRabbit review on PR combsmith/.github#85.
+    Caught by CodeRabbit review on PR petry-projects/.github#85.
     """
     result: list[str] = []
     i = 0
@@ -79,13 +79,13 @@ findings = []
 # (which is evaluated before the prompt is rendered) and NOT \$ or $$
 # escapes (which produce literal characters in the rendered prompt).
 # Both branches use the same lookbehind so escape handling is consistent.
-# Caught by CodeRabbit review on PR combsmith/.github#85.
+# Caught by CodeRabbit review on PR petry-projects/.github#85.
 shell_expansion = re.compile(r'(?<![\\$])\$\([^)]*\)|(?<![\\$])\$\{[A-Za-z_][A-Za-z0-9_]*\}')
 
 # Recognise both `direct_prompt:` (v0) and `prompt:` (v1) markers, with
 # optional `|` or `>` block scalar indicators plus YAML chomping modifiers
 # (`-` or `+`) so `prompt: |-`, `prompt: |+`, `prompt: >-`, `prompt: >+`
-# are all recognised. Caught by CodeRabbit review on PR combsmith/.github#85.
+# are all recognised. Caught by CodeRabbit review on PR petry-projects/.github#85.
 prompt_marker = re.compile(r'(?:direct_prompt|prompt):\s*[|>]?[-+]?\s*$')
 
 for lineno, raw in enumerate(lines, start=1):
@@ -113,7 +113,7 @@ for lineno, raw in enumerate(lines, start=1):
         # contain `}` internally (e.g. format() calls or string literals) are
         # not fully removed and leave false-positive shell expansion matches.
         # Use a small stateful scanner instead.
-        # Caught by CodeRabbit review on PR combsmith/.github#85.
+        # Caught by CodeRabbit review on PR petry-projects/.github#85.
         no_gh = _strip_github_expressions(raw)
         for match in shell_expansion.finditer(no_gh):
             findings.append((lineno, match.group(0), raw.rstrip()))
@@ -151,7 +151,7 @@ main() {
     fi
     # Capture the actual exit code so we preserve exit-2 (file error) over
     # exit-1 (lint finding). A later lint failure must not overwrite an earlier
-    # file error. Caught by CodeRabbit review on PR combsmith/.github#85.
+    # file error. Caught by CodeRabbit review on PR petry-projects/.github#85.
     if scan_file "$file"; then
       file_rc=0
     else

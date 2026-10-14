@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github/standards/workflows/dependabot-rebase.yml
-# Standard:        combsmith/.github/standards/dependabot-policy.md
-# Reusable:        combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml
+# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/dependabot-rebase.yml
+# Standard:        petry-projects/.github/standards/dependabot-policy.md
+# Reusable:        petry-projects/.github/.github/workflows/dependabot-rebase-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All rebase/merge serialization logic
@@ -25,7 +25,7 @@
 # To adopt: copy standards/workflows/dependabot-rebase.yml (NOT this file) to
 #   .github/workflows/dependabot-rebase.yml in your repo. This file uses a
 #   local ref (`./.github/workflows/dependabot-rebase-reusable.yml`) that is
-#   only valid in the combsmith/.github source-of-truth repo.
+#   only valid in the petry-projects/.github source-of-truth repo.
 # Required org/repo secrets (inherited):
 #   APP_ID         — GitHub App ID with contents:write and pull-requests:write
 #   APP_PRIVATE_KEY — GitHub App private key

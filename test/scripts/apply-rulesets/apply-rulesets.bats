@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/apply-rulesets.sh — the codified, file-driven applier that
-# replaced the retired detection-based builder (combsmith/.github#580 / #575).
+# replaced the retired detection-based builder (petry-projects/.github#580 / #575).
 
 SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
 APPLY="$SCRIPT_DIR/scripts/apply-rulesets.sh"
@@ -138,7 +138,7 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 @test "apply --repo: creates rulesets when absent (POST per file)" {
   _stub_gh
   export RULESETS_LIST='[]'
-  run bash "$APPLY" --repo combsmith/acme
+  run bash "$APPLY" --repo petry-projects/acme
   [ "$status" -eq 0 ]
   [[ "$output" == *"done (2 ruleset(s))"* ]]
   [ "$(grep -c 'method POST' "$CALLS")" -eq 2 ]
@@ -148,7 +148,7 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 @test "apply --repo: updates when present (PUT by id)" {
   _stub_gh
   export RULESETS_LIST='[{"id":7,"name":"code-quality"},{"id":9,"name":"pr-quality"}]'
-  run bash "$APPLY" --repo combsmith/acme
+  run bash "$APPLY" --repo petry-projects/acme
   [ "$status" -eq 0 ]
   grep -q 'method PUT' "$CALLS"
   ! grep -q 'method POST' "$CALLS"
@@ -157,7 +157,7 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 @test "apply: --dry-run makes no write calls" {
   _stub_gh
   export RULESETS_LIST='[]'
-  run bash "$APPLY" --repo combsmith/acme --dry-run
+  run bash "$APPLY" --repo petry-projects/acme --dry-run
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS" ]
   [[ "$output" == *"dry-run"* ]]
@@ -169,7 +169,7 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
   # script ever strips or transforms the payload before sending, this test catches it.
   _stub_gh
   export RULESETS_LIST='[]'
-  run bash "$APPLY" --repo combsmith/acme pr-quality
+  run bash "$APPLY" --repo petry-projects/acme pr-quality
   [ "$status" -eq 0 ]
   jq -e '
     any(.rules[]?;
@@ -184,13 +184,13 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
   export RULESETS_LIST='[]'
   run bash "$APPLY" acme --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"repo=combsmith/acme"* ]]
+  [[ "$output" == *"repo=petry-projects/acme"* ]]
 }
 
 @test "apply: a name filter applies only that ruleset" {
   _stub_gh
   export RULESETS_LIST='[]'
-  run bash "$APPLY" --repo combsmith/acme code-quality --dry-run
+  run bash "$APPLY" --repo petry-projects/acme code-quality --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"code-quality"* ]]
   [[ "$output" != *"pr-quality"* ]]
@@ -200,7 +200,7 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 @test "apply: default set is the fleet allowlist only — release-channel-tags is NOT swept in" {
   _stub_gh
   export RULESETS_LIST='[]'
-  run bash "$APPLY" --repo combsmith/acme
+  run bash "$APPLY" --repo petry-projects/acme
   [ "$status" -eq 0 ]
   # code-quality + pr-quality applied; release-channel-tags excluded despite being in the dir.
   [[ "$output" == *"done (2 ruleset(s))"* ]]
@@ -210,7 +210,7 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 @test "apply: release-channel-tags applies only when named explicitly" {
   _stub_gh
   export RULESETS_LIST='[]'
-  run bash "$APPLY" --repo combsmith/.github release-channel-tags --dry-run
+  run bash "$APPLY" --repo petry-projects/.github release-channel-tags --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"release-channel-tags"* ]]
   [[ "$output" == *"done (1 ruleset(s))"* ]]
@@ -218,7 +218,7 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 
 @test "apply: unknown ruleset name errors" {
   _stub_gh
-  run bash "$APPLY" --repo combsmith/acme no-such-ruleset
+  run bash "$APPLY" --repo petry-projects/acme no-such-ruleset
   [ "$status" -ne 0 ]
   [[ "$output" == *"no ruleset file no-such-ruleset.json"* ]]
 }
@@ -229,14 +229,14 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
   export RULESETS_LIST='[]' REPO_LIST=$'alpha\nbeta'
   run bash "$APPLY" --all --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"repo=combsmith/alpha"* ]]
-  [[ "$output" == *"repo=combsmith/beta"* ]]
+  [[ "$output" == *"repo=petry-projects/alpha"* ]]
+  [[ "$output" == *"repo=petry-projects/beta"* ]]
   [[ "$output" == *"across the fleet"* ]]
 }
 
 @test "apply: --all and --repo are mutually exclusive" {
   _stub_gh
-  run bash "$APPLY" --all --repo combsmith/acme
+  run bash "$APPLY" --all --repo petry-projects/acme
   [ "$status" -ne 0 ]
   [[ "$output" == *"mutually exclusive"* ]]
 }
@@ -253,6 +253,6 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 @test "ruleset_id_by_name: resolves id from the list" {
   _stub_gh
   export RULESETS_LIST='[{"id":42,"name":"pr-quality"},{"id":7,"name":"code-quality"}]'
-  run bash -c "source '$APPLY' && ruleset_id_by_name combsmith/acme code-quality"
+  run bash -c "source '$APPLY' && ruleset_id_by_name petry-projects/acme code-quality"
   [ "$status" -eq 0 ]; [ "$output" = "7" ]
 }

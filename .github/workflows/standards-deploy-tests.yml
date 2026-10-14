@@ -14,7 +14,7 @@
 #   2. bats       — unit tests for sd_deploy_via_pr() and the dry-run path
 #
 # Standard: the PR-based deploy primitive documented in
-# scripts/lib/standards-deploy.sh (see combsmith/.github#478).
+# scripts/lib/standards-deploy.sh (see petry-projects/.github#478).
 
 name: Standards Deploy Tests
 

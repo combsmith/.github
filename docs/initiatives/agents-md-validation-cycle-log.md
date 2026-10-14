@@ -4,8 +4,8 @@
   cycle's AGENTS.md **structural** finding count and every **confirmed false-positive** determination, each attributed
   to a named maintainer. This log — not the editable summary issue — is the source of truth for the
   "two consecutive clean cycles" precondition of the informational → blocking promotion gate.
-- **Epic / story:** [#642](https://github.com/combsmith/.github/issues/642) ·
-  [#647 — Phase 4: promotion mechanism](https://github.com/combsmith/.github/issues/647).
+- **Epic / story:** [#642](https://github.com/petry-projects/.github/issues/642) ·
+  [#647 — Phase 4: promotion mechanism](https://github.com/petry-projects/.github/issues/647).
 - **Reference doc:** [`agents-md-validation.md`](./agents-md-validation.md) — §4 documents the promotion gate this log feeds.
 - **Reader / validator:** [`scripts/agents-md-cycle-log.sh`](../../scripts/agents-md-cycle-log.sh)
   (`validate` and `eligibility` — pure, tested, and it never promotes).

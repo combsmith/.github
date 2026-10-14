@@ -33,7 +33,7 @@ except ImportError:
 # default FormatChecker also does NOT include `date-time` — that requires the
 # optional `rfc3339-validator` dependency. Avoid pulling in extra deps by
 # registering the small inline validator below on a module-level checker.
-# Caught by Copilot review on PR combsmith/.github#85.
+# Caught by Copilot review on PR petry-projects/.github#85.
 FORMAT_CHECKER = FormatChecker()
 
 
@@ -95,14 +95,14 @@ def main(argv: list[str]) -> int:
         signals = json.loads(signals_path.read_text(encoding="utf-8"))
     except OSError as exc:
         # File read errors (permissions, I/O) must also exit 2. Caught by
-        # CodeRabbit review on PR combsmith/.github#85.
+        # CodeRabbit review on PR petry-projects/.github#85.
         sys.stderr.write(f"[validate-signals] cannot read {signals_path}: {exc}\n")
         return 2
     except json.JSONDecodeError as exc:
         # Per the docstring contract, exit 2 means usage / file error and
         # exit 1 means schema validation error. A malformed signals file
         # is a file/data error, not a schema violation. Caught by
-        # CodeRabbit review on PR combsmith/.github#85.
+        # CodeRabbit review on PR petry-projects/.github#85.
         sys.stderr.write(f"[validate-signals] invalid JSON in {signals_path}: {exc}\n")
         return 2
 

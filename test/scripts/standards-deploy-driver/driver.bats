@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests for scripts/standards-deploy-driver.sh — the scheduled fleet-sweep driver
-# for the org-standard workflow deployer (combsmith/.github#851).
+# for the org-standard workflow deployer (petry-projects/.github#851).
 #
 # The driver is intentionally thin: it maps workflow_dispatch inputs (env vars)
 # into flags for scripts/deploy-standard-workflows.sh and runs it. Two layers are

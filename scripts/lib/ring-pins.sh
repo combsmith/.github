@@ -13,7 +13,7 @@
 # three-way inconsistency #482 exists to close. This file is sourced by both so
 # they can never drift again.
 #
-# Keep the topology in sync with combsmith/.github-private's
+# Keep the topology in sync with petry-projects/.github-private's
 # scripts/cut-release.sh channels and docs/release/.
 # ---------------------------------------------------------------------------
 
@@ -63,7 +63,7 @@ RING_PINS_REGISTRY="${CANARY_RINGS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 
 # stable for every other agent), which a single agent-agnostic map cannot express.
 #
 # The repo is matched by basename, so callers may pass a bare name (`markets`) or a
-# full `combsmith/<repo>`. The `$host` and `$org_infra` member tokens are
+# full `petry-projects/<repo>`. The `$host` and `$org_infra` member tokens are
 # expanded (host = the agent's own host repo → next; org_infra = the other infra
 # repo → ring0), and the first ring (registry order = tier order) whose members
 # contain the repo wins. Repos in no explicit ring fall back to the ring whose
@@ -456,7 +456,7 @@ ring_tag_exists() {
 ring_repin_uses() {
   local base="$1" newref="$2"
   sed -E \
-    -e "s#^([[:space:]]*uses:[[:space:]]*combsmith/[^@[:space:]]*/${base}-reusable\.yml)@[^[:space:]]+#\1@${newref}#" \
+    -e "s#^([[:space:]]*uses:[[:space:]]*petry-projects/[^@[:space:]]*/${base}-reusable\.yml)@[^[:space:]]+#\1@${newref}#" \
     -e "s#^([[:space:]]*agent_ref:[[:space:]]*[\"']?)${base}/[^\"'[:space:]]+#\1${newref}#" \
     -e "s#^([[:space:]]*checkout_ref:[[:space:]]*[\"']?)${base}/[^\"'[:space:]]+#\1${newref}#"
   return 0

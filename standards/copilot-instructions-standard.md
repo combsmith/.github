@@ -1,7 +1,7 @@
 # Copilot Instructions Standard
 
 This standard defines how to create and maintain GitHub Copilot custom instruction files across
-the **combsmith** organization.
+the **petry-projects** organization.
 
 ## Purpose and Benefits
 
@@ -21,7 +21,7 @@ Instruction files solve this by surfacing the right context to Copilot automatic
 | **Less review churn** | Fewer review comments on style and convention violations; agents are less likely to introduce drift |
 | **Faster agent execution** | Copilot coding agents pre-load the right dependencies and follow the right patterns without a bootstrapping phase |
 
-The org-level baseline (`combsmith/.github`) covers rules that apply everywhere. Repo-level
+The org-level baseline (`petry-projects/.github`) covers rules that apply everywhere. Repo-level
 files add the project-specific context that makes suggestions accurate for that repo in particular.
 
 ## Overview
@@ -35,7 +35,7 @@ repository they live in:
 | **Path-specific** | `.github/instructions/<name>.instructions.md` | Applies when the file being edited matches the `applyTo` glob pattern |
 
 > **There is no automatic org-wide propagation.** Placing `copilot-instructions.md` in the
-> `combsmith/.github` repository makes it apply to that repo only — it does not broadcast
+> `petry-projects/.github` repository makes it apply to that repo only — it does not broadcast
 > to other repos in the org. Org-wide coverage is achieved by deploying the file to every repo,
 > which the weekly compliance audit enforces (see [Compliance](#compliance) below).
 
@@ -56,7 +56,7 @@ instructions.
 
 ## Canonical Instruction Files (source of truth in this repo)
 
-The following files live in `combsmith/.github` and serve as the **canonical templates**
+The following files live in `petry-projects/.github` and serve as the **canonical templates**
 that every repo should adopt. They apply to this repo only as-is; each other repo gets its own
 copy via the per-repo rollout described in [Creating a Repo-Level copilot-instructions.md](#creating-a-repo-level-copilot-instructionsmd).
 
@@ -79,7 +79,7 @@ To add a new language instruction file:
 3. Base the content on the relevant [awesome-copilot template](https://awesome-copilot.github.com/instructions/)
    and adapt it to org conventions defined in `AGENTS.md`.
 4. Add an entry to the table above in this document.
-5. Open a PR to `combsmith/.github` following the standard PR workflow.
+5. Open a PR to `petry-projects/.github` following the standard PR workflow.
 
 ## Creating a Repo-Level copilot-instructions.md
 
@@ -103,7 +103,7 @@ path-specific files discoverable without requiring contributors to browse the di
 
 ## About
 
-[One sentence describing what this repo does and its role in the combsmith org.]
+[One sentence describing what this repo does and its role in the petry-projects org.]
 
 ## Tech Stack
 
@@ -150,7 +150,7 @@ apply.]
 
 ## Org Standards
 
-See [combsmith/.github — AGENTS.md](https://github.com/combsmith/.github/blob/main/AGENTS.md)
+See [petry-projects/.github — AGENTS.md](https://github.com/petry-projects/.github/blob/main/AGENTS.md)
 for org-wide development standards.
 
 **Language-specific instructions** (applied automatically by Copilot when you open matching file types):
@@ -214,9 +214,9 @@ automatically. Four `warning`-severity checks run against every repository in th
 | `copilot-instructions-missing-language-links` | Files exist in `.github/instructions/` but are not listed in `## Org Standards` | Ensure files in `.github/instructions/` are listed in `## Org Standards` and that each listed link resolves to the correct relative path (no broken links) |
 
 Findings are reported as `warning` (not `error`) because the org-level baseline in
-`combsmith/.github` ensures minimum Copilot guidance even without a repo-level file.
+`petry-projects/.github` ensures minimum Copilot guidance even without a repo-level file.
 However, all warnings are tracked in the weekly compliance report and surfaced as GitHub issues
 for remediation.
 
-The `combsmith/.github` repo itself is exempt from the repo-level check — its
+The `petry-projects/.github` repo itself is exempt from the repo-level check — its
 `.github/copilot-instructions.md` is the org-level baseline that applies to all repos.

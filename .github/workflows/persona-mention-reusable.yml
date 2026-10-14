@@ -1,8 +1,8 @@
 # Reusable Persona Mention Router.
-# SOURCE OF TRUTH: combsmith/.github/.github/workflows/persona-mention-reusable.yml
-# Standard: https://github.com/combsmith/.github/blob/main/standards/persona-standards.md (§4.1)
+# SOURCE OF TRUTH: petry-projects/.github/.github/workflows/persona-mention-reusable.yml
+# Standard: https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md (§4.1)
 #
-# Routes `@combsmith/<role>` mentions to the addressed persona. ONE router
+# Routes `@petry-projects/<role>` mentions to the addressed persona. ONE router
 # for every persona — personas do NOT each ship a mention workflow (§4.1); that
 # per-agent drift is exactly what the manifest exists to prevent.
 #
@@ -20,10 +20,10 @@
 #
 # How a mention resolves, and why there is no index:
 #   `validate-personas.py` enforces address.handle's slug == id == the persona's
-#   directory name, so '@combsmith/qa-lead' resolves to
+#   directory name, so '@petry-projects/qa-lead' resolves to
 #   personas/qa-lead/persona.yml in .github-private by convention. The manifest
 #   IS the index-of-record (§1.1). A 404 means "not a persona" — which is also
-#   how a real, non-persona team like @combsmith/org-leads falls through
+#   how a real, non-persona team like @petry-projects/org-leads falls through
 #   harmlessly.
 #
 # The manifest, not this file, decides:
@@ -52,7 +52,7 @@ on:
     inputs:
       tooling_ref:
         description: |
-          Ref of combsmith/.github to source scripts/lib/persona-mention.sh
+          Ref of petry-projects/.github to source scripts/lib/persona-mention.sh
           from. Leave empty (the default) to source it from THIS reusable's own
           commit (`github.job_workflow_sha`), which guarantees the routing logic
           always matches the version of this workflow the caller pinned, with no
@@ -64,7 +64,7 @@ on:
         type: string
       persona_ref:
         description: |
-          Ref of combsmith/.github-private to read persona manifests at.
+          Ref of petry-projects/.github-private to read persona manifests at.
           Defaults to main — a persona's live contract is what is merged, not
           what a branch proposes. Override only for end-to-end testing.
         required: false
@@ -113,7 +113,7 @@ jobs:
     # it in its own manifest (enforced below), never loosen it — so this gate is
     # always at least as strict as the union of what the personas allow.
     if: |
-      contains(github.event.comment.body, '@combsmith/') &&
+      contains(github.event.comment.body, '@petry-projects/') &&
       github.event.comment.user.login != 'donpetry-bot' &&
       github.event.comment.user.login != 'github-actions[bot]' &&
       !contains(github.event.comment.body, '<!-- persona:') &&
@@ -123,7 +123,7 @@ jobs:
       - name: Checkout persona-mention tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: combsmith/.github
+          repository: petry-projects/.github
           # Source the library from this reusable's own commit so the routing
           # logic always matches the pinned workflow version (#465/#528).
           ref: ${{ inputs.tooling_ref || github.job_workflow_sha }}
@@ -202,10 +202,10 @@ jobs:
           dispatched=0
           while IFS= read -r slug; do
             [ -n "$slug" ] || continue
-            echo "::group::@combsmith/${slug}"
+            echo "::group::@petry-projects/${slug}"
 
             url="$(pm_manifest_url "$slug")"
-            # Fetched UNAUTHENTICATED, on purpose. combsmith/.github-private is
+            # Fetched UNAUTHENTICATED, on purpose. petry-projects/.github-private is
             # PUBLIC despite its name (private: false), so no token is needed — and
             # adding one is actively harmful. Measured against this very URL:
             #
@@ -221,7 +221,7 @@ jobs:
             # premise that the repo is private; it is not.)
             #
             # A 404 is a real ANSWER ("not a persona" — a plain team like
-            # @combsmith/org-leads, or a typo). Anything else is a FAILURE to
+            # @petry-projects/org-leads, or a typo). Anything else is a FAILURE to
             # get an answer. `curl -f` collapses both into exit 22, which would
             # make a raw.githubusercontent 5xx silently disable every persona
             # fleet-wide with no error anywhere — indistinguishable from nobody
@@ -325,7 +325,7 @@ jobs:
             # A write-mode mention must be ARMED. §4 rule 2 makes gate_label
             # schema-required for write surfaces, but the schema only enforces
             # that it is DECLARED — declaring a lock is not locking the door.
-            # Without this, '@combsmith/dev-lead do X' is an ungated write
+            # Without this, '@petry-projects/dev-lead do X' is an ungated write
             # the moment the first write persona onboards (#755).
             if [ "$mode" = "write" ]; then
               gate="$(pm_mention_gate_label "$manifest")"
@@ -362,7 +362,7 @@ jobs:
             gh api \
               --method POST \
               --header "Accept: application/vnd.github+json" \
-              /repos/combsmith/.github-private/dispatches \
+              /repos/petry-projects/.github-private/dispatches \
               --field event_type=persona-mention \
               --field "client_payload[persona]=$slug" \
               --field "client_payload[mode]=$mode" \
@@ -387,7 +387,7 @@ jobs:
     # comment path's pre-filter — a PR event is no laxer:
     #   1. bot actor — a PR opened by an agent identity never routes
     #   2. marker    — a PR body carrying '<!-- persona:' never routes
-    # There is deliberately NO '@combsmith/' check: the PR path derives the
+    # There is deliberately NO '@petry-projects/' check: the PR path derives the
     # firing personas from their manifests, it does not read a handle from the body.
     #
     # Axis 1 excludes a bot on BOTH identities. pull_request.user.login is the
@@ -419,7 +419,7 @@ jobs:
       - name: Checkout persona-mention tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: combsmith/.github
+          repository: petry-projects/.github
           # Source the library from this reusable's own commit so the routing
           # logic always matches the pinned workflow version (#465/#528).
           ref: ${{ inputs.tooling_ref || github.job_workflow_sha }}
@@ -529,8 +529,8 @@ jobs:
           # ref would list the candidate directories from main while fetching their
           # manifests from the override ref — an end-to-end test with persona_ref
           # set to a branch would never see a persona that exists only on it.
-          if ! personas="$(gh_retry api "/repos/combsmith/.github-private/contents/personas?ref=${PERSONA_REF}" --jq '.[] | select(.type == "dir") | .name')"; then
-            echo "::error::could not list personas in combsmith/.github-private — refusing to route"
+          if ! personas="$(gh_retry api "/repos/petry-projects/.github-private/contents/personas?ref=${PERSONA_REF}" --jq '.[] | select(.type == "dir") | .name')"; then
+            echo "::error::could not list personas in petry-projects/.github-private — refusing to route"
             exit 1
           fi
 
@@ -538,7 +538,7 @@ jobs:
           failed=0
           while IFS= read -r slug; do
             [ -n "$slug" ] || continue
-            echo "::group::@combsmith/${slug}"
+            echo "::group::@petry-projects/${slug}"
 
             url="$(pm_manifest_url "$slug")"
             # UNAUTHENTICATED on purpose — the SAME public-repo reasoning as the
@@ -663,7 +663,7 @@ jobs:
                 gh api \
                   --method POST \
                   --header "Accept: application/vnd.github+json" \
-                  /repos/combsmith/.github-private/dispatches \
+                  /repos/petry-projects/.github-private/dispatches \
                   --field event_type=persona-mention \
                   --field "client_payload[persona]=$slug" \
                   --field "client_payload[mode]=$mode" \

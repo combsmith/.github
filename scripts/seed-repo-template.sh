@@ -19,7 +19,7 @@
 #   revert repo-template to a wrong-channel pin (repo-template#86 flipped the
 #   major-scoped `@<agent>/v<M>-stable` tags back to the BARE `@<agent>/stable` tier
 #   tags, undoing the standards-deploy convergence and seeding new repos onto the
-#   wrong channel — combsmith/.github#886). As a fail-loud guard, a stub whose
+#   wrong channel — petry-projects/.github#886). As a fail-loud guard, a stub whose
 #   first-party channel-ref pin is a bare `<agent>/<tier>` (missing the `v<M>-` major
 #   prefix the compliance audit requires) is REFUSED rather than emitted.
 #
@@ -28,7 +28,7 @@
 #                   standards/v1.0.0). Defaults to standards/v1-stable. The ref is used
 #                   for documentation/validation; the actual files are read from
 #                   STANDARDS_DIR (not resolved via git).
-#   STANDARDS_DIR   path to the combsmith/.github checkout that holds the
+#   STANDARDS_DIR   path to the petry-projects/.github checkout that holds the
 #                   canonical /.gitignore, scripts/lib/gitignore-baseline.sh, and
 #                   standards/workflows/. Defaults to the repo root above this script.
 set -euo pipefail
@@ -58,7 +58,7 @@ _assert_vform_pins() {
   # `uses:` line that lacks the marker: the guard cannot validate what it can't
   # see, and must fail closed rather than emit unvalidated. (Local `./` self-host
   # refs and third-party actions are not '<...>-reusable.yml@' and are exempt.)
-  unmarked="$(grep -E '^[[:space:]]*uses:[[:space:]]*combsmith/[^[:space:]]*-reusable\.yml@' "$file" 2>/dev/null \
+  unmarked="$(grep -E '^[[:space:]]*uses:[[:space:]]*petry-projects/[^[:space:]]*-reusable\.yml@' "$file" 2>/dev/null \
     | grep -vE 'S7637\) first-party channel ref' || true)"
   if [ -n "$unmarked" ]; then
     echo "::error::refusing to emit '${file#"${STANDARDS_DIR}"/}': first-party reusable uses: line(s) missing the '# NOSONAR(githubactions:S7637) first-party channel ref' marker — cannot validate the channel pin (fail-closed):" >&2

@@ -217,7 +217,7 @@ AGENT_TYPES=(dev-lead compliance-audit feature-ideation initiative-driver)
 }
 
 @test "org-leads break-glass actor is present in the exempt-actor list" {
-  run jq -e '.exempt_actors | index("@combsmith/org-leads") != null' "$CONFIG"
+  run jq -e '.exempt_actors | index("@petry-projects/org-leads") != null' "$CONFIG"
   [ "$status" -eq 0 ]
   [ "$output" = "true" ]
 }

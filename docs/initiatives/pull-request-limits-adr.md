@@ -2,8 +2,8 @@
 
 - **Status:** Proposed (pending human sign-off on §6 numbers and §7 mechanism)
 - **Date:** 2026-06-21
-- **Epic:** [#505](https://github.com/combsmith/.github/issues/505)
-- **Story:** [#506](https://github.com/combsmith/.github/issues/506) — Phase 1 (decision record only)
+- **Epic:** [#505](https://github.com/petry-projects/.github/issues/505)
+- **Story:** [#506](https://github.com/petry-projects/.github/issues/506) — Phase 1 (decision record only)
 - **Scope of this story:** documentation only. **No** repository setting, ruleset, or org
   policy is mutated here (AC #5).
 
@@ -89,7 +89,7 @@ on GitHub's side. Stories 2 and 3 must be planned on that basis.
 
 ## 5. Measured baseline (AC #3)
 
-Measured with `gh search prs --owner combsmith --state open --draft=false`
+Measured with `gh search prs --owner petry-projects --state open --draft=false`
 on 2026-06-21, then classified by head-branch prefix.
 
 **Org-wide (all repos), open + non-draft:**
@@ -104,7 +104,7 @@ on 2026-06-21, then classified by head-branch prefix.
 
 Machine-authored share: **44 / 47 (~94%)**.
 
-**This repo (`combsmith/.github`) only, open + non-draft:** 10 total —
+**This repo (`petry-projects/.github`) only, open + non-draft:** 10 total —
 7 agent-authored + 3 Dependabot.
 
 These are the volumes a limit would reduce. The dominant lever is **dev-lead**
@@ -139,7 +139,7 @@ the standing queue that the auto-rebase fan-out has to service.
 | Actor | Why exempt |
 |---|---|
 | `dependabot[bot]` | Already capped per-ecosystem; security PRs must never be starved. |
-| `OrganizationAdmin` / `@combsmith/org-leads` | Human break-glass and maintainer PRs. |
+| `OrganizationAdmin` / `@petry-projects/org-leads` | Human break-glass and maintainer PRs. |
 | `dependabot-automerge-petry` (App) | Operates on existing PRs (merge/approve), does not add to the queue. |
 | Security/hotfix-labeled PRs (e.g. `security`) | Urgent fixes must bypass any throttle. |
 
@@ -213,7 +213,7 @@ Concretely, Story 2's unambiguous touch points are:
    apply scripts today, any "enable it across the fleet" step (including keeping
    the Dependabot caps in sync) needs a real invocation path. Note the org likely
    applies fleet config from central automation (this standards repo's scripts run
-   by an admin, or `combsmith/.github-private` scheduled automation) rather
+   by an admin, or `petry-projects/.github-private` scheduled automation) rather
    than from per-repo workflows — Story 3 must confirm and wire that.
 
 ### 7.4 Reconciliation with the existing Dependabot cap (AC #4)

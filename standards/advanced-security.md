@@ -1,6 +1,6 @@
 # GitHub Advanced Security (GHAS) Standard
 
-How GitHub Advanced Security is **enabled org-wide** across `combsmith`,
+How GitHub Advanced Security is **enabled org-wide** across `petry-projects`,
 what it costs, and how to **verify it is actually enforcing** (not just toggled
 on in the UI).
 
@@ -14,7 +14,7 @@ secret-scan job, and incident response — live in
 
 ## Scope
 
-Applies to **every repository** in `combsmith`, current and future,
+Applies to **every repository** in `petry-projects`, current and future,
 regardless of visibility. The org is on the **GitHub Free plan** and all repos
 are currently **public**, so GHAS features are free here (see
 [Licensing & billing](#licensing--billing)).
@@ -35,24 +35,24 @@ hardcoding it:
 
 ```bash
 # Resolve the "GitHub recommended" configuration id
-gh api orgs/combsmith/code-security/configurations \
+gh api orgs/petry-projects/code-security/configurations \
   -q '.[] | select(.name=="GitHub recommended") | .id'
 ```
 
 Two actions make it the org standard:
 
 ```bash
-CONFIG_ID=$(gh api orgs/combsmith/code-security/configurations \
+CONFIG_ID=$(gh api orgs/petry-projects/code-security/configurations \
   -q '.[] | select(.name=="GitHub recommended") | .id')
 
 # 1. Attach the configuration to ALL existing repositories (async)
 gh api --method POST \
-  "orgs/combsmith/code-security/configurations/${CONFIG_ID}/attach" \
+  "orgs/petry-projects/code-security/configurations/${CONFIG_ID}/attach" \
   -f scope=all
 
 # 2. Make it the default for ALL new repositories
 gh api --method PUT \
-  "orgs/combsmith/code-security/configurations/${CONFIG_ID}/defaults" \
+  "orgs/petry-projects/code-security/configurations/${CONFIG_ID}/defaults" \
   -f default_for_new_repos=all
 ```
 
@@ -115,14 +115,14 @@ true end-to-end test of push-protection enforcement.
 All repos should report `enforced`:
 
 ```bash
-gh api orgs/combsmith/code-security/configurations/${CONFIG_ID}/repositories \
+gh api orgs/petry-projects/code-security/configurations/${CONFIG_ID}/repositories \
   --paginate -q '.[] | "\(.status)\t\(.repository.name)"'
 ```
 
 ### 2. Per-repo settings flags
 
 ```bash
-gh api repos/combsmith/<repo> \
+gh api repos/petry-projects/<repo> \
   -q '.security_and_analysis | "secret_scanning=\(.secret_scanning.status) push_protection=\(.secret_scanning_push_protection.status)"'
 ```
 
@@ -134,7 +134,7 @@ license-gated. A `200` proves the product is serving — something a gated or
 unpurchased product cannot do:
 
 ```bash
-gh api -i "repos/combsmith/<repo>/secret-scanning/alerts?per_page=1" | head -1
+gh api -i "repos/petry-projects/<repo>/secret-scanning/alerts?per_page=1" | head -1
 ```
 
 ### 4. Push-protection live-fire test (canary)
@@ -163,8 +163,8 @@ git checkout main && git branch -D test/pp-canary
 # If the push was NOT blocked (it landed), delete the remote branch and resolve
 # the resulting alert as test data:
 git push origin --delete test/pp-canary 2>/dev/null || true
-for n in $(gh api "repos/combsmith/<repo>/secret-scanning/alerts?state=open" -q '.[].number'); do
-  gh api --method PATCH "repos/combsmith/<repo>/secret-scanning/alerts/$n" \
+for n in $(gh api "repos/petry-projects/<repo>/secret-scanning/alerts?state=open" -q '.[].number'); do
+  gh api --method PATCH "repos/petry-projects/<repo>/secret-scanning/alerts/$n" \
     -f state=resolved -f resolution=used_in_tests
 done
 ```
@@ -216,7 +216,7 @@ The weekly audit MUST confirm, for every repo:
 4. Code scanning default setup state is `configured`:
 
    ```bash
-   gh api repos/combsmith/<repo>/code-scanning/default-setup -q '.state'
+   gh api repos/petry-projects/<repo>/code-scanning/default-setup -q '.state'
    ```
 
 A periodic **push-protection live-fire test** (verification step 4) SHOULD be

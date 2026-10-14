@@ -18,10 +18,10 @@ weekly compliance audit (`check_ruleset_bypass_actors()` and
 > adopted per repo via [`standards/workflows/apply-repo-settings.yml`](workflows/apply-repo-settings.yml))
 > now runs `apply-rulesets.sh` on a **weekly cron**, converging `pr-quality` /
 > `code-quality` to the codified `standards/rulesets/*.json` — this is what fixes the
-> recurring `require_last_push_approval` drift (combsmith/.github#984). It
+> recurring `require_last_push_approval` drift (petry-projects/.github#984). It
 > authenticates with the classic admin PAT `GH_PAT_DON_PETRY`. To remediate now
 > without waiting for the cron, dispatch it: `gh workflow run "Apply repo settings"
-> --repo combsmith/<repo>`. This runbook remains the path for **bypass-actor**
+> --repo petry-projects/<repo>`. This runbook remains the path for **bypass-actor**
 > and **legacy-ruleset** findings, which `apply-rulesets.sh` does not cover.
 
 See [`github-settings.md` § Repository Rulesets](github-settings.md#repository-rulesets)
@@ -42,7 +42,7 @@ for the policy this enforces:
 ```bash
 gh auth status            # token must have admin:org + repo
 export GH_TOKEN="$(gh auth token)"
-ORG=combsmith
+ORG=petry-projects
 ```
 
 ## 1. Snapshot every ruleset (rollback insurance) — ALWAYS do this first
@@ -147,7 +147,7 @@ jq '{name,target,enforcement,conditions,rules,bypass_actors}' "$SNAP/<repo>__<id
 Standards-sync / dev-lead remediation PRs hit a **structural reviewer deadlock**
 under `pr-quality` — the ruleset requires a code-owner approval **plus**
 `require_last_push_approval` **plus** not-own-PR, but CODEOWNERS is
-`* @combsmith/org-leads` = `{don-petry, donpetry-bot}`. On these PRs the
+`* @petry-projects/org-leads` = `{don-petry, donpetry-bot}`. On these PRs the
 author is one org-lead (cannot self-approve) and the last pusher is the other
 (its own approval is disqualified by last-push-approval), so **both** code-owners
 are disqualified and the only historical path was an org-admin `--admin` bypass.
@@ -171,14 +171,14 @@ resolves the deadlock **through** branch protection, never around it:
 ```bash
 # One PR (approver's token supplies the distinct identity):
 GH_TOKEN=<repo-scope> APPROVER_TOKEN=<approver-pat> \
-  bash scripts/automerge-standards-sync.sh --repo combsmith/<repo> --pr <n>
+  bash scripts/automerge-standards-sync.sh --repo petry-projects/<repo> --pr <n>
 
 # Sweep every open standards-sync PR in a repo (incl. the SKIP_REPOS meta-repos):
 GH_TOKEN=<repo-scope> APPROVER_TOKEN=<approver-pat> \
-  bash scripts/automerge-standards-sync.sh --repo combsmith/.github-private
+  bash scripts/automerge-standards-sync.sh --repo petry-projects/.github-private
 
 # Preview only — no approval, no auto-merge, no mutation:
-bash scripts/automerge-standards-sync.sh --repo combsmith/<repo> --pr <n> --dry-run
+bash scripts/automerge-standards-sync.sh --repo petry-projects/<repo> --pr <n> --dry-run
 ```
 
 Eligibility is gated to a **trusted source**: the PR must carry the

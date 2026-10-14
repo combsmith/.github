@@ -1,8 +1,8 @@
 # ADR: Ring-staged, health-gated canary rollout of agent releases
 
-**Status:** Accepted — records the *implemented* model (initiative [#495](https://github.com/combsmith/.github-private/issues/495),
+**Status:** Accepted — records the *implemented* model (initiative [#495](https://github.com/petry-projects/.github-private/issues/495),
 issues #499–#502, #868). Supersedes the aspirational "rings" sketch and the "Rollout status / next phase" caveat in
-`combsmith/.github` → `standards/ci-standards.md`.
+`petry-projects/.github` → `standards/ci-standards.md`.
 **Author:** dev-lead / Claude Code
 **Date:** 2026-07-01
 **Scope (confirmed):** The delivery path for the versioned agents (`dev-lead`, `pr-review`, and the cross-repo `feature-ideation`) — how a new
@@ -16,11 +16,11 @@ The machine-readable ring map is `standards/canary-rings.json`; the gate logic i
 
 ## 1. Context
 
-The release-strategy initiative ([#495](https://github.com/combsmith/.github-private/issues/495)) replaced a floating-`@main` deploy —
+The release-strategy initiative ([#495](https://github.com/petry-projects/.github-private/issues/495)) replaced a floating-`@main` deploy —
 where a merge was instantly live across the agents' own self-review duty *and* every consumer repo, with no canary and no rollback —
 with a **versioned-release model**: immutable `<agent>/vX.Y.Z` releases plus **moving channel tags** (`<agent>/next`, `/ring0`, `/ring1`, `/stable`) that callers pin to.
 See [`agentic-release-strategy.md`](./agentic-release-strategy.md) for the full analysis and
-[`docs/release/versioning.md`](https://github.com/combsmith/.github-private/blob/main/docs/release/versioning.md) for the tag mechanics.
+[`docs/release/versioning.md`](https://github.com/petry-projects/.github-private/blob/main/docs/release/versioning.md) for the tag mechanics.
 
 Once #499–#502 and #868 landed, the concentric rings, the soak gate, and the promotion/rollback workflow were **built and machine-backed** — no longer aspirational.
 This ADR records the decisions those artifacts encode so the public-repo standard can be promoted to match (and link here) instead of carrying a "not yet built" note.
@@ -32,9 +32,9 @@ This ADR records the decisions those artifacts encode so the public-repo standar
 
 | Channel | Order | Members (token) | Resolves to (for `dev-lead`, host = `.github-private`) |
 |---|---|---|---|
-| `next`  | 0 | `$host` — the repo that owns the reusable | `combsmith/.github-private` |
-| `ring0` | 1 | `$org_infra` — `org_infra_repos` **minus** the host | `combsmith/.github` |
-| `ring1` | 2 | explicit list | `combsmith/TalkTerm`, `combsmith/bmad-bgreat-suite` |
+| `next`  | 0 | `$host` — the repo that owns the reusable | `petry-projects/.github-private` |
+| `ring0` | 1 | `$org_infra` — `org_infra_repos` **minus** the host | `petry-projects/.github` |
+| `ring1` | 2 | explicit list | `petry-projects/TalkTerm`, `petry-projects/bmad-bgreat-suite` |
 | `stable`| 3 | `*` — every other consumer not named in an earlier ring | the rest of the fleet |
 
 Rationale for host-relative tokens: an agent's reusable can live in either org-infra repo (`dev-lead`/`pr-review` are hosted here; `feature-ideation`'s reusable is hosted in the public `.github`).
@@ -115,21 +115,21 @@ matching the ring map in [`standards/canary-rings.json`](../../standards/canary-
 ## 6. Consequences
 
 - Blast radius shrinks from "whole fleet, instantly" to "one ring at a time," and rollback is a single pointer flip.
-- The public `combsmith/.github` → `standards/ci-standards.md` can now describe the **implemented** model and drop its "Rollout status / next phase" caveat, linking here for the decision rationale.
+- The public `petry-projects/.github` → `standards/ci-standards.md` can now describe the **implemented** model and drop its "Rollout status / next phase" caveat, linking here for the decision rationale.
   **That edit lands in the public repo** and is out of scope for a `.github-private` dev-lead run — this ADR is its in-repo counterpart and prerequisite.
-  **A separate pull request against `combsmith/.github` is still required to complete that public-repo update; issue #869 should be closed by that PR, not by this one.**
+  **A separate pull request against `petry-projects/.github` is still required to complete that public-repo update; issue #869 should be closed by that PR, not by this one.**
 - The ring map, gate thresholds, and cadence are data/code ([`standards/canary-rings.json`](../../standards/canary-rings.json),
   [`scripts/lib/canary-rollout.sh`](../../scripts/lib/canary-rollout.sh), [`.github/workflows/canary-rollout.yml`](../../.github/workflows/canary-rollout.yml))
   — changing them is a reviewed diff, not a doc edit.
 
 ## 7. References
 
-- Initiative [#495](https://github.com/combsmith/.github-private/issues/495) — safe release strategy for agentic workflows.
+- Initiative [#495](https://github.com/petry-projects/.github-private/issues/495) — safe release strategy for agentic workflows.
 - [`docs/initiatives/agentic-release-strategy.md`](./agentic-release-strategy.md) — the initiative analysis (rings, channels, health-gated promotion); §5.1 mutable-ref exception.
 - [`docs/initiatives/agentic-release-strategy-orchestration.md`](./agentic-release-strategy-orchestration.md) — how the child issues (#496–#503) were delivered; the dependency DAG.
-- [`docs/release/versioning.md`](https://github.com/combsmith/.github-private/blob/main/docs/release/versioning.md) —
+- [`docs/release/versioning.md`](https://github.com/petry-projects/.github-private/blob/main/docs/release/versioning.md) —
   immutable-release vs. moving-channel-tag mechanics; cross-repo reusables (canonical copy in `.github-private`).
 - [`standards/canary-rings.json`](../../standards/canary-rings.json) — machine-readable ring map (source of truth).
 - [`scripts/lib/canary-rollout.sh`](../../scripts/lib/canary-rollout.sh) / [`scripts/canary-rollout.sh`](../../scripts/canary-rollout.sh) /
   [`.github/workflows/canary-rollout.yml`](../../.github/workflows/canary-rollout.yml) — gate core, orchestrator, and scheduler.
-- Decisions context: [combsmith/.github#516](https://github.com/combsmith/.github/issues/516).
+- Decisions context: [petry-projects/.github#516](https://github.com/petry-projects/.github/issues/516).

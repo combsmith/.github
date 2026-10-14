@@ -1,7 +1,7 @@
-# Contributing to combsmith/.github
+# Contributing to petry-projects/.github
 
 This repository holds org-wide CI templates, workflow standards, and engineering
-guidelines for the `combsmith` organization.
+guidelines for the `petry-projects` organization.
 
 ## Getting started
 
@@ -16,13 +16,13 @@ guidelines for the `combsmith` organization.
 
 ## Contributor Licensing & Intellectual Property
 
-By submitting a pull request or contributing to any repository in the `combsmith`
+By submitting a pull request or contributing to any repository in the `petry-projects`
 organization, you agree that:
 
 1. **Open Source Grant:** Your contributions are licensed to the community under the repository's
    declared open-source license (e.g., MIT, Apache 2.0, or AGPLv3).
 2. **Commercial & Dual-Licensing Right:** To support sustainable maintenance and commercial
-   services through [CombSmith LLC](https://combsmith.com), you grant `combsmith` and
+   services through [CombSmith LLC](https://combsmith.com), you grant `petry-projects` and
    CombSmith LLC a perpetual, worldwide, non-exclusive, royalty-free license to use, modify,
    re-license (including under commercial/proprietary terms), and distribute your contributions as
    part of the project.
@@ -34,7 +34,7 @@ organization, you agree that:
 ## GitHub Projects — Initiatives board
 
 The org maintains a single **Initiatives project** at
-<https://github.com/orgs/combsmith/projects/1> that tracks cross-repo
+<https://github.com/orgs/petry-projects/projects/1> that tracks cross-repo
 work across the following initiative buckets: Compliance Blitz, Security,
 Self-healing, Auto-rebase, Model Selection, Tooling, and Compliance program.
 
@@ -74,8 +74,8 @@ can tune them without forking the logic.
 > untrusted author** is still **skipped** even when a maintainer applies the
 > `dev-lead` label, because the `if:` gate can't safely evaluate the *labeler*.
 > Workaround: manually add such PRs from the
-> [Projects UI](https://github.com/orgs/combsmith/projects/1). Tracked as
-> [#415](https://github.com/combsmith/.github/issues/415) §4.
+> [Projects UI](https://github.com/orgs/petry-projects/projects/1). Tracked as
+> [#415](https://github.com/petry-projects/.github/issues/415) §4.
 
 ### Noise gate — excluded labels
 
@@ -94,7 +94,7 @@ The workflow authenticates using the **`petry-projects-planner` GitHub App**
 (App ID 3985527) via
 [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
 Two org-level secrets must be set — this is a one-time manual setup;
-see issue [#387](https://github.com/combsmith/.github/issues/387) for details:
+see issue [#387](https://github.com/petry-projects/.github/issues/387) for details:
 
 | Secret | Value |
 |---|---|

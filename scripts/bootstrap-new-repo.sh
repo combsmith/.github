@@ -9,7 +9,7 @@ set -euo pipefail
 #   • the two sanctioned fleet rulesets — pr-quality + code-quality, each carrying
 #     the mandatory bypass actors dependabot-automerge-petry (Integration app) +
 #     OrganizationAdmin, both bypass_mode "always" — come from
-#     scripts/apply-rulesets.sh, which sources them from combsmith/.github
+#     scripts/apply-rulesets.sh, which sources them from petry-projects/.github
 #     (standards/rulesets/*.json, relocated there under #575). Required status
 #     checks are carried in those ruleset JSONs, not wired here. The repo-local
 #     `release-channel-tags` ruleset is NOT applied to bootstrapped repos — it
@@ -25,7 +25,7 @@ set -euo pipefail
 # deliberate, auditable choice (default stable). The confirmation is always
 # recorded (operator + value + timestamp). A non-stable ring is registered in
 # BOTH central files — standards/canary-rings.json here AND scripts/lib/ring-pins.sh
-# in combsmith/.github (cross-repo, via the aw-standards-sync.sh PR pattern,
+# in petry-projects/.github (cross-repo, via the aw-standards-sync.sh PR pattern,
 # kept in sync) — and the shipped caller stub is repinned to the matching channel
 # tag @<agent>/<ring>, so audit/fleet drift never sees the repo in two rings.
 #
@@ -40,10 +40,10 @@ set -euo pipefail
 #                    apply-rulesets.sh's DRY_RUN from this single flag.
 #   GH_TOKEN         classic PAT with repo + admin scope (apply-repo-settings.sh
 #                    rejects OAuth app tokens for the check-suites API).
-#   CODEOWNERS_TEAM  expected first CODEOWNERS owner (default @combsmith/org-leads).
-#   ORG              passed through to apply-repo-settings.sh (default combsmith).
+#   CODEOWNERS_TEAM  expected first CODEOWNERS owner (default @petry-projects/org-leads).
+#   ORG              passed through to apply-repo-settings.sh (default petry-projects).
 #   CANARY_RINGS     ring SoT path (default standards/canary-rings.json next to this repo).
-#   STANDARDS_REPO   repo holding the cross-repo ring-pins.sh (default combsmith/.github).
+#   STANDARDS_REPO   repo holding the cross-repo ring-pins.sh (default petry-projects/.github).
 #   RING_PINS_PATH   ring-pins.sh path within STANDARDS_REPO (default scripts/lib/ring-pins.sh).
 #
 # Args:
@@ -63,11 +63,11 @@ DRY_RUN="${DRY_RUN:-false}"
 # Canonical source of the marker-wrapped L1 block: this repo's own /.gitignore
 # (maintained under STORY1, #797). Overridable as a test seam.
 GITIGNORE_CANONICAL="${GITIGNORE_CANONICAL:-${SCRIPT_DIR}/../.gitignore}"
-CODEOWNERS_TEAM="${CODEOWNERS_TEAM:-@combsmith/org-leads}"
+CODEOWNERS_TEAM="${CODEOWNERS_TEAM:-@petry-projects/org-leads}"
 APPLY_REPO_SETTINGS="${APPLY_REPO_SETTINGS:-${SCRIPT_DIR}/apply-repo-settings.sh}"
 APPLY_RULESETS="${APPLY_RULESETS:-${SCRIPT_DIR}/apply-rulesets.sh}"
 CANARY_RINGS="${CANARY_RINGS:-${SCRIPT_DIR}/../standards/canary-rings.json}"
-STANDARDS_REPO="${STANDARDS_REPO:-combsmith/.github}"
+STANDARDS_REPO="${STANDARDS_REPO:-petry-projects/.github}"
 RING_PINS_PATH="${RING_PINS_PATH:-scripts/lib/ring-pins.sh}"
 RING="${RING:-stable}"
 RING_AGENT="${RING_AGENT:-dev-lead}"
@@ -323,13 +323,13 @@ step_repo_settings() {
   local repo="${1:-}" settings_dry=false
   _is_dry && settings_dry=true
   echo "[bootstrap] (2/6) repo settings + security/GHAS + push protection"
-  # Canonical apply-repo-settings.sh (combsmith/.github) reads DRY_RUN; bridge
+  # Canonical apply-repo-settings.sh (petry-projects/.github) reads DRY_RUN; bridge
   # onto it. DEV_LEAD_DRY_RUN is kept for backward-compat with any older copy.
   DRY_RUN="$settings_dry" DEV_LEAD_DRY_RUN="$settings_dry" bash "$APPLY_REPO_SETTINGS" "$repo"
 }
 
 # step_rulesets <repo> — apply the sanctioned fleet rulesets (pr-quality +
-# code-quality), which apply-rulesets.sh sources from combsmith/.github. With
+# code-quality), which apply-rulesets.sh sources from petry-projects/.github. With
 # no explicit RULESETS_DIR the applier is in fleet mode, so exactly those two are
 # applied; release-channel-tags is applied by name only (org tag standard) and not
 # part of the bootstrap fleet set.

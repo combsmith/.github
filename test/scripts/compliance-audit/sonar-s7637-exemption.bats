@@ -3,7 +3,7 @@
 # the pure classifier behind check_sonar_s7637_exemption.
 #
 # Context (#498): SonarCloud's githubactions:S7637 ("pin actions to a full-length
-# commit SHA") fires on first-party combsmith/.github(-private) reusable-ref
+# commit SHA") fires on first-party petry-projects/.github(-private) reusable-ref
 # caller stubs that the org standard intentionally pins by moving channel/tag, not
 # SHA. The org reconciles this with a NARROW sonar.issue.ignore that suppresses
 # S7637 only on the thin caller-stub workflow files — never a blanket
@@ -122,25 +122,25 @@ classify_inline() {
 }
 
 @test "inline: channel-pinned first-party ref with the marker is present" {
-  classify_inline "$(printf 'jobs:\n  dev-lead:\n    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR(githubactions:S7637) first-party channel ref\n')"
+  classify_inline "$(printf 'jobs:\n  dev-lead:\n    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR(githubactions:S7637) first-party channel ref\n')"
   [ "$status" -eq 0 ]
   [ "$output" = "present" ]
 }
 
 @test "inline: channel-pinned first-party ref without the marker is missing" {
-  classify_inline "$(printf 'jobs:\n  dev-lead:\n    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable\n')"
+  classify_inline "$(printf 'jobs:\n  dev-lead:\n    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable\n')"
   [ "$status" -eq 0 ]
   [ "$output" = "missing" ]
 }
 
 @test "inline: a @v2 moving-major channel ref needs the marker too" {
-  classify_inline "$(printf 'jobs:\n  pr-auto-review:\n    uses: combsmith/.github/.github/workflows/pr-auto-review-reusable.yml@v2\n')"
+  classify_inline "$(printf 'jobs:\n  pr-auto-review:\n    uses: petry-projects/.github/.github/workflows/pr-auto-review-reusable.yml@v2\n')"
   [ "$status" -eq 0 ]
   [ "$output" = "missing" ]
 }
 
 @test "inline: a SHA-pinned first-party ref needs no marker (n/a)" {
-  classify_inline "$(printf 'jobs:\n  feature-ideation:\n    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@e20a8fac1b6a10bd6ad0999258e88a423f890ba6 # v1\n')"
+  classify_inline "$(printf 'jobs:\n  feature-ideation:\n    uses: petry-projects/.github/.github/workflows/feature-ideation-reusable.yml@e20a8fac1b6a10bd6ad0999258e88a423f890ba6 # v1\n')"
   [ "$status" -eq 0 ]
   [ "$output" = "n/a" ]
 }
@@ -155,9 +155,9 @@ classify_inline() {
   body=$(cat <<'WF'
 jobs:
   a:
-    uses: combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: petry-projects/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/stable  # NOSONAR(githubactions:S7637) first-party channel ref
   b:
-    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@e20a8fac1b6a10bd6ad0999258e88a423f890ba6 # v1
+    uses: petry-projects/.github/.github/workflows/feature-ideation-reusable.yml@e20a8fac1b6a10bd6ad0999258e88a423f890ba6 # v1
 WF
 )
   classify_inline "$body"

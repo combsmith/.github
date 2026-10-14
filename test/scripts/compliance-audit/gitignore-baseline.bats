@@ -5,7 +5,7 @@
 # Issue #799 (ENFORCE): the old pp_check_gitignore_secrets_block only verified
 # 3 substrings (.env, *.pem, *.key) at `warning` severity, so a repo missing
 # hundreds of baseline lines still passed. The upgraded check locates the
-# `BEGIN … END combsmith secrets baseline` marker span and compares it —
+# `BEGIN … END petry-projects secrets baseline` marker span and compares it —
 # by content hash — against the org canonical block, firing at `error`
 # severity on a missing file, a missing block, or block drift. Everything
 # BELOW the END marker (L2 ecosystem/OS entries) is never inspected.
@@ -15,8 +15,8 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 
 # The canonical marker text the check keys off of — must match the constants
 # in scripts/lib/push-protection.sh byte-for-byte (note the em dash).
-BEGIN_MARKER='# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>'
-END_MARKER='# <<< END combsmith secrets baseline <<<'
+BEGIN_MARKER='# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>'
+END_MARKER='# <<< END petry-projects secrets baseline <<<'
 
 # A small synthetic canonical L1 block. The real block is ~390 lines; the
 # check is block-agnostic, so a compact stand-in keeps the fixtures readable.
@@ -53,7 +53,7 @@ teardown() { rm -rf "$TEST_TMP"; }
 _run_check() {
   printf '#!/usr/bin/env bash\n%s\n' "$1" > "$MOCK_BIN/gh"
   chmod +x "$MOCK_BIN/gh"
-  PATH="$MOCK_BIN:$PATH" REPORT_DIR="$TEST_TMP" ORG="combsmith" \
+  PATH="$MOCK_BIN:$PATH" REPORT_DIR="$TEST_TMP" ORG="petry-projects" \
     PP_CANONICAL_GITIGNORE="$CANON" bash -c '
       set -uo pipefail
       echo "[]" > "$REPORT_DIR/findings.json"

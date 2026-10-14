@@ -55,7 +55,7 @@ case "$1 $2" in
 esac
 case "$1 $2" in
   "issue list")   printf '%s' "${MOCK_EXISTING:-}" ;;
-  "issue create") echo "https://github.com/combsmith/demo/issues/4242" ;;
+  "issue create") echo "https://github.com/petry-projects/demo/issues/4242" ;;
   "issue close")  echo "$3" >> "$MOCK_CLOSED_FILE" ;;
   "api")
     case "$*" in

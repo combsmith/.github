@@ -83,7 +83,7 @@ stub_pinning() {  # <ref> → base64 of a minimal auto-rebase stub pinning the r
   # marker-drift check (#877).
   local body="jobs:
   auto-rebase:
-    uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@$1
+    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@$1
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
@@ -91,7 +91,7 @@ stub_pinning() {  # <ref> → base64 of a minimal auto-rebase stub pinning the r
 stub_pinning_no_marker() {  # <ref> → base64 of the SAME stub but marker-less (#857 shape)
   local body="jobs:
   auto-rebase:
-    uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@$1
+    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@$1
     secrets: inherit"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
@@ -99,7 +99,7 @@ stub_pinning_no_marker() {  # <ref> → base64 of the SAME stub but marker-less 
 devlead_stub_pinning() {  # <ref> → base64 of a .github dev-lead CONSUMER stub pinned at <ref>
   local body="jobs:
   dev-lead:
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@$1
+    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@$1
     with:
       agent_ref: $1
     secrets: inherit"
@@ -109,7 +109,7 @@ devlead_stub_pinning() {  # <ref> → base64 of a .github dev-lead CONSUMER stub
 devlead_stub_pinning_with_marker() {  # <ref> → base64 of the same stub but WITH the S7635 marker (#878 post-fix shape)
   local body="jobs:
   dev-lead:
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@$1
+    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@$1
     with:
       agent_ref: $1
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable"

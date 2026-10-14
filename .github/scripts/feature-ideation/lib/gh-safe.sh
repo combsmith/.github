@@ -95,7 +95,7 @@ gh_safe_graphql() {
     if [ "${args[$i]}" = "--jq" ]; then
       # Guard bounds before dereferencing args[i+1]: under set -u an out-of-
       # bounds access aborts the shell. Caught by CodeRabbit review on PR
-      # combsmith/.github#85.
+      # petry-projects/.github#85.
       if [ $((i + 1)) -ge "${#args[@]}" ]; then
         _gh_safe_err "graphql-bad-args" "--jq requires a jq filter argument"
         return 64
@@ -158,7 +158,7 @@ gh_safe_graphql() {
     # NB: do NOT swallow jq errors with `|| true`. A typo or wrong path in
     # the filter must surface as a hard failure, not a silent empty result —
     # otherwise we re-introduce R1 in a different shape. Caught by Copilot
-    # review on PR combsmith/.github#85.
+    # review on PR petry-projects/.github#85.
     local filtered jq_rc jq_err
     jq_err=$(mktemp)
     set +e
@@ -194,7 +194,7 @@ gh_safe_graphql() {
 gh_safe_graphql_input() {
   # Guard arg count before reading $1: under set -u a zero-arg call aborts the
   # shell instead of reaching the JSON validation. Caught by CodeRabbit review
-  # on PR combsmith/.github#85.
+  # on PR petry-projects/.github#85.
   if [ "$#" -ne 1 ]; then
     _gh_safe_err "graphql-bad-input" "expected 1 arg: JSON request body, got $#"
     return 64

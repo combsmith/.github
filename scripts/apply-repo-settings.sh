@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# apply-repo-settings.sh — Apply standard repository settings to combsmith repos
+# apply-repo-settings.sh — Apply standard repository settings to petry-projects repos
 #
 # Companion script to compliance-audit.sh. Applies the settings defined in:
 #   standards/github-settings.md#repository-settings--standard-defaults
@@ -28,7 +28,7 @@ if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
   exit 1
 fi
 
-ORG="combsmith"
+ORG="petry-projects"
 DRY_RUN="${DRY_RUN:-false}"
 
 # The standard label set — the fixed set (STANDARD_LABEL_SPECS), the persona
@@ -83,7 +83,7 @@ _PERSONA_OPT_OUT_CONFIGS_CACHED=false
 # manifest listing failed, or a manifest could not be read and its label had to be
 # guessed from the convention. The run then MUST NOT report success.
 #
-# Why this exists (combsmith/.github#755): the opt-out family is the escape
+# Why this exists (petry-projects/.github#755): the opt-out family is the escape
 # hatch §4 rule 4 mandates. Printing "All repos processed successfully" while it is
 # silently absent means nobody learns until someone tells a persona to leave an
 # issue alone and it ignores them. Reading an error as a negative answer is the
@@ -376,10 +376,10 @@ apply_check_suite_prefs() {
     # this preference — skip it (loudly) rather than failing the whole settings
     # run, which was reporting apply-repo-settings as 100%-failed fleet-wide while
     # every other setting applied fine. The token-config fix is tracked in
-    # combsmith/.github-private#1209; until then this preference is not applied.
+    # petry-projects/.github-private#1209; until then this preference is not applied.
     local re_403='"status":[[:space:]]*"?403'
     if [[ "${api_err,,}" =~ $re_403 || "${api_err,,}" =~ "http 403" || "${api_err,,}" =~ "authenticate with a personal access token" ]]; then
-      warn "  Skipping check-suite prefs for $repo — token lacks repo-admin for the check-suites API (403). Tracking: combsmith/.github-private#1209"
+      warn "  Skipping check-suite prefs for $repo — token lacks repo-admin for the check-suites API (403). Tracking: petry-projects/.github-private#1209"
       return 0
     fi
     err "  PATCH failed for $repo. API response: $api_err"

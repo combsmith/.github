@@ -1,7 +1,7 @@
 # Persona manifest — the single index-of-record for one agentic persona.
 # Copy this directory to `.github-private/personas/<id>/` and fill it in.
-# Validate: it must conform to combsmith/.github standards/personas/persona.schema.json
-# Standard: combsmith/.github standards/persona-standards.md
+# Validate: it must conform to petry-projects/.github standards/personas/persona.schema.json
+# Standard: petry-projects/.github standards/persona-standards.md
 #
 # Golden rules while editing:
 #   • The manifest POINTS AT things; it does not duplicate them.
@@ -32,7 +32,7 @@ summary: >-
 status: draft
 
 # Owning team, org/team form (matches CODEOWNERS). Team ownership only.
-owner: combsmith/CHANGE-ME
+owner: petry-projects/CHANGE-ME
 
 # --- How the persona is actually implemented ------------------------------
 definition:
@@ -73,14 +73,14 @@ definition:
 # real accounts owned by strangers. Keying a workflow on a bare '@<role>' fires
 # correctly, looks healthy, and notifies an unrelated person on every mention.
 # An org team slug cannot collide — and it autocompletes when you type
-# '@combsmith/' in any comment box.
+# '@petry-projects/' in any comment box.
 #
 # The team slug MUST equal `id`. Create the team as privacy: closed (secret
 # teams cannot be mentioned) with notification_setting: notifications_disabled
 # (the handle routes a webhook; it should not page humans). CI verifies those
 # live properties — the schema cannot.
 address:
-  handle: combsmith/change-me   # slug MUST equal `id` above
+  handle: petry-projects/change-me   # slug MUST equal `id` above
 
 # --- Capabilities the persona can invoke (advisory index) -----------------
 skills: []
@@ -114,7 +114,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "e.g. @combsmith/<id> weigh in — requires the address block above"
+      notes: "e.g. @petry-projects/<id> weigh in — requires the address block above"
 
     # discussion surfaces cannot run the agent inline — declare the bridge:
     # - surface: discussion
@@ -140,7 +140,7 @@ trust:
 # --- CI wiring (omit entirely for advisory personas that run inside an
 #     existing workflow and ship no reusable of their own) ------------------
 # runtime:
-#   host: combsmith/.github-private
+#   host: petry-projects/.github-private
 #   reusable: .github/workflows/CHANGE-ME-reusable.yml
 #   caller_stub: .github/workflows/CHANGE-ME.yml
 #   run_workflow: CHANGE-ME                 # MUST match canary-rings.json run_workflow
@@ -159,7 +159,7 @@ evals:
 # --- Canary pointer (single source of truth is canary-rings.json) ---------
 # Do NOT restate rings/members/gate here — reference the registry entry by id.
 canary:
-  registry: combsmith/.github/standards/canary-rings.json
+  registry: petry-projects/.github/standards/canary-rings.json
   agent: change-me              # MUST equal `id`
 
 references: []

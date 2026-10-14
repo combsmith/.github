@@ -1,6 +1,6 @@
 # Tests for the standard repo-settings applier (scripts/apply-repo-settings.sh).
 # Gates: shellcheck (applier) + bats (the persona <id>:hands-off opt-out family,
-# derived from the persona manifests — combsmith/.github#756).
+# derived from the persona manifests — petry-projects/.github#756).
 name: Apply Repo Settings Tests
 
 on:

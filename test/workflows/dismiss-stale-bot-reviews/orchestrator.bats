@@ -49,7 +49,7 @@ STUB
 teardown() { rm -rf "${TT_TMP:-/nonexistent}"; }
 
 @test "dismisses ONLY the stale allow-listed bot review; leaves head/human/approved" {
-  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094 --apply
   [ "$status" -eq 0 ]
   # Assert the script's summary output before the log-inspecting `run grep` calls
   # below overwrite bats's $output.
@@ -69,7 +69,7 @@ teardown() { rm -rf "${TT_TMP:-/nonexistent}"; }
 }
 
 @test "dry-run examines but dismisses nothing (no mutation)" {
-  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --dry-run
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094 --dry-run
   [ "$status" -eq 0 ]
   # Assert the dry-run output before the `run grep` below overwrites $output.
   echo "$output" | grep -q '\[dry-run\] would dismiss review PRR_stale'
@@ -107,7 +107,7 @@ cat "\$DSBR_RESPONSE"
 STUB
   chmod +x "${TT_TMP}/bin/gh"
 
-  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
   [ "$status" -eq 0 ]
   # The read query pins the opinionated connection and never the plain one.
   grep -q 'latestOpinionatedReviews' "$qlog"
@@ -161,7 +161,7 @@ cat "$DSBR_PAGE1"
 STUB
   chmod +x "${TT_TMP}/bin/gh"
 
-  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094 --apply
   [ "$status" -eq 0 ]
   # Assert the paginated summary before the `run grep` below overwrites $output.
   echo "$output" | grep -q 'examined 2 effective review(s), dismissed 1 stale bot review'
@@ -193,7 +193,7 @@ printf '%s' '{"data":{"repository":{"pullRequest":{"headRefOid":"deadbeef"}}}}'
 STUB
   chmod +x "${TT_TMP}/bin/gh"
 
-  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'PR head moved from 8e5bc8db to deadbeef'
   # nothing was dismissed
@@ -216,7 +216,7 @@ cat "$DSBR_RESPONSE"
 STUB
   chmod +x "${TT_TMP}/bin/gh"
 
-  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github --pr 1094 --apply
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'returned a GraphQL errors envelope'
   # the phantom dismissal is not counted
@@ -224,7 +224,7 @@ STUB
 }
 
 @test "requires --owner, --name and --pr" {
-  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github
+  run env GH_TOKEN=x bash "$ORCH" --owner petry-projects --name .github
   [ "$status" -ne 0 ]
   echo "$output" | grep -q 'required'
 }

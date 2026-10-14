@@ -31,5 +31,5 @@ jobs:
         env:
           # Needs cross-repo read on consumers + tag read on the host repos.
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
-          ORG: combsmith
+          ORG: petry-projects
         run: bash scripts/pinned-version-report.sh

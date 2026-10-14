@@ -2,8 +2,8 @@
 
 - **Status:** Proposed (pending human sign-off on §6 numbers, §7 token-breaker threshold, and the §9 cost cap)
 - **Date:** 2026-08-21
-- **Epic:** [#636](https://github.com/combsmith/.github/issues/636)
-- **Story:** [#637](https://github.com/combsmith/.github/issues/637) — Phase 1 (decision record only)
+- **Epic:** [#636](https://github.com/petry-projects/.github/issues/636)
+- **Story:** [#637](https://github.com/petry-projects/.github/issues/637) — Phase 1 (decision record only)
 - **Scope of this story:** documentation only. **No** workflow, config file, repo
   setting, or org policy is mutated here (AC #1).
 
@@ -27,9 +27,9 @@ throughput controls, **not** as bugs to fix in this story:
 
 | Incident | Symptom | Root cause class |
 |---|---|---|
-| [#402](https://github.com/combsmith/.github/issues/402) | A concurrency-group `cancel-in-progress` cancelled in-flight dev-lead issue pickups → **111 stuck issues**. | A single-lane serializer used as if it were a queue; cancellation instead of back-pressure. |
-| [#443](https://github.com/combsmith/.github/issues/443) | Dispatch race between event and schedule fan-out. | No cooldown / de-dupe between overlapping triggers. |
-| [#571](https://github.com/combsmith/.github/issues/571) | feature-ideation zero-job dispatch (reusable `with:` referencing `inputs` on an event where the job is gated off). | No admission/gating discipline around dispatch. |
+| [#402](https://github.com/petry-projects/.github/issues/402) | A concurrency-group `cancel-in-progress` cancelled in-flight dev-lead issue pickups → **111 stuck issues**. | A single-lane serializer used as if it were a queue; cancellation instead of back-pressure. |
+| [#443](https://github.com/petry-projects/.github/issues/443) | Dispatch race between event and schedule fan-out. | No cooldown / de-dupe between overlapping triggers. |
+| [#571](https://github.com/petry-projects/.github/issues/571) | feature-ideation zero-job dispatch (reusable `with:` referencing `inputs` on an event where the job is gated off). | No admission/gating discipline around dispatch. |
 
 The external framing is **OWASP ASI08 — Denial of Service & Resource
 Exhaustion** (OWASP Top 10 for Agentic Applications, 2026): an agent fleet with
@@ -93,8 +93,8 @@ for action pinning must be looked up via the GitHub API — never guessed"*,
 4. **The breaker's telemetry is therefore *queried*, with a *derived* fallback.**
    The §4.1 endpoint is the **source of record**. Because it is undocumented,
    every read goes through a small adapter, and a **derived ledger** in the private
-   engine (`combsmith/.github-private` `scripts/engine.sh`, subscription-cap
-   handling, [#206](https://github.com/combsmith/.github/issues/206)) is
+   engine (`petry-projects/.github-private` `scripts/engine.sh`, subscription-cap
+   handling, [#206](https://github.com/petry-projects/.github/issues/206)) is
    retained as the documented **degraded path** for when the endpoint is
    unavailable or changes shape. An estimate is strictly worse than an
    authoritative server-side percentage, so it is the fallback, never the primary.
@@ -408,7 +408,7 @@ point of a decision record before the config/gate stories.
   reusable/engine and is promoted centrally via the canary channel
   ([agent-canary-rings-adr](agent-canary-rings-adr.md)).
 
-### 8.2 Requires a **private** companion change (`combsmith/.github-private`)
+### 8.2 Requires a **private** companion change (`petry-projects/.github-private`)
 
 - The **token-budget breaker's telemetry** (§4.1/§7): the usage endpoint
   authenticates with `CLAUDE_CODE_OAUTH_TOKEN`, which lives private, so the
@@ -539,12 +539,12 @@ Pinned here so Phases 2–5 inherit them (proposals pending sign-off):
   supported equivalent:
   [anthropics/claude-code#44328](https://github.com/anthropics/claude-code/issues/44328),
   [#32796](https://github.com/anthropics/claude-code/issues/32796).
-- Follow-on stories reading §4.1: [#641](https://github.com/combsmith/.github/issues/641)
-  (Phase 5, 5-hour breaker) and [#994](https://github.com/combsmith/.github/issues/994)
+- Follow-on stories reading §4.1: [#641](https://github.com/petry-projects/.github/issues/641)
+  (Phase 5, 5-hour breaker) and [#994](https://github.com/petry-projects/.github/issues/994)
   (Phase 6, 7-day glide-path breaker).
-- Cross-repo: `combsmith/.github-private#1525` — `AGENTS_PAUSED` as a
+- Cross-repo: `petry-projects/.github-private#1525` — `AGENTS_PAUSED` as a
   first-class state (the switch §7 automates); `.github-private#1565` — the
   adapter/poller companion.
-- Cross-repo: `combsmith/.github-private` `scripts/engine.sh` — 5-hour subscription-cap handling ([#206](https://github.com/combsmith/.github/issues/206)).
-- Baseline incidents: [#402](https://github.com/combsmith/.github/issues/402), [#443](https://github.com/combsmith/.github/issues/443), [#571](https://github.com/combsmith/.github/issues/571).
+- Cross-repo: `petry-projects/.github-private` `scripts/engine.sh` — 5-hour subscription-cap handling ([#206](https://github.com/petry-projects/.github/issues/206)).
+- Baseline incidents: [#402](https://github.com/petry-projects/.github/issues/402), [#443](https://github.com/petry-projects/.github/issues/443), [#571](https://github.com/petry-projects/.github/issues/571).
 - External framing: OWASP Top 10 for Agentic Applications (2026), **ASI08 — Denial of Service & Resource Exhaustion**.

@@ -102,7 +102,7 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
-# Regression test for Copilot review on PR combsmith/.github#85:
+# Regression test for Copilot review on PR petry-projects/.github#85:
 # add_label_to_discussion previously sent labelIds via -f as the literal
 # string `["L_1"]` which the GraphQL API rejects (labelIds is [ID!]!).
 # The fix routes through gh_safe_graphql_input with a properly built JSON

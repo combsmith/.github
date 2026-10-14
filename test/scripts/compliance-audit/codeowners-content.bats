@@ -32,19 +32,19 @@ NOT_FOUND='{"message":"Not Found","documentation_url":"https://docs.github.com/r
 # ---------------------------------------------------------------------------
 
 @test "valid base64 content decodes to the CODEOWNERS body" {
-  content=$(printf '* @combsmith/org-leads\n' | base64)
+  content=$(printf '* @petry-projects/org-leads\n' | base64)
   run _decode "$content"
   [ "$status" -eq 0 ]
-  [ "$output" = "* @combsmith/org-leads" ]
+  [ "$output" = "* @petry-projects/org-leads" ]
 }
 
 @test "multi-line base64 (as the contents API wraps it) still decodes" {
-  body=$'* @combsmith/org-leads\n/security/ @combsmith/org-leads @combsmith/security-leads\n'
+  body=$'* @petry-projects/org-leads\n/security/ @petry-projects/org-leads @petry-projects/security-leads\n'
   content=$(printf '%s' "$body" | base64) # GNU base64 wraps at 76 cols
   run _decode "$content"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"@combsmith/org-leads"* ]]
-  [[ "$output" == *"@combsmith/security-leads"* ]]
+  [[ "$output" == *"@petry-projects/org-leads"* ]]
+  [[ "$output" == *"@petry-projects/security-leads"* ]]
 }
 
 # ---------------------------------------------------------------------------

@@ -39,7 +39,7 @@ sweep_verdict() {
 audit_verdict() {
   bash -c '
     source "$1/scripts/compliance-audit.sh" >/dev/null 2>&1
-    ORG=combsmith
+    ORG=petry-projects
     FIXTURE_B64="$(base64 -w 0 < "$2" 2>/dev/null || base64 -b 0 < "$2")"
     # Fake gh_api: lists initiative-driver.yml, serves the fixture as its body.
     gh_api() {

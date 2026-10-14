@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cron-timing.sh — pure, side-effect-free helpers for the off-peak
 # scheduled-workflow timing standard (standards/ci-standards.md → "Scheduled
-# Workflow Timing", promoted from the combsmith/.github-private repo-local
+# Workflow Timing", promoted from the petry-projects/.github-private repo-local
 # convention). No external calls; safe to `source` from a workflow, the CI
 # check (scripts/check-cron-timing.sh), or a bats test.
 #

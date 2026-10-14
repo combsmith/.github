@@ -1,5 +1,5 @@
 # Dependabot configuration — GitHub Actions ecosystem only (docs-only repo).
-# Standard: https://github.com/combsmith/.github/blob/main/standards/dependabot-policy.md
+# Standard: https://github.com/petry-projects/.github/blob/main/standards/dependabot-policy.md
 version: 2
 updates:
   - package-ecosystem: "github-actions"

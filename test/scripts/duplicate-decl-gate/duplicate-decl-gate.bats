@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 # Tests for scripts/check-duplicate-decls.sh — the required duplicate-decl CI
-# gate ported into combsmith/.github (#1025). Mirrors the #1485 corruption
+# gate ported into petry-projects/.github (#1025). Mirrors the #1485 corruption
 # signature (whole-block duplication of a top-level declaration) and covers the
 # markdown/JSON extension this repo adds on top of the shell-only gate that
-# guards combsmith/.github-private (#1520).
+# guards petry-projects/.github-private (#1520).
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

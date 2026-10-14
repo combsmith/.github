@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-duplicate-decls.sh — required CI gate against the #1485 corruption class,
-# ported from combsmith/.github-private (#1520) into this repo (#1025).
+# ported from petry-projects/.github-private (#1520) into this repo (#1025).
 #
 # Fails when a load-bearing file declares the same TOP-LEVEL symbol more than
 # once. Three detectors, each targeting a duplication that a merge can introduce

@@ -16,7 +16,7 @@
 #   $5  merged_prs
 #   $6  feature_requests
 #   $7  bug_reports
-#   $8  repo (string, e.g. "combsmith/talkterm")
+#   $8  repo (string, e.g. "petry-projects/talkterm")
 #   $9  scan_date (ISO-8601 string)
 #  $10  schema_version (string)
 #  $11  truncation_warnings (JSON array, may be [])
@@ -51,7 +51,7 @@ compose_signals() {
     idx=$((idx + 1))
     # Require a JSON array, not just valid JSON. Objects/strings/nulls accepted
     # by `jq -e .` would silently produce wrong counts (key count, char count).
-    # Caught by CodeRabbit review on PR combsmith/.github#85.
+    # Caught by CodeRabbit review on PR petry-projects/.github#85.
     if ! printf '%s' "$input" | jq -e 'type == "array"' >/dev/null 2>&1; then
       printf '[compose-signals] arg #%d must be a JSON array: %s\n' "$idx" "${input:0:120}" >&2
       return 65  # EX_DATAERR

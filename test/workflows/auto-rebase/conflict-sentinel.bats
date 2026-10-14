@@ -46,7 +46,7 @@ REUSABLE="${TT_REPO_ROOT}/.github/workflows/auto-rebase-reusable.yml"
 
 @test "conflict-sentinel: the weaker one-time <!-- auto-rebase-stuck --> escalation is absent (retired)" {
   # AC4 retires the redundant stuck-comment escalation as dead code. The primary
-  # retirement lives in combsmith/.github-private#711; this guard ensures the
+  # retirement lives in petry-projects/.github-private#711; this guard ensures the
   # weaker sentinel is never (re)introduced into this repo's auto-rebase reusable.
   run grep -F 'auto-rebase-stuck' "$REUSABLE"
   [ "$status" -eq 1 ]

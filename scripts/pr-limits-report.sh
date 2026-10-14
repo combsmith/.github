@@ -19,7 +19,7 @@
 # (standards/pr-limits.json); nothing is hardcoded.
 #
 # Environment (all optional):
-#   ORG               — GitHub org slug to scope the search (default: combsmith)
+#   ORG               — GitHub org slug to scope the search (default: petry-projects)
 #   PR_LIMITS_ORG_CAP — org-variable override of the cap (positive integer); wins
 #                       over the config value, same as the admission gate
 #   PR_LIMITS_CONFIG  — path to pr-limits.json (default: <repo>/standards/pr-limits.json,
@@ -37,7 +37,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_CONFIG="${SCRIPT_DIR}/../standards/pr-limits.json"
 CONFIG="${PR_LIMITS_CONFIG:-$DEFAULT_CONFIG}"
-ORG="${ORG:-combsmith}"
+ORG="${ORG:-petry-projects}"
 
 # Reuse the gate's cap resolution so report and gate always agree.
 # shellcheck source=scripts/lib/pr-limit-gate.sh

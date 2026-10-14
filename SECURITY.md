@@ -1,6 +1,6 @@
 # Security Policy
 
-This policy applies to all repositories in the **combsmith** organization
+This policy applies to all repositories in the **petry-projects** organization
 (GitHub serves it as the default for any repo without its own `SECURITY.md`).
 
 ## Reporting a vulnerability

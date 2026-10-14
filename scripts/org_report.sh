@@ -118,7 +118,7 @@ section_merge_activity() {
   daily_counts="${daily_counts%,}"
 
   printf '```mermaid\nxychart-beta\n'
-  printf '    title "combsmith Merges — Last 8 Days"\n'
+  printf '    title "petry-projects Merges — Last 8 Days"\n'
   printf '    x-axis [%s]\n' "$date_labels"
   printf '    y-axis "Merges"\n'
   printf '    bar [%s]\n' "$daily_counts"

@@ -25,7 +25,7 @@
 # reads work over the token the sourcing script already uses and need no extra
 # auth. See standards/persona-standards.md §1.1 (the manifest is the
 # index-of-record) and §4 rule 4 (every persona defines an opt_out_label).
-PERSONA_MANIFEST_REPO="${PERSONA_MANIFEST_REPO:-combsmith/.github-private}"
+PERSONA_MANIFEST_REPO="${PERSONA_MANIFEST_REPO:-petry-projects/.github-private}"
 PERSONA_MANIFEST_REF="${PERSONA_MANIFEST_REF:-main}"
 
 # One consistent color for the entire opt-out family — neutral grey, deliberately
@@ -64,7 +64,7 @@ STANDARD_LABEL_SPECS=(
 # whatever it resolved (so a hiccup never blocks the STATIC label set — that
 # resilience is deliberate), but callers record the failure and MUST NOT report
 # success. Emitting nothing and returning 0 would make "labels applied ✅"
-# indistinguishable from "the opt-out hatch is missing" (combsmith/.github#755).
+# indistinguishable from "the opt-out hatch is missing" (petry-projects/.github#755).
 persona_opt_out_label_configs() {
   local ids id opt_out opt_out_raw rc=0
   ids=$(gh api "repos/$PERSONA_MANIFEST_REPO/contents/personas?ref=$PERSONA_MANIFEST_REF" 2>/dev/null \
@@ -76,7 +76,7 @@ persona_opt_out_label_configs() {
   # non-array body) yields an empty $ids and a jq that exited 0 above. Treat an
   # empty listing as a derivation failure too — an org always has personas, so
   # "no personas" is the fail-closed signal, never a legitimate "family is empty"
-  # (combsmith/.github#755, issue #1139 AC#3). Without this a garbled listing
+  # (petry-projects/.github#755, issue #1139 AC#3). Without this a garbled listing
   # would read as "no persona labels required".
   if [ -z "$ids" ]; then
     warn "  Persona manifest listing from $PERSONA_MANIFEST_REPO was empty or unparseable — opt-out labels NOT applied"

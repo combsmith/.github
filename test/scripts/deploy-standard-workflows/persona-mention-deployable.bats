@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Issue #1156 — persona-mention.yml must be in DEPLOYABLE_WORKFLOWS so the weekly
 # standards sweep can carry the caller stub beyond .github-private (the qa-lead
-# reach epic, combsmith/.github-private#1643 Phase 2).
+# reach epic, petry-projects/.github-private#1643 Phase 2).
 #
 # This is the SAME shape as #1128 (apply-repo-settings Step D): the template
 # (standards/workflows/persona-mention.yml) and the ring registry entry already

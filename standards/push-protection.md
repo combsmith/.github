@@ -2,7 +2,7 @@
 
 Standard for preventing secrets, API keys, credentials, and other sensitive
 values from being accidentally committed or pushed to any repository in the
-**combsmith** organization.
+**petry-projects** organization.
 
 This standard is **defense in depth**: local hooks catch most leaks before a
 commit lands, GitHub push protection blocks the push at the network boundary,
@@ -14,7 +14,7 @@ incident.
 
 ## Scope
 
-This standard applies to **every repository** in `combsmith`, regardless
+This standard applies to **every repository** in `petry-projects`, regardless
 of visibility (public or private) or language. It covers:
 
 - Source code, configuration files, and fixtures
@@ -77,11 +77,11 @@ Apply these via:
 
 ```bash
 # Org-level (requires org admin)
-gh api -X PATCH "orgs/combsmith" \
+gh api -X PATCH "orgs/petry-projects" \
   -f secret_scanning_enabled_for_new_repositories=true \
   -f secret_scanning_push_protection_enabled_for_new_repositories=true \
   -f secret_scanning_push_protection_custom_link_enabled=true \
-  -f secret_scanning_push_protection_custom_link="https://github.com/combsmith/.github/blob/main/standards/push-protection.md#what-to-do-when-push-protection-blocks-your-push"
+  -f secret_scanning_push_protection_custom_link="https://github.com/petry-projects/.github/blob/main/standards/push-protection.md#what-to-do-when-push-protection-blocks-your-push"
 ```
 
 ### Required repo-level settings
@@ -100,7 +100,7 @@ compliance audit checks these flags via `GET /repos/{owner}/{repo}`:
 Apply per repo via:
 
 ```bash
-gh api -X PATCH "repos/combsmith/<repo>" --input - <<'JSON'
+gh api -X PATCH "repos/petry-projects/<repo>" --input - <<'JSON'
 {
   "security_and_analysis": {
     "secret_scanning": {"status": "enabled"},
@@ -129,7 +129,7 @@ provider-supplied ones:
 
 | Pattern name | Pattern (illustrative) | Rationale |
 |--------------|------------------------|-----------|
-| `petry-internal-webhook` | `https://hooks\.combsmith\.internal/[A-Za-z0-9/_-]{20,}` | Internal webhook URLs |
+| `petry-internal-webhook` | `https://hooks\.petry-projects\.internal/[A-Za-z0-9/_-]{20,}` | Internal webhook URLs |
 | `claude-oauth-token` | `sk-ant-oat01-[A-Za-z0-9_-]{40,}` | Anthropic OAuth tokens |
 | `gha-pat-scoped` | `github_pat_[A-Za-z0-9_]{82}` | Fine-grained GitHub PATs (provider pattern supplements) |
 | `generic-high-entropy` | `(?:_TOKEN\|_SECRET\|_KEY)\s*[:=]\s*["']?[A-Za-z0-9/+=_-]{32,}` | Catches untyped long strings in YAML and `.env` files |
@@ -186,7 +186,7 @@ gitleaks git --redact --exit-code 1
 
 ### Agent workstation requirements
 
-Claude Code and other AI agents operating on combsmith repos MUST:
+Claude Code and other AI agents operating on petry-projects repos MUST:
 
 - Refuse to write real credentials to any file, even when asked. Use
   placeholder values (`<YOUR_TOKEN_HERE>`) in documentation and instruct the

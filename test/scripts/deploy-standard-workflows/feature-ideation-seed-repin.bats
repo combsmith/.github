@@ -53,7 +53,7 @@ STUB
 fi_stub_pinning() {  # <ref>
   local body="jobs:
   ideate:
-    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@$1
+    uses: petry-projects/.github/.github/workflows/feature-ideation-reusable.yml@$1
     with:
       project_context: |
         TUNED-REPO-CONTEXT-SENTINEL

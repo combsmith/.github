@@ -9,7 +9,7 @@
 #   events, so a `with:` value that references `${{ inputs.* }}` fails the whole
 #   run (zero jobs, "Invalid workflow file") when the workflow is also triggered
 #   by an event that has no `inputs` — e.g. `discussion: created`. The job `if:`
-#   does NOT save you. This is combsmith/.github#571.
+#   does NOT save you. This is petry-projects/.github#571.
 #
 #   The fix is to resolve dispatch inputs in an ordinary `prep` job (whose step
 #   expressions run at job time and are skipped on `discussion`) and pass them to

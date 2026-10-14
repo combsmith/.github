@@ -33,7 +33,7 @@ teardown() {
 # honoured; the rest get harmless defaults.
 run_ack() {
   GH_TOKEN="x" \
-  PR_URL="https://github.com/combsmith/.github/pull/1" \
+  PR_URL="https://github.com/petry-projects/.github/pull/1" \
   BOT_LOGIN="donpetry-bot" \
   EVENT_NAME="${EVENT_NAME:-issue_comment}" \
   SENDER_LOGIN="${SENDER_LOGIN:-someone}" \

@@ -30,7 +30,7 @@ teardown() {
   # The first search attempt fails (simulated rate limit); the retry must
   # succeed and the script must exit 0.
   GH_TOKEN=fake \
-    ORG=combsmith \
+    ORG=petry-projects \
     DRY_RUN=true \
     GH_STUB_SEARCH_FAIL_TIMES=1 \
     run bash "$TT_SCRIPT"
@@ -46,7 +46,7 @@ teardown() {
   # Primary sweep succeeds; legacy sweep's first attempt fails transiently.
   # TRIGGER_LABEL != LEGACY_TRIGGER_LABEL so both sweeps run.
   GH_TOKEN=fake \
-    ORG=combsmith \
+    ORG=petry-projects \
     DRY_RUN=true \
     TRIGGER_LABEL=dev-lead \
     LEGACY_TRIGGER_LABEL=claude \
@@ -66,7 +66,7 @@ teardown() {
   # gh api exits 0 but returns an error object — the script must detect it
   # and fail rather than treating the run as successful.
   GH_TOKEN=fake \
-    ORG=combsmith \
+    ORG=petry-projects \
     DRY_RUN=true \
     GH_STUB_SEARCH_ZERO_EXIT_ERROR_TIMES=1 \
     run bash "$TT_SCRIPT"
@@ -78,7 +78,7 @@ teardown() {
   # A persistent outage (more failures than the retry budget) must still surface
   # as a non-zero exit — we must not silently swallow a real outage.
   GH_TOKEN=fake \
-    ORG=combsmith \
+    ORG=petry-projects \
     DRY_RUN=true \
     GH_SEARCH_ATTEMPTS=2 \
     GH_STUB_SEARCH_FAIL_TIMES=99 \

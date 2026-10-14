@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github/standards/workflows/initiative-planner.yml
-# Standard:        combsmith/.github/standards/ci-standards.md
-# Reusable:        combsmith/.github/.github/workflows/initiative-planner-reusable.yml
+# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/initiative-planner.yml
+# Standard:        petry-projects/.github/standards/ci-standards.md
+# Reusable:        petry-projects/.github/.github/workflows/initiative-planner-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All idea→initiative dispatch logic (the
@@ -21,7 +21,7 @@
 #
 # When a maintainer adds `idea:approved` to an Ideas Discussion in this repo,
 # the reusable re-dispatches the CENTRAL initiative-planner (BMAD Scrum Master
-# "Bob") in combsmith/.github-private with this repo as the target. Bob
+# "Bob") in petry-projects/.github-private with this repo as the target. Bob
 # reads this repo's Discussion and materializes an inert epic + sub-issue DAG
 # here (labelled `initiative`, NOT `initiative:auto`). A maintainer then adds
 # `initiative:auto` to the epic to hand it to initiative-driver. The frameworks
@@ -33,7 +33,7 @@
 #   3. Ensure the `idea:approved` label exists on the repo.
 #   4. Confirm the org-level secret GH_PAT_WORKFLOWS is accessible.
 #
-# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
 name: Initiative Planner — Approval Trigger
 
 on:
@@ -44,5 +44,5 @@ permissions: {}
 
 jobs:
   initiative-planner:
-    uses: combsmith/.github/.github/workflows/initiative-planner-reusable.yml@initiative-planner/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: petry-projects/.github/.github/workflows/initiative-planner-reusable.yml@initiative-planner/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable

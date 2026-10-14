@@ -1,7 +1,7 @@
 name: duplicate-decl-gate
 
 # Required CI gate against the #1485 corruption class, ported from
-# combsmith/.github-private (#1520) into this repo (#1025). Fails any PR (or
+# petry-projects/.github-private (#1520) into this repo (#1025). Fails any PR (or
 # main push) whose tree contains a top-level declaration declared more than once
 # — a duplicate top-level function in a shell file, a duplicate top-level
 # (H1/H2) heading in a markdown file, or a duplicate object key / unparseable
@@ -17,7 +17,7 @@ name: duplicate-decl-gate
 # Maintainer action after this lands: the `duplicate-decl-gate` required status
 # check is codified in standards/rulesets/duplicate-decl-gate.json — apply it to
 # the reusable-hosting meta-repos:
-#   GH_TOKEN=<admin> bash scripts/apply-rulesets.sh --repo combsmith/.github duplicate-decl-gate
+#   GH_TOKEN=<admin> bash scripts/apply-rulesets.sh --repo petry-projects/.github duplicate-decl-gate
 
 on:
   pull_request:

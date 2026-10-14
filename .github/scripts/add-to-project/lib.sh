@@ -2,7 +2,7 @@
 # lib.sh — shared helpers for the add-to-project scripts.
 #
 # This is the "designed once" mechanism called for in
-# combsmith/.github#415: a single paginated project-item lookup
+# petry-projects/.github#415: a single paginated project-item lookup
 # (find_project_item) parameterized by a match predicate, plus the
 # add / draft / delete mutations and the env guard. Both
 # add-issue-or-pr.sh and reconcile-discussion.sh source this file so the
@@ -24,7 +24,7 @@ _atp_require_env() {
     return 64
   fi
   if [ -z "${GH_TOKEN:-}" ]; then
-    printf '::error::[%s] GH_TOKEN is empty. INITIATIVES_APP_ID / INITIATIVES_APP_PRIVATE_KEY are likely unset or stale. See combsmith/.github#387.\n' "$1" >&2
+    printf '::error::[%s] GH_TOKEN is empty. INITIATIVES_APP_ID / INITIATIVES_APP_PRIVATE_KEY are likely unset or stale. See petry-projects/.github#387.\n' "$1" >&2
     return 64
   fi
 }

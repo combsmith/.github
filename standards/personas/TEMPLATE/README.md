@@ -2,9 +2,9 @@
 
 Copy `persona.yml` into **`.github-private/personas/<id>/`** to onboard a new
 agentic persona. It is governed by
-[`standards/persona-standards.md`](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md)
+[`standards/persona-standards.md`](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md)
 and validated against
-[`persona.schema.json`](https://github.com/combsmith/.github/blob/main/standards/personas/persona.schema.json).
+[`persona.schema.json`](https://github.com/petry-projects/.github/blob/main/standards/personas/persona.schema.json).
 (Links are absolute so they still resolve after this file is copied into the
 `.github-private` repo.)
 
@@ -35,7 +35,7 @@ inside `personas/<id>/`.
 
 1. **Copy & rename.** `cp standards/personas/TEMPLATE/persona.yml .github-private/personas/<id>/persona.yml` (and add a short `README.md`).
    Pick `<id>` as a **role** — `qa-lead`, not a person name, even if the agent
-   you are wrapping has one upstream ([§1.6](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md)).
+   you are wrapping has one upstream ([§1.6](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md)).
 2. **Pick your definition layer(s)** in `persona.yml` `definition.layers[]`, each
    `path` pointing at its canonical home above. Prefer wrapping a vendored
    framework agent where a good upstream exists (pin `vendor_pin` to its
@@ -48,10 +48,10 @@ inside `personas/<id>/`.
 4. **Set the trust floor** (`[OWNER, MEMBER, COLLABORATOR]` unless you have a
    reason to differ).
 5. **If the `mention` surface is enabled, fill `address`** and create the org
-   team `combsmith/<id>` — `privacy: closed`,
+   team `petry-projects/<id>` — `privacy: closed`,
    `notification_setting: notifications_disabled`, membership empty or bot-only.
    The handle **must** be a team; a bare `@<role>` is a real stranger's account
-   ([§4.1](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md)).
+   ([§4.1](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md)).
 6. **Add evals.** Copy the `evals/` starter into `.github-private` `evals/<id>/`:
    ≥ `min_cases` held-out cases under `evals/<id>/holdout/` and proposer-visible
    cases under `evals/<id>/dev/`. See `.github-private` `evals/README.md`.
@@ -63,7 +63,7 @@ inside `personas/<id>/`.
 9. **Roll out** `next → ring0 → ring1 → stable`, eval gate green before `stable`.
 
 The full gate is the **Definition of Done** checklist in
-[`persona-standards.md` §7](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
+[`persona-standards.md` §7](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
 
 ## Worked example
 
@@ -74,4 +74,4 @@ the *wrap-a-vendored-agent*, advisory-everywhere path.
 Note the naming: the persona is `qa-lead`, the **role**, even though the
 upstream framework gives that agent a person-name. Roles are legible in a PR
 comment, survive swapping the agent underneath, and keep one namespace across
-the fleet. See [§1.6](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
+the fleet. See [§1.6](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).

@@ -54,7 +54,7 @@ pr_json() {
     --arg author "$author" --arg head "$head" --arg last "$last" \
     --argjson labels "$labels_json" '
     { number: 42,
-      url: "https://github.com/combsmith/acme/pull/42",
+      url: "https://github.com/petry-projects/acme/pull/42",
       author: {login: $author},
       headRefName: $head,
       labels: $labels,
@@ -63,7 +63,7 @@ pr_json() {
 
 run_single() {  # extra args passed through
   run env GH_TOKEN=x APPROVER_TOKEN=faketoken bash "$SCRIPT" \
-    --repo combsmith/acme --pr 42 "$@"
+    --repo petry-projects/acme --pr 42 "$@"
 }
 
 # ── Eligibility gating ────────────────────────────────────────────────────────
@@ -108,9 +108,9 @@ run_single() {  # extra args passed through
   run_single
   [ "$status" -eq 0 ]
   # A real approval review was posted…
-  grep -q 'pr review 42 --repo combsmith/acme --approve' "$GH_CALLS"
+  grep -q 'pr review 42 --repo petry-projects/acme --approve' "$GH_CALLS"
   # …and native auto-merge (squash) was enabled — merge fires on green THROUGH protection.
-  grep -qE 'pr merge 42 --repo combsmith/acme .*--auto' "$GH_CALLS"
+  grep -qE 'pr merge 42 --repo petry-projects/acme .*--auto' "$GH_CALLS"
   grep -q -- '--squash' "$GH_CALLS"
   # The chosen approver is the code-owner that is neither author nor last-pusher.
   echo "$output" | grep -q 'donpetry-bot'
@@ -178,9 +178,9 @@ run_single() {  # extra args passed through
   GH_PR_VIEW_JSON="$(pr_json don-petry standards-sync/2026-07-21 don-petry "standards-sync")"
   export GH_PR_VIEW_JSON
   run env GH_TOKEN=x APPROVER_TOKEN=faketoken bash "$SCRIPT" \
-    --repo combsmith/.github-private --pr 42
+    --repo petry-projects/.github-private --pr 42
   [ "$status" -eq 0 ]
-  grep -q 'pr review 42 --repo combsmith/.github-private --approve' "$GH_CALLS"
-  grep -qE 'pr merge 42 --repo combsmith/.github-private .*--auto' "$GH_CALLS"
+  grep -q 'pr review 42 --repo petry-projects/.github-private --approve' "$GH_CALLS"
+  grep -qE 'pr merge 42 --repo petry-projects/.github-private .*--auto' "$GH_CALLS"
   ! grep -q -- '--admin' "$GH_CALLS"
 }

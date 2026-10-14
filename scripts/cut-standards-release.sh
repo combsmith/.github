@@ -38,7 +38,7 @@ set -euo pipefail
 #
 # Env:
 #   SR_REPO    owner/name of the repo that owns the standards tags
-#              (default: $GITHUB_REPOSITORY, else combsmith/.github).
+#              (default: $GITHUB_REPOSITORY, else petry-projects/.github).
 #   GH_TOKEN   credential for the tag-write API path (the release-channel-tags
 #              ruleset grants the authorized mover an update-bypass on the
 #              protected tag; see standards/rulesets/release-channel-tags.json).
@@ -47,7 +47,7 @@ _HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=lib/standards-release.sh
 source "${_HERE}/lib/standards-release.sh"
 
-SR_REPO="${SR_REPO:-${GITHUB_REPOSITORY:-combsmith/.github}}"
+SR_REPO="${SR_REPO:-${GITHUB_REPOSITORY:-petry-projects/.github}}"
 
 _usage() {
   cat >&2 <<EOF

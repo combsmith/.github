@@ -212,7 +212,7 @@ EOF
 #!/usr/bin/env bash
 case "$*" in
   "rev-parse HEAD") echo "2222222222222222222222222222222222222222" ;;
-  "config --get remote.origin.url") echo "https://github.com/combsmith/.github.git" ;;
+  "config --get remote.origin.url") echo "https://github.com/petry-projects/.github.git" ;;
   *) : ;;
 esac
 EOF

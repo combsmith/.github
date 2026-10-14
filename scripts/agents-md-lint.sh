@@ -311,14 +311,14 @@ amdl_check_section_present() {
 
 # ---------------------------------------------------------------------------
 # amdl_check_org_import <file> — a finding when a downstream AGENTS.md contains
-# no link back to the canonical combsmith/.github file. Pure.
+# no link back to the canonical petry-projects/.github file. Pure.
 # ---------------------------------------------------------------------------
 amdl_check_org_import() {
   local file="$1"
-  if grep -qE '\[([^]]*)\]\([^)]*combsmith/\.github[^)]*\)' "$file"; then
+  if grep -qE '\[([^]]*)\]\([^)]*petry-projects/\.github[^)]*\)' "$file"; then
     return 0
   fi
-  printf '%s\tno link back to the canonical combsmith/.github AGENTS.md is present\n' "-"
+  printf '%s\tno link back to the canonical petry-projects/.github AGENTS.md is present\n' "-"
   return 0
 }
 

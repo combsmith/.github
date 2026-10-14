@@ -23,7 +23,7 @@ set -euo pipefail
 
 if [ -n "${GH_STUB_LOG:-}" ]; then
   # Use %q so each arg is shell-quoted; tests can re-parse argv losslessly.
-  # Caught by Copilot review on PR combsmith/.github#85: previously
+  # Caught by Copilot review on PR petry-projects/.github#85: previously
   # used $* which joined with spaces and lost argument boundaries.
   # shellcheck disable=SC2059
   printf '%q ' "$@" >>"$GH_STUB_LOG"
