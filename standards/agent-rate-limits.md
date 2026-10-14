@@ -11,14 +11,14 @@ compliance audit — and any contributor — reads the limits and their exemptio
 
 - **Decision record (why this exists / the verified mechanism):**
   [`docs/initiatives/agent-rate-limits-adr.md`](../docs/initiatives/agent-rate-limits-adr.md)
-  (Phase 1, [#637](https://github.com/petry-projects/.github/issues/637)).
+  (Phase 1, [#637](https://github.com/combsmith/.github/issues/637)).
 - **Single source of truth (the values):**
   [`standards/agent-rate-limits.json`](agent-rate-limits.json) (Phase 2,
-  [#638](https://github.com/petry-projects/.github/issues/638)).
+  [#638](https://github.com/combsmith/.github/issues/638)).
 - **Apply path (where it will be enforced):** a source-side gate library
   (`scripts/lib/agent-rate-limit.sh`) is Phase 3; the org-wide token-budget
   breaker (the public side — thresholds, policy, decision, and the telemetry
-  adapter seam) is Phase 5 ([#641](https://github.com/petry-projects/.github/issues/641),
+  adapter seam) is Phase 5 ([#641](https://github.com/combsmith/.github/issues/641),
   §4.1 below); the private telemetry poller + live-path wiring land separately
   (ADR §8). **Nothing enforces this config yet** — the token-budget breaker ships
   inert behind a flag; see §3 and §4.2.
@@ -79,9 +79,9 @@ run in CI by
 
 Like the pr-limits config before its own sign-off gate, **every number in this
 file is a proposal (`status: provisional`) pending human sign-off** (epic
-[#636](https://github.com/petry-projects/.github/issues/636) gate). The config is
+[#636](https://github.com/combsmith/.github/issues/636) gate). The config is
 **inert on merge**: no workflow, gate, or engine reads it in the Phase-2 story
-that adds it ([#638](https://github.com/petry-projects/.github/issues/638)). The
+that adds it ([#638](https://github.com/combsmith/.github/issues/638)). The
 Phase-3 gate library and the Phase-4/5 wiring consume it later, only after the
 values are signed off. This mirrors the PR-Limits staging exactly (ADR §7,
 [`pr-limits.md`](pr-limits.md)).
@@ -91,7 +91,7 @@ values are signed off. This mirrors the PR-Limits staging exactly (ADR §7,
 The breaker reads the shared Claude subscription budget through the OAuth usage
 endpoint that is the telemetry **source of record** (ADR §4.1); because that
 endpoint authenticates with a credential that lives in
-`petry-projects/.github-private`, the **live budget read and the pause actuation
+`combsmith/.github-private`, the **live budget read and the pause actuation
 are private** — this public file holds only the thresholds and the policy (ADR
 §8). The threshold values themselves are in the config; the properties that must
 not drift into prose-restated numbers, but that a reader must understand, are:
@@ -124,7 +124,7 @@ not drift into prose-restated numbers, but that a reader must understand, are:
 
 The 5-hour `session` breaker is implemented in the source-side gate library
 [`scripts/lib/agent-rate-limit.sh`](../scripts/lib/agent-rate-limit.sh) (Phase 5,
-[#641](https://github.com/petry-projects/.github/issues/641)), alongside the
+[#641](https://github.com/combsmith/.github/issues/641)), alongside the
 per-agent-type controls:
 
 - `arl_token_budget_gate [window]` orchestrates the breaker for a window
@@ -142,7 +142,7 @@ per-agent-type controls:
   var set, the breaker fails safe to allow** (the disabled/degraded mode below).
 - The adapter reads both the `session` and `weekly_all` windows from one
   envelope, so the Phase 6 weekly glide-path breaker
-  ([#994](https://github.com/petry-projects/.github/issues/994)) extends it
+  ([#994](https://github.com/combsmith/.github/issues/994)) extends it
   rather than refactoring. Both breakers share one transport-level fail-safe
   (`arl_token_transport_decision`) so there is a single 429 / non-200 convention.
 - When the breaker trips, the pause is surfaced through the same human-clearable
@@ -154,7 +154,7 @@ per-agent-type controls:
 
 - `arl_token_weekly_glide_gate` orchestrates the **7-day glide-path** breaker on
   the account-wide `weekly_all` window (Phase 6,
-  [#994](https://github.com/petry-projects/.github/issues/994)). Rather than a
+  [#994](https://github.com/combsmith/.github/issues/994)). Rather than a
   static threshold it evaluates a **time-varying** one read entirely from config —
   `clamp(ceiling_pct − reserve_pct_per_day × days_until_reset, floor_pct,
   ceiling_pct)` — where `days_until_reset` derives from the telemetry payload's
@@ -244,7 +244,7 @@ treat them as policy, not drift.
 |---|---|---|
 | `dependabot[bot]` | actor | Already bounded per-ecosystem by `open-pull-requests-limit`; security update runs must never be starved by a general throttle. |
 | `OrganizationAdmin` | actor | Human break-glass / admin runs. |
-| `@petry-projects/org-leads` | actor | Maintainer traffic — human review, not automation backlog. |
+| `@combsmith/org-leads` | actor | Maintainer traffic — human review, not automation backlog. |
 | `dependabot-automerge-petry` | actor (App) | Operates on *existing* PRs; it does not add agentic run volume. |
 | `security` | label | Urgent security / hotfix work bypasses any throttle. |
 

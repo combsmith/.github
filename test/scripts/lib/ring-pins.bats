@@ -118,7 +118,7 @@ setup() {
 @test "ring_repin_uses: rewrites the reusable uses: ref, preserving the trailing comment" {
   local stub="jobs:
   auto-rebase:
-    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/stable  # NOSONAR keep
+    uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/stable  # NOSONAR keep
     secrets: inherit"
   run bash -c 'source "'"$REPO_ROOT"'/scripts/lib/ring-pins.sh"; ring_repin_uses auto-rebase auto-rebase/v2-stable <<<"$1"' _ "$stub"
   [ "$status" -eq 0 ]
@@ -127,7 +127,7 @@ setup() {
 }
 
 @test "ring_repin_uses: also rewrites a matching agent_ref (dev-lead stub)" {
-  local stub="    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
+  local stub="    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
     with:
       agent_ref: dev-lead/stable"
   run bash -c 'source "'"$REPO_ROOT"'/scripts/lib/ring-pins.sh"; ring_repin_uses dev-lead dev-lead/v4-ring1 <<<"$1"' _ "$stub"
@@ -162,7 +162,7 @@ setup() {
   # channel consumer, so it must be re-pinned, not treated as self-host.
   local stub="jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/ring0
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/ring0
     with:
       agent_ref: dev-lead/ring0"
   run ring_stub_selfhosts dev-lead <<< "$stub"
@@ -212,22 +212,22 @@ refs/tags/dev-lead/v1-next
 refs/tags/dev-lead/v1-ring0
 refs/tags/dev-lead/v1-ring1"
   _install_gh_stub
-  [ "$(ring_host_current_channel_major petry-projects/.github-private dev-lead)" = "1" ]
+  [ "$(ring_host_current_channel_major combsmith/.github-private dev-lead)" = "1" ]
 }
 
 @test "ring_host_current_channel_major: empty when only release tags exist (#870)" {
   export GH_MATCHING_REFS="refs/tags/auto-rebase/v2.3.1
 refs/tags/auto-rebase/v1.0.0"
   _install_gh_stub
-  [ -z "$(ring_host_current_channel_major petry-projects/.github auto-rebase)" ]
+  [ -z "$(ring_host_current_channel_major combsmith/.github auto-rebase)" ]
 }
 
 @test "ring_tag_exists: true only for a ref present on the host (#870)" {
   export GH_EXISTING_TAGS="dev-lead/v1-ring1
 dev-lead/v1-stable"
   _install_gh_stub
-  run ring_tag_exists petry-projects/.github-private dev-lead/v1-ring1
+  run ring_tag_exists combsmith/.github-private dev-lead/v1-ring1
   [ "$status" -eq 0 ]
-  run ring_tag_exists petry-projects/.github-private dev-lead/v1-ring0
+  run ring_tag_exists combsmith/.github-private dev-lead/v1-ring0
   [ "$status" -ne 0 ]
 }

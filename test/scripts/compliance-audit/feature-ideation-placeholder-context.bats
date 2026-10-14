@@ -34,7 +34,7 @@ is_placeholder() {
 PLACEHOLDER_STUB=$(cat <<'EOF'
 jobs:
   ideate:
-    uses: petry-projects/.github/.github/workflows/feature-ideation-reusable.yml@feature-ideation/stable  # NOSONAR
+    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@feature-ideation/stable  # NOSONAR
     with:
       project_context: |
         TODO: Replace this with a description of the project and its market.
@@ -46,7 +46,7 @@ EOF
 CUSTOMISED_STUB=$(cat <<'EOF'
 jobs:
   ideate:
-    uses: petry-projects/.github/.github/workflows/feature-ideation-reusable.yml@feature-ideation/stable  # NOSONAR
+    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@feature-ideation/stable  # NOSONAR
     with:
       project_context: |
         TalkTerm is a terminal-native AI chat client for developers. Its users are

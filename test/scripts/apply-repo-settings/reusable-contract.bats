@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Contract tests for the apply-repo-settings reusable workflow + its thin caller
-# stubs (petry-projects/.github#984).
+# stubs (combsmith/.github#984).
 #
 # The reusable (.github/workflows/apply-repo-settings-reusable.yml) is the single
 # source of truth for the branch-policy compliance self-heal; the fleet adopts it
@@ -65,8 +65,8 @@ REGISTRY="${REPO_ROOT}/standards/canary-rings.json"
   echo "$run_blocks" | grep -qF 'bash scripts/apply-rulesets.sh'
 }
 
-@test "reusable checks out petry-projects/.github at the checkout_ref input" {
-  run yq '[.jobs[].steps[] | select(.uses | contains("checkout")) | .with.repository] | contains(["petry-projects/.github"])' "$REUSABLE"
+@test "reusable checks out combsmith/.github at the checkout_ref input" {
+  run yq '[.jobs[].steps[] | select(.uses | contains("checkout")) | .with.repository] | contains(["combsmith/.github"])' "$REUSABLE"
   [ "$output" = "true" ]
   run grep -q 'inputs.checkout_ref' "$REUSABLE"
   [ "$status" -eq 0 ]
@@ -124,7 +124,7 @@ REGISTRY="${REPO_ROOT}/standards/canary-rings.json"
 # ── registry registration (avoids DRIFT[unregistered]) ────────────────────────
 @test "apply-repo-settings is registered in canary-rings.json" {
   run yq -oy '.agents["apply-repo-settings"].host' "$REGISTRY"
-  [ "$output" = "petry-projects/.github" ]
+  [ "$output" = "combsmith/.github" ]
   run yq -oy '.agents["apply-repo-settings"].run_workflow' "$REGISTRY"
   [ "$output" = "Apply repo settings" ]
 }
@@ -148,9 +148,9 @@ REGISTRY="${REPO_ROOT}/standards/canary-rings.json"
   [ "$output" = "3" ]
   # Membership anchors: host-private in next, host in ring0, wildcard in stable
   run yq -oy '.agents["apply-repo-settings"].rings[] | select(.channel == "next") | .members[0]' "$REGISTRY"
-  [ "$output" = "petry-projects/.github-private" ]
+  [ "$output" = "combsmith/.github-private" ]
   run yq -oy '.agents["apply-repo-settings"].rings[] | select(.channel == "ring0") | .members[0]' "$REGISTRY"
-  [ "$output" = "petry-projects/.github" ]
+  [ "$output" = "combsmith/.github" ]
   run yq -oy '.agents["apply-repo-settings"].rings[] | select(.channel == "stable") | .members[0]' "$REGISTRY"
   [ "$output" = "*" ]
 }

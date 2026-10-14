@@ -57,11 +57,11 @@ CANARY_RINGS="${CANARY_RINGS:-$DEFAULT_RINGS}"
 
 # THIS_REPO — the repo this checkout belongs to. Agents hosted HERE (dev-lead, pr-review)
 # keep their channel/release tags in this checkout and resolve them via local git. A
-# cross-repo agent (host != THIS_REPO, e.g. the #482 reusables hosted in petry-projects/
+# cross-repo agent (host != THIS_REPO, e.g. the #482 reusables hosted in combsmith/
 # .github) keeps its <name>/<channel> and <name>/vX.Y.Z tags on ITS host, so those tags
 # must be resolved there via `gh api` — reading local refs resolves empty and the frontier
 # falsely reports "fully rolled out" (#1049). Mirrors cut-release.sh's CROSS_REPO_TARGET.
-THIS_REPO="${GITHUB_REPOSITORY:-petry-projects/.github-private}"
+THIS_REPO="${GITHUB_REPOSITORY:-combsmith/.github-private}"
 
 _jq()  { jq "$@" "$CANARY_RINGS"; }
 _agent_field() { _jq -r --arg a "$1" ".agents[\$a].$2"; }

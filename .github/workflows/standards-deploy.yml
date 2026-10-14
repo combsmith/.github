@@ -1,5 +1,5 @@
 # Scheduled fleet sweep that brings every org repo up to the standard workflow
-# stubs — the automation the compliance audit was missing (petry-projects/.github#851).
+# stubs — the automation the compliance audit was missing (combsmith/.github#851).
 #
 # The audit only *files* remediation issues; it never deploys. This workflow runs
 # scripts/deploy-standard-workflows.sh across the fleet on the org cadence (and on
@@ -50,7 +50,7 @@ jobs:
       # Cross-repo write identity for the sweep. NOT ORG_SCORECARD_TOKEN — that is
       # the audit identity (a fine-grained PAT with Contents: Read-only), so it
       # cannot PUT stub content into consumer repos and every deploy 422'd
-      # (petry-projects/.github#864). GH_PAT_DON_PETRY (falling back to the legacy
+      # (combsmith/.github#864). GH_PAT_DON_PETRY (falling back to the legacy
       # GH_PAT_WORKFLOWS) is the SAME identity dev-lead.yml / pr-auto-review.yml /
       # initiative-driver.yml already use to author cross-repo PRs. Its login is
       # `don-petry` (or the GH_PAT_WORKFLOWS owner) — deliberately NOT donpetry-bot

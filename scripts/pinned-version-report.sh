@@ -12,10 +12,10 @@
 # Output: a Markdown report on stdout, and appended to $GITHUB_STEP_SUMMARY when
 # set. Read-only: only GET calls; never mutates.
 #
-# Env: GH_TOKEN (repo read + org metadata). ORG (default petry-projects).
+# Env: GH_TOKEN (repo read + org metadata). ORG (default combsmith).
 set -euo pipefail
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/ring-pins.sh
 source "$SCRIPT_DIR/lib/ring-pins.sh"
