@@ -14,7 +14,7 @@
     "spec_name": "AAIF AGENTS.md convention (agents.md)",
     "source": "https://agents.md/",
     "date": "2026-09-01",
-    "stable_subset": "The rules below are derived only from the parts of the agents.md convention that are structurally stable across spec revisions: a single top-level document title, a conventional Markdown heading hierarchy, resolvable in-document and relative cross-references, and — for this org — a link from each downstream repo's AGENTS.md back to the canonical petry-projects/.github AGENTS.md. Section names and their required/optional split are explicitly treated as unstable (see the 'recommended' rules) because the upstream spec is young and moving.",
+    "stable_subset": "The rules below are derived only from the parts of the agents.md convention that are structurally stable across spec revisions: a single top-level document title, a conventional Markdown heading hierarchy, resolvable in-document and relative cross-references, and — for this org — a link from each downstream repo's AGENTS.md back to the canonical combsmith/.github AGENTS.md. Section names and their required/optional split are explicitly treated as unstable (see the 'recommended' rules) because the upstream spec is young and moving.",
     "capture_note": "Captured as the Phase-1 prerequisite noted on epic #642 (the upstream spec is external and evolving and is not tracked as a GitHub issue). Re-capture source + date when bumping _schema_version to reflect a new stable subset."
   },
   "rules": [
@@ -50,8 +50,8 @@
       "element": "import",
       "level": "required",
       "applies_to": "downstream",
-      "description": "A downstream (non-canonical) repo's AGENTS.md links back to the canonical petry-projects/.github AGENTS.md, so the org-wide standards are imported rather than forked.",
-      "check": "In any repo other than petry-projects/.github, the AGENTS.md must contain a link whose target references petry-projects/.github AGENTS.md (the canonical file). The canonical file itself is exempt (applies_to=downstream).",
+      "description": "A downstream (non-canonical) repo's AGENTS.md links back to the canonical combsmith/.github AGENTS.md, so the org-wide standards are imported rather than forked.",
+      "check": "In any repo other than combsmith/.github, the AGENTS.md must contain a link whose target references combsmith/.github AGENTS.md (the canonical file). The canonical file itself is exempt (applies_to=downstream).",
       "rationale": "The canonical AGENTS.md declares it 'is intended to be imported by each repository's own AGENTS.md or CLAUDE.md'; the presence of that back-link is a structural, checkable fact — the basis for cross-repo import-consistency in epic #642 — independent of the imported content."
     },
     {

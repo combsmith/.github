@@ -2,10 +2,10 @@
 
 - **Status:** Phase 1 (documentation + rule set only) — the rule set is **inert on merge**; no linter, workflow, or audit consumes it yet.
 - **Date:** 2026-09-01
-- **Epic:** [#642 — AGENTS.md Specification Alignment & Automated Structural Validation](https://github.com/petry-projects/.github/issues/642)
-- **Story:** [#643 — Phase 1: Define the AGENTS.md structural rule set and spec-alignment reference](https://github.com/petry-projects/.github/issues/643)
-- **Sources:** discussion [#534 — AGENTS.md Specification Alignment & Automated Validation](https://github.com/petry-projects/.github/discussions/534);
-  idea [#341 — Cross-Repo Standards Drift Detection via Multi-Repo Analysis](https://github.com/petry-projects/.github/discussions/341)
+- **Epic:** [#642 — AGENTS.md Specification Alignment & Automated Structural Validation](https://github.com/combsmith/.github/issues/642)
+- **Story:** [#643 — Phase 1: Define the AGENTS.md structural rule set and spec-alignment reference](https://github.com/combsmith/.github/issues/643)
+- **Sources:** discussion [#534 — AGENTS.md Specification Alignment & Automated Validation](https://github.com/combsmith/.github/discussions/534);
+  idea [#341 — Cross-Repo Standards Drift Detection via Multi-Repo Analysis](https://github.com/combsmith/.github/discussions/341)
 - **Rule set:** [`scripts/lib/agents-md-rules.json`](../../scripts/lib/agents-md-rules.json)
 
 This document is the single, reviewable **source of truth** for *what* the AGENTS.md structural validator checks and *why*. The machine-readable
@@ -19,7 +19,7 @@ scope, the derivation, and the promotion gate. Together they replace hardcoded o
 The org's existing compliance framework — the Standards Sync audit in [`.dev-lead/scripts/aw-standards-sync.sh`](../../.dev-lead/scripts/aw-standards-sync.sh) —
 today checks only file **presence** (a `200` vs `404` on the contents API) for required files such as `AGENTS.md` and `.github/CODEOWNERS`. It does not
 look *inside* those files. This initiative (epic #642) adds a deterministic **structural** validator for AGENTS.md so the canonical
-`petry-projects/.github` AGENTS.md and its downstream copies stay structurally aligned with the evolving AAIF/agents.md spec, and cross-repo drift is
+`combsmith/.github` AGENTS.md and its downstream copies stay structurally aligned with the evolving AAIF/agents.md spec, and cross-repo drift is
 caught before it silently degrades the many tools that parse the file.
 
 The initiative is delivered in phases:
@@ -88,7 +88,7 @@ The v1 rules are derived from the **stable subset** of the AAIF AGENTS.md conven
 - **Captured:** 2026-09-01.
 
 The stable subset is: a single top-level document title, a conventional Markdown heading hierarchy, resolvable in-document and relative
-cross-references, and — for this org — the back-link from each downstream repo's AGENTS.md to the canonical `petry-projects/.github` AGENTS.md. Section
+cross-references, and — for this org — the back-link from each downstream repo's AGENTS.md to the canonical `combsmith/.github` AGENTS.md. Section
 names and their required/optional split are treated as **unstable** (hence `recommended`) because the upstream spec is young and moving. The captured
 source and date live in the `spec_snapshot` block of the rule set; re-capture them when bumping the rule set's `_schema_version` for a new stable subset.
 
@@ -151,4 +151,4 @@ Two further guarantees:
 - [`.github/workflows/agents-md-rules-tests.yml`](../../.github/workflows/agents-md-rules-tests.yml) — CI gate that runs the contract tests.
 - [`.dev-lead/scripts/aw-standards-sync.sh`](../../.dev-lead/scripts/aw-standards-sync.sh) — the presence-only compliance framework this initiative extends.
 - [`AGENTS.md`](../../AGENTS.md) — the canonical org-level file the import-consistency rule points downstream repos back to.
-- Epic [#642](https://github.com/petry-projects/.github/issues/642) · discussion [#534](https://github.com/petry-projects/.github/discussions/534) · idea [#341](https://github.com/petry-projects/.github/discussions/341).
+- Epic [#642](https://github.com/combsmith/.github/issues/642) · discussion [#534](https://github.com/combsmith/.github/discussions/534) · idea [#341](https://github.com/combsmith/.github/discussions/341).

@@ -1,6 +1,6 @@
 # GitHub Repository Settings Standards
 
-Standard configurations for all repositories in the **petry-projects** organization.
+Standard configurations for all repositories in the **combsmith** organization.
 These settings are enforced via the GitHub UI, API, and repository rulesets.
 
 ---
@@ -10,7 +10,7 @@ These settings are enforced via the GitHub UI, API, and repository rulesets.
 | Setting | Value | Notes |
 |---------|-------|-------|
 | **Default repository permission** | `read` | Least privilege; grant write/admin via teams |
-| **Organization profile** | `petry-projects` | Public org (free plan) |
+| **Organization profile** | `combsmith` | Public org (free plan) |
 | **Default branch name** | `main` | Org-wide default for new repos |
 | **Members can create repos** | Yes (public + private) | |
 | **Two-factor requirement** | **Required** | All org members must have 2FA enabled |
@@ -127,9 +127,9 @@ rules are deprecated — migrate existing classic rules to rulesets.
 
 The codified ruleset JSONs are the source of truth for all rulesets;
 `scripts/apply-rulesets.sh` (and any org automation consuming it) applies them to each repo.
-As **org-wide compliance policy they are owned by `petry-projects/.github`**, and
+As **org-wide compliance policy they are owned by `combsmith/.github`**, and
 their canonical home is `standards/rulesets/`. Do **not** author rulesets in
-`petry-projects/.github-private` — that repo is scoped to agents/skills and their
+`combsmith/.github-private` — that repo is scoped to agents/skills and their
 reusable assets. All rulesets, including targeted ones like `release-channel-tags`,
 are defined in `.github/standards/rulesets/`.
 See the repo-boundary rule in [`AGENTS.md`](../AGENTS.md).
@@ -137,7 +137,7 @@ See the repo-boundary rule in [`AGENTS.md`](../AGENTS.md).
 > **In transit:** `code-quality.json` and `pr-quality.json` currently still live
 > in `.github-private/.github/rulesets/` and are being relocated to
 > `standards/rulesets/` here — see
-> [petry-projects/.github#575](https://github.com/petry-projects/.github/issues/575).
+> [combsmith/.github#575](https://github.com/combsmith/.github/issues/575).
 
 **`pr-quality` and `code-quality` are the only sanctioned rulesets.** Legacy
 `protect-branches` rulesets and ad-hoc `main` rulesets are deprecated: they
@@ -263,7 +263,7 @@ for more details.
 ##### `standards-sync` PRs — clearing the reviewer deadlock without `--admin`
 
 `standards-sync` / dev-lead remediation PRs cannot satisfy `pr-quality`
-unaided: with CODEOWNERS = `* @petry-projects/org-leads` = `{don-petry,
+unaided: with CODEOWNERS = `* @combsmith/org-leads` = `{don-petry,
 donpetry-bot}`, an author=one-lead / last-pusher=other-lead PR disqualifies
 **both** code-owners (author can't self-approve; the last pusher's approval is
 voided by `require_last_push_approval`), so historically only an `--admin` bypass
@@ -330,7 +330,7 @@ a repo that does not *produce* that check is bricked. Neither context is produce
 the template `ci.yml` out of the box — repos must explicitly add a coverage job and
 the gitleaks secret-scan step before those check names appear. Both are added to the
 shared ruleset only **after** a fleet backfill. Until then, keep them scoped to repos
-that already produce them. See [petry-projects/.github#575](https://github.com/petry-projects/.github/issues/575).
+that already produce them. See [combsmith/.github#575](https://github.com/combsmith/.github/issues/575).
 
 > **Check names must match exactly.** GitHub-managed CodeQL produces a check named
 > `CodeQL` — **not** `Analyze (actions)`, `Analyze (javascript-typescript)`, or
@@ -338,7 +338,7 @@ that already produce them. See [petry-projects/.github#575](https://github.com/p
 > blocks every PR. Verify check names against actual workflow runs:
 >
 > ```bash
-> gh pr checks <PR-number> --repo petry-projects/<repo>
+> gh pr checks <PR-number> --repo combsmith/<repo>
 > ```
 
 #### Ecosystem-Specific Configuration
@@ -379,8 +379,8 @@ See [CI Standards](ci-standards.md) for workflow templates and patterns.
 |-----|---------|-----------|
 | **Claude** | AI code review and PR assistance via Claude Code Action (default dev-lead engine) | 2026-03-20 |
 | **dependabot-automerge-petry** | Provides approving review for Dependabot auto-merge | 2026-03-23 |
-| **petry-projects-pr-review-agent** | (deprecated) GitHub App formerly used for PR review — replaced by `donpetry-bot` machine user in `@petry-projects/org-leads` because Apps cannot be CODEOWNERS | 2026-04-01 |
-| **donpetry-bot** | Machine-user account in `@petry-projects/org-leads`; satisfies CODEOWNERS for automated PR review | 2026-05-04 |
+| **petry-projects-pr-review-agent** | (deprecated) GitHub App formerly used for PR review — replaced by `donpetry-bot` machine user in `@combsmith/org-leads` because Apps cannot be CODEOWNERS | 2026-04-01 |
+| **donpetry-bot** | Machine-user account in `@combsmith/org-leads`; satisfies CODEOWNERS for automated PR review | 2026-05-04 |
 | **SonarQube Cloud (SonarCloud)** | Code quality, security hotspots, coverage tracking | 2026-03-25 |
 | **CodeRabbit AI** | AI-powered code review on PRs | 2026-03-25 |
 
@@ -401,7 +401,7 @@ Set `vars.DEV_LEAD_ENGINE` per-repo to choose the engine; defaults to `claude`.
 # GitHub does not propagate caller workflow env: values into called reusable
 # workflows, so setting env: in the caller stub has no effect. Use a repository
 # variable instead, which the reusable workflow reads as vars.DEV_LEAD_ENGINE.
-gh variable set DEV_LEAD_ENGINE --body "gemini" --repo petry-projects/<repo>
+gh variable set DEV_LEAD_ENGINE --body "gemini" --repo combsmith/<repo>
 # Alternatively: Settings → Secrets and variables → Actions → Variables → New variable
 ```
 
@@ -441,7 +441,7 @@ caller stub `standards/workflows/apply-repo-settings.yml`). To apply on demand, 
 
 ```bash
 # Dispatch the self-heal for one repo (add -f dry_run=true to preview):
-gh workflow run "Apply repo settings" --repo petry-projects/<repo-name>
+gh workflow run "Apply repo settings" --repo combsmith/<repo-name>
 ```
 
 The workflow authenticates with the org secret **`GH_PAT_DON_PETRY`** (classic PAT, `repo`
@@ -524,7 +524,7 @@ computed from the persona manifests rather than hand-listed.
 
 This family is **derived, not enumerated.** [`scripts/apply-repo-settings.sh`](../scripts/apply-repo-settings.sh)
 (`apply_labels()` → `persona_opt_out_label_configs()`) lists the persona directories
-under `personas/<id>/` in [`petry-projects/.github-private`](https://github.com/petry-projects/.github-private)
+under `personas/<id>/` in [`combsmith/.github-private`](https://github.com/combsmith/.github-private)
 and provisions each persona's `opt_out_label` (read from its `persona.yml`, defaulting
 to the `<id>:hands-off` convention). The persona manifest is the index-of-record
 ([persona-standards.md §1.1](persona-standards.md)), so **onboarding a new persona
@@ -557,7 +557,7 @@ All repositories MUST have a `CODEOWNERS` file at `.github/CODEOWNERS`
 The full policy lives in [`codeowners-standard.md`](codeowners-standard.md).
 Summary:
 
-- The default owner line MUST be `* @petry-projects/org-leads`
+- The default owner line MUST be `* @combsmith/org-leads`
 - Direct listings of users or bot accounts (e.g.,
   `@petry-projects-pr-review-agent`, `@dependabot-automerge-petry`) are
   **forbidden** — manage membership through the team instead
@@ -568,19 +568,19 @@ Summary:
 
 ```gitignore
 # CODEOWNERS
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/codeowners-standard.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/codeowners-standard.md
 
-* @petry-projects/org-leads
+* @combsmith/org-leads
 ```
 
-Repos with finer-grained path ownership MUST include `@petry-projects/org-leads`
+Repos with finer-grained path ownership MUST include `@combsmith/org-leads`
 on every owner line so the team can always satisfy `require_code_owner_review`.
 
 ---
 
 ## Applying to a New Repository
 
-When creating a new repository in `petry-projects`:
+When creating a new repository in `combsmith`:
 
 1. **Create the repo** with standard settings (public, `main` branch, wiki disabled, discussions enabled)
 2. **Create the `pr-quality` ruleset** matching the standard configuration above, including:
@@ -608,7 +608,7 @@ The org runs several automated workflows across all repositories:
 
 | Workflow | Schedule | Purpose | Details |
 |----------|----------|---------|---------|
-| **Actions Fleet Monitor** (`actions-fleet-monitor.yml` in `petry-projects/.github-private`) | Daily, 6:00 UTC | Monitor health of all GitHub Actions workflows across the org | Tracks success/failure rates, duration percentiles (p50/p95), and assigns status (HEALTHY/WARNING/DEGRADED/CRITICAL) per workflow; creates issues when workflows have failures |
+| **Actions Fleet Monitor** (`actions-fleet-monitor.yml` in `combsmith/.github-private`) | Daily, 6:00 UTC | Monitor health of all GitHub Actions workflows across the org | Tracks success/failure rates, duration percentiles (p50/p95), and assigns status (HEALTHY/WARNING/DEGRADED/CRITICAL) per workflow; creates issues when workflows have failures |
 | **Org Scorecard Review** (`org-scorecard.yml`) | Weekly, Monday 9:00 UTC | Security posture scoring for all public repos via OpenSSF Scorecard | Creates/updates/closes GitHub Issues with findings; auto-closes when resolved |
 | **Org Standards Compliance Audit** (`compliance-audit-and-improvement.yml`) | Weekly, Friday 12:00 UTC | Deterministic audit of all repos against org standards + runtime health survey | Identifies missing workflows, misconfigured settings, stale PRs, security alerts; creates actionable issues labeled `dev-lead` for agent remediation |
 | **Daily Org Status** (`daily-org-status.yml`) | Daily, 6:00 UTC | Org-wide health snapshot — PR counts, CI failures, dependency vulnerabilities | Reports via PR comments and workflow summary |
@@ -636,8 +636,8 @@ The **Actions Fleet Monitor** runs daily and provides critical visibility into w
 
 ```bash
 gh workflow run actions-fleet-monitor.yml \
-  --repo petry-projects/.github-private \
-  --field org=petry-projects \
+  --repo combsmith/.github-private \
+  --field org=combsmith \
   --field lookback_days=7
 ```
 
@@ -667,7 +667,7 @@ legacy rulesets still active. **All have been remediated.** A re-audit reports
 > Tooling: `scripts/fix-ruleset-bypass.sh` (bypass actors, least-destructive,
 > dry-run capable) and `scripts/apply-rulesets.sh` (canonical `pr-quality` /
 > `code-quality`). Legacy rulesets are retired with
-> `gh api -X DELETE repos/petry-projects/<repo>/rulesets/<id>` once
+> `gh api -X DELETE repos/combsmith/<repo>/rulesets/<id>` once
 > `check_legacy_rulesets()` reports an empty migration delta.
 
 ---

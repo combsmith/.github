@@ -71,7 +71,7 @@ stub_pinning() {  # <ref> → base64 of a minimal stub pinning the reusable at <
   # ring-awareness fixtures below are not tripped by the marker-drift check (#877).
   local body="jobs:
   auto-rebase:
-    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@$1
+    uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@$1
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
