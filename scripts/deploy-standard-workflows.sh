@@ -78,6 +78,21 @@ readonly ENGINE_HOST_REPO=".github-private"
 # A repo here may still opt into a *specific* workflow via SKIP_OVERRIDES below.
 SKIP_REPOS=(".github" "$ENGINE_HOST_REPO")
 
+# Repos the standard-workflow sweep does not serve at all. This is a different
+# thing from SKIP_REPOS. A SKIP_REPO is inside the standard and self-manages it,
+# so every required workflow on it must be reconciled (SKIP_OVERRIDES or
+# SKIP_SELF_MANAGED, see reconcile_skip_repo_required_workflows). A repo here is
+# outside the standard by a recorded decision of the Maintainer: it receives no
+# stub, takes no opt-in, and is not part of that reconciliation.
+#   software-factory        — where the replacement for this fleet is built. Its
+#                             design keeps the two apart (no owner-account token,
+#                             none of the fleet's workflows), and its own workflow
+#                             rules refuse every stub. A sync PR opened there on
+#                             2026-10-12 was closed unmerged.
+#   software-factory-canary — throwaway repo for that project's platform trials.
+# The audits (compliance, Scorecard, SonarCloud) do not read this list yet.
+NOT_SERVED_REPOS=("software-factory" "software-factory-canary")
+
 # Per-workflow opt-ins for otherwise-skipped repos. Keyed by workflow filename;
 # value is a space-separated list of SKIP_REPOS that should still receive it.
 # .github-private participates in the org Initiatives board, so it receives the
@@ -274,6 +289,15 @@ err()  { echo "[deploy] ERROR $*" >&2; }
 is_skipped_repo() {
   local repo="$1" s
   for s in "${SKIP_REPOS[@]}"; do
+    [[ "$repo" == "$s" ]] && return 0
+  done
+  return 1
+}
+
+# True if <repo> is in NOT_SERVED_REPOS (the sweep never touches it).
+is_not_served_repo() {
+  local repo="$1" s
+  for s in "${NOT_SERVED_REPOS[@]}"; do
     [[ "$repo" == "$s" ]] && return 0
   done
   return 1
@@ -1019,6 +1043,12 @@ main() {
   _OVERALL_FAILED=0
   local repo
   for repo in "${REPOS[@]}"; do
+    # Not served: holds for the org-wide sweep and for an explicit --repo alike,
+    # so a targeted run cannot deploy into a repo the Maintainer has kept out.
+    if is_not_served_repo "$repo"; then
+      skip "$repo (not served — NOT_SERVED_REPOS)"
+      continue
+    fi
     deploy_repo "$repo"
   done
 
