@@ -15,7 +15,7 @@
 #
 # Env:
 #   ORG            GitHub owner            (default: combsmith)
-#   SONAR_ORG      SonarCloud organization (default: petry-projects)
+#   SONAR_ORG      SonarCloud organization (default: combsmith)
 #   SONAR_URL      SonarCloud base URL     (default: https://sonarcloud.io)
 #   SONAR_TOKEN    optional; enables auth (private projects, higher rate limits)
 #   REPORT_DIR     output dir              (default: mktemp -d)
@@ -27,7 +27,7 @@
 set -euo pipefail
 
 ORG="${ORG:-combsmith}"
-SONAR_ORG="${SONAR_ORG:-petry-projects}"
+SONAR_ORG="${SONAR_ORG:-combsmith}"
 SONAR_URL="${SONAR_URL:-https://sonarcloud.io}"
 SONAR_AUDIT_LABEL="sonarcloud-audit"
 DRY_RUN="${DRY_RUN:-false}"
