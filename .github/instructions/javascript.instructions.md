@@ -1,5 +1,5 @@
 ---
-description: JavaScript development standards for the Petry Projects organization
+description: JavaScript development standards for the CombSmith organization
 applyTo: "**/*.js,**/*.mjs,**/*.cjs"
 ---
 

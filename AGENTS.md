@@ -1,4 +1,4 @@
-# AGENTS.md — Petry Projects Organization Standards
+# AGENTS.md — CombSmith Organization Standards
 
 This file defines cross-cutting development standards for all repositories in the **combsmith** organization.
 It follows the [AGENTS.md convention](https://agents.md/) and is intended to be imported by each repository's own AGENTS.md or CLAUDE.md.
