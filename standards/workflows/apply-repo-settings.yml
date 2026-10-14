@@ -1,8 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/apply-repo-settings.yml
-# Standard:        petry-projects/.github/standards/github-settings.md
-#                  petry-projects/.github/standards/ruleset-remediation-runbook.md
-# Reusable:        petry-projects/.github/.github/workflows/apply-repo-settings-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/apply-repo-settings.yml
+# Standard:        combsmith/.github/standards/github-settings.md
+#                  combsmith/.github/standards/ruleset-remediation-runbook.md
+# Reusable:        combsmith/.github/.github/workflows/apply-repo-settings-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All settings/ruleset logic lives in the
@@ -48,7 +48,7 @@ jobs:
   apply:
     permissions:
       contents: read
-    uses: petry-projects/.github/.github/workflows/apply-repo-settings-reusable.yml@apply-repo-settings/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/apply-repo-settings-reusable.yml@apply-repo-settings/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
       dry_run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
       checkout_ref: apply-repo-settings/v1-stable  # keep in lockstep with the uses: channel pin

@@ -35,7 +35,7 @@ setup() {
   export GH_STUB_LOG="$TMP/gh.log"
   : >"$GH_STUB_LOG"
 
-  export ORG="petry-projects"
+  export ORG="combsmith"
 }
 
 teardown() {
