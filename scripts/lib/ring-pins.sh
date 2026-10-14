@@ -13,7 +13,7 @@
 # three-way inconsistency #482 exists to close. This file is sourced by both so
 # they can never drift again.
 #
-# Keep the topology in sync with petry-projects/.github-private's
+# Keep the topology in sync with combsmith/.github-private's
 # scripts/cut-release.sh channels and docs/release/.
 # ---------------------------------------------------------------------------
 
@@ -234,7 +234,7 @@ ring_tag_exists() {
 ring_repin_uses() {
   local base="$1" newref="$2"
   sed -E \
-    -e "s#^([[:space:]]*uses:[[:space:]]*petry-projects/[^@[:space:]]*/${base}-reusable\.yml)@[^[:space:]]+#\1@${newref}#" \
+    -e "s#^([[:space:]]*uses:[[:space:]]*combsmith/[^@[:space:]]*/${base}-reusable\.yml)@[^[:space:]]+#\1@${newref}#" \
     -e "s#^([[:space:]]*agent_ref:[[:space:]]*[\"']?)${base}/[^\"'[:space:]]+#\1${newref}#"
   return 0
 }

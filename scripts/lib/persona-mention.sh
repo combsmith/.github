@@ -5,13 +5,13 @@
 #
 #   standards/persona-standards.md
 #
-# A persona is addressed by an org TEAM handle — `@petry-projects/<role>` — and
-# the manifest at `personas/<role>/persona.yml` in petry-projects/.github-private
+# A persona is addressed by an org TEAM handle — `@combsmith/<role>` — and
+# the manifest at `personas/<role>/persona.yml` in combsmith/.github-private
 # is the index-of-record for whether that mention should do anything. There is no
 # derived index: `validate-personas.py` enforces `address.handle`'s slug == `id`
 # == the persona's directory name, so a handle resolves to a manifest path by
 # convention. A 404 simply means "not a persona" — which is also how a real,
-# non-persona team (`@petry-projects/org-leads`) falls through harmlessly.
+# non-persona team (`@combsmith/org-leads`) falls through harmlessly.
 #
 # ----------------------------------------------------------------------------
 # Caller contract
@@ -21,9 +21,9 @@
 # `set` itself and runs nothing at source time.
 #
 # Reads (all optional, with defaults):
-#   - $PERSONA_ORG        — org that owns the persona teams (default: petry-projects)
+#   - $PERSONA_ORG        — org that owns the persona teams (default: combsmith)
 #   - $PERSONA_REPO       — repo holding personas/<id>/persona.yml
-#                           (default: petry-projects/.github-private)
+#                           (default: combsmith/.github-private)
 #   - $PERSONA_REF        — ref to read manifests at (default: main)
 #   - $PERSONA_BOT_LOGINS — space/comma-separated logins whose comments never
 #                           trigger a persona (default: donpetry-bot github-actions[bot])
@@ -82,7 +82,7 @@ pm_is_agent_comment() {
 #
 # Matches '@<org>/<slug>' where slug is kebab-case, mirroring the schema's
 # address.handle pattern. Order is preserved (first mention wins) and duplicates
-# collapse, so '@petry-projects/qa-lead ... @petry-projects/qa-lead' dispatches
+# collapse, so '@combsmith/qa-lead ... @combsmith/qa-lead' dispatches
 # once rather than twice.
 #
 # A match here is NOT a decision to run: the slug still has to resolve to a
@@ -117,7 +117,7 @@ pm_strip_unaddressable() {
 
 # pm_extract_slugs <body> — emit each DISTINCT persona slug addressed in body.
 pm_extract_slugs() {
-  local body="$1" org="${PERSONA_ORG:-petry-projects}"
+  local body="$1" org="${PERSONA_ORG:-combsmith}"
   pm_strip_unaddressable "$body" \
     | grep -oE "@${org}/[a-z0-9]+(-[a-z0-9]+)*" \
     | sed "s|@${org}/||" \
@@ -126,7 +126,7 @@ pm_extract_slugs() {
 
 # pm_manifest_url <slug> — the raw URL of that persona's manifest.
 pm_manifest_url() {
-  local repo="${PERSONA_REPO:-petry-projects/.github-private}"
+  local repo="${PERSONA_REPO:-combsmith/.github-private}"
   local ref="${PERSONA_REF:-main}"
   printf 'https://raw.githubusercontent.com/%s/%s/personas/%s/persona.yml\n' \
     "$repo" "$ref" "$1"

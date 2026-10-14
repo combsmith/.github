@@ -65,13 +65,13 @@ case "\$path" in
     prq='$prq'
     if [ "\$prq" = "FETCHFAIL" ]; then echo "gh: Server Error (HTTP 500)" >&2; exit 1; fi
     if [ "\$prq" = "NORULE" ]; then echo '{"name":"pr-quality","id":101,"rules":[{"type":"deletion","parameters":null}]}'; exit 0; fi
-    echo "{\"name\":\"pr-quality\",\"id\":101,\"source\":\"petry-projects/demo-repo\",\"rules\":[{\"type\":\"pull_request\",\"parameters\":\$prq}]}"
+    echo "{\"name\":\"pr-quality\",\"id\":101,\"source\":\"combsmith/demo-repo\",\"rules\":[{\"type\":\"pull_request\",\"parameters\":\$prq}]}"
     ;;
   */rulesets/102)
     cq='$cq'
     if [ "\$cq" = "FETCHFAIL" ]; then echo "gh: Server Error (HTTP 500)" >&2; exit 1; fi
     if [ "\$cq" = "NORULE" ]; then echo '{"name":"code-quality","id":102,"rules":[{"type":"deletion","parameters":null}]}'; exit 0; fi
-    echo "{\"name\":\"code-quality\",\"id\":102,\"source\":\"petry-projects/demo-repo\",\"rules\":[{\"type\":\"required_status_checks\",\"parameters\":\$cq}]}"
+    echo "{\"name\":\"code-quality\",\"id\":102,\"source\":\"combsmith/demo-repo\",\"rules\":[{\"type\":\"required_status_checks\",\"parameters\":\$cq}]}"
     ;;
   *)
     echo '[]'

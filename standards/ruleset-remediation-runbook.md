@@ -31,7 +31,7 @@ for the policy this enforces:
 ```bash
 gh auth status            # token must have admin:org + repo
 export GH_TOKEN="$(gh auth token)"
-ORG=petry-projects
+ORG=combsmith
 ```
 
 ## 1. Snapshot every ruleset (rollback insurance) — ALWAYS do this first
@@ -136,7 +136,7 @@ jq '{name,target,enforcement,conditions,rules,bypass_actors}' "$SNAP/<repo>__<id
 Standards-sync / dev-lead remediation PRs hit a **structural reviewer deadlock**
 under `pr-quality` — the ruleset requires a code-owner approval **plus**
 `require_last_push_approval` **plus** not-own-PR, but CODEOWNERS is
-`* @petry-projects/org-leads` = `{don-petry, donpetry-bot}`. On these PRs the
+`* @combsmith/org-leads` = `{don-petry, donpetry-bot}`. On these PRs the
 author is one org-lead (cannot self-approve) and the last pusher is the other
 (its own approval is disqualified by last-push-approval), so **both** code-owners
 are disqualified and the only historical path was an org-admin `--admin` bypass.
@@ -160,14 +160,14 @@ resolves the deadlock **through** branch protection, never around it:
 ```bash
 # One PR (approver's token supplies the distinct identity):
 GH_TOKEN=<repo-scope> APPROVER_TOKEN=<approver-pat> \
-  bash scripts/automerge-standards-sync.sh --repo petry-projects/<repo> --pr <n>
+  bash scripts/automerge-standards-sync.sh --repo combsmith/<repo> --pr <n>
 
 # Sweep every open standards-sync PR in a repo (incl. the SKIP_REPOS meta-repos):
 GH_TOKEN=<repo-scope> APPROVER_TOKEN=<approver-pat> \
-  bash scripts/automerge-standards-sync.sh --repo petry-projects/.github-private
+  bash scripts/automerge-standards-sync.sh --repo combsmith/.github-private
 
 # Preview only — no approval, no auto-merge, no mutation:
-bash scripts/automerge-standards-sync.sh --repo petry-projects/<repo> --pr <n> --dry-run
+bash scripts/automerge-standards-sync.sh --repo combsmith/<repo> --pr <n> --dry-run
 ```
 
 Eligibility is gated to a **trusted source**: the PR must carry the
