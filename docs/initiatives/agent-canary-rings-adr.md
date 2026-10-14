@@ -45,7 +45,7 @@ known-good version while the candidate soaks, and (d) roll back in one move.
 
 - **Zero caller churn; bounded blast radius; <5-min rollback** (one tag move).
 - The promotion workflow is the authorized tag mover, authenticated as the
-  **`petry-projects-release-manager` GitHub App** (a bypass actor on each host repo's
+  **`combsmith-release-manager` GitHub App** (a bypass actor on each host repo's
   `release-channel-tags` ruleset). Its required repository permissions —
   **Contents:write, Workflows:write, Deployments:write, Issues:write, Actions:read,
   Metadata:read** — must be granted on the App *and* requested in the token-mint step;

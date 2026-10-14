@@ -209,7 +209,7 @@ configured manually in the UI):
 test/workflows/add-to-project/                   # bats tests, gh stub, fixtures
 ```
 
-**Auth:** A dedicated GitHub App (`petry-projects-planner`, App ID
+**Auth:** A dedicated GitHub App (`combsmith-planner`, App ID
 `3985527`) installed on the org. The workflow mints a fresh installation
 token per run via `actions/create-github-app-token@v3.2.0` — no static
 long-lived token. App permissions: Organization Projects `Read+write`,
