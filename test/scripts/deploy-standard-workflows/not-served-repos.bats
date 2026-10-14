@@ -33,7 +33,7 @@ teardown() { rm -rf "$TT_TMP"; }
 
 @test "is_not_served_repo: an ordinary repo, and the SKIP_REPOS, are served" {
   run bash -c 'source "$1" >/dev/null 2>&1; is_not_served_repo markets || is_not_served_repo .github || is_not_served_repo .github-private' _ "$SCRIPT"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
 }
 
 @test "NOT_SERVED_REPOS and SKIP_REPOS share no repo" {
