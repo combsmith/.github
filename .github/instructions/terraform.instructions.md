@@ -1,5 +1,5 @@
 ---
-description: Terraform infrastructure-as-code standards for the Petry Projects organization
+description: Terraform infrastructure-as-code standards for the CombSmith organization
 applyTo: "**/*.tf,**/*.tfvars,**/*.tftest.hcl"
 ---
 
