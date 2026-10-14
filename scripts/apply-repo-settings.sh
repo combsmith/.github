@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# apply-repo-settings.sh — Apply standard repository settings to petry-projects repos
+# apply-repo-settings.sh — Apply standard repository settings to combsmith repos
 #
 # Companion script to compliance-audit.sh. Applies the settings defined in:
 #   standards/github-settings.md#repository-settings--standard-defaults
@@ -28,7 +28,7 @@ if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
   exit 1
 fi
 
-ORG="petry-projects"
+ORG="combsmith"
 DRY_RUN="${DRY_RUN:-false}"
 
 info()  { echo "[INFO]  $*"; }

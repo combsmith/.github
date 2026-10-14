@@ -59,7 +59,7 @@ jobs:
         run: |
           DATE=$(date -u +%Y-%m-%d)
           gh issue create \
-            --repo petry-projects/.github \
+            --repo combsmith/.github \
             --title "Org Status — $DATE" \
             --body-file /tmp/report.md \
             --label daily-report

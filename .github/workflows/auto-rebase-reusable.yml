@@ -1,7 +1,7 @@
 # Reusable auto-rebase workflow — single source of truth for the org.
 # Repo-level auto-rebase.yml files call this to avoid duplicating
 # the branch-update logic.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 #
 # Problem: when branch protection requires branches to be up-to-date
 # (strict status checks), merging any PR makes other open PRs fall behind.

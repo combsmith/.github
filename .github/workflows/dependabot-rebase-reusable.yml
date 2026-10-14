@@ -1,7 +1,7 @@
 # Reusable Dependabot update-and-merge workflow — single source of truth for the org.
 # Repo-level dependabot-rebase.yml files call this to avoid duplicating
 # the rebase/merge serialization logic.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/dependabot-policy.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/dependabot-policy.md
 #
 # Problem: when branch protection requires branches to be up-to-date
 # (strict status checks), merging one Dependabot PR makes the others fall
