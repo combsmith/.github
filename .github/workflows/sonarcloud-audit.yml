@@ -51,7 +51,7 @@ jobs:
       - name: Run SonarCloud audit
         env:
           ORG: ${{ github.repository_owner }}
-          SONAR_ORG: ${{ github.repository_owner }}
+          SONAR_ORG: petry-projects
           REPORT_DIR: ${{ runner.temp }}/sonarcloud-report
           TARGET_REPO: ${{ inputs.target_repo || '' }}
           DRY_RUN: ${{ inputs.dry_run || 'false' }}

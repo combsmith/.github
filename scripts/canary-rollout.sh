@@ -41,7 +41,7 @@ set -euo pipefail
 #   CANARY_FAILURE_CATEGORY  optional triage hint (comment-cap|rate-limit|infra|data)
 #   CANARY_AUTO_CUT     autocut kill-switch — autocut is a no-op unless this == 'true'
 #   GH_TOKEN            credential; the workflow mints a GitHub App token and passes it here
-#   GITHUB_REPOSITORY   the repo of THIS checkout (default petry-projects/.github). Agents hosted
+#   GITHUB_REPOSITORY   the repo of THIS checkout (default combsmith/.github). Agents hosted
 #                       here resolve their tags from the local checkout, so a local run needs a
 #                       checkout of that repo WITH its tags (`git fetch --tags`); agents hosted
 #                       elsewhere resolve via `gh api` and need a GH_TOKEN that can read the host.
@@ -63,14 +63,14 @@ CANARY_RINGS="${CANARY_RINGS:-$DEFAULT_RINGS}"
 
 # THIS_REPO — the repo this checkout belongs to. Agents hosted HERE (dev-lead, pr-review)
 # keep their channel/release tags in this checkout and resolve them via local git. A
-# cross-repo agent (host != THIS_REPO, e.g. the #482 reusables hosted in petry-projects/
+# cross-repo agent (host != THIS_REPO, e.g. the #482 reusables hosted in combsmith/
 # .github) keeps its <name>/<channel> and <name>/vX.Y.Z tags on ITS host, so those tags
 # must be resolved there via `gh api` — reading local refs resolves empty and the frontier
 # falsely reports "fully rolled out" (#1049). Mirrors cut-release.sh's CROSS_REPO_TARGET.
 # The default is the repo this engine lives in (.github, since #613). It used to be
 # .github-private, so a LOCAL run from a .github checkout (no GITHUB_REPOSITORY) read the
 # .github-private agents' tags from the wrong checkout and reported "fully rolled out" (#1177).
-THIS_REPO="${GITHUB_REPOSITORY:-petry-projects/.github}"
+THIS_REPO="${GITHUB_REPOSITORY:-combsmith/.github}"
 
 # CANARY_MAX_COMMIT_PAGES — pagination ceiling (100 commits/page) when autocut enumerates a
 # commit range for bump signals. A range that cannot be fully enumerated within this many pages
@@ -3797,7 +3797,7 @@ _registered_hosts() {
 # `registered_paths` (the registry's reusable paths for this host) ALSO admits a present file
 # whose name is grandfathered off that convention — e.g. `pr-review.yml`, the pr-review engine
 # kept on its legacy name until #1127 — so drift does not false-flag a legitimately-registered,
-# actually-present reusable as `missing-file` (petry-projects/.github#1166). Both branches
+# actually-present reusable as `missing-file` (combsmith/.github#1166). Both branches
 # require the file to be present in the host listing, so a genuinely-deleted registered
 # reusable (registered but NOT in the listing) is still reported missing.
 _gh_list_reusables() {

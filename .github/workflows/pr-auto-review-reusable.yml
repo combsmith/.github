@@ -1,7 +1,7 @@
 # Reusable PR Auto-Review — Ready Check workflow.
 # Single source of truth for the org: all readiness-gate logic lives here.
 # Repo-level pr-auto-review.yml files are thin caller stubs.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 #
 # Fires a review-agent dispatch when a PR meets ALL of the following criteria:
 #   1. PR is open and not a draft
@@ -115,7 +115,7 @@ jobs:
         if: steps.pr.outputs.skip != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: ${{ github.job_workflow_sha }}
           path: .pr-auto-review-tooling
           token: ${{ secrets.GH_PAT_WORKFLOWS }}
@@ -254,7 +254,7 @@ jobs:
           gh api \
             --method POST \
             --header "Accept: application/vnd.github+json" \
-            /repos/petry-projects/.github-private/dispatches \
+            /repos/combsmith/.github-private/dispatches \
             --field event_type=pr-review-mention \
             --field "client_payload[pr_url]=$PR_URL"
           echo "::notice::Auto-review dispatched for $PR_URL"

@@ -1,7 +1,7 @@
 # .gitignore Standard
 
 **Status:** Required
-**Applies to:** All repos in `petry-projects` org
+**Applies to:** All repos in `combsmith` org
 **Enforced by:** [`compliance-audit.sh`](../scripts/compliance-audit.sh) (`pp_check_gitignore_baseline`, in [`scripts/lib/push-protection.sh`](../scripts/lib/push-protection.sh))
 
 Every repository's `.gitignore` starts from the org-managed **secrets baseline**
@@ -51,9 +51,9 @@ So the L1 block can be identified mechanically (for drift detection and
 automated updates), it is wrapped in canonical markers in `/.gitignore`:
 
 ```gitignore
-# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>
+# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>
 ... the secrets baseline ...
-# <<< END petry-projects secrets baseline <<<
+# <<< END combsmith secrets baseline <<<
 ```
 
 - Everything **between** the markers is the L1 block — org-managed, byte-for-byte

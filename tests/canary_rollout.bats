@@ -380,7 +380,7 @@ DG_KNOBS='{"min_baseline_sample":10,"margin_permille":100}'
 # ── _reusable_differs: cross-repo host-aware blob compare (#613) ───────────────
 # When an agent's host != THIS_REPO (e.g. dev-lead hosted in .github-private while the
 # engine runs from .github), the reusable blob is NOT in the local checkout — the compare
-# must go through `gh api` on the host. agent-shield (host = petry-projects/.github) is the
+# must go through `gh api` on the host. agent-shield (host = combsmith/.github) is the
 # cross-repo agent here, with THIS_REPO forced to .github-private via GITHUB_REPOSITORY.
 @test "_reusable_differs: cross-repo agent resolves host blobs via gh api — differ → 1" {
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
@@ -390,7 +390,7 @@ DG_KNOBS='{"min_baseline_sample":10,"margin_permille":100}'
     echo '  *"ref=PRIOR"*) echo "bbbbbbbbbb" ;;'
     echo '  *) echo "" ;;'
     echo 'esac'; } > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && _reusable_differs agent-shield CAND PRIOR"
   [ "$status" -eq 0 ]; [ "$output" = "1" ]
 }
@@ -398,7 +398,7 @@ DG_KNOBS='{"min_baseline_sample":10,"margin_permille":100}'
 @test "_reusable_differs: cross-repo agent — identical host blob → 0" {
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
   printf '#!/usr/bin/env bash\necho "samesamesame"\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && _reusable_differs agent-shield CAND PRIOR"
   [ "$status" -eq 0 ]; [ "$output" = "0" ]
 }
@@ -406,7 +406,7 @@ DG_KNOBS='{"min_baseline_sample":10,"margin_permille":100}'
 @test "_reusable_differs: cross-repo agent — unresolvable blob fails CLOSED → 1" {
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
   printf '#!/usr/bin/env bash\necho ""\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && _reusable_differs agent-shield CAND PRIOR"
   [ "$status" -eq 0 ]; [ "$output" = "1" ]
 }
@@ -951,7 +951,7 @@ _pv_rings() {
 
 # ── canary-rings.json SoT shape (rings + gate knobs) ──────────────────────────
 @test "canary-rings.json: pr-auto-review onboarded to canary; unmanaged block emptied" {
-  run jq -e '.agents["pr-auto-review"].host == "petry-projects/.github"' "$RINGS"
+  run jq -e '.agents["pr-auto-review"].host == "combsmith/.github"' "$RINGS"
   [ "$status" -eq 0 ]
   run jq -e '.agents["pr-auto-review"].run_workflow == "PR Auto-Review — Ready Check"' "$RINGS"
   [ "$status" -eq 0 ]
@@ -963,7 +963,7 @@ _pv_rings() {
 }
 
 @test "canary-rings.json: add-to-project onboarded to full ring model (#651)" {
-  run jq -e '.agents["add-to-project"].host == "petry-projects/.github"' "$RINGS"
+  run jq -e '.agents["add-to-project"].host == "combsmith/.github"' "$RINGS"
   [ "$status" -eq 0 ]
   run bash -c "jq -r '.agents[\"add-to-project\"].rings | sort_by(.order) | map(.channel) | join(\",\")' '$RINGS'"
   [ "$output" = "next,ring0,ring1,stable" ]
@@ -975,7 +975,7 @@ _pv_rings() {
 }
 
 @test "canary-rings.json: feature-ideation onboarded (cross-repo host, standard rings, #614)" {
-  run jq -e '.agents["feature-ideation"].host == "petry-projects/.github"' "$RINGS"
+  run jq -e '.agents["feature-ideation"].host == "combsmith/.github"' "$RINGS"
   [ "$status" -eq 0 ]
   run jq -e '.agents["feature-ideation"].reusable == ".github/workflows/feature-ideation-reusable.yml"' "$RINGS"
   [ "$status" -eq 0 ]
@@ -988,7 +988,7 @@ _pv_rings() {
 }
 
 @test "canary-rings.json: ci-failure-analyst onboarded (this-repo host, standard rings, #1159)" {
-  run jq -e '.agents["ci-failure-analyst"].host == "petry-projects/.github-private"' "$RINGS"
+  run jq -e '.agents["ci-failure-analyst"].host == "combsmith/.github-private"' "$RINGS"
   [ "$status" -eq 0 ]
   run jq -e '.agents["ci-failure-analyst"].reusable == ".github/workflows/ci-failure-analyst-reusable.yml"' "$RINGS"
   [ "$status" -eq 0 ]
@@ -1005,9 +1005,9 @@ _pv_rings() {
 
 @test "canary-rings.json: pr-review onboarded (cross-repo host, standard rings, grandfathered filename, #1106)" {
   # AC4: cross-repo agent — its reusable lives in .github-private, so releases/tags host there.
-  run jq -e '.agents["pr-review"].host == "petry-projects/.github-private"' "$RINGS"
+  run jq -e '.agents["pr-review"].host == "combsmith/.github-private"' "$RINGS"
   [ "$status" -eq 0 ]
-  # AC4: the reusable is the grandfathered non-`-reusable.yml` engine (petry-projects/.github-private#1127) —
+  # AC4: the reusable is the grandfathered non-`-reusable.yml` engine (combsmith/.github-private#1127) —
   # exactly why the *-reusable.yml drift scan never caught the gap this issue closes.
   run jq -e '.agents["pr-review"].reusable == ".github/workflows/pr-review.yml"' "$RINGS"
   [ "$status" -eq 0 ]
@@ -1022,7 +1022,7 @@ _pv_rings() {
   [ "$status" -eq 0 ]
   run jq -e '.agents["pr-review"].rings[] | select(.channel=="stable") | (.members | index("*")) != null' "$RINGS"
   [ "$status" -eq 0 ]
-  run jq -e '.agents["pr-review"].rings[] | select(.channel=="ring1") | (.members|index("petry-projects/TalkTerm")) and (.members|index("petry-projects/bmad-bgreat-suite"))' "$RINGS"
+  run jq -e '.agents["pr-review"].rings[] | select(.channel=="ring1") | (.members|index("combsmith/TalkTerm")) and (.members|index("combsmith/bmad-bgreat-suite"))' "$RINGS"
   [ "$status" -eq 0 ]
   # standard #548 gate + organic-traffic model (no synthetic-canary fields)
   run jq -e '.agents["pr-review"].gate.transitions["ring1->stable"].sample_min == 1' "$RINGS"
@@ -1032,11 +1032,11 @@ _pv_rings() {
 }
 
 @test "canary-rings.json: valid JSON + dev-lead host + ordered rings" {
-  run jq -e '.agents["dev-lead"].host == "petry-projects/.github-private"' "$RINGS"
+  run jq -e '.agents["dev-lead"].host == "combsmith/.github-private"' "$RINGS"
   [ "$status" -eq 0 ]
   run bash -c "jq -r '.agents[\"dev-lead\"].rings | sort_by(.order) | map(.channel) | join(\",\")' '$RINGS'"
   [ "$output" = "next,ring0,ring1,stable" ]
-  run jq -e '.agents["dev-lead"].rings[] | select(.channel=="ring1") | (.members | index("petry-projects/TalkTerm")) and (.members | index("petry-projects/bmad-bgreat-suite"))' "$RINGS"
+  run jq -e '.agents["dev-lead"].rings[] | select(.channel=="ring1") | (.members | index("combsmith/TalkTerm")) and (.members | index("combsmith/bmad-bgreat-suite"))' "$RINGS"
   [ "$status" -eq 0 ]
 }
 
@@ -1047,12 +1047,12 @@ _pv_rings() {
   # TalkTerm/bmad traffic (organic or human-triggered) arrives.
   local a
   for a in initiative-planner idea-triage idea-enhancer; do
-    run jq -e --arg a "$a" '.agents[$a].host == "petry-projects/.github"' "$RINGS"
+    run jq -e --arg a "$a" '.agents[$a].host == "combsmith/.github"' "$RINGS"
     [ "$status" -eq 0 ]
     run bash -c "jq -r --arg a '$a' '.agents[\$a].rings | sort_by(.order) | map(.channel) | join(\",\")' '$RINGS'"
     [ "$output" = "next,ring0,ring1,stable" ]
     # ring1 = the real consumers that gate ring1->stable
-    run jq -e --arg a "$a" '.agents[$a].rings[] | select(.channel=="ring1") | (.members|index("petry-projects/TalkTerm")) and (.members|index("petry-projects/bmad-bgreat-suite"))' "$RINGS"
+    run jq -e --arg a "$a" '.agents[$a].rings[] | select(.channel=="ring1") | (.members|index("combsmith/TalkTerm")) and (.members|index("combsmith/bmad-bgreat-suite"))' "$RINGS"
     [ "$status" -eq 0 ]
     # standard #548 gate: inner rings waive, ring1->stable needs >=1 real run
     run jq -e --arg a "$a" '.agents[$a].gate.transitions["next->ring0"].waive_sample_if_no_caller == true and .agents[$a].gate.transitions["ring0->ring1"].waive_sample == true and .agents[$a].gate.transitions["ring1->stable"].sample_min == 1' "$RINGS"
@@ -1098,12 +1098,12 @@ _pv_rings() {
 # ── orchestrator: resolve_members (host-relative tokens) ──────────────────────
 @test "orchestrator: resolve_members expands \$host / \$org_infra / * " {
   run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead next"
-  [ "$status" -eq 0 ]; [ "$output" = "petry-projects/.github-private" ]
+  [ "$status" -eq 0 ]; [ "$output" = "combsmith/.github-private" ]
   run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead ring0"
-  [ "$status" -eq 0 ]; [ "$output" = "petry-projects/.github" ]
+  [ "$status" -eq 0 ]; [ "$output" = "combsmith/.github" ]
   run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead ring1"
-  [[ "$output" == *"petry-projects/TalkTerm"* ]]
-  [[ "$output" == *"petry-projects/bmad-bgreat-suite"* ]]
+  [[ "$output" == *"combsmith/TalkTerm"* ]]
+  [[ "$output" == *"combsmith/bmad-bgreat-suite"* ]]
 }
 
 # ── orchestrator: evaluate / promote (read-only + dry-run) with stubs ─────────
@@ -1367,7 +1367,7 @@ GITEOF
 # `gh run view --log` prints the resolved "Uses: …@refs/tags/<chan> (<sha>)" line, with <sha>
 # = $1 (the release the run actually executed); "none" prints a log with no Uses: line.
 _executed_sha_stub() {
-  local executed="$1" conclusion="${2:-failure}" fail_sub="${3:-repo petry-projects/TalkTerm --workflow}" cut_iso run_iso
+  local executed="$1" conclusion="${2:-failure}" fail_sub="${3:-repo combsmith/TalkTerm --workflow}" cut_iso run_iso
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
   cut_iso="$(date -u -d "-3 days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v"-3d" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
   run_iso="$(date -u -d "-2 days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v"-2d" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
@@ -1390,7 +1390,7 @@ case "\$*" in
   *"run view"*"--log"*)
     # Mirrors real \`gh run view --log\` output: "<job><TAB><step><TAB><timestamp> <text>".
     ts="2026-09-25T00:00:00.1234567Z"
-    U="Uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@refs/tags/dev-lead/v2-ring1"
+    U="Uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@refs/tags/dev-lead/v2-ring1"
     if [ "$executed" = logfail ]; then exit 1
     elif [ "$executed" = none ]; then printf 'build\tUNKNOWN STEP\t%s nothing relevant\n' "\$ts"
     elif [ "$executed" = collision ]; then printf 'build\tUNKNOWN STEP\t%s Uses: someone/else/.github/workflows/dev-lead-reusable.yml@refs/tags/x (bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)\n' "\$ts"
@@ -1467,7 +1467,7 @@ GITEOF
   # The source tier's sample still counts runs from before the candidate reached it, so dropping only
   # their failures would let a candidate with no executions there reach PROMOTE. The host (.github-private)
   # is the source tier of next->ring0 and its failing run's log names the OLD sha: it must still count.
-  _executed_sha_stub bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb failure "repo petry-projects/.github-private --workflow"
+  _executed_sha_stub bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb failure "repo combsmith/.github-private --workflow"
   run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"BLOCKED"* ]]
@@ -1521,7 +1521,7 @@ GITEOF
 }
 
 # ── orchestrator: cross-repo agents resolve tags on `host`, not the local checkout ─
-# (#1049) A cross-repo agent (host = petry-projects/.github) keeps its <name>/<channel>
+# (#1049) A cross-repo agent (host = combsmith/.github) keeps its <name>/<channel>
 # and <name>/vX.Y.Z tags on the HOST repo, not this checkout. `evaluate` must resolve them
 # there via `gh api` (dereferencing annotated tags) — reading the LOCAL refs makes every
 # ring resolve empty → "all rings equal → fully rolled out", which would falsely SKIP a
@@ -1609,7 +1609,7 @@ GITEOF
 }
 
 # ── orchestrator: cross-repo promote MOVES the channel tag on the HOST via gh api (#1054) ─
-# A cross-repo agent (host = petry-projects/.github) keeps its channel tags on the host, so
+# A cross-repo agent (host = combsmith/.github) keeps its channel tags on the host, so
 # the promote move must go through `gh api PATCH .../git/refs/tags/...`, NOT local `git tag -f`
 # (which fails "nonexistent object" for a host commit absent from this checkout — #1054).
 @test "orchestrator: cross-repo promote --dry-run shows the host gh-api move, not a local git tag (#1054)" {
@@ -1617,7 +1617,7 @@ GITEOF
   run env CANARY_RINGS="$RINGS" bash "$ORCH" promote auto-rebase --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"DRY-RUN"* ]]
-  [[ "$output" == *"gh api PATCH repos/petry-projects/.github/git/refs/tags/auto-rebase/stable"* ]]
+  [[ "$output" == *"gh api PATCH repos/combsmith/.github/git/refs/tags/auto-rebase/stable"* ]]
   [[ "$output" != *"git tag -f"* ]]
 }
 
@@ -1669,17 +1669,17 @@ GITEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"promoted auto-rebase/stable"* ]]
   # The move went through gh api PATCH on the HOST, never local git tag/push.
-  grep -q "PATCH repos/petry-projects/.github/git/refs/tags/auto-rebase/stable" "$MOVE_LOG"
+  grep -q "PATCH repos/combsmith/.github/git/refs/tags/auto-rebase/stable" "$MOVE_LOG"
   ! grep -q "^LOCAL:" "$MOVE_LOG"
   # The move is exposed for the workflow's GitHub Deployment step (#502).
   grep -q "promoted_agent=auto-rebase" "$out"
   grep -q "promoted_ring=stable" "$out"
   # promoted_host is the OWNING repo (the cross-repo host), so the deployment is created
   # where the moved commit exists — not GITHUB_REPOSITORY, which would 422 "No ref found" (#1059).
-  grep -q "promoted_host=petry-projects/.github" "$out"
+  grep -q "promoted_host=combsmith/.github" "$out"
   # The promotions log gets one TSV line per move (agent, ring, sha, owning-repo) so a
   # promote-all run can record a deployment for EVERY promotion, not just the last.
-  grep -qP "^auto-rebase\tstable\t[0-9a-f]+\tpetry-projects/\.github$" "$plog"
+  grep -qP "^auto-rebase\tstable\t[0-9a-f]+\tcombsmith/\.github$" "$plog"
 }
 
 @test "orchestrator: cross-repo promote --dry-run shows the host move but touches neither git nor the API (#1054)" {
@@ -1688,7 +1688,7 @@ GITEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"DRY-RUN"* ]]
   [[ "$output" == *"auto-rebase/stable"* ]]
-  [[ "$output" == *"petry-projects/.github"* ]]
+  [[ "$output" == *"combsmith/.github"* ]]
   [ ! -f "$MOVE_LOG" ]
 }
 
@@ -1703,7 +1703,7 @@ GITEOF
   [ "$status" -eq 1 ]                                   # the failed write surfaces as a non-zero run
   [[ "$output" == *"::error::failed to move"* ]]
   # One failure-log line: agent, ring, candidate sha, owning host, and a reason (5 columns).
-  grep -qP "^auto-rebase\tstable\t[0-9a-f]+\tpetry-projects/\.github\t.+" "$flog"
+  grep -qP "^auto-rebase\tstable\t[0-9a-f]+\tcombsmith/\.github\t.+" "$flog"
 }
 
 @test "orchestrator: a gate-BLOCKED promotion writes NOTHING to the failure log (#1023)" {
@@ -1754,7 +1754,7 @@ GHEOF
 
 @test "_gh_move_tag: surfaces the API rejection and does NOT fall back to POST on a non-404 PATCH failure (#743)" {
   _move_tag_stub reject
-  run bash -c "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+  run bash -c "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -ne 0 ]
   [[ "$output" == *"::error::"* ]]
   [[ "$output" == *"blocked by ruleset release-channel-tags"* ]]
@@ -1764,7 +1764,7 @@ GHEOF
 
 @test "_gh_move_tag: a successful PATCH moves the tag and never falls back to POST (#743)" {
   _move_tag_stub ok
-  run bash -c "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+  run bash -c "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -eq 0 ]
   grep -q '^PATCH$' "$CALL_LOG"
   ! grep -q '^POST$' "$CALL_LOG"
@@ -1773,7 +1773,7 @@ GHEOF
 
 @test "_gh_move_tag: falls back to POST (create) when the ref is genuinely absent (404) (#743)" {
   _move_tag_stub absent ok
-  run bash -c "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+  run bash -c "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -eq 0 ]
   grep -q '^PATCH$' "$CALL_LOG"
   grep -q '^POST$' "$CALL_LOG"
@@ -1781,7 +1781,7 @@ GHEOF
 
 @test "_gh_move_tag: surfaces the create error when the 404 POST fallback also fails (#743)" {
   _move_tag_stub absent reject
-  run bash -c "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+  run bash -c "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -ne 0 ]
   [[ "$output" == *"::error::"* ]]
   [[ "$output" == *"Validation Failed"* ]]
@@ -1811,7 +1811,7 @@ GHEOF
 @test "_gh_move_tag: routes the PATCH through CANARY_WRITE_TOKEN when set (#745)" {
   _token_capture_stub
   run env GH_TOKEN=owner-wide CANARY_WRITE_TOKEN=repo-scoped bash -c \
-    "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+    "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -eq 0 ]
   grep -q 'PATCH.*repo-scoped' "$TOKEN_LOG"
   ! grep -q 'PATCH.*owner-wide' "$TOKEN_LOG"
@@ -1820,7 +1820,7 @@ GHEOF
 @test "_gh_move_tag: falls back to the ambient GH_TOKEN when CANARY_WRITE_TOKEN is unset (#745)" {
   _token_capture_stub
   run env -u CANARY_WRITE_TOKEN GH_TOKEN=owner-wide bash -c \
-    "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+    "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -eq 0 ]
   grep -q 'PATCH.*owner-wide' "$TOKEN_LOG"
 }
@@ -1828,7 +1828,7 @@ GHEOF
 @test "_gh_create_annotated_tag: routes the object create + ref publish through CANARY_WRITE_TOKEN when set (#745)" {
   _token_capture_stub
   run env GH_TOKEN=owner-wide CANARY_WRITE_TOKEN=repo-scoped bash -c \
-    "source '$ORCH' && _gh_create_annotated_tag petry-projects/.github agent-shield/v2.0.0 12b0075a9c48000000000000000000000000000 'agent-shield release v2.0.0'"
+    "source '$ORCH' && _gh_create_annotated_tag combsmith/.github agent-shield/v2.0.0 12b0075a9c48000000000000000000000000000 'agent-shield release v2.0.0'"
   [ "$status" -eq 0 ]
   # both the git/tags object create and the git/refs publish must carry the write token
   [ "$(grep -c 'repo-scoped' "$TOKEN_LOG")" -ge 2 ]
@@ -1866,7 +1866,7 @@ case "\$*" in
     printf 'HTTP/2.0 403 Forbidden\r\n'
     printf 'X-Accepted-GitHub-Permissions: contents=write; contents=read\r\n'
     printf '\r\n'
-    echo '{"full_name":"petry-projects/.github"}'
+    echo '{"full_name":"combsmith/.github"}'
     exit 0 ;;
   *"installation/repositories"*)
     echo "DIAG_INSTALL" >> "$CALL_LOG"
@@ -1881,7 +1881,7 @@ GHEOF
 @test "_gh_move_tag: on a 403 dumps the effective-permission diagnostic then surfaces the error (#749)" {
   _diag_403_stub selected
   run env GH_TOKEN=owner-wide CANARY_WRITE_TOKEN=repo-scoped bash -c \
-    "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+    "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -ne 0 ]
   [[ "$output" == *"effective-permission diagnostic"* ]]
   [[ "$output" == *"X-Accepted-GitHub-Permissions: contents=write"* ]]
@@ -1896,7 +1896,7 @@ GHEOF
 @test "_gh_move_tag: the 403 diagnostic introspects through CANARY_WRITE_TOKEN (#749)" {
   _diag_403_stub selected
   run env GH_TOKEN=owner-wide CANARY_WRITE_TOKEN=repo-scoped bash -c \
-    "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+    "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   grep -q 'installation/repositories.*repo-scoped' "$TOKEN_LOG"
   ! grep -q 'installation/repositories.*owner-wide' "$TOKEN_LOG"
 }
@@ -1904,14 +1904,14 @@ GHEOF
 @test "_gh_move_tag: the 403 diagnostic reports the higher total_count for an owner-wide installation token (#749)" {
   _diag_403_stub all
   run env GH_TOKEN=owner-wide CANARY_WRITE_TOKEN=repo-scoped bash -c \
-    "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+    "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [[ "$output" == *"total_count=50"* ]]
   [[ "$output" != *"total_count=2"* ]]
 }
 
 @test "_gh_move_tag: a non-403 (422 ruleset) failure does NOT trigger the 403 diagnostic (#749)" {
   _move_tag_stub reject
-  run bash -c "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+  run bash -c "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -ne 0 ]
   [[ "$output" != *"effective-permission diagnostic"* ]]
   [[ "$output" == *"::error::"* ]]
@@ -1934,7 +1934,7 @@ esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
   run env GH_TOKEN=tok bash -c \
-    "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+    "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -ne 0 ]
   [[ "$output" == *"effective-permission diagnostic"* ]]
   # Must not print a jq error about parse failure
@@ -1959,7 +1959,7 @@ esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
   run env GH_TOKEN=tok bash -c \
-    "source '$ORCH' && _gh_move_tag petry-projects/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
+    "source '$ORCH' && _gh_move_tag combsmith/.github agent-shield/v2-ring0 12b0075a9c48000000000000000000000000000"
   [ "$status" -ne 0 ]
   [[ "$output" == *"effective-permission diagnostic"* ]]
   [[ "$output" != *"parse error"* ]]
@@ -2010,7 +2010,7 @@ case "\$*" in
   *"run list"*) $run_list_case ;;
   *"run view"*) echo '{"jobs":[{"steps":[{"name":"Some step","conclusion":"failure"}]}]}' ;;
   "issue list"*) echo '$blocker_list' ;;
-  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/petry-projects/.github-private/issues/777" ;;
+  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/combsmith/.github-private/issues/777" ;;
   "issue edit"*)   echo "EDIT|\$*"   >> "$ISSUE_LOG" ;;
   "issue close"*)  echo "CLOSE|\$*"  >> "$ISSUE_LOG" ;;
   "issue reopen"*) echo "REOPEN|\$*" >> "$ISSUE_LOG" ;;
@@ -2029,7 +2029,7 @@ GHEOF
   # Pin GITHUB_STEP_SUMMARY to a temp file — under CI the runner sets it, so the table lands
   # in the summary, not stdout; asserting the file keeps the test env-independent.
   local summ="$BATS_TEST_TMPDIR/summary.md"; : > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues --dry-run
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"would OPEN blocker issue for dev-lead"* ]]
   grep -q "Canary Rollout — fleet status" "$summ"   # table still renders under --dry-run
@@ -2039,7 +2039,7 @@ GHEOF
 @test "orchestrator: sync-issues opens ONE blocker issue (with evidence) + writes the fleet summary — no dashboard issue" {
   _sync_stub failure '[]'
   local summ="$BATS_TEST_TMPDIR/summary.md"; : > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"opened blocker issue #777 for dev-lead"* ]]
   [[ "$output" == *"wrote fleet-status table to the job summary"* ]]
@@ -2064,7 +2064,7 @@ GHEOF
   _sync_stub failure '[]'
   sed 's#"issue create"\*).*#"issue create"*) echo "gh: HTTP 403 (Issues:write?)" >\&2; exit 1 ;;#' "$STUB_BIN/gh" > "$STUB_BIN/gh.tmp" && mv "$STUB_BIN/gh.tmp" "$STUB_BIN/gh" && chmod +x "$STUB_BIN/gh"
   local summ="$BATS_TEST_TMPDIR/summary_fail.md"; : > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"could not open blocker issue for dev-lead (Issues:write on the App?)"* ]]
   [[ "$output" == *"wrote fleet-status table to the job summary"* ]]
@@ -2075,7 +2075,7 @@ GHEOF
 @test "orchestrator: sync-issues auto-closes a cleared agent's open blocker issue" {
   # dev-lead now clean (success → not BLOCKED) but an OPEN blocker issue #501 exists → close it.
   _sync_stub success '[{"number":501,"state":"OPEN","body":"<!-- canary-blocker:dev-lead -->"}]'
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"closed cleared blocker issue #501 for dev-lead"* ]]
   grep -q "CLOSE|.*501" "$ISSUE_LOG"
@@ -2087,7 +2087,7 @@ GHEOF
   _sync_stub success '[]'
   local summ="$BATS_TEST_TMPDIR/summary_sep.md"
   printf 'prior step output (no trailing newline)' > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   # The header must appear at the start of a line — not concatenated onto the prior content.
   grep -q '^# Canary Rollout' "$summ"
@@ -2106,7 +2106,7 @@ _promo_fail_sync_stub() {
 #!/usr/bin/env bash
 case "\$*" in
   "issue list"*)   echo '$issue_list' ;;
-  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/petry-projects/.github/issues/900" ;;
+  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/combsmith/.github/issues/900" ;;
   "issue edit"*)   echo "EDIT|\$*"   >> "$ISSUE_LOG" ;;
   "issue close"*)  echo "CLOSE|\$*"  >> "$ISSUE_LOG" ;;
   "issue reopen"*) echo "REOPEN|\$*" >> "$ISSUE_LOG" ;;
@@ -2119,8 +2119,8 @@ GHEOF
 
 @test "orchestrator: sync-promotion-failures opens a tracking issue on the FIRST failure — not yet escalated (#1023)" {
   _promo_fail_sync_stub '[]'
-  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tpetry-projects/.github-private\ttag write rejected\n' > "$flog"
-  run env ISSUE_REPO="petry-projects/.github" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
+  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tcombsmith/.github-private\ttag write rejected\n' > "$flog"
+  run env ISSUE_REPO="combsmith/.github" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
   [ "$status" -eq 0 ]
   [[ "$output" == *"opened promotion-failure issue #900 for dev-lead (count=1)"* ]]
   grep -q -- "--label canary-promotion-failure" "$ISSUE_LOG"
@@ -2132,8 +2132,8 @@ GHEOF
   # An existing tracking issue already at count=1; another failure this run → count=2 = threshold.
   local existing='[{"number":901,"state":"OPEN","body":"<!-- canary-promo-fail:dev-lead -->\n<!-- canary-promo-fail-count:1 -->"}]'
   _promo_fail_sync_stub "$existing"
-  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tpetry-projects/.github-private\ttag write rejected\n' > "$flog"
-  run env ISSUE_REPO="petry-projects/.github" CANARY_PROMOTION_FAILURE_ESCALATE_AFTER=2 CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
+  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tcombsmith/.github-private\ttag write rejected\n' > "$flog"
+  run env ISSUE_REPO="combsmith/.github" CANARY_PROMOTION_FAILURE_ESCALATE_AFTER=2 CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
   [ "$status" -eq 0 ]
   [[ "$output" == *"updated promotion-failure issue #901 for dev-lead (count=2)"* ]]
   grep -q -- "issue edit 901 .*--add-label dev-lead --add-label needs-human" "$ISSUE_LOG"
@@ -2143,9 +2143,9 @@ GHEOF
   local existing='[{"number":903,"state":"OPEN","body":"<!-- canary-promo-fail:dev-lead -->\n<!-- canary-promo-fail-count:1 -->"}]'
   _promo_fail_sync_stub "$existing"
   local flog="$BATS_TEST_TMPDIR/pf.tsv" slog="$BATS_TEST_TMPDIR/ok.tsv"
-  printf 'dev-lead\tstable\tccccccccccccccccc\tpetry-projects/.github-private\ttag write rejected\n' > "$flog"
-  printf 'dev-lead\tring0\tccccccccccccccccc\tpetry-projects/.github-private\n' > "$slog"
-  run env ISSUE_REPO="petry-projects/.github" CANARY_PROMOTION_FAILURE_ESCALATE_AFTER=2 CANARY_PROMOTIONS_FAILED_LOG="$flog" CANARY_PROMOTIONS_LOG="$slog" bash "$ORCH" sync-promotion-failures
+  printf 'dev-lead\tstable\tccccccccccccccccc\tcombsmith/.github-private\ttag write rejected\n' > "$flog"
+  printf 'dev-lead\tring0\tccccccccccccccccc\tcombsmith/.github-private\n' > "$slog"
+  run env ISSUE_REPO="combsmith/.github" CANARY_PROMOTION_FAILURE_ESCALATE_AFTER=2 CANARY_PROMOTIONS_FAILED_LOG="$flog" CANARY_PROMOTIONS_LOG="$slog" bash "$ORCH" sync-promotion-failures
   [ "$status" -eq 0 ]
   [[ "$output" == *"updated promotion-failure issue #903 for dev-lead (count=2)"* ]]
   ! grep -q "^CLOSE|" "$ISSUE_LOG"
@@ -2155,9 +2155,9 @@ GHEOF
   # dev-lead succeeded this run (in the SUCCESS log) but an OPEN failure issue exists → close it.
   local existing='[{"number":902,"state":"OPEN","body":"<!-- canary-promo-fail:dev-lead -->\n<!-- canary-promo-fail-count:3 -->"}]'
   _promo_fail_sync_stub "$existing"
-  local slog="$BATS_TEST_TMPDIR/ok.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tpetry-projects/.github-private\n' > "$slog"
+  local slog="$BATS_TEST_TMPDIR/ok.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tcombsmith/.github-private\n' > "$slog"
   local flog="$BATS_TEST_TMPDIR/pf.tsv"; : > "$flog"
-  run env ISSUE_REPO="petry-projects/.github" CANARY_PROMOTIONS_LOG="$slog" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
+  run env ISSUE_REPO="combsmith/.github" CANARY_PROMOTIONS_LOG="$slog" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
   [ "$status" -eq 0 ]
   [[ "$output" == *"closed recovered promotion-failure issue #902 for dev-lead"* ]]
   grep -q "CLOSE|.*902" "$ISSUE_LOG"
@@ -2167,9 +2167,9 @@ GHEOF
   # dev-lead failed initially (in FAILED log) but succeeded later (in SUCCESS log); success takes precedence.
   local existing='[{"number":903,"state":"OPEN","body":"<!-- canary-promo-fail:dev-lead -->\n<!-- canary-promo-fail-count:1 -->"}]'
   _promo_fail_sync_stub "$existing"
-  local slog="$BATS_TEST_TMPDIR/ok.tsv"; printf 'dev-lead\tring0\tdddddddddddddddd\tpetry-projects/.github-private\n' > "$slog"
-  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tpetry-projects/.github-private\ttag write rejected\n' > "$flog"
-  run env ISSUE_REPO="petry-projects/.github" CANARY_PROMOTIONS_LOG="$slog" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
+  local slog="$BATS_TEST_TMPDIR/ok.tsv"; printf 'dev-lead\tring0\tdddddddddddddddd\tcombsmith/.github-private\n' > "$slog"
+  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tcombsmith/.github-private\ttag write rejected\n' > "$flog"
+  run env ISSUE_REPO="combsmith/.github" CANARY_PROMOTIONS_LOG="$slog" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
   [ "$status" -eq 0 ]
   [[ "$output" == *"closed recovered promotion-failure issue #903 for dev-lead"* ]]
   grep -q "CLOSE|.*903" "$ISSUE_LOG"
@@ -2180,9 +2180,9 @@ GHEOF
   # FAILED (its tracking issue stays/gets opened), not "recovered".
   local existing='[{"number":905,"state":"OPEN","body":"<!-- canary-promo-fail:dev-lead -->\n<!-- canary-promo-fail-count:1 -->"}]'
   _promo_fail_sync_stub "$existing"
-  local slog="$BATS_TEST_TMPDIR/ok.tsv"; printf 'dev-lead\tring0\tdddddddddddddddd\tpetry-projects/.github-private\n' > "$slog"
-  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring1\tccccccccccccccccc\tpetry-projects/.github-private\ttag write rejected\n' > "$flog"
-  run env ISSUE_REPO="petry-projects/.github" CANARY_PROMOTIONS_LOG="$slog" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
+  local slog="$BATS_TEST_TMPDIR/ok.tsv"; printf 'dev-lead\tring0\tdddddddddddddddd\tcombsmith/.github-private\n' > "$slog"
+  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring1\tccccccccccccccccc\tcombsmith/.github-private\ttag write rejected\n' > "$flog"
+  run env ISSUE_REPO="combsmith/.github" CANARY_PROMOTIONS_LOG="$slog" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
   [ "$status" -eq 0 ]
   [[ "$output" == *"updated promotion-failure issue #905 for dev-lead (count=2)"* ]]
   [[ "$output" != *"closed recovered"* ]]
@@ -2195,8 +2195,8 @@ GHEOF
   # the first new failure after recovery should start at count=1 (not count=6).
   local existing='[{"number":904,"state":"CLOSED","body":"<!-- canary-promo-fail:dev-lead -->\n<!-- canary-promo-fail-count:5 -->"}]'
   _promo_fail_sync_stub "$existing"
-  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tpetry-projects/.github-private\ttag write rejected\n' > "$flog"
-  run env ISSUE_REPO="petry-projects/.github" CANARY_PROMOTION_FAILURE_ESCALATE_AFTER=2 CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
+  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tcombsmith/.github-private\ttag write rejected\n' > "$flog"
+  run env ISSUE_REPO="combsmith/.github" CANARY_PROMOTION_FAILURE_ESCALATE_AFTER=2 CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures
   [ "$status" -eq 0 ]
   [[ "$output" == *"(count=1)"* ]]
   ! grep -q -- "--add-label needs-human" "$ISSUE_LOG"
@@ -2204,8 +2204,8 @@ GHEOF
 
 @test "orchestrator: sync-promotion-failures --dry-run plans but writes nothing to GitHub (#1023)" {
   _promo_fail_sync_stub '[]'
-  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tpetry-projects/.github-private\ttag write rejected\n' > "$flog"
-  run env ISSUE_REPO="petry-projects/.github" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures --dry-run
+  local flog="$BATS_TEST_TMPDIR/pf.tsv"; printf 'dev-lead\tring0\tccccccccccccccccc\tcombsmith/.github-private\ttag write rejected\n' > "$flog"
+  run env ISSUE_REPO="combsmith/.github" CANARY_PROMOTIONS_FAILED_LOG="$flog" bash "$ORCH" sync-promotion-failures --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"would OPEN promotion-failure issue for dev-lead"* ]]
   [ ! -s "$ISSUE_LOG" ]
@@ -2213,7 +2213,7 @@ GHEOF
 
 @test "orchestrator: sync-promotion-failures is a clean no-op when no promotion was attempted (#1023)" {
   _promo_fail_sync_stub '[]'
-  run env ISSUE_REPO="petry-projects/.github" bash "$ORCH" sync-promotion-failures
+  run env ISSUE_REPO="combsmith/.github" bash "$ORCH" sync-promotion-failures
   [ "$status" -eq 0 ]
   [[ "$output" == *"no promotion attempts recorded this run"* ]]
   [ ! -s "$ISSUE_LOG" ]
@@ -2283,7 +2283,7 @@ GITEOF
 }
 
 @test "orchestrator: autocut is a no-op when CANARY_AUTO_CUT is not 'true' (kill-switch off)" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0"
   run env CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -2292,18 +2292,18 @@ GITEOF
 }
 
 @test "orchestrator: autocut cuts a patch-bumped version + moves next when the reusable blob differs on main" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   # Highest existing tag is v2.1.0 → patch bump → v2.1.1, annotated tag cut from main HEAD on the
   # HOST repo (.github-private for dev-lead), then `next` force-moved onto the same commit — all gh-api.
-  grep -q "repos/petry-projects/.github-private/git/tags .*tag=dev-lead/v2.1.1 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "repos/combsmith/.github-private/git/tags .*tag=dev-lead/v2.1.1 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
 }
 
 @test "orchestrator: autocut is idempotent — identical blob on main and next is a clean no-op" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     sameBLOB sameBLOB aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -2312,7 +2312,7 @@ GITEOF
 }
 
 @test "orchestrator: autocut --dry-run prints the intended cut without writing any tag" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut --dry-run
   [ "$status" -eq 0 ]
@@ -2322,25 +2322,25 @@ GITEOF
 }
 
 @test "orchestrator: autocut honors the registry autocut.bump override (minor)" {
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" minor
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   # minor bump of v2.1.0 → v2.2.0
-  grep -q "repos/petry-projects/.github-private/git/tags .*tag=dev-lead/v2.2.0 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "repos/combsmith/.github-private/git/tags .*tag=dev-lead/v2.2.0 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
 }
 
 @test "orchestrator: autocut is cross-repo aware — cuts v2.1.1 for auto-rebase on the host repo (#1069)" {
-  # auto-rebase is hosted in petry-projects/.github; its next candidate + release tags live there,
+  # auto-rebase is hosted in combsmith/.github; its next candidate + release tags live there,
   # so the next commit is resolved via gh api (not local git) and BOTH the tag create and the
   # next move are written to that host — not GITHUB_REPOSITORY.
-  _autocut_stub auto-rebase petry-projects/.github .github/workflows/auto-rebase-reusable.yml \
+  _autocut_stub auto-rebase combsmith/.github .github/workflows/auto-rebase-reusable.yml \
     ece45480ece45480ece45480ece45480ece45480 2763750027637500276375002763750027637500 \
     ece45480ece45480ece45480ece45480ece45480 2763750027637500276375002763750027637500 "2.1.0"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
-  grep -q "repos/petry-projects/.github/git/tags .*tag=auto-rebase/v2.1.1 .*object=ece45480ece45480ece45480ece45480ece45480" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github/git/refs/tags/auto-rebase/next .*sha=ece45480ece45480ece45480ece45480ece45480" "$GH_LOG"
+  grep -q "repos/combsmith/.github/git/tags .*tag=auto-rebase/v2.1.1 .*object=ece45480ece45480ece45480ece45480ece45480" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github/git/refs/tags/auto-rebase/next .*sha=ece45480ece45480ece45480ece45480ece45480" "$GH_LOG"
 }
 
 @test "orchestrator: autocut — existing release tag matching mainsha skips create and still moves next (idempotent retry)" {
@@ -2348,7 +2348,7 @@ GITEOF
   # mainsha), but `next` was not yet moved. The idempotency branch must skip POST git/tags
   # and proceed straight to the PATCH for next without calling _gh_create_annotated_tag.
   local mainsha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT "$mainsha" cccccccccccccccccccccccccccccccccccccccc "2.1.0" "" "$mainsha"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -2366,7 +2366,7 @@ GITEOF
   # invariant. The engine must warn and skip rather than advance next to an untagged commit.
   local mainsha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   local stale_sha="dddddddddddddddddddddddddddddddddddddddd"
-  _autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT "$mainsha" cccccccccccccccccccccccccccccccccccccccc "2.1.0" "" "$stale_sha"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -2413,18 +2413,18 @@ GITEOF
 # The stub answers `gh api repos/<host>/contents/.github/workflows` with a per-host JSON
 # array (env HOSTPRIV_JSON / HOSTPUB_JSON); the orchestrator filters *-reusable.yml itself.
 _drift_stub() {
-  # $1 = JSON array for petry-projects/.github-private ; $2 = JSON array for petry-projects/.github
+  # $1 = JSON array for combsmith/.github-private ; $2 = JSON array for combsmith/.github
   local priv_json="$1" pub_json="${2:-[]}"
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
   # '.github' is a substring of '.github-private', so match the more specific repo FIRST.
   cat > "$STUB_BIN/gh" <<GHEOF
 #!/usr/bin/env bash
 case "\$*" in
-  *"repos/petry-projects/.github-private/contents/.github/workflows"*) cat <<'JSON'
+  *"repos/combsmith/.github-private/contents/.github/workflows"*) cat <<'JSON'
 $priv_json
 JSON
     ;;
-  *"repos/petry-projects/.github/contents/.github/workflows"*) cat <<'JSON'
+  *"repos/combsmith/.github/contents/.github/workflows"*) cat <<'JSON'
 $pub_json
 JSON
     ;;
@@ -2460,7 +2460,7 @@ _drift_rings_one_agent() {
   [[ "$output" == *"DRIFT[unregistered]"* ]]
   [[ "$output" == *".github/workflows/foo-reusable.yml"* ]]
   # the registered reusable and the non-reusable ci.yml are NOT flagged
-  [[ "$output" != *"DRIFT[unregistered] petry-projects/.github-private: .github/workflows/dev-lead-reusable.yml"* ]]
+  [[ "$output" != *"DRIFT[unregistered] combsmith/.github-private: .github/workflows/dev-lead-reusable.yml"* ]]
   [[ "$output" != *"ci.yml present on host"* ]]
 }
 
@@ -2469,7 +2469,7 @@ _drift_rings_one_agent() {
   DRIFT_RINGS="$BATS_TEST_TMPDIR/drift-rings-um.json"
   jq '{version, description, org_infra_repos, member_tokens,
        agents: {"dev-lead": .agents["dev-lead"]},
-       unmanaged: {"foo": {"host":"petry-projects/.github-private","reusable":".github/workflows/foo-reusable.yml","reason":"single-hop infra (#651)"}}}' \
+       unmanaged: {"foo": {"host":"combsmith/.github-private","reusable":".github/workflows/foo-reusable.yml","reason":"single-hop infra (#651)"}}}' \
     "$RINGS" > "$DRIFT_RINGS"
   # host has dev-lead (registered) + foo (unmanaged) + bar (genuinely unregistered)
   _drift_stub '[
@@ -2481,9 +2481,9 @@ _drift_rings_one_agent() {
   [ "$status" -eq 0 ]
   # foo is reported as unmanaged, NOT flagged as unregistered drift
   [[ "$output" == *"unmanaged (intentional"* ]]
-  [[ "$output" != *"DRIFT[unregistered] petry-projects/.github-private: .github/workflows/foo-reusable.yml"* ]]
+  [[ "$output" != *"DRIFT[unregistered] combsmith/.github-private: .github/workflows/foo-reusable.yml"* ]]
   # bar (neither registered nor unmanaged) IS still flagged, and it's the ONLY one
-  [[ "$output" == *"DRIFT[unregistered] petry-projects/.github-private: .github/workflows/bar-reusable.yml"* ]]
+  [[ "$output" == *"DRIFT[unregistered] combsmith/.github-private: .github/workflows/bar-reusable.yml"* ]]
   [[ "$output" == *"1 unregistered"* ]]
 }
 
@@ -2511,7 +2511,7 @@ _drift_rings_one_agent() {
 @test "orchestrator: drift does NOT false-flag a present grandfathered-named reusable (pr-review.yml, #1166)" {
   DRIFT_RINGS="$BATS_TEST_TMPDIR/drift-grandfathered.json"
   jq '{version, description, org_infra_repos, member_tokens,
-       agents: {"pr-review": (.agents["dev-lead"] + {host: "petry-projects/.github-private",
+       agents: {"pr-review": (.agents["dev-lead"] + {host: "combsmith/.github-private",
                                                      reusable: ".github/workflows/pr-review.yml"})}}' \
     "$RINGS" > "$DRIFT_RINGS"
   # The host listing includes pr-review.yml (present, but not `-reusable.yml`).
@@ -2523,7 +2523,7 @@ _drift_rings_one_agent() {
   [ "$status" -eq 0 ]
   # pr-review.yml is registered AND present → neither missing-file nor unregistered.
   [[ "$output" != *"DRIFT[missing-file]"* ]]
-  [[ "$output" != *"DRIFT[unregistered] petry-projects/.github-private: .github/workflows/pr-review.yml"* ]]
+  [[ "$output" != *"DRIFT[unregistered] combsmith/.github-private: .github/workflows/pr-review.yml"* ]]
   [[ "$output" == *"0 unregistered, 0 missing-file"* ]]
 }
 
@@ -2533,7 +2533,7 @@ _drift_rings_one_agent() {
 @test "orchestrator: drift still reports a registered grandfathered reusable that is truly gone (#1166)" {
   DRIFT_RINGS="$BATS_TEST_TMPDIR/drift-grandfathered-gone.json"
   jq '{version, description, org_infra_repos, member_tokens,
-       agents: {"pr-review": (.agents["dev-lead"] + {host: "petry-projects/.github-private",
+       agents: {"pr-review": (.agents["dev-lead"] + {host: "combsmith/.github-private",
                                                      reusable: ".github/workflows/pr-review.yml"})}}' \
     "$RINGS" > "$DRIFT_RINGS"
   # Host listing does NOT contain pr-review.yml — the file is genuinely gone.
@@ -2551,7 +2551,7 @@ _drift_rings_one_agent() {
 @test "orchestrator: drift still flags a registered non-YAML path even when present on the host" {
   DRIFT_RINGS="$BATS_TEST_TMPDIR/drift-nonyaml.json"
   jq '{version, description, org_infra_repos, member_tokens,
-       agents: {"pr-review": (.agents["dev-lead"] + {host: "petry-projects/.github-private",
+       agents: {"pr-review": (.agents["dev-lead"] + {host: "combsmith/.github-private",
                                                      reusable: ".github/workflows/README.md"})}}' \
     "$RINGS" > "$DRIFT_RINGS"
   _drift_stub '[
@@ -2586,7 +2586,7 @@ _drift_rings_one_agent() {
   # A scaffold JSON object keyed by the derived agent name 'foo' the maintainer can fill in.
   [[ "$output" == *"\"foo\""* ]]
   [[ "$output" == *"\"reusable\": \".github/workflows/foo-reusable.yml\""* ]]
-  [[ "$output" == *"petry-projects/.github-private"* ]]
+  [[ "$output" == *"combsmith/.github-private"* ]]
 }
 
 @test "orchestrator: drift skips a host it cannot enumerate — no false missing-file avalanche" {
@@ -2676,8 +2676,8 @@ GITEOF
   [[ "$output" == *"pr-review"* ]]
   # a registered agent (dev-lead) and the reserved `standards` namespace are NOT flagged;
   # a release tag (pr-review/v1.8.0) is not a channel tag and never drives this verdict.
-  [[ "$output" != *"registry-incomplete] petry-projects/.github-private: 'dev-lead'"* ]]
-  [[ "$output" != *"registry-incomplete] petry-projects/.github-private: 'standards'"* ]]
+  [[ "$output" != *"registry-incomplete] combsmith/.github-private: 'dev-lead'"* ]]
+  [[ "$output" != *"registry-incomplete] combsmith/.github-private: 'standards'"* ]]
   # exactly one completeness finding (pr-review), counted once across both repos.
   [[ "$output" == *"registry-completeness summary: 1"* ]]
 }
@@ -2693,7 +2693,7 @@ GITEOF
 #!/usr/bin/env bash
 case "$*" in
   *".github-private/git/matching-refs/tags"*) echo '[]' ;;
-  *"petry-projects/.github/git/matching-refs/tags"*)
+  *"combsmith/.github/git/matching-refs/tags"*)
     # Unregistered-agent tags ONLY on the public .github repo: a sweep that skips it would pass vacuously
     cat <<'JSON'
 [{"ref":"refs/tags/unregistered-agent/v1-next"},{"ref":"refs/tags/unregistered-agent/v1-stable"},{"ref":"refs/tags/dev-lead/v1-next"}]
@@ -2776,8 +2776,8 @@ GITEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"DRIFT[registry-incomplete]"*"'bare-agent'"* ]]
   # registered (dev-lead), reserved (standards) and release-only tags are not flagged
-  [[ "$output" != *"registry-incomplete] petry-projects/.github-private: 'dev-lead'"* ]]
-  [[ "$output" != *"registry-incomplete] petry-projects/.github-private: 'standards'"* ]]
+  [[ "$output" != *"registry-incomplete] combsmith/.github-private: 'dev-lead'"* ]]
+  [[ "$output" != *"registry-incomplete] combsmith/.github-private: 'standards'"* ]]
   [[ "$output" != *"release-only"* ]]
   [[ "$output" == *"registry-completeness summary: 1"* ]]
 }
@@ -3296,7 +3296,7 @@ case "\$*" in
       + [range(0;\$bt)|{databaseId:(1001+.),conclusion:(if . < \$bf then "failure" else "success" end),createdAt:\$bb,workflowName:"Dev-Lead Agent"}] )
       | map(select(\$s=="" or .createdAt >= \$s))' ;;
   "issue list"*)   echo '[]' ;;
-  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/petry-projects/.github-private/issues/777" ;;
+  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/combsmith/.github-private/issues/777" ;;
   "issue edit"*)   echo "EDIT|\$*"   >> "$ISSUE_LOG" ;;
   "issue close"*)  echo "CLOSE|\$*"  >> "$ISSUE_LOG" ;;
   "issue reopen"*) echo "REOPEN|\$*" >> "$ISSUE_LOG" ;;
@@ -3311,7 +3311,7 @@ GHEOF
 
 @test "orchestrator: sync-issues files a PRE_EXISTING blocker (no needs-human) for an auto-downgraded SUSPECT (#668 inc6)" {
   _downgrade_sync_stub 1 10 1 10
-  run env CANARY_RINGS="$DG_RINGS" ISSUE_REPO="petry-projects/.github-private" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$DG_RINGS" ISSUE_REPO="combsmith/.github-private" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"opened blocker issue #777 for dev-lead"* ]]
   # Body carries the auto-downgrade note + the candidate-vs-baseline rate comparison.
@@ -3353,7 +3353,7 @@ case "\$*" in
       + [range(0;\$bt)|{databaseId:(1001+.),conclusion:(if . < \$bf then "failure" else "success" end),createdAt:\$bb,workflowName:"Dev-Lead Agent"}] )
       | map(select(\$s=="" or .createdAt >= \$s))' ;;
   "issue list"*)   echo '[{"number":501,"state":"OPEN","body":"<!-- canary-blocker:dev-lead -->"}]' ;;
-  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/petry-projects/.github-private/issues/777" ;;
+  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/combsmith/.github-private/issues/777" ;;
   "issue edit"*)   echo "EDIT|\$*"   >> "$ISSUE_LOG" ;;
   "issue close"*)  echo "CLOSE|\$*"  >> "$ISSUE_LOG" ;;
   "issue reopen"*) echo "REOPEN|\$*" >> "$ISSUE_LOG" ;;
@@ -3370,7 +3370,7 @@ GHEOF
   # Existing open blocker #501 (was SUSPECT, has needs-human). Now auto-downgraded → PRE_EXISTING.
   # The update path must explicitly REMOVE needs-human so stale routing is cleared.
   _downgrade_sync_update_stub 1 10 1 10
-  run env CANARY_RINGS="$DG_RINGS" ISSUE_REPO="petry-projects/.github-private" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$DG_RINGS" ISSUE_REPO="combsmith/.github-private" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"updated blocker issue #501 for dev-lead"* ]]
   # PRE_EXISTING → must NOT add needs-human
@@ -3495,7 +3495,7 @@ GHEOF
   # The blocker body must surface the workload-timeout discriminating question prominently
   # so a human confirm is a fast check, and keep the SUSPECT label + needs-human routing.
   run env CANARY_RINGS="$RINGS" bash -c \
-    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' cccccccccccc 1 0 SUSPECT petry-projects/.github-private '_(evidence)_'"
+    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' cccccccccccc 1 0 SUSPECT combsmith/.github-private '_(evidence)_'"
   [ "$status" -eq 0 ]
   [[ "$output" == *"SUSPECT"* ]]
   [[ "$output" == *"needs-human"* ]]
@@ -3505,7 +3505,7 @@ GHEOF
 @test "_blocker_body: PRE_EXISTING triage still renders the genuine pre-existing banner" {
   # Regression guard: a real PRE_EXISTING triage must keep its banner + fix-forward note.
   run env CANARY_RINGS="$RINGS" bash -c \
-    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' cccccccccccc 1 0 PRE_EXISTING petry-projects/.github-private '_(evidence)_'"
+    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' cccccccccccc 1 0 PRE_EXISTING combsmith/.github-private '_(evidence)_'"
   [ "$status" -eq 0 ]
   [[ "$output" == *"PRE_EXISTING"* ]]
   [[ "$output" == *"byte-identical"* ]]
@@ -3515,7 +3515,7 @@ GHEOF
   # Fail-closed path (_frontier_state, cut_z empty): state=BLOCKED, triage="-", cum_fail=0.
   # The body must not falsely assert an environmental/byte-identical failure — there is none.
   run env CANARY_RINGS="$RINGS" bash -c \
-    "source '$ORCH' && _blocker_body ci-failure-analyst 'next->ring0' df3b7d462460 0 0 - petry-projects/.github-private '_(no candidate cut date resolved — cannot list failing runs)_'"
+    "source '$ORCH' && _blocker_body ci-failure-analyst 'next->ring0' df3b7d462460 0 0 - combsmith/.github-private '_(no candidate cut date resolved — cannot list failing runs)_'"
   [ "$status" -eq 0 ]
   [[ "$output" != *"PRE_EXISTING"* ]]
   [[ "$output" != *"byte-identical"* ]]
@@ -3570,7 +3570,7 @@ case "\$*" in
   *"run list"*) jq -nc --arg d "$run_iso" '[range(3)|{conclusion:"failure",createdAt:\$d,databaseId:88002,workflowName:"Dev-Lead Agent"}]' ;;
   *"run view"*) echo '{"jobs":[{"steps":[{"name":"Stage timeout (exit code 124)","conclusion":"failure"}]}]}' ;;
   "issue list"*) echo '$blocker_list' ;;
-  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/petry-projects/.github-private/issues/777" ;;
+  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/combsmith/.github-private/issues/777" ;;
   "issue edit"*)   echo "EDIT|\$*"   >> "$ISSUE_LOG" ;;
   "issue close"*)  echo "CLOSE|\$*"  >> "$ISSUE_LOG" ;;
   "issue reopen"*) echo "REOPEN|\$*" >> "$ISSUE_LOG" ;;
@@ -3610,7 +3610,7 @@ _sync_gap_stub() {
   # BLOCKED issue, triage REGRESSION (fail-closed), routed to dev-lead + needs-human.
   _sync_gap_stub '[]'
   local summ="$BATS_TEST_TMPDIR/summary_gap.md"; : > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" \
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" \
       CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=2 GITHUB_STEP_SUMMARY="$summ" \
       bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
@@ -3630,7 +3630,7 @@ _sync_gap_stub() {
   # An OPEN blocker exists for dev-lead. A fetch outage must NOT be read as 'cleared' and close
   # it — it must be UPDATED (kept open) and re-annotated with the gap.
   _sync_gap_stub '[{"number":501,"state":"OPEN","body":"<!-- canary-blocker:dev-lead -->"}]'
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" \
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" \
       CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=2 bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"updated blocker issue #501 for dev-lead"* ]]
@@ -3692,7 +3692,7 @@ _sync_gap_stub() {
 
 @test "_blocker_body: a data-gap hold with an INDETERMINATE triage does not claim a verdict from a diff that was never made (#1249)" {
   run env CANARY_RINGS="$RINGS" bash -c \
-    "source '$ORCH' && _blocker_body dev-lead 'ring0->ring1' - 0 0 - petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
+    "source '$ORCH' && _blocker_body dev-lead 'ring0->ring1' - 0 0 - combsmith/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"PARTIAL DATA"* ]]
   [[ "$output" == *"INDETERMINATE"* ]]
@@ -3704,7 +3704,7 @@ _sync_gap_stub() {
   [[ "$output" == *"source ring's commit is unresolvable"* ]]
   # a resolved candidate with no destination commit names the missing side correctly
   run env CANARY_RINGS="$RINGS" bash -c \
-    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' ccc1111 0 0 - petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
+    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' ccc1111 0 0 - combsmith/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"INDETERMINATE"* ]]
   [[ "$output" == *"destination ring has no resolvable commit"* ]]
@@ -3712,14 +3712,14 @@ _sync_gap_stub() {
   [[ "$output" != *"derived from the reusable diff alone"* ]]
   # a resolvable candidate keeps the diff-derived wording
   run env CANARY_RINGS="$RINGS" bash -c \
-    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' ccc1111 0 0 REGRESSION petry-projects/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
+    "source '$ORCH' && _blocker_body dev-lead 'next->ring0' ccc1111 0 0 REGRESSION combsmith/.github-private '_(run history unavailable)_' - '' - 0 0 0 0 1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"derived from the reusable diff alone"* ]]
 }
 
 @test "orchestrator: sync-issues titles an INDETERMINATE data-gap blocker in words and does not label it needs-human (#1249)" {
   _sync_gap_stub '[]'
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" \
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" \
       CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=2 bash -c "
         source '$ORCH'
         _frontier_state_resilient() { echo '- ring1 ring0->ring1 BLOCKED 0 0 0 0 0 0 0 - - - 0 0 0 0 1'; }
@@ -3745,7 +3745,7 @@ _sync_gap_stub() {
 @test "orchestrator: sync-issues ends NON-ZERO when an agent's state is totally undeterminable (fail-closed, not a green no-op) (#820)" {
   # Force a total inability for the single registered agent and assert the step fails closed.
   _sync_gap_stub '[]'
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" \
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" \
       CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=2 bash -c "
         source '$ORCH'
         _frontier_state_resilient() { return 1; }
@@ -3758,7 +3758,7 @@ _sync_gap_stub() {
 @test "orchestrator: sync-issues CREATE path applies needs-human for SUSPECT triage" {
   # No existing issue → create path; SUSPECT (differs=1 + suspect step) must add needs-human.
   _sync_suspect_stub '[]'
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"opened blocker issue #777 for dev-lead"* ]]
   grep -q -- "--add-label needs-human" "$ISSUE_LOG"
@@ -3768,7 +3768,7 @@ _sync_gap_stub() {
   # Existing open blocker #501 → update path; SUSPECT triage must still add needs-human.
   # The create path was fixed in 4cd379b; this test pins the update-path parity contract.
   _sync_suspect_stub '[{"number":501,"state":"OPEN","body":"<!-- canary-blocker:dev-lead -->"}]'
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"updated blocker issue #501 for dev-lead"* ]]
   grep -q -- "--add-label needs-human" "$ISSUE_LOG"
@@ -3871,7 +3871,7 @@ GITEOF
 
 @test "_confirm_body: renders the compare diff link + the promote --confirm instruction" {
   run env CANARY_RINGS="$RINGS" bash -c \
-    "source '$ORCH' && _confirm_body dev-lead 'ring1->stable' cccccccccccc bbbbbbbbbbbb petry-projects/.github-private 5 1"
+    "source '$ORCH' && _confirm_body dev-lead 'ring1->stable' cccccccccccc bbbbbbbbbbbb combsmith/.github-private 5 1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"canary-confirm:dev-lead"* ]]                              # idempotency marker
   [[ "$output" == *"compare/bbbbbbbbbbbb...cccccccccccc"* ]]                  # stable -> candidate diff
@@ -3881,7 +3881,7 @@ GITEOF
 
 @test "_confirm_body: gracefully handles empty prior (no prior stable release)" {
   run env CANARY_RINGS="$RINGS" bash -c \
-    "source '$ORCH' && _confirm_body dev-lead 'ring1->stable' cccccccccccc '' petry-projects/.github-private 5 1"
+    "source '$ORCH' && _confirm_body dev-lead 'ring1->stable' cccccccccccc '' combsmith/.github-private 5 1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"canary-confirm:dev-lead"* ]]
   [[ "$output" == *"(no prior stable release)"* ]]                           # fallback diff link
@@ -3918,7 +3918,7 @@ case "\$*" in
   *"run list"*) jq -nc --arg d "$run_iso" '[range(20)|{conclusion:"success",createdAt:\$d,databaseId:88004,workflowName:"Dev-Lead Agent"}]' ;;
   *"run view"*) echo '{"jobs":[{"steps":[]}]}' ;;
   "issue list"*) echo '$issue_list' ;;
-  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/petry-projects/.github-private/issues/777" ;;
+  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/combsmith/.github-private/issues/777" ;;
   "issue edit"*)   echo "EDIT|\$*"   >> "$ISSUE_LOG" ;;
   "issue close"*)  echo "CLOSE|\$*"  >> "$ISSUE_LOG" ;;
   "issue reopen"*) echo "REOPEN|\$*" >> "$ISSUE_LOG" ;;
@@ -3934,7 +3934,7 @@ GHEOF
 @test "orchestrator: sync-issues opens a canary-confirm issue for an AWAITING_CONFIRMATION agent" {
   _confirm_sync_stub '[]'
   local summ="$BATS_TEST_TMPDIR/summary-confirm.md"; : > "$summ"
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"opened confirm issue #777 for dev-lead"* ]]
   # A SEPARATE issue keyed by the canary-confirm label + marker (not the blocker issue).
@@ -3948,7 +3948,7 @@ GHEOF
   # dev-lead is at next->ring0 (PROMOTE, NOT require_confirmation) but an OPEN confirm issue
   # #502 lingers → it must be closed (the go/no-go no longer applies).
   _sync_stub success '[{"number":502,"state":"OPEN","body":"<!-- canary-confirm:dev-lead -->"}]'
-  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="petry-projects/.github-private" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$SYNC_RINGS" ISSUE_REPO="combsmith/.github-private" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"closed cleared confirm issue #502 for dev-lead"* ]]
   grep -q "CLOSE|.*502" "$ISSUE_LOG"
@@ -4025,7 +4025,7 @@ case "\$*" in
     jq -nc --arg d "$run_iso" --arg c "\$__c" '[range(20)|{conclusion:\$c,createdAt:\$d,databaseId:88010,workflowName:"Dev-Lead Agent"}]' ;;
   *"run view"*) echo '{"jobs":[{"steps":[{"name":"Compile TypeScript","conclusion":"failure"}]}]}' ;;
   "issue list"*) echo '$issue_list' ;;
-  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/petry-projects/.github-private/issues/909" ;;
+  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/combsmith/.github-private/issues/909" ;;
   "issue edit"*)   echo "EDIT|\$*"   >> "$ISSUE_LOG" ;;
   "issue close"*)  echo "CLOSE|\$*"  >> "$ISSUE_LOG" ;;
   "issue reopen"*) echo "REOPEN|\$*" >> "$ISSUE_LOG" ;;
@@ -4042,7 +4042,7 @@ GHEOF
   # next=C1 cut 1h ago (next->ring0 SOAKING), ring0=ring1=C3 cut 30h ago, stable=prior.
   # ring1->stable must STILL be evaluated as AWAITING_CONFIRMATION even though `next` moved.
   _multicand_stub C1 C3 C3 PRIOR "1 hours" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"ring1->stable"* ]]
   [[ "$output" == *"AWAITING_CONFIRMATION"* ]]
@@ -4057,7 +4057,7 @@ GHEOF
   _multicand_stub C1 C3 C3 PRIOR "1 hours" "3 days" "30 hours" "" "" \
     '[{"number":901,"state":"OPEN","body":"<!-- canary-confirm:dev-lead:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee -->"}]'
   local summ="$BATS_TEST_TMPDIR/mc-a.md"; : > "$summ"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   grep -q "EDIT|.*901" "$ISSUE_LOG"          # the C3 confirm issue is refreshed, not closed
   run grep -q "CLOSE|.*901" "$ISSUE_LOG"      # the hold survived the newer next cut
@@ -4069,7 +4069,7 @@ GHEOF
   # next=C1 (soaking), ring0=ring1=C3 (AWAITING at ring1->stable). --confirm clears ONLY the
   # ring1->stable hold; the newer, still-soaking next candidate is untouched (AC4/AC7b).
   _multicand_stub C1 C3 C3 PRIOR "1 hours" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --confirm --dry-run
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --confirm --dry-run
   [ "$status" -eq 0 ]
   # stable advances to ring1's candidate (C3 = eeee…), confirmed
   [[ "$output" == *"tags/dev-lead/stable sha=eeeeeeeeeeee"* ]]
@@ -4081,7 +4081,7 @@ GHEOF
 @test "#1118: no tier skip — ring1 only ever advances to the commit currently on ring0" {
   # next=C1, ring0=C2, ring1=C3, stable=prior; every pair clean and old enough to PROMOTE.
   _multicand_stub C1 C2 C3 PRIOR "3 days" "40 hours" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --dry-run
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --dry-run
   [ "$status" -eq 0 ]
   # ring0 advances to next's commit (C1 = cccc…)
   [[ "$output" == *"tags/dev-lead/ring0 sha=cccccccccccc"* ]]
@@ -4095,9 +4095,9 @@ GHEOF
 @test "#1118: a BLOCKED lower pair does not block an independently clean higher pair" {
   # next=C1 with a REGRESSION on the next tier (reusable differs + a failure there);
   # ring0=ring1=C3 independently clean → ring1->stable is AWAITING, unblocked by the lower pair.
-  _multicand_stub C1 C3 C3 PRIOR "3 days" "3 days" "30 hours" "petry-projects/.github-private" C1
+  _multicand_stub C1 C3 C3 PRIOR "3 days" "3 days" "30 hours" "combsmith/.github-private" C1
   local summ="$BATS_TEST_TMPDIR/mc-d.md"; : > "$summ"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   # lower pair blocked → its canary-blocker issue opens (REGRESSION at next->ring0)
   [[ "$output" == *"opened blocker issue"* ]]
@@ -4110,8 +4110,8 @@ GHEOF
 @test "#1118: --override advances ONLY the lowest pending pair — never an AWAITING_CONFIRMATION pair for another candidate" {
   # next=C1 BLOCKED (REGRESSION), ring0=ring1=C3 AWAITING at ring1->stable. An operator --override of
   # the blocked newest candidate must not also push stable past the human go/no-go (#668 L3 stays).
-  _multicand_stub C1 C3 C3 PRIOR "3 days" "3 days" "30 hours" "petry-projects/.github-private" C1
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --override --dry-run
+  _multicand_stub C1 C3 C3 PRIOR "3 days" "3 days" "30 hours" "combsmith/.github-private" C1
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --override --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"tags/dev-lead/ring0 sha=cccccccccccc"* ]]     # the overridden lowest pair advances
   [[ "$output" != *"tags/dev-lead/stable sha="* ]]                 # the higher pair keeps its own gate
@@ -4121,7 +4121,7 @@ GHEOF
 @test "#1118: an UNRESOLVABLE source commit with a populated destination fails closed (BLOCKED), never a false COMPLETE" {
   # next has no resolvable tag but ring0 does: next->ring0 is pending and must hold BLOCKED.
   _multicand_stub NONE C3 C3 PRIOR "1 hours" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"next->ring0"* ]]
   [[ "$output" == *"BLOCKED"* ]]
@@ -4133,7 +4133,7 @@ GHEOF
   # every field, hiding BLOCKED), so sync-issues opens its blocker issue.
   _multicand_stub NONE C3 C3 PRIOR "1 hours" "3 days" "30 hours"
   local summ="$BATS_TEST_TMPDIR/mc-n.md"; : > "$summ"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"opened blocker issue"* ]]
   grep -q "BLOCKED" "$summ"
@@ -4141,7 +4141,7 @@ GHEOF
 
 @test "#1118: promote --override never acts on an unresolvable candidate (no tag is moved to a sentinel)" {
   _multicand_stub NONE C3 C3 PRIOR "1 hours" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --override --dry-run
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --override --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"unresolvable"* ]]
   [[ "$output" != *"tags/dev-lead/ring0 sha=-"* ]]
@@ -4151,8 +4151,8 @@ GHEOF
 @test "#1118: a lower ring whose tag is UNRESOLVABLE stays in scope — its failures still block a higher pair (fail closed)" {
   # ring0 has no resolvable tag and its member (.github) is failing; ring1->stable must not shed
   # those failures just because ring0's commit is unknown rather than provably different.
-  _multicand_stub C1 NONE C3 PRIOR "3 days" "3 days" "30 hours" "repo petry-projects/.github --workflow"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
+  _multicand_stub C1 NONE C3 PRIOR "3 days" "3 days" "30 hours" "repo combsmith/.github --workflow"
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"[ring1->stable]: BLOCKED"* ]]
 }
@@ -4167,9 +4167,9 @@ GHEOF
 @test "#1225: _gh_tag_commit — an absent tag (404) is empty and NOT recorded as a lookup error" {
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"
   # the tag ref 404s, but the host repo itself stays readable (so the 404 is a genuine absence)
-  printf '#!/usr/bin/env bash\ncase "$*" in *git/ref/tags/*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;; *) echo petry-projects/.github ;; esac\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
+  printf '#!/usr/bin/env bash\ncase "$*" in *git/ref/tags/*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;; *) echo combsmith/.github ;; esac\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
   local flag="$BATS_TEST_TMPDIR/tagfail"; : > "$flag"
-  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit petry-projects/.github dev-lead/next"
+  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit combsmith/.github dev-lead/next"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ ! -s "$flag" ]
@@ -4179,7 +4179,7 @@ GHEOF
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"
   printf '#!/usr/bin/env bash\necho "gh: Not Found (HTTP 404)" >&2; exit 1\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
   local flag="$BATS_TEST_TMPDIR/tagfail"; : > "$flag"
-  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit petry-projects/.github dev-lead/next 2>/dev/null"
+  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit combsmith/.github dev-lead/next 2>/dev/null"
   [ "$status" -eq 0 ]
   grep -q "dev-lead/next" "$flag"
 }
@@ -4188,7 +4188,7 @@ GHEOF
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"
   printf '#!/usr/bin/env bash\necho "gh: repository not found (HTTP 500)" >&2; exit 1\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
   local flag="$BATS_TEST_TMPDIR/tagfail"; : > "$flag"
-  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit petry-projects/.github dev-lead/next 2>/dev/null"
+  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit combsmith/.github dev-lead/next 2>/dev/null"
   [ "$status" -eq 0 ]
   grep -q "dev-lead/next" "$flag"
 }
@@ -4196,7 +4196,7 @@ GHEOF
 @test "#1225: a lookup error whose flag write FAILS still reads as unknown in _ring_commits" {
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"
   printf '#!/usr/bin/env bash\necho "gh: Server Error (HTTP 502)" >&2; exit 1\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
-  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="/nonexistent-dir/flag" bash -c "source '$ORCH'; _gh_tag_commit petry-projects/.github dev-lead/next 2>/dev/null"
+  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="/nonexistent-dir/flag" bash -c "source '$ORCH'; _gh_tag_commit combsmith/.github dev-lead/next 2>/dev/null"
   [ "$status" -eq 0 ]
   [[ "$output" == *"!tag-lookup-error-unrecorded"* ]]
 }
@@ -4205,7 +4205,7 @@ GHEOF
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"
   printf '#!/usr/bin/env bash\necho "gh: Server Error (HTTP 502)" >&2; exit 1\n' > "$STUB_BIN/gh"; chmod +x "$STUB_BIN/gh"
   local flag="$BATS_TEST_TMPDIR/tagfail"; : > "$flag"
-  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit petry-projects/.github dev-lead/next 2>/dev/null"
+  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit combsmith/.github dev-lead/next 2>/dev/null"
   [ "$status" -eq 0 ]          # never fails the caller (every other call site keeps working)
   [ -z "$output" ]
   grep -q "dev-lead/next" "$flag"
@@ -4222,7 +4222,7 @@ esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
   local flag="$BATS_TEST_TMPDIR/tagfail"; : > "$flag"
-  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit petry-projects/.github dev-lead/ring0 2>/dev/null"
+  run env PATH="$STUB_BIN:$PATH" _CANARY_TAG_FAIL_FLAG="$flag" bash -c "source '$ORCH'; _gh_tag_commit combsmith/.github dev-lead/ring0 2>/dev/null"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   grep -q "dev-lead/ring0" "$flag"
@@ -4230,7 +4230,7 @@ GHEOF
 
 @test "#1225: a TOTAL tag-lookup outage holds BLOCKED and NEVER reports fully rolled out" {
   _multicand_stub ERR ERR ERR ERR "1 hours" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"[next->ring0]: BLOCKED"* ]]
   [[ "$output" == *"[ring0->ring1]: BLOCKED"* ]]
@@ -4241,7 +4241,7 @@ GHEOF
 
 @test "#1225: a TOTAL tag-lookup outage — promote moves nothing and does not report nothing-to-promote" {
   _multicand_stub ERR ERR ERR ERR "3 days" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --dry-run
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"BLOCKED"* ]]
   [[ "$output" != *"fully rolled out"* ]]
@@ -4251,7 +4251,7 @@ GHEOF
 
 @test "#1225: a TOTAL tag-lookup outage — promote --override still moves nothing" {
   _multicand_stub ERR ERR ERR ERR "3 days" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --override --dry-run
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --override --dry-run
   [[ "$output" == *"a ring tag lookup errored; not promoting"* ]]
   [[ "$output" != *"advancing dev-lead"* ]]
   [[ "$output" != *"tags/dev-lead/"*" sha="* ]]
@@ -4261,7 +4261,7 @@ GHEOF
   _multicand_stub ERR ERR ERR ERR "1 hours" "3 days" "30 hours" "" "" \
     '[{"number":905,"state":"OPEN","body":"<!-- canary-blocker:dev-lead -->"},{"number":906,"state":"OPEN","body":"<!-- canary-confirm:dev-lead:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee -->"}]'
   local summ="$BATS_TEST_TMPDIR/tg-a.md"; : > "$summ"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 1 ]
   [[ "$output" == *"tag lookup"* ]]
   grep -q "EDIT|.*905" "$ISSUE_LOG"          # the open blocker is refreshed (held), never closed
@@ -4274,7 +4274,7 @@ GHEOF
 
 @test "#1225: every tag genuinely ABSENT (404) keeps the legacy COMPLETE (#1118 AC6)" {
   _multicand_stub NONE NONE NONE NONE "1 hours" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"fully rolled out"* ]]
   [[ "$output" != *"BLOCKED"* ]]
@@ -4283,7 +4283,7 @@ GHEOF
 @test "#1225: sync-issues on an all-ABSENT (unseeded/legacy) agent is a clean COMPLETE, exit 0" {
   _multicand_stub NONE NONE NONE NONE "1 hours" "3 days" "30 hours"
   local summ="$BATS_TEST_TMPDIR/tg-b.md"; : > "$summ"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   grep -qF '| `dev-lead` | COMPLETE |' "$summ"
   run grep -q "CREATE|" "$ISSUE_LOG"          # no blocker opened for an agent with no tags yet
@@ -4294,7 +4294,7 @@ GHEOF
   # next errors; ring0=ring1=C3 (cut 30h) and stable=prior → ring1->stable is independently
   # AWAITING_CONFIRMATION exactly as in the all-resolved case; only next->ring0 is held.
   _multicand_stub ERR C3 C3 PRIOR "1 hours" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"[next->ring0]: BLOCKED"* ]]
   [[ "$output" == *"[ring1->stable]: AWAITING_CONFIRMATION"* ]]
@@ -4304,7 +4304,7 @@ GHEOF
 @test "#1225: an ERRORED destination lookup holds that pair — never PROMOTEs onto an unknown ring" {
   # stable errors; next=C1 clean and old enough to PROMOTE into ring0, which must still advance.
   _multicand_stub C1 C3 C3 ERR "3 days" "3 days" "30 hours"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --dry-run
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" bash "$ORCH" promote dev-lead --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"tags/dev-lead/ring0 sha=cccccccccccc"* ]]
   [[ "$output" != *"tags/dev-lead/stable sha="* ]]
@@ -4314,7 +4314,7 @@ GHEOF
 @test "#1225: sync-issues opens a tag-lookup blocker for a single errored pair and still exits non-zero" {
   _multicand_stub ERR C3 C3 PRIOR "1 hours" "3 days" "30 hours"
   local summ="$BATS_TEST_TMPDIR/tg-c.md"; : > "$summ"
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="petry-projects/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$MC_RINGS" ISSUE_REPO="combsmith/.github-private" GITHUB_STEP_SUMMARY="$summ" bash "$ORCH" sync-issues
   [ "$status" -eq 1 ]
   [[ "$output" == *"opened blocker issue"* ]]
   grep -q "CREATE|.*tag lookup failed" "$ISSUE_LOG"
@@ -4324,8 +4324,8 @@ GHEOF
 # The confirm issue's idempotency marker is keyed on the ring1 CANDIDATE (#1118 AC3), so a
 # recut ring1 candidate does not silently transfer a human's pending go/no-go to a new commit.
 @test "#1118: _confirm_body keys the canary-confirm marker on agent AND candidate" {
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$RINGS" bash -c \
-    "source '$ORCH' && _confirm_body dev-lead 'ring1->stable' cafe1234cafe bbbbbbbbbbbb petry-projects/.github-private 5 1"
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _confirm_body dev-lead 'ring1->stable' cafe1234cafe bbbbbbbbbbbb combsmith/.github-private 5 1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"<!-- canary-confirm:dev-lead:cafe1234cafe -->"* ]]
 }
@@ -4459,17 +4459,17 @@ _corr_cut() { date -u -d '-3 days' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v
 
 @test "_correctness_verdict: a gross candidate decision-mix shift → SHIFT" {
   _correctness_stub skip-checks-pending 20 dispatched 22
-  run env CANARY_RINGS="$CORR_RINGS" bash -c "source '$ORCH' && _correctness_verdict dev-lead $_CORR_CAND '$(_corr_cut)' petry-projects/.github-private"
+  run env CANARY_RINGS="$CORR_RINGS" bash -c "source '$ORCH' && _correctness_verdict dev-lead $_CORR_CAND '$(_corr_cut)' combsmith/.github-private"
   [ "$status" -eq 0 ]; [ "$output" = "SHIFT" ]
 }
 @test "_correctness_verdict: candidate mix matches the baseline → OK (no effect)" {
   _correctness_stub dispatched 20 dispatched 22
-  run env CANARY_RINGS="$CORR_RINGS" bash -c "source '$ORCH' && _correctness_verdict dev-lead $_CORR_CAND '$(_corr_cut)' petry-projects/.github-private"
+  run env CANARY_RINGS="$CORR_RINGS" bash -c "source '$ORCH' && _correctness_verdict dev-lead $_CORR_CAND '$(_corr_cut)' combsmith/.github-private"
   [ "$status" -eq 0 ]; [ "$output" = "OK" ]
 }
 @test "_correctness_verdict: candidate sample below the minimum → INSUFFICIENT (no-op)" {
   _correctness_stub dispatched 5 dispatched 22
-  run env CANARY_RINGS="$CORR_RINGS" bash -c "source '$ORCH' && _correctness_verdict dev-lead $_CORR_CAND '$(_corr_cut)' petry-projects/.github-private"
+  run env CANARY_RINGS="$CORR_RINGS" bash -c "source '$ORCH' && _correctness_verdict dev-lead $_CORR_CAND '$(_corr_cut)' combsmith/.github-private"
   [ "$status" -eq 0 ]; [ "$output" = "INSUFFICIENT" ]
 }
 
@@ -4539,7 +4539,7 @@ case "\$*" in
       + [range(1001;1001+\$bn)|{databaseId:.,conclusion:"success",createdAt:\$bb,workflowName:"Dev-Lead Agent"}] )
       | map(select(\$s=="" or .createdAt >= \$s))' ;;
   "issue list"*)   echo '$blocker_list' ;;
-  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/petry-projects/.github-private/issues/777" ;;
+  "issue create"*) echo "CREATE|\$*" >> "$ISSUE_LOG"; echo "https://github.com/combsmith/.github-private/issues/777" ;;
   "issue edit"*)   echo "EDIT|\$*"   >> "$ISSUE_LOG" ;;
   "issue close"*)  echo "CLOSE|\$*"  >> "$ISSUE_LOG" ;;
   "issue reopen"*) echo "REOPEN|\$*" >> "$ISSUE_LOG" ;;
@@ -4555,7 +4555,7 @@ GHEOF
 
 @test "orchestrator: sync-issues renders the decision-mix table in the blocker for a correctness SHIFT (#668 L2)" {
   _correctness_sync_stub skip-checks-pending 20 dispatched 22 '[]'
-  run env CANARY_RINGS="$CORR_RINGS" ISSUE_REPO="petry-projects/.github-private" bash "$ORCH" sync-issues
+  run env CANARY_RINGS="$CORR_RINGS" ISSUE_REPO="combsmith/.github-private" bash "$ORCH" sync-issues
   [ "$status" -eq 0 ]
   [[ "$output" == *"opened blocker issue #777 for dev-lead"* ]]
   # The blocker body (passed to `gh issue create --body`) carries the correctness note + mix table.
@@ -4649,7 +4649,7 @@ case "\$*" in
 esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
-  run bash -c "source '$ORCH' && _gh_candidate_cut_date petry-projects/.github-private dev-lead $_X"
+  run bash -c "source '$ORCH' && _gh_candidate_cut_date combsmith/.github-private dev-lead $_X"
   [ "$status" -eq 0 ]
   [ "$output" = "$_CUT" ]
 }
@@ -4665,7 +4665,7 @@ case "\$*" in
 esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
-  run bash -c "source '$ORCH' && _gh_candidate_cut_date petry-projects/.github-private dev-lead $_X"
+  run bash -c "source '$ORCH' && _gh_candidate_cut_date combsmith/.github-private dev-lead $_X"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -4690,7 +4690,7 @@ case "\$*" in
 esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
-  run bash -c "source '$ORCH' && _gh_candidate_cut_date petry-projects/.github-private dev-lead $_X"
+  run bash -c "source '$ORCH' && _gh_candidate_cut_date combsmith/.github-private dev-lead $_X"
   [ "$status" -eq 0 ]
   [ "$output" = "$_CUT" ]
 }
@@ -4709,7 +4709,7 @@ esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
   # GITHUB_REPOSITORY=.github forces THIS_REPO=.github, so dev-lead (host .github-private) is cross-repo.
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && candidate_cut_date dev-lead $_X"
   [ "$status" -eq 0 ]
   [ "$output" = "$_CUT" ]
@@ -4734,7 +4734,7 @@ esac
 GITEOF
   chmod +x "$STUB_BIN/git"
   # auto-rebase host = .github == THIS_REPO → the local for-each-ref path.
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && candidate_cut_date auto-rebase $_X"
   [ "$status" -eq 0 ]
   [ "$output" = "$_CUT" ]
@@ -4851,7 +4851,7 @@ GITEOF
   run env CANARY_RINGS="$RINGS" GITHUB_OUTPUT="$out" bash "$ORCH" promote dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"promoted dev-lead/v2-ring0"* ]]
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/v2-ring0" "$MOVE_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/v2-ring0" "$MOVE_LOG"
   # A v2 promotion NEVER touches a v1-* tag.
   ! grep -q "v1-" "$MOVE_LOG"
   # promoted_ring stays the logical tier (ring0), not the major-scoped tag.
@@ -4956,7 +4956,7 @@ GITEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"promoted dev-lead/ring0"* ]]
   [[ "$output" != *"v1-ring0"* ]]
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/ring0 " "$MOVE_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/ring0 " "$MOVE_LOG"
   # a release major alone (no v-line seeded) must NOT sprout a v-scoped tag
   run grep -q "v1-" "$MOVE_LOG"
   [ "$status" -eq 1 ]
@@ -5021,7 +5021,7 @@ GITEOF
   _channeldrift_stub
   # Force THIS_REPO=.github-private so persona-mention (host=.github) is cross-repo and resolves
   # its channel tags via gh api (the stub), not local git.
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$CHANNELDRIFT_RINGS" bash "$ORCH" drift
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$CHANNELDRIFT_RINGS" bash "$ORCH" drift
   [ "$status" -eq 0 ]
   [[ "$output" == *"DRIFT[channel-tag]"* ]]
   [[ "$output" == *"persona-mention"* ]]
@@ -5079,37 +5079,37 @@ GITEOF
 }
 
 @test "orchestrator: autocut of a MAJOR bump seeds a fresh v<newmajor>-next line, not the old next (#657 F4)" {
-  _f4_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _f4_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" major
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   # major bump v2.1.0 → v3.0.0; the immutable release cut as usual, next seeded on the FRESH v3 line.
   grep -q "git/tags .*tag=dev-lead/v3.0.0 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/v3-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/v3-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
   # The fresh major line does NOT move the old bare next (that would break the running fleet).
   ! grep -q "git/refs/tags/dev-lead/next " "$GH_LOG"
 }
 
 @test "orchestrator: autocut of a patch bump advances the current major's v2-next when that line exists (#657 F4)" {
-  _f4_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _f4_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" patch \
     cccccccccccccccccccccccccccccccccccccccc
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   # patch bump v2.1.0 → v2.1.1; the v2 line exists → next advances ON the major line, not bare next.
   grep -q "git/tags .*tag=dev-lead/v2.1.1 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/v2-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/v2-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
   ! grep -q "git/refs/tags/dev-lead/next " "$GH_LOG"
 }
 
 @test "orchestrator: autocut of a patch bump falls back to bare next when no v-line exists yet (#657 F4)" {
   # Today's bare fleet: no v2-next tag → resolution falls back to bare next → byte-identical move.
-  _f4_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _f4_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     blobMAIN blobNEXT aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" patch
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   grep -q "git/tags .*tag=dev-lead/v2.1.1 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
   ! grep -q "git/refs/tags/dev-lead/v2-next" "$GH_LOG"
 }
 
@@ -5204,14 +5204,14 @@ YML
 @test "orchestrator: autocut detects a feat! commit → MAJOR + seeds a fresh v<newmajor>-next (#712)" {
   local commits='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"feat!: drop the legacy dry_run input\n\nRemoves a caller-facing knob."}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
   # interface unchanged (same yaml both refs) — the major comes purely from the commit signal.
-  _detect_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _detect_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "$commits" "$(_iface_yaml)" "$(_iface_yaml)"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   # major bump v2.1.0 → v3.0.0; next seeded on the FRESH v3 line, old bare next untouched.
   grep -q "git/tags .*tag=dev-lead/v3.0.0 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/v3-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/v3-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
   ! grep -q "git/refs/tags/dev-lead/next " "$GH_LOG"
 }
 
@@ -5236,13 +5236,13 @@ jobs:
     steps: []
 YML
 )"
-  _detect_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _detect_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "$commits" "$(_iface_yaml)" "$new_yaml"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   grep -q "git/tags .*tag=dev-lead/v3.0.0 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/v3-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/v3-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
 }
 
 @test "orchestrator: autocut detects a newly-required workflow_call input → MAJOR (interface break) (#712)" {
@@ -5272,7 +5272,7 @@ jobs:
     steps: []
 YML
 )"
-  _detect_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _detect_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "$commits" "$(_iface_yaml)" "$new_yaml"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
@@ -5307,7 +5307,7 @@ jobs:
     steps: []
 YML
 )"
-  _detect_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _detect_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "$commits" "$(_iface_yaml)" "$new_yaml"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
@@ -5319,7 +5319,7 @@ YML
 
 @test "orchestrator: autocut detects a fix-only change → PATCH (#712)" {
   local commits='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"fix: correct a log message"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
-  _detect_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _detect_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "$commits" "$(_iface_yaml)" "$(_iface_yaml)"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
@@ -5330,7 +5330,7 @@ YML
 @test "orchestrator: autocut fails SAFE to PATCH when the commit-signal fetch errors (#712)" {
   # commits?path returns a non-array error payload → signal fetch fails → never auto-major.
   local commits='{"message":"Not Found","status":"404"}'
-  _detect_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _detect_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "$commits" "$(_iface_yaml)" "$(_iface_yaml)"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
@@ -5342,13 +5342,13 @@ YML
 @test "orchestrator: autocut knob override forces MAJOR over a patch-only diff (#712)" {
   # Signals say patch (fix commit, no interface change) but the registry knob forces major.
   local commits='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"fix: small tweak"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
-  _detect_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _detect_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "$commits" "$(_iface_yaml)" "$(_iface_yaml)" major
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   grep -q "git/tags .*tag=dev-lead/v3.0.0 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github-private/git/refs/tags/dev-lead/v3-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/v3-next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
 }
 
 # ── autocut bump-signal scoping + pagination + fail-safe (#1023 defect 1) ───────
@@ -5426,7 +5426,7 @@ _filler_page() { jq -nc '[range(100)|{sha:("f\(.)"),commit:{message:"chore: fill
   # `feat!` that would force a major touched an unrelated file (docs/), so it never appears in
   # `commits?path=<reusable>` and must not move the bump. Scoping ⇒ patch, not major.
   local re1='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"fix: correct a log line"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
-  _scoped_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "2026-08-01T00:00:00Z" "$re1"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
@@ -5440,7 +5440,7 @@ _filler_page() { jq -nc '[range(100)|{sha:("f\(.)"),commit:{message:"chore: fill
   # path carries a `feat!`. Multi-path union ⇒ major (a change to a watched dependency counts).
   local re1='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"fix: reusable tidy"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
   local ex1='[{"sha":"libcommit00000000000000000000000000000","commit":{"message":"feat!: drop the legacy shared entrypoint"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
-  _scoped_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "2026-08-01T00:00:00Z" "$re1" "[]" "$ex1" '["scripts/lib/shared.sh"]'
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
@@ -5453,7 +5453,7 @@ _filler_page() { jq -nc '[range(100)|{sha:("f\(.)"),commit:{message:"chore: fill
   # BREAKING CHANGE commit are on page 2. If pagination stopped at the cap the break would ship as
   # a patch — the dangerous direction. Enumerating past the cap ⇒ major.
   local re2='[{"sha":"breaker000000000000000000000000000000000","commit":{"message":"feat: extend the matrix\n\nBREAKING CHANGE: the matrix input is now required."}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
-  _scoped_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "2026-08-01T00:00:00Z" "$(_filler_page)" "$re2"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
@@ -5465,7 +5465,7 @@ _filler_page() { jq -nc '[range(100)|{sha:("f\(.)"),commit:{message:"chore: fill
   # Every page is a full 100-commit page and the boundary is never reached within the page cap →
   # the range cannot be enumerated. It must NOT silently downgrade to patch: fail safe to major
   # with a ::warning::.
-  _scoped_autocut_stub dev-lead petry-projects/.github-private .github/workflows/dev-lead-reusable.yml \
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "2026-08-01T00:00:00Z" "$(_filler_page)" "$(_filler_page)"
   run env CANARY_AUTO_CUT=true CANARY_MAX_COMMIT_PAGES=2 CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
@@ -5627,20 +5627,20 @@ GITEOF
 
 @test "orchestrator: autocut cuts on a SCRIPT-ONLY change (reusable blob identical) (#1019)" {
   local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"fix: forced dispatches survive sweep concurrency"}}]}'
-  _scriptonly_stub persona-mention petry-projects/.github .github/workflows/persona-mention-reusable.yml \
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   # fix-only script change → patch bump v1.2.0 → v1.2.1, cut on the host + next moved.
-  grep -q "repos/petry-projects/.github/git/tags .*tag=persona-mention/v1.2.1 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github/git/refs/tags/persona-mention/next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "repos/combsmith/.github/git/tags .*tag=persona-mention/v1.2.1 .*object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github/git/refs/tags/persona-mention/next .*sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$GH_LOG"
 }
 
 @test "orchestrator: autocut does NOT cut when only a non-watched path changed (#1019)" {
   # reusable identical AND the only change is under docs/ (not scripts/prompts/personas/ or the
   # reusable) → nothing a consumer executes changed → no cut.
   local compare='{"files":[{"filename":"docs/notes.md"}],"commits":[{"commit":{"message":"docs: tidy"}}]}'
-  _scriptonly_stub persona-mention petry-projects/.github .github/workflows/persona-mention-reusable.yml \
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -5650,7 +5650,7 @@ GITEOF
 
 @test "orchestrator: autocut bump detection applies to a script-only feat → MINOR (#1019)" {
   local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"feat: add a --force retrigger mode"}}]}'
-  _scriptonly_stub persona-mention petry-projects/.github .github/workflows/persona-mention-reusable.yml \
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
@@ -5659,13 +5659,13 @@ GITEOF
 
 @test "orchestrator: autocut bump detection applies to a script-only feat! → MAJOR (#1019)" {
   local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"feat!: drop the legacy retrigger path"}}]}'
-  _scriptonly_stub persona-mention petry-projects/.github .github/workflows/persona-mention-reusable.yml \
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   # major bump v1.2.0 → v2.0.0 seeded on a fresh v2-next line.
   grep -q "git/tags .*tag=persona-mention/v2.0.0 " "$GH_LOG"
-  grep -q "PATCH repos/petry-projects/.github/git/refs/tags/persona-mention/v2-next " "$GH_LOG"
+  grep -q "PATCH repos/combsmith/.github/git/refs/tags/persona-mention/v2-next " "$GH_LOG"
 }
 
 # ── _gh_move_tag: create the ref when the PATCH reports 422 "Reference does not exist" ──
@@ -5674,7 +5674,7 @@ GITEOF
 # exist" (NOT 404). The mover must treat that as create-if-missing and POST the ref (#1019).
 @test "_gh_move_tag: creates the ref on a 422 'Reference does not exist' (#1019)" {
   _move_tag_stub noref ok
-  run bash -c "source '$ORCH' && _gh_move_tag petry-projects/.github persona-mention/ring0 8837cee9db2988837cee9db2988837cee9db298"
+  run bash -c "source '$ORCH' && _gh_move_tag combsmith/.github persona-mention/ring0 8837cee9db2988837cee9db2988837cee9db298"
   [ "$status" -eq 0 ]
   grep -q '^PATCH$' "$CALL_LOG"
   grep -q '^POST$' "$CALL_LOG"
@@ -5790,7 +5790,7 @@ GHEOF
 # ci-failure-analyst): host-relative rings (next = the host) so `next`+`ring0`
 # span both org-infra repos whichever hosts the agent.
 @test "pr-review is registered with its .github-private host + engine reusable (#1166)" {
-  [ "$(jq -r '.agents["pr-review"].host' "$RINGS")" = "petry-projects/.github-private" ]
+  [ "$(jq -r '.agents["pr-review"].host' "$RINGS")" = "combsmith/.github-private" ]
   [ "$(jq -r '.agents["pr-review"].reusable' "$RINGS")" = ".github/workflows/pr-review.yml" ]
   # run_workflow must resolve the agent's runs for the gate's sample floor — non-empty.
   [ -n "$(jq -r '.agents["pr-review"].run_workflow // empty' "$RINGS")" ]
@@ -5856,11 +5856,11 @@ GITEOF
   # persona-mention is cross-repo (host=.github); next resolves via gh api. next != main and a
   # scripts/ file differs between them → merged-but-unshipped.
   local compare='{"files":[{"filename":"scripts/lib/persona-mention.sh"}],"commits":[{"commit":{"message":"fix: x"}}]}'
-  _shipdrift_stub persona-mention petry-projects/.github \
+  _shipdrift_stub persona-mention combsmith/.github \
     cccccccccccccccccccccccccccccccccccccccc aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "$compare"
   # Force THIS_REPO=.github-private so persona-mention (host=.github) is cross-repo and resolves
   # its `next` channel tag via gh api (the stub), not local git (mirrors the #613 cross-repo tests).
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$SHIPDRIFT_RINGS" bash "$ORCH" drift
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$SHIPDRIFT_RINGS" bash "$ORCH" drift
   [ "$status" -eq 0 ]
   [[ "$output" == *"DRIFT[unshipped]"* ]]
   [[ "$output" == *"persona-mention"* ]]
@@ -5929,14 +5929,14 @@ GITEOF
 @test "_resolved_channel: release-major≠channel-major resolves to v1-ring0, never v14-ring0 nor bare ring0 (#1065)" {
   _divergent_major_stub
   # cross-repo (host=.github-private, THIS_REPO=.github) so channel tags resolve via gh api.
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && _resolved_channel_tag dev-lead ring0"
   [ "$status" -eq 0 ]
   [ "$output" = "dev-lead/v1-ring0" ]
   [ "$output" != "dev-lead/v14-ring0" ]
   [ "$output" != "dev-lead/ring0" ]
   # the resolved commit is the v1-ring0 tag's, never the bare ring0's (no fallback).
-  run env GITHUB_REPOSITORY="petry-projects/.github" CANARY_RINGS="$RINGS" \
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
     bash -c "source '$ORCH' && _resolved_channel dev-lead ring0 | cut -f2"
   [ "$output" = "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1" ]
   [ "$output" != "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0" ]
@@ -6969,7 +6969,7 @@ _ingress_frontier() {
 }
 
 @test "_blocker_body: UNRESOLVED triage explains the blind member, not a cut-date indeterminate (#1224)" {
-  run bash -c "source '$ORCH' && _blocker_body dev-lead 'next->ring0' cand 0 0 UNRESOLVED petry-projects/.github-private '- \`org/collapsed\` — ingress present'"
+  run bash -c "source '$ORCH' && _blocker_body dev-lead 'next->ring0' cand 0 0 UNRESOLVED combsmith/.github-private '- \`org/collapsed\` — ingress present'"
   [ "$status" -eq 0 ]
   [[ "$output" == *"UNRESOLVED"* ]]
   [[ "$output" == *"ingress_job"* ]]
@@ -7068,7 +7068,7 @@ _ingress_registry_lint() {
 
 @test "registry lint: every registered ingress_job is a job of the canonical agent-ingress.yml template (#1246 item 10)" {
   if [ ! -f "$INGRESS_TEMPLATE" ]; then
-    skip "canonical template not published yet ($INGRESS_TEMPLATE; petry-projects/.github-private#1729 AC11(a)) — lint is dormant until it lands"
+    skip "canonical template not published yet ($INGRESS_TEMPLATE; combsmith/.github-private#1729 AC11(a)) — lint is dormant until it lands"
   fi
   run _ingress_registry_lint "$RINGS" "$INGRESS_TEMPLATE"
   [ "$status" -eq 0 ] || { echo "ingress_job not declared by the canonical ingress:"; echo "$output"; return 1; }
@@ -7638,9 +7638,9 @@ _wf_run_script() {
   printf '#!/usr/bin/env bash\ncase "$*" in *"run list"*) echo "[]" ;; *) echo "{}" ;; esac\n' > "$STUB_BIN/gh"
   chmod +x "$STUB_BIN/gh"
   cd "$repo"
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cannot read tags for dev-lead on petry-projects/.github-private"* ]]
+  [[ "$output" == *"cannot read tags for dev-lead on combsmith/.github-private"* ]]
   [[ "$output" != *"fully rolled out"* ]]
   [[ "$output" == *"BLOCKED"* ]]
 }
@@ -7648,7 +7648,7 @@ _wf_run_script() {
 @test "orchestrator: THIS_REPO defaults to the engine's own repo (.github) when GITHUB_REPOSITORY is unset (#1177)" {
   run env -u GITHUB_REPOSITORY CANARY_RINGS="$RINGS" bash -c "source '$ORCH'; echo \"\$THIS_REPO\""
   [ "$status" -eq 0 ]
-  [ "$output" = "petry-projects/.github" ]
+  [ "$output" = "combsmith/.github" ]
 }
 
 @test "orchestrator: a local agent with no readable tags fails loudly — never 'fully rolled out' (#1177)" {
@@ -7658,14 +7658,14 @@ _wf_run_script() {
   printf '#!/usr/bin/env bash\ncase "$*" in *"run list"*) echo "[]" ;; *) echo "{}" ;; esac\n' > "$STUB_BIN/gh"
   printf '#!/usr/bin/env bash\n: # no tags in this checkout\n' > "$STUB_BIN/git"
   chmod +x "$STUB_BIN/gh" "$STUB_BIN/git"
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cannot read tags for dev-lead on petry-projects/.github-private"* ]]
+  [[ "$output" == *"cannot read tags for dev-lead on combsmith/.github-private"* ]]
   [[ "$output" != *"fully rolled out"* ]]
   [[ "$output" == *"BLOCKED"* ]]
-  run env GITHUB_REPOSITORY="petry-projects/.github-private" CANARY_RINGS="$RINGS" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  run env GITHUB_REPOSITORY="combsmith/.github-private" CANARY_RINGS="$RINGS" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cannot read tags for dev-lead on petry-projects/.github-private"* ]]
+  [[ "$output" == *"cannot read tags for dev-lead on combsmith/.github-private"* ]]
   [[ "$output" != *"fully rolled out"* ]]
   [[ "$output" != *"DRY-RUN"* ]]
 }
