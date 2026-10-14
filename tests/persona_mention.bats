@@ -22,7 +22,7 @@ manifest() {
 id: qa-lead
 name: QA Lead
 address:
-  handle: petry-projects/qa-lead
+  handle: combsmith/qa-lead
 triggers:
   default_mode: advisory
   opt_out_label: qa-lead:hands-off
@@ -40,18 +40,18 @@ MENTION_ON='    - surface: mention
 # --- slug extraction -------------------------------------------------------
 
 @test "pm_extract_slugs finds a handle in prose" {
-  run pm_extract_slugs "hey @petry-projects/qa-lead please look at this"
+  run pm_extract_slugs "hey @combsmith/qa-lead please look at this"
   [ "$status" -eq 0 ]
   [ "$output" = "qa-lead" ]
 }
 
 @test "pm_extract_slugs collapses duplicates so one mention dispatches once" {
-  run pm_extract_slugs "@petry-projects/qa-lead and again @petry-projects/qa-lead"
+  run pm_extract_slugs "@combsmith/qa-lead and again @combsmith/qa-lead"
   [ "$output" = "qa-lead" ]
 }
 
 @test "pm_extract_slugs finds several distinct personas, order preserved" {
-  run pm_extract_slugs "@petry-projects/qa-lead and @petry-projects/dev-lead"
+  run pm_extract_slugs "@combsmith/qa-lead and @combsmith/dev-lead"
   [ "${lines[0]}" = "qa-lead" ]
   [ "${lines[1]}" = "dev-lead" ]
   [ "${#lines[@]}" -eq 2 ]
@@ -136,29 +136,29 @@ MENTION_ON='    - surface: mention
 }
 
 @test "pm_should_route blocks a comment authored by an agent (axis 1)" {
-  run pm_should_route donpetry-bot OWNER "@petry-projects/qa-lead please review"
+  run pm_should_route donpetry-bot OWNER "@combsmith/qa-lead please review"
   [ "$status" -ne 0 ]
 }
 
 @test "pm_should_route blocks a comment carrying the agent marker (axis 2)" {
-  run pm_should_route don-petry OWNER '<!-- persona:qa-lead --> @petry-projects/dev-lead over to you'
+  run pm_should_route don-petry OWNER '<!-- persona:qa-lead --> @combsmith/dev-lead over to you'
   [ "$status" -ne 0 ]
 }
 
 @test "pm_should_route blocks the combinatorial cross-persona loop" {
   # The failure mode §4.1 warns about: qa-lead answering a thread and mentioning
   # dev-lead. Marked AND bot-authored — either axis alone must stop it.
-  run pm_should_route donpetry-bot OWNER '<!-- persona:qa-lead --> @petry-projects/dev-lead your turn'
+  run pm_should_route donpetry-bot OWNER '<!-- persona:qa-lead --> @combsmith/dev-lead your turn'
   [ "$status" -ne 0 ]
 }
 
 @test "pm_should_route allows a trusted human addressing a persona" {
-  run pm_should_route don-petry OWNER "@petry-projects/qa-lead please review"
+  run pm_should_route don-petry OWNER "@combsmith/qa-lead please review"
   [ "$status" -eq 0 ]
 }
 
 @test "pm_should_route blocks an untrusted commenter" {
-  run pm_should_route drive-by NONE "@petry-projects/qa-lead please review"
+  run pm_should_route drive-by NONE "@combsmith/qa-lead please review"
   [ "$status" -ne 0 ]
 }
 
@@ -255,7 +255,7 @@ MENTION_ON='    - surface: mention
 
 @test "pm_manifest_url builds the raw manifest path by convention" {
   run pm_manifest_url qa-lead
-  [ "$output" = "https://raw.githubusercontent.com/petry-projects/.github-private/main/personas/qa-lead/persona.yml" ]
+  [ "$output" = "https://raw.githubusercontent.com/combsmith/.github-private/main/personas/qa-lead/persona.yml" ]
 }
 
 @test "pm_manifest_url honours PERSONA_REF for testing against a branch" {
@@ -270,7 +270,7 @@ MENTION_ON='    - surface: mention
 @test "pm_extract_slugs ignores a handle inside a fenced code block" {
   run pm_extract_slugs 'Example:
 ```
-@petry-projects/qa-lead review this
+@combsmith/qa-lead review this
 ```
 done'
   [ -z "$output" ]
@@ -279,21 +279,21 @@ done'
 @test "pm_extract_slugs ignores a handle inside a tilde fence" {
   run pm_extract_slugs 'Example:
 ~~~
-@petry-projects/qa-lead review this
+@combsmith/qa-lead review this
 ~~~
 done'
   [ -z "$output" ]
 }
 
 @test "pm_extract_slugs ignores a handle in inline code" {
-  run pm_extract_slugs 'The handle is `@petry-projects/qa-lead` for QA.'
+  run pm_extract_slugs 'The handle is `@combsmith/qa-lead` for QA.'
   [ -z "$output" ]
 }
 
 @test "pm_extract_slugs ignores a handle in a blockquote (quote-reply)" {
   # GitHub's one-click Quote reply prefixes '>'. Re-running an agent over quoted
   # text is not what the quoter meant, and no recursion axis catches it.
-  run pm_extract_slugs '> @petry-projects/qa-lead please review
+  run pm_extract_slugs '> @combsmith/qa-lead please review
 
 Agreed.'
   [ -z "$output" ]
@@ -302,7 +302,7 @@ Agreed.'
 @test "pm_extract_slugs still fires on a real mention beside a quote" {
   run pm_extract_slugs '> some earlier comment
 
-@petry-projects/qa-lead thoughts?'
+@combsmith/qa-lead thoughts?'
   [ "$output" = "qa-lead" ]
 }
 
@@ -311,14 +311,14 @@ Agreed.'
 ```
 npm test
 ```
-@petry-projects/qa-lead can you look?'
+@combsmith/qa-lead can you look?'
   [ "$output" = "qa-lead" ]
 }
 
 @test "pm_should_route ignores a comment whose only handle is in a code fence" {
   run pm_should_route don-petry OWNER 'docs:
 ```
-@petry-projects/qa-lead
+@combsmith/qa-lead
 ```'
   [ "$status" -ne 0 ]
 }
@@ -381,7 +381,7 @@ YAML
 
 @test "pm_interaction_url builds the raw contract path by convention" {
   run pm_interaction_url qa-lead
-  [ "$output" = "https://raw.githubusercontent.com/petry-projects/.github-private/main/personas/qa-lead/interaction.yml" ]
+  [ "$output" = "https://raw.githubusercontent.com/combsmith/.github-private/main/personas/qa-lead/interaction.yml" ]
 }
 
 @test "pm_interaction_url honours PERSONA_REF for testing against a branch" {
@@ -934,8 +934,8 @@ TRUST_FLOOR_CLAUSE_PR="contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"
   [ "$(job_if_clauses route | wc -l)" -eq 5 ]
 }
 
-@test "route.if requires an @petry-projects/ handle in the comment" {
-  has_clause "$(job_if_clauses route)" "contains(github.event.comment.body, '@petry-projects/')"
+@test "route.if requires an @combsmith/ handle in the comment" {
+  has_clause "$(job_if_clauses route)" "contains(github.event.comment.body, '@combsmith/')"
 }
 
 @test "route.if excludes both bot logins as the comment author" {

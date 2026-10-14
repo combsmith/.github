@@ -123,7 +123,7 @@ teardown() { tt_cleanup_tmpdir; }
 
 # Convenience wrapper with stable args.
 deploy() {
-  sd_deploy_via_pr "petry-projects/markets" ".github/workflows/add-to-project.yml" \
+  sd_deploy_via_pr "combsmith/markets" ".github/workflows/add-to-project.yml" \
     "$LOCAL_FILE" "standards-sync/add-to-project" "standards-sync" \
     "chore: sync add-to-project.yml" "PR body here"
 }
@@ -140,10 +140,10 @@ deploy() {
 @test "happy path makes the full create call sequence" {
   run deploy
   [ "$status" -eq 0 ]
-  grep -q 'gh pr list --repo petry-projects/markets --label standards-sync' "$GH_CALLS"
-  grep -q 'gh api repos/petry-projects/markets/git/refs --method POST' "$GH_CALLS"
-  grep -q 'gh api repos/petry-projects/markets/contents/.github/workflows/add-to-project.yml --method PUT' "$GH_CALLS"
-  grep -q 'gh pr create --repo petry-projects/markets --head standards-sync/add-to-project --base main' "$GH_CALLS"
+  grep -q 'gh pr list --repo combsmith/markets --label standards-sync' "$GH_CALLS"
+  grep -q 'gh api repos/combsmith/markets/git/refs --method POST' "$GH_CALLS"
+  grep -q 'gh api repos/combsmith/markets/contents/.github/workflows/add-to-project.yml --method PUT' "$GH_CALLS"
+  grep -q 'gh pr create --repo combsmith/markets --head standards-sync/add-to-project --base main' "$GH_CALLS"
   grep -q -- '--label standards-sync' "$GH_CALLS"
 }
 
@@ -152,7 +152,7 @@ deploy() {
 @test "deploys multiple files in a single PR" {
   local f2="${TT_TMP}/dependency-audit.yml"
   printf 'name: stub2\non: [push]\n' > "$f2"
-  run sd_deploy_files_via_pr "petry-projects/markets" "standards-sync/workflows" \
+  run sd_deploy_files_via_pr "combsmith/markets" "standards-sync/workflows" \
     "standards-sync" "chore: sync 2 stubs" "body" \
     ".github/workflows/add-to-project.yml" "$LOCAL_FILE" \
     ".github/workflows/dependency-audit.yml" "$f2"
@@ -165,7 +165,7 @@ deploy() {
 }
 
 @test "rejects an odd number of file arguments" {
-  run sd_deploy_files_via_pr "petry-projects/markets" "b" "l" "t" "body" \
+  run sd_deploy_files_via_pr "combsmith/markets" "b" "l" "t" "body" \
     ".github/workflows/only-a-path.yml"
   [ "$status" -ne 0 ]
   [ "$output" = "FAILED bad-file-args" ]
@@ -173,11 +173,11 @@ deploy() {
 
 # Regression: consumer repos don't carry the standards-sync label, and
 # `gh pr create --label` fails outright if it's absent — so the lib must ensure
-# the label exists, before the PR is created. (petry-projects/.github#480.)
+# the label exists, before the PR is created. (combsmith/.github#480.)
 @test "ensures the label exists before opening the PR" {
   run deploy
   [ "$status" -eq 0 ]
-  grep -q 'gh label create standards-sync --repo petry-projects/markets' "$GH_CALLS"
+  grep -q 'gh label create standards-sync --repo combsmith/markets' "$GH_CALLS"
   local label_line prc_line
   label_line=$(grep -n 'gh label create' "$GH_CALLS" | head -1 | cut -d: -f1)
   prc_line=$(grep -n 'gh pr create' "$GH_CALLS" | head -1 | cut -d: -f1)
@@ -216,7 +216,7 @@ deploy() {
 }
 
 # ---------------------------------------------------------------------------
-# Stale same-date branch (petry-projects/.github#1296): a prior run's branch —
+# Stale same-date branch (combsmith/.github#1296): a prior run's branch —
 # its PR closed — must not leak that run's commits into this run's PR.
 # ---------------------------------------------------------------------------
 @test "stale same-date branch with extra commits and no open PR: PR holds only this run's files" {
@@ -226,7 +226,7 @@ deploy() {
   printf '%s\n' .github/workflows/a.yml .github/workflows/b.yml \
     .github/workflows/c.yml .github/workflows/d.yml .github/workflows/e.yml \
     > "$GH_BRANCH_FILES"
-  run sd_deploy_files_via_pr "petry-projects/markets" "standards-sync/workflows-20261011" \
+  run sd_deploy_files_via_pr "combsmith/markets" "standards-sync/workflows-20261011" \
     "standards-sync" "chore: sync 1 stub" "body" \
     ".github/workflows/persona-mention.yml" "$LOCAL_FILE"
   [ "$status" -eq 0 ]
@@ -238,8 +238,8 @@ deploy() {
   GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
   run deploy
   [ "$status" -eq 0 ]
-  grep -q 'gh pr list --repo petry-projects/markets --head standards-sync/add-to-project --state open' "$GH_CALLS"
-  grep -q 'gh api repos/petry-projects/markets/git/refs/heads/standards-sync/add-to-project --method PATCH --raw-field sha=basesha111 -F force=true' "$GH_CALLS"
+  grep -q 'gh pr list --repo combsmith/markets --head standards-sync/add-to-project --state open' "$GH_CALLS"
+  grep -q 'gh api repos/combsmith/markets/git/refs/heads/standards-sync/add-to-project --method PATCH --raw-field sha=basesha111 -F force=true' "$GH_CALLS"
   local reset_line put_line
   reset_line=$(grep -n 'git/refs/heads/.* --method PATCH' "$GH_CALLS" | head -1 | cut -d: -f1)
   put_line=$(grep -n 'contents/.* --method PUT' "$GH_CALLS" | head -1 | cut -d: -f1)
@@ -345,14 +345,14 @@ deploy() {
 }
 
 @test "fails when the local file is missing" {
-  run sd_deploy_via_pr "petry-projects/markets" ".github/workflows/x.yml" \
+  run sd_deploy_via_pr "combsmith/markets" ".github/workflows/x.yml" \
     "${TT_TMP}/does-not-exist.yml" "standards-sync/x" "standards-sync" "t" "b"
   [ "$status" -ne 0 ]
   [ "$output" = "FAILED missing-local-file" ]
 }
 
 # ---------------------------------------------------------------------------
-# Fix 2 (petry-projects/.github#864): preflight write check + real error
+# Fix 2 (combsmith/.github#864): preflight write check + real error
 # surfacing + never a sha-less PUT on an existing file.
 # ---------------------------------------------------------------------------
 

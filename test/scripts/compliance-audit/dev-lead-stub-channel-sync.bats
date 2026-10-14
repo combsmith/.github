@@ -30,7 +30,7 @@ bats_require_minimum_version 1.5.0
 _extract_uses_channel() {
   local decoded="$1"
   printf '%s\n' "$decoded" | \
-    sed -nE 's#^[[:space:]]*uses:[[:space:]]*petry-projects/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(v[0-9]+-(stable|next|ring[0-9]+))([[:space:]]|$).*#\1#p'
+    sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(v[0-9]+-(stable|next|ring[0-9]+))([[:space:]]|$).*#\1#p'
 }
 
 _agent_ref_matches_channel() {
@@ -43,53 +43,53 @@ _agent_ref_matches_channel() {
 # ---------------------------------------------------------------------------
 
 @test "extracts 'v3-stable' from a v-form stable pin" {
-  decoded="    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v3-stable"
+  decoded="    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v3-stable"
   run _extract_uses_channel "$decoded"
   [ "$status" -eq 0 ]
   [ "$output" = "v3-stable" ]
 }
 
 @test "extracts 'v2-next' from a v-form next pin" {
-  decoded="    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v2-next"
+  decoded="    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v2-next"
   run _extract_uses_channel "$decoded"
   [ "$status" -eq 0 ]
   [ "$output" = "v2-next" ]
 }
 
 @test "extracts 'v1-ring0' from a v-form ring0 pin" {
-  decoded="    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0"
+  decoded="    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0"
   run _extract_uses_channel "$decoded"
   [ "$status" -eq 0 ]
   [ "$output" = "v1-ring0" ]
 }
 
 @test "extracts 'v4-ring1' from a v-form ring1 pin" {
-  decoded="    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v4-ring1"
+  decoded="    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v4-ring1"
   run _extract_uses_channel "$decoded"
   [ "$status" -eq 0 ]
   [ "$output" = "v4-ring1" ]
 }
 
 @test "extraction returns empty for a bare (non-v-form) pin — it is drift under F5" {
-  decoded="    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable"
+  decoded="    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable"
   run _extract_uses_channel "$decoded"
   [ "$output" = "" ]
 }
 
 @test "extraction ignores a commented-out uses line" {
-  decoded="    # uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v3-stable"
+  decoded="    # uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v3-stable"
   run _extract_uses_channel "$decoded"
   [ "$output" = "" ]
 }
 
 @test "extraction returns empty for a SHA pin (not a channel)" {
-  decoded="    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@376a4fcb1117444595e3e702fa450873d0e54310"
+  decoded="    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@376a4fcb1117444595e3e702fa450873d0e54310"
   run _extract_uses_channel "$decoded"
   [ "$output" = "" ]
 }
 
 @test "extraction returns empty for a version-tag pin" {
-  decoded="    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@v1.2.3"
+  decoded="    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@v1.2.3"
   run _extract_uses_channel "$decoded"
   [ "$output" = "" ]
 }
@@ -156,7 +156,7 @@ on:
     branches: [main]
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0
     with:
       agent_ref: dev-lead/v1-ring0
     secrets: inherit
@@ -171,7 +171,7 @@ EOF
   decoded=$(cat <<'EOF'
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0
     with:
       agent_ref: dev-lead/v1-ring0
 EOF
@@ -186,7 +186,7 @@ EOF
   decoded=$(cat <<'EOF'
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-ring0
     with:
       agent_ref: dev-lead/v1-stable
 EOF
@@ -215,7 +215,7 @@ refs/tags/dev-lead/v139-next"
 devlead_check() {  # <repo> <pinned-channel-ref> — run check_dev_lead_stub against a stub pinning it
   local body="jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@$2
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@$2
     with:
       agent_ref: $2
     secrets: inherit
@@ -225,7 +225,7 @@ devlead_check() {  # <repo> <pinned-channel-ref> — run check_dev_lead_stub aga
   AUDIT_MATCHING_REFS="${AUDIT_MATCHING_REFS:-$DL_REFS_LIVE}"; export AUDIT_MATCHING_REFS
   run bash -c '
     source "$1" >/dev/null 2>&1
-    ORG=petry-projects
+    ORG=combsmith
     # Fake gh: serves AUDIT_MATCHING_REFS for matching-refs/tags calls (fails if AUDIT_MATCHING_FAIL is set); else returns 1.
     gh() {
       case "$2" in

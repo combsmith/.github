@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests for the force_review decision in the pr-review-mention listener
-# (issue #1281, item 1 of petry-projects/.github-private#2082).
+# (issue #1281, item 1 of combsmith/.github-private#2082).
 #
 # pr-review.yml in .github-private sets FORCE_REVIEW (skip the advisory-bot and
 # comment-disposition waiting gates) only when the repository_dispatch carries
@@ -188,12 +188,12 @@ run_trigger() {
   (
     cd "$TT_TMP"
     GH_TOKEN="x" \
-    PR_URL="https://github.com/petry-projects/.github/pull/1" \
+    PR_URL="https://github.com/combsmith/.github/pull/1" \
     EVENT_NAME="${EVENT_NAME:-issue_comment}" \
     COMMENT_ASSOC="${COMMENT_ASSOC:-}" \
     COMMENT_USER="${COMMENT_USER:-}" \
     COMMENT_BODY="${COMMENT_BODY:-}" \
-    REPO="petry-projects/.github" \
+    REPO="combsmith/.github" \
     GH_STUB_PERMISSION="${GH_STUB_PERMISSION-admin}" \
     GH_STUB_PERMISSION_EXIT="${GH_STUB_PERMISSION_EXIT:-0}" \
       bash -e "${TT_TMP}/trigger.sh"
@@ -221,7 +221,7 @@ gh_log() { cat "$GH_STUB_LOG"; }
 @test "step: review_requested dispatches without force_review" {
   EVENT_NAME=pull_request COMMENT_ASSOC="" COMMENT_USER="" COMMENT_BODY="" run run_trigger
   [ "$status" -eq 0 ]
-  [[ "$(gh_log)" == *"/repos/petry-projects/.github-private/dispatches"* ]]
+  [[ "$(gh_log)" == *"/repos/combsmith/.github-private/dispatches"* ]]
   [[ "$(gh_log)" != *"force_review"* ]]
   [[ "$output" == *"force_review=false (rule: review-requested)"* ]]
 }
@@ -230,7 +230,7 @@ gh_log() { cat "$GH_STUB_LOG"; }
   EVENT_NAME=issue_comment COMMENT_ASSOC=OWNER COMMENT_USER=don-petry \
     COMMENT_BODY=$'<!-- dev-lead fix-reviews -->\n@donpetry-bot please review' run run_trigger
   [ "$status" -eq 0 ]
-  [[ "$(gh_log)" == *"/repos/petry-projects/.github-private/dispatches"* ]]
+  [[ "$(gh_log)" == *"/repos/combsmith/.github-private/dispatches"* ]]
   [[ "$(gh_log)" != *"force_review"* ]]
   [[ "$output" == *"force_review=false (rule: automation-marker)"* ]]
 }
@@ -239,7 +239,7 @@ gh_log() { cat "$GH_STUB_LOG"; }
   EVENT_NAME=issue_comment COMMENT_ASSOC=MEMBER COMMENT_USER=alice \
     COMMENT_BODY='@donpetry-bot please review' run run_trigger
   [ "$status" -eq 0 ]
-  [[ "$(gh_log)" == *"repos/petry-projects/.github/collaborators/alice/permission"* ]]
+  [[ "$(gh_log)" == *"repos/combsmith/.github/collaborators/alice/permission"* ]]
   [[ "$output" == *"force_review=true (rule: trusted-human-comment-mention) [permission: admin; force needs admin or write]"* ]]
 }
 
@@ -254,7 +254,7 @@ gh_log() { cat "$GH_STUB_LOG"; }
   GH_STUB_PERMISSION=read EVENT_NAME=issue_comment COMMENT_ASSOC=MEMBER COMMENT_USER=alice \
     COMMENT_BODY='@donpetry-bot please review' run run_trigger
   [ "$status" -eq 0 ]
-  [[ "$(gh_log)" == *"/repos/petry-projects/.github-private/dispatches"* ]]
+  [[ "$(gh_log)" == *"/repos/combsmith/.github-private/dispatches"* ]]
   [[ "$(gh_log)" != *"force_review"* ]]
   [[ "$output" == *"force_review=false (rule: insufficient-permission) [permission: read; force needs admin or write]"* ]]
 }
@@ -263,7 +263,7 @@ gh_log() { cat "$GH_STUB_LOG"; }
   GH_STUB_PERMISSION_EXIT=1 EVENT_NAME=issue_comment COMMENT_ASSOC=OWNER COMMENT_USER=don-petry \
     COMMENT_BODY='@donpetry-bot please review' run run_trigger
   [ "$status" -eq 0 ]
-  [[ "$(gh_log)" == *"/repos/petry-projects/.github-private/dispatches"* ]]
+  [[ "$(gh_log)" == *"/repos/combsmith/.github-private/dispatches"* ]]
   [[ "$(gh_log)" != *"force_review"* ]]
   [[ "$output" == *"could not read the permission of @don-petry"* ]]
   [[ "$output" == *"force_review=false (rule: permission-unavailable) [permission: unavailable"* ]]

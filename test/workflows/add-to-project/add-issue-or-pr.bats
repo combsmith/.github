@@ -109,7 +109,7 @@ assert_last_invocation_contains() {
   [ "$status" -eq 64 ]
   [[ "$stderr" == *"::error::"* ]]
   [[ "$stderr" == *"GH_TOKEN is empty"* ]]
-  [[ "$stderr" == *"petry-projects/.github#387"* ]]
+  [[ "$stderr" == *"combsmith/.github#387"* ]]
 }
 
 @test "find_content_item_id: rejects wrong arg count" {

@@ -21,7 +21,7 @@ set -euo pipefail
 #
 # Env:
 #   SS_REPO     owner/name holding the standards tags
-#               (default: $GITHUB_REPOSITORY, else petry-projects/.github).
+#               (default: $GITHUB_REPOSITORY, else combsmith/.github).
 #   SS_BRANCH   branch to compare the channel against (default: the repo's
 #               default branch).
 #   SS_CHANNEL  channel tag to check (default: the channel of the highest
@@ -36,7 +36,7 @@ source "${_HERE}/lib/standards-release.sh"
 # shellcheck source=lib/standards-staleness.sh
 source "${_HERE}/lib/standards-staleness.sh"
 
-SS_REPO="${SS_REPO:-${GITHUB_REPOSITORY:-petry-projects/.github}}"
+SS_REPO="${SS_REPO:-${GITHUB_REPOSITORY:-combsmith/.github}}"
 SS_MAX_DAYS="${STANDARDS_STALENESS_MAX_DAYS:-7}"
 DRY_RUN="${DRY_RUN:-false}"
 
