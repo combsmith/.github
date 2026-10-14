@@ -15,7 +15,7 @@
 # branch is rejected (HTTP 409) on repos whose ruleset enforces required status
 # checks — the Contents API does not honor the org-admin ruleset bypass. A PR
 # works uniformly on protected and unprotected repos, runs the repo's CI against
-# the change, and leaves an auditable record. See petry-projects/.github#478.
+# the change, and leaves an auditable record. See combsmith/.github#478.
 #
 # Requires `gh` authenticated with repo scope (branch + PR creation).
 #
@@ -29,7 +29,7 @@ _STANDARDS_DEPLOY_SOURCED=1
 
 # sd_deploy_via_pr <repo_slug> <path> <local_file> <branch> <label> <title> <body>
 #
-#   repo_slug   owner/name of the target repo (e.g. petry-projects/markets)
+#   repo_slug   owner/name of the target repo (e.g. combsmith/markets)
 #   path        path of the file within the target repo
 #   local_file  local file whose contents are deployed verbatim
 #   branch      head branch to create/reuse for the PR

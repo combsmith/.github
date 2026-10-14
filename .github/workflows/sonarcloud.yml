@@ -1,5 +1,5 @@
 # SonarCloud code quality, maintainability, and security hotspot scanning.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#3-sonarcloud-analysis-sonarcloudyml
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#3-sonarcloud-analysis-sonarcloudyml
 name: SonarCloud Analysis
 
 permissions: {}
