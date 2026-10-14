@@ -2,7 +2,7 @@
 # classify-initiative.sh — assign the Initiative single-select field (and its
 # rolled-up Theme) on Initiatives-project items that don't have one yet.
 #
-# Why this exists (petry-projects/.github#415): the add-to-project automation
+# Why this exists (combsmith/.github#415): the add-to-project automation
 # only ever places items ON the board (addProjectV2ItemById); nothing set the
 # Initiative field, so nearly every item sat on the board unassociated with any
 # initiative. This is the continuous, deterministic classifier that fills that

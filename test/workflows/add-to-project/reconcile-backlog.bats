@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests for reconcile-backlog.sh — the periodic/manual backlog reconcile
-# (petry-projects/.github#518). Runs the script with a tailored `gh` stub and
+# (combsmith/.github#518). Runs the script with a tailored `gh` stub and
 # DRY_RUN=1, and asserts it scans a repo's open issues/PRs + Ideas discussions
 # and reconciles qualifying ones via the shared event-path helpers (logging the
 # intended adds rather than mutating).
@@ -32,7 +32,7 @@ esac
 STUB
   chmod +x "$bin/gh"; PATH="${bin}:${PATH}"; export PATH
   export PROJECT_ID="PVT_test" PROJECT_URL="https://example.invalid/p/1" GH_TOKEN="t"
-  export RECON_REPOS="petry-projects/demo"   # skip installation lookup
+  export RECON_REPOS="combsmith/demo"   # skip installation lookup
   export DRY_RUN="1"
 }
 teardown() { tt_cleanup_tmpdir; }

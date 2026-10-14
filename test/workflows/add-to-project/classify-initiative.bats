@@ -112,9 +112,9 @@ assert_log_contains() {
 # ---------------------------------------------------------------------------
 
 @test "normalize_signature: lowercases and joins title | labels | repo" {
-  run normalize_signature "Fix The Thing" '[{"name":"auto-rebase"}]' "petry-projects/.github"
+  run normalize_signature "Fix The Thing" '[{"name":"auto-rebase"}]' "combsmith/.github"
   [ "$status" -eq 0 ]
-  [[ "$output" == "fix the thing | auto-rebase | petry-projects/.github" ]]
+  [[ "$output" == "fix the thing | auto-rebase | combsmith/.github" ]]
 }
 
 @test "normalize_signature: strips the dev-lead gate label but keeps real labels" {
@@ -146,13 +146,13 @@ assert_log_contains() {
 
 @test "classify_by_rules: the bare dev-lead label does NOT match dev-lead agent" {
   # Signature as normalize_signature would produce it: gate label already gone.
-  run classify_by_rules "some unrelated title |  | petry-projects/.github"
+  run classify_by_rules "some unrelated title |  | combsmith/.github"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "classify_by_rules: sonarcloud title → Org Standards" {
-  run classify_by_rules "sonarcloud: resolve remaining s7635 stubs |  | petry-projects/.github"
+  run classify_by_rules "sonarcloud: resolve remaining s7635 stubs |  | combsmith/.github"
   [ "$output" = "Org Standards" ]
 }
 
@@ -179,12 +179,12 @@ assert_log_contains() {
 @test "classify_by_rules: cross-cutting infra WINS over the product repo (SonarCloud in a product repo → Org Standards)" {
   # The key ordering guarantee: a SonarCloud sweep inside a product repo is
   # Org Standards work, not product work.
-  run classify_by_rules "sonarcloud: shell script hygiene cleanup |  | petry-projects/talkterm"
+  run classify_by_rules "sonarcloud: shell script hygiene cleanup |  | combsmith/talkterm"
   [ "$output" = "Org Standards" ]
 }
 
 @test "classify_by_rules: a genuine product feature in the product repo → the product initiative" {
-  run classify_by_rules "add spatial audio to the voice provider pipeline |  | petry-projects/talkterm"
+  run classify_by_rules "add spatial audio to the voice provider pipeline |  | combsmith/talkterm"
   [ "$output" = "TalkTerm" ]
 }
 
@@ -199,12 +199,12 @@ assert_log_contains() {
 }
 
 @test "classify_by_rules: feature-ideation → Business Analyst" {
-  run classify_by_rules "feat(feature-ideation): add curated source list for mary |  | petry-projects/.github"
+  run classify_by_rules "feat(feature-ideation): add curated source list for mary |  | combsmith/.github"
   [ "$output" = "Business Analyst" ]
 }
 
 @test "classify_by_rules: token cost report → Cost Observability, not Daily Reports" {
-  run classify_by_rules "org-wide weekly token cost observatory report |  | petry-projects/.github"
+  run classify_by_rules "org-wide weekly token cost observatory report |  | combsmith/.github"
   [ "$output" = "Cost Observability" ]
 }
 
@@ -254,8 +254,8 @@ setup_sweep_stub() {
   local fields="${TT_TMP}/fields.json" items="${TT_TMP}/items.json"
   write_fields_schema "$fields"
   write_items_page "$items" \
-    '{"id":"PVTI_A","initiative":null,"content":{"__typename":"Issue","title":"SonarCloud: fix S7635 stubs","labels":{"nodes":[{"name":"dev-lead"}]},"repository":{"nameWithOwner":"petry-projects/.github"}}}' \
-    '{"id":"PVTI_B","initiative":{"name":"Auto-rebase"},"content":{"__typename":"PullRequest","title":"auto-rebase tweak","labels":{"nodes":[{"name":"dev-lead"}]},"repository":{"nameWithOwner":"petry-projects/.github"}}}' \
+    '{"id":"PVTI_A","initiative":null,"content":{"__typename":"Issue","title":"SonarCloud: fix S7635 stubs","labels":{"nodes":[{"name":"dev-lead"}]},"repository":{"nameWithOwner":"combsmith/.github"}}}' \
+    '{"id":"PVTI_B","initiative":{"name":"Auto-rebase"},"content":{"__typename":"PullRequest","title":"auto-rebase tweak","labels":{"nodes":[{"name":"dev-lead"}]},"repository":{"nameWithOwner":"combsmith/.github"}}}' \
     '{"id":"PVTI_C","initiative":null,"content":{"__typename":"DraftIssue","title":"zzq nonsense placeholder"}}'
   local script="${TT_TMP}/script.txt"
   {

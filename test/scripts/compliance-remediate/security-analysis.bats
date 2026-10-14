@@ -42,8 +42,8 @@ teardown() {
 
   [ "$status" -eq 0 ]
 
-  # gh was called with `api -X PATCH repos/petry-projects/.github --input -`
-  grep -qE 'api -X PATCH repos/petry-projects/\.github (.*)--input -' "$GH_STUB_LOG"
+  # gh was called with `api -X PATCH repos/combsmith/.github --input -`
+  grep -qE 'api -X PATCH repos/combsmith/\.github (.*)--input -' "$GH_STUB_LOG"
 
   # The stdin payload must enable the specific setting via the nested object
   grep -q '"security_and_analysis"' "$GH_STUB_STDIN_LOG"
@@ -69,8 +69,8 @@ teardown() {
 
   [ "$status" -eq 0 ]
 
-  # gh was called with `api -X PATCH repos/petry-projects/.github --input -`
-  grep -qE 'api -X PATCH repos/petry-projects/\.github (.*)--input -' "$GH_STUB_LOG"
+  # gh was called with `api -X PATCH repos/combsmith/.github --input -`
+  grep -qE 'api -X PATCH repos/combsmith/\.github (.*)--input -' "$GH_STUB_LOG"
 
   # The stdin payload must enable the specific setting via the nested object
   grep -q '"security_and_analysis"' "$GH_STUB_STDIN_LOG"
@@ -100,7 +100,7 @@ teardown() {
   [ "$status" -eq 0 ]
 
   # No PATCH call should have been logged
-  ! grep -qE 'api -X PATCH repos/petry-projects/\.github' "$GH_STUB_LOG"
+  ! grep -qE 'api -X PATCH repos/combsmith/\.github' "$GH_STUB_LOG"
 
   # And the finding still lands on the remediation report, not skipped
   grep -q 'secret_scanning_non_provider_patterns' "$report_dir/remediation-report.md"
