@@ -23,7 +23,7 @@
 
 set -euo pipefail
 
-ORG="petry-projects"
+ORG="combsmith"
 
 # App IDs whose auto_trigger_checks must be disabled.
 # 1236702 = Claude (anthropics/claude-code-action)
