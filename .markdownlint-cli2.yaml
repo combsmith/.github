@@ -5,6 +5,10 @@ ignores:
   # levels, dangling cross-references, …) so scripts/agents-md-lint.sh has a
   # negative case per failure mode. Linting them as real docs would always fail.
   - "tests/fixtures/agents-md/**"
+  # Safety-checks fixtures mimic real PR descriptions, including the
+  # unfilled-template body that motivated epic #1200 — they start at ## by
+  # design (PR bodies have no H1 title), so MD041 would always fire.
+  - "tests/fixtures/safety-checks/**"
 
 config:
   MD010:
