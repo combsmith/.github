@@ -88,3 +88,90 @@ class TestCheckDateTime:
         """Invalid non-leap year Feb 29 raises ValueError."""
         with pytest.raises(ValueError):
             _check_date_time("2025-02-29T12:34:56Z")
+
+
+class TestPathConfinement:
+    """CLI path arguments must stay inside the trusted base directories (S8707)."""
+
+    FIXTURE = (
+        repo_root / "test" / "workflows" / "feature-ideation" / "fixtures" / "expected"
+        / "empty-repo.signals.json"
+    )
+    SCHEMA = repo_root / ".github" / "schemas" / "signals.schema.json"
+
+    @pytest.fixture
+    def confined(self, tmp_path, monkeypatch):
+        """Restrict the allowed roots to a single work dir + the repo checkout."""
+        work = tmp_path / "work"
+        work.mkdir()
+        monkeypatch.chdir(work)
+        monkeypatch.setattr(
+            module, "_allowed_roots", lambda: [str(work.resolve()), str(repo_root)]
+        )
+        return work
+
+    def test_signals_inside_root_is_validated(self, confined):
+        """A signals file inside an allowed root is read and validated."""
+        target = confined / "signals.json"
+        target.write_text(self.FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+        assert module.main(["validate-signals.py", "signals.json", str(self.SCHEMA)]) == 0
+
+    def test_relative_traversal_outside_root_is_rejected(self, confined, capsys):
+        """A ``../`` path escaping every allowed root exits 2 without reading it."""
+        outside = confined.parent / "outside.json"
+        outside.write_text(self.FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+        rc = module.main(["validate-signals.py", "../outside.json", str(self.SCHEMA)])
+        assert rc == 2
+        assert "outside the allowed directories" in capsys.readouterr().err
+
+    def test_absolute_path_outside_root_is_rejected(self, confined, capsys):
+        """An absolute path outside every allowed root exits 2."""
+        outside = confined.parent / "outside.json"
+        outside.write_text("{}", encoding="utf-8")
+        assert module.main(["validate-signals.py", str(outside), str(self.SCHEMA)]) == 2
+        assert "outside the allowed directories" in capsys.readouterr().err
+
+    def test_schema_outside_root_is_rejected(self, confined, capsys):
+        """The optional schema argument is confined the same way."""
+        (confined / "signals.json").write_text(
+            self.FIXTURE.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        outside_schema = confined.parent / "schema.json"
+        outside_schema.write_text(self.SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
+        rc = module.main(["validate-signals.py", "signals.json", str(outside_schema)])
+        assert rc == 2
+        assert "outside the allowed directories" in capsys.readouterr().err
+
+    def test_default_allowed_roots_exclude_system_temp(self, tmp_path, monkeypatch):
+        """Default roots cover CWD, $RUNNER_TEMP and the repo, not the system temp dir."""
+        import os
+        import tempfile
+
+        runner = tmp_path / "runner"
+        runner.mkdir()
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.setenv("RUNNER_TEMP", str(runner))
+        monkeypatch.delenv("VALIDATE_SIGNALS_EXTRA_ROOTS", raising=False)
+        monkeypatch.chdir(cwd)
+        roots = module._allowed_roots()
+        assert os.path.realpath(os.getcwd()) in roots
+        assert os.path.realpath(str(runner)) in roots
+        assert str(repo_root) in roots
+        assert os.path.realpath(tempfile.gettempdir()) not in roots
+
+    def test_extra_roots_env_is_opt_in(self, tmp_path, monkeypatch):
+        """$VALIDATE_SIGNALS_EXTRA_ROOTS adds explicitly-listed directories."""
+        import os
+
+        monkeypatch.setenv("VALIDATE_SIGNALS_EXTRA_ROOTS", str(tmp_path))
+        assert os.path.realpath(str(tmp_path)) in module._allowed_roots()
+
+    def test_filesystem_root_is_never_an_allowed_root(self, monkeypatch):
+        """A filesystem-root CWD (container without WORKDIR) must not trust everything."""
+        import os
+
+        fs_root = os.path.abspath(os.sep)
+        monkeypatch.chdir(fs_root)
+        monkeypatch.setenv("VALIDATE_SIGNALS_EXTRA_ROOTS", fs_root)
+        assert fs_root not in module._allowed_roots()
