@@ -67,7 +67,8 @@ STUB
 
 # The template rendered at <channel> — only the reusable pin moves.
 rendered_at() {  # <channel>
-  sed -E "/^[[:space:]]*uses:/s#dependabot-rebase/v2-stable#$1#" "$TEMPLATE"
+  sed -E "/^[[:space:]]*uses:/s#dependabot-rebase/v2-stable#$1#" "$TEMPLATE" \
+    | bash -c 'source "$1"; ring_repin_uses dependabot-rebase "$2"' _ "$SCRIPT" "$1"
 }
 
 # The template at <channel> with a stale header comment — the #1075 shape: the
@@ -213,4 +214,20 @@ deploy_capture() {
   [ "$status" -eq 0 ]
   grep -qF 'TUNED-REPO-CONTEXT-SENTINEL' "$OUT/feature-ideation.yml"
   grep -qF 'feature-ideation-reusable.yml@feature-ideation/v1-stable' "$OUT/feature-ideation.yml"
+}
+
+# ── PRESENT_ONLY_WORKFLOWS are re-pinned in place, never body-compared ───────
+
+@test "repo-template: a present-only idea-triage.yml with a customized cron is already compliant" {
+  local t="${REPO_ROOT}/standards/workflows/idea-triage.yml"
+  local existing="${TT_TMP}/idea-triage.yml"
+  sed "s/'30 13 \* \* 1'/'5 4 * * 2'/" "$t" > "$existing"
+  ! diff -q "$existing" "$t" >/dev/null
+  GH_MATCHING_REFS="refs/tags/idea-triage/v1-stable
+refs/tags/idea-triage/v1-next
+refs/tags/idea-triage/v1-ring0
+refs/tags/idea-triage/v1-ring1"; export GH_MATCHING_REFS
+  install_gh_stub
+  run bash -c 'source "$1"; is_already_compliant "$(< "$2")" "$3" combsmith/repo-template' _ "$SCRIPT" "$existing" "$t"
+  [ "$status" -eq 0 ]
 }
