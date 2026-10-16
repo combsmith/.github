@@ -2520,14 +2520,46 @@ cmd_rollback() {
   local target
   target="$(_gh_tag_commit "$host" "$agent/$to")"
   [ -z "$target" ] && { echo "::error::release tag $agent/$to not found on $host" >&2; return 1; }
-  echo "rolling back $agent/$ring -> $to (${target:0:12}) on $host"
+  # Resolve the RING tag with fallback (major-scoped-channels epic #657 F4): PREFER the
+  # v-scoped `<agent>/v<M>-<ring>` within the agent's current major line when it exists,
+  # else the legacy bare `<agent>/<ring>`. Moving the bare tag on a v-scoped fleet relocated
+  # a tag no caller pins and still exited 0 — a silent no-op on the emergency lever (#1103).
+  # First check if the v-scoped tier exists; if not, fall back to bare.
+  # (The `--to` release tag above is always the bare immutable `<agent>/vX.Y.Z`, so it is
+  # correctly resolved without a major.)
+  local ring_tag ring_commit
+  IFS=$'\t' read -r ring_tag ring_commit < <(_resolved_channel "$agent" "$ring")
+  # If the resolved tag (v-scoped or bare from _resolved_channel's logic) doesn't exist,
+  # and we got v-scoped, try the bare tag as a fallback. The agent may have released v<M>.*.*
+  # but not yet seeded channel tier tags, so bare still matters as an intermediate step.
+  if [ -z "$ring_commit" ] && [[ "$ring_tag" == *"/v"[0-9]* ]]; then
+    # Constructed ring_tag was v-scoped and doesn't exist; try bare.
+    local bare_commit bare_tag
+    bare_tag="$agent/$ring"
+    bare_commit="$(_channel_tag_commit "$agent" "$ring")"
+    if [ -n "$bare_commit" ]; then
+      ring_tag="$bare_tag"
+      ring_commit="$bare_commit"
+    else
+      # Both v-scoped and bare are absent; report the bare tag in the error message.
+      ring_tag="$bare_tag"
+    fi
+  fi
+  # Fail loudly rather than no-op (#1103): if BOTH v-scoped and bare (if tried) don't exist,
+  # refuse to create-and-move a channel tag nobody pins. The worst failure mode for rollback
+  # is a silent no-op that exits 0, so make it loud.
+  if [ -z "$ring_commit" ]; then
+    echo "::error::rollback target ring tag $ring_tag does not exist on $host — refusing to create-and-move a channel tag nobody pins (that would be a silent no-op). Check the ring name and the agent's major line." >&2
+    return 1
+  fi
+  echo "rolling back $ring_tag -> $to (${target:0:12}) on $host"
   if [ "$dry" = true ]; then
-    echo "[DRY-RUN] would: gh api PATCH repos/$host/git/refs/tags/$agent/$ring sha=$target (force)"
+    echo "[DRY-RUN] would: gh api PATCH repos/$host/git/refs/tags/$ring_tag sha=$target (force)"
     return 0
   fi
-  _gh_move_tag "$host" "$agent/$ring" "$target" \
-    || { echo "::error::failed to move $agent/$ring -> $to on $host" >&2; return 1; }
-  echo "rolled back $agent/$ring -> $to"
+  _gh_move_tag "$host" "$ring_tag" "$target" \
+    || { echo "::error::failed to move $ring_tag -> $to on $host" >&2; return 1; }
+  echo "rolled back $ring_tag -> $to"
 }
 
 # ── blocker-issue + fleet-status automation (auto-triage of held promotions) ────
