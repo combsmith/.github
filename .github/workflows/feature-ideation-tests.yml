@@ -58,11 +58,31 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install bats, shellcheck, and jq
+      - name: Install bats, shellcheck, jq, and yq
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends bats shellcheck jq
+          # Install a pinned mikefarah/yq so the suite is reproducible and not
+          # dependent on whatever version ships in the runner image.
+          YQ_VERSION="v4.44.3"
+          # --proto '=https' --proto-redir '=https' enforces HTTPS on both the
+          # initial request and any redirects (GitHub releases redirect to
+          # objects.githubusercontent.com).
+          # --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors
+          # rides out the transient network/5xx blips from that redirect target
+          # that otherwise flake this suite (#739); --connect-timeout/--max-time
+          # bound each attempt so a stalled connection cannot eat the job budget.
+          curl -sSfL --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 60 \
+            --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+            -o /tmp/yq_linux_amd64
+          # SHA-256 of yq_linux_amd64 for v4.44.3, hardcoded (vetted) rather than
+          # fetched from the same release, so a swapped release asset is detected.
+          # Update together with YQ_VERSION.
+          YQ_SHA256="a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7"
+          echo "${YQ_SHA256}  /tmp/yq_linux_amd64" | sha256sum -c -
+          sudo install -m 755 /tmp/yq_linux_amd64 /usr/local/bin/yq
 
       - name: Install Python jsonschema and PyYAML
         run: 'pip install --quiet --require-hashes --only-binary :all: -r scripts/feature-ideation-tests-requirements.txt'
