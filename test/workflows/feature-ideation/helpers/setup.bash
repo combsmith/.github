@@ -18,6 +18,8 @@ export TT_STUBS_DIR
 tt_make_tmpdir() {
   TT_TMP="$(mktemp -d)"
   export TT_TMP
+  # validate-signals.py confines paths; opt this scratch dir in.
+  export VALIDATE_SIGNALS_EXTRA_ROOTS="${TT_TMP}"
 }
 
 tt_cleanup_tmpdir() {
