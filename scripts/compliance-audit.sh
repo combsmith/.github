@@ -402,12 +402,12 @@ list_workflow_files() {
   for attempt in 1 2 3; do
     rc=0
     out=$(gh api "repos/$ORG/$repo/contents/.github/workflows" --jq '.[].name' 2>"$errfile") || rc=$?
-    [ "$rc" -eq 0 ] && break
+    [[ "$rc" -eq 0 ]] && break
     kind=$(agent_ingress_gh_error_kind "$(cat "$errfile")")
     [[ "$kind" = "$SETTING_MISSING_VALUE" ]] && break
-    [ "$attempt" -lt 3 ] && sleep $((attempt * 2))
+    [[ "$attempt" -lt 3 ]] && sleep $((attempt * 2))
   done
-  if [ "$rc" -eq 0 ]; then
+  if [[ "$rc" -eq 0 ]]; then
     rm -f "$errfile"
     printf '%s\n' "$out"
     return 0
