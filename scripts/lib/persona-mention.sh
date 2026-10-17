@@ -52,16 +52,16 @@ PERSONA_AGENT_MARKER='<!-- persona:'
 pm_bot_logins() {
   local raw="${PERSONA_BOT_LOGINS:-donpetry-bot github-actions[bot]}" item
   for item in ${raw//,/ }; do
-    [ -n "$item" ] && printf '%s\n' "$item"
+    [[ -n "$item" ]] && printf '%s\n' "$item"
   done
 }
 
 # pm_is_bot_actor <login> — 0 if this login is an agent identity.
 pm_is_bot_actor() {
   local login="$1" bot
-  [ -n "$login" ] || return 1
+  [[ -n "$login" ]] || return 1
   while IFS= read -r bot; do
-    [ "$login" = "$bot" ] && return 0
+    [[ "$login" = "$bot" ]] && return 0
   done < <(pm_bot_logins)
   return 1
 }
@@ -215,9 +215,9 @@ pm_should_retry_status() {
 pm_trust_ok() {
   local assoc="$1" allowed
   shift
-  [ -n "$assoc" ] || return 1
+  [[ -n "$assoc" ]] || return 1
   for allowed in "$@"; do
-    [ "$assoc" = "$allowed" ] && return 0
+    [[ "$assoc" = "$allowed" ]] && return 0
   done
   return 1
 }
@@ -236,7 +236,7 @@ pm_should_route() {
   pm_is_bot_actor "$actor" && return 1        # axis 1: bot actor
   pm_is_agent_comment "$body" && return 1     # axis 2: agent marker
   pm_trust_ok "$assoc" OWNER MEMBER COLLABORATOR || return 1
-  [ -n "$(pm_extract_slugs "$body")" ] || return 1
+  [[ -n "$(pm_extract_slugs "$body")" ]] || return 1
   return 0
 }
 
@@ -400,7 +400,7 @@ pm_first_stop_marker() {
   labels="$(cat)"
   markers="$(pm_stop_markers "$interaction")" || return 2
   while IFS= read -r marker; do
-    [ -n "$marker" ] || continue
+    [[ -n "$marker" ]] || continue
     case $'\n'"${labels}"$'\n' in
       *$'\n'"${marker}"$'\n'*) printf '%s\n' "$marker"; return 0 ;;
     esac

@@ -67,6 +67,10 @@ DEV_LEAD_HANDS_OFF_DESC="Exclude from dev-lead agent automation"
 # this label from the persona manifest; the audit ensures it locally too so a
 # finding issue can carry it on a repo the applier has not yet reconciled.
 DEV_LEAD_HANDS_OFF_COLOR="ededed"
+# Finding categories and match types
+CATEGORY_RULESETS="rulesets"
+MATCH_TYPE_CLAUDE_ISSUE="claude-issue"
+SETTING_MISSING_VALUE="missing"
 REPORT_DIR="${REPORT_DIR:-$(mktemp -d)}"
 DRY_RUN="${DRY_RUN:-false}"
 CREATE_ISSUES="${CREATE_ISSUES:-true}"
@@ -183,7 +187,7 @@ warn() { echo "::warning::$*" >&2; }
 # and not in dry-run (issue #1036, AC4). Everything gated behind this is a no-op
 # in the read-only default.
 mutations_enabled() {
-  [ "$APPLY" = "true" ] && [ "$DRY_RUN" != "true" ]
+  [[ "$APPLY" = "true" ]] && [[ "$DRY_RUN" != "true" ]]
 }
 
 # mark_repo_audited <repo>: record that <repo>'s checks ran this execution.
@@ -193,7 +197,7 @@ mark_repo_audited() {
 
 # repo_was_audited <repo>: return 0 if <repo>'s checks ran this execution (AC2).
 repo_was_audited() {
-  [ -f "$AUDITED_REPOS_FILE" ] || return 1
+  [[ -f "$AUDITED_REPOS_FILE" ]] || return 1
   grep -qxF "$1" "$AUDITED_REPOS_FILE"
 }
 
@@ -213,7 +217,7 @@ mark_repo_inconclusive() {
 
 # repo_has_inconclusive_checks <repo>: return 0 if <repo> had a failed collection check.
 repo_has_inconclusive_checks() {
-  [ -f "$INCONCLUSIVE_REPOS_FILE" ] || return 1
+  [[ -f "$INCONCLUSIVE_REPOS_FILE" ]] || return 1
   grep -qxF "$1" "$INCONCLUSIVE_REPOS_FILE"
 }
 
@@ -259,7 +263,7 @@ gh_api() {
       echo "$output"
       return 0
     fi
-    if [ "$i" -lt "$retries" ]; then
+    if [[ "$i" -lt "$retries" ]]; then
       sleep $((i * 2))
     else
       info "gh api $1 failed after $retries retries" >&2
@@ -392,18 +396,18 @@ list_workflow_files() {
   for attempt in 1 2 3; do
     rc=0
     out=$(gh api "repos/$ORG/$repo/contents/.github/workflows" --jq '.[].name' 2>"$errfile") || rc=$?
-    [ "$rc" -eq 0 ] && break
+    [[ "$rc" -eq 0 ]] && break
     kind=$(agent_ingress_gh_error_kind "$(cat "$errfile")")
-    [ "$kind" = "missing" ] && break
-    [ "$attempt" -lt 3 ] && sleep $((attempt * 2))
+    [[ "$kind" = "$SETTING_MISSING_VALUE" ]] && break
+    [[ "$attempt" -lt 3 ]] && sleep $((attempt * 2))
   done
-  if [ "$rc" -eq 0 ]; then
+  if [[ "$rc" -eq 0 ]]; then
     rm -f "$errfile"
     printf '%s\n' "$out"
     return 0
   fi
   rm -f "$errfile"
-  [ "$kind" = "missing" ] && return 2
+  [[ "$kind" = "$SETTING_MISSING_VALUE" ]] && return 2
   return 1
 }
 
@@ -460,9 +464,9 @@ check_required_workflows() {
   # is present and correctly pinned; it only needs its one required per-repo edit.
   local fi_content fi_decoded
   fi_content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/feature-ideation.yml" --jq '.content' 2>/dev/null || echo "")
-  if [ -n "$fi_content" ]; then
+  if [[ -n "$fi_content" ]]; then
     fi_decoded=$(echo "$fi_content" | base64 -d 2>/dev/null || echo "")
-    if [ -n "$fi_decoded" ] && feature_ideation_should_flag_placeholder "$repo" "$fi_decoded"; then
+    if [[ -n "$fi_decoded" ]] && feature_ideation_should_flag_placeholder "$repo" "$fi_decoded"; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "feature-ideation-placeholder-context" "warning" \
         "\`feature-ideation.yml\` is present but its \`project_context\` is still the seed template placeholder (\`TODO:\`/\`Example:\`) — replace it with a real per-repo project description so weekly ideation runs on real context" \
         "standards/ci-standards.md#required-workflows"
@@ -518,11 +522,11 @@ check_action_pinning() {
 
     local content
     content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/$wf" --jq '.content' 2>/dev/null || echo "")
-    [ -z "$content" ] && continue
+    [[ -z "$content" ]] && continue
 
     local decoded
     decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
-    [ -z "$decoded" ] && continue
+    [[ -z "$decoded" ]] && continue
 
     # Find uses: directives that are NOT SHA-pinned
     # SHA-pinned: uses: owner/action@<40+ hex chars>
@@ -532,7 +536,7 @@ check_action_pinning() {
     local unpinned
     unpinned=$(echo "$decoded" | grep -E '^[[:space:]]*-?[[:space:]]*uses:[[:space:]]+[^#]*@' | grep -vE '@[0-9a-f]{40}' | grep -vE '(docker://|\.\/)' | grep -vE "uses:[[:space:]]+$ORG/\\.github(-private)?/\\.github/workflows/" || true)
 
-    if [ -n "$unpinned" ]; then
+    if [[ -n "$unpinned" ]]; then
       local count
       count=$(echo "$unpinned" | wc -l | tr -d ' ')
       local examples
@@ -584,9 +588,9 @@ check_reusable_workflows_disabled() {
 
     local content decoded
     content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/$wf" --jq '.content' 2>/dev/null || echo "")
-    [ -z "$content" ] && continue
+    [[ -z "$content" ]] && continue
     decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null) || continue
-    [ -z "$decoded" ] && continue
+    [[ -z "$decoded" ]] && continue
 
     # Extract the top-level trigger keys from the `on:` declaration.
     # Handles block form, inline scalar (`on: workflow_call`), and
@@ -612,7 +616,7 @@ check_reusable_workflows_disabled() {
 
     # Pure reusable = workflow_call present AND no other trigger key.
     echo "$triggers" | grep -qx "workflow_call" || continue
-    if [ "$(echo "$triggers" | grep -vx "workflow_call" | grep -c .)" -ne 0 ]; then
+    if [[ "$(echo "$triggers" | grep -vx "workflow_call" | grep -c .)" -ne 0 ]]; then
       continue   # hybrid (workflow_call + real trigger) — exempt, must stay active
     fi
 
@@ -631,9 +635,9 @@ check_reusable_workflows_disabled() {
     # Pure reusable — check its enabled/disabled state.
     local state
     state=$(gh_api "repos/$ORG/$repo/actions/workflows/$wf" --jq '.state' 2>/dev/null || echo "")
-    [ -z "$state" ] && continue   # not registered (e.g. absent from default branch)
+    [[ -z "$state" ]] && continue   # not registered (e.g. absent from default branch)
 
-    if [ "$state" != "disabled_manually" ]; then
+    if [[ "$state" != "disabled_manually" ]]; then
       add_finding "$repo" "reusable-workflows" "reusable-not-disabled-manually-$wf" "warning" \
         "Pure reusable workflow \`$wf\` (workflow_call-only) is in state \`$state\` (expected \`disabled_manually\`); it must be intentionally disabled in the Actions UI. Disable with: \`gh workflow disable $wf -R $ORG/$repo\`" \
         "standards/ci-standards.md#pure-reusable-workflows-must-be-disabled"
@@ -650,7 +654,7 @@ check_dependabot_config() {
   local content
   content=$(gh_api "repos/$ORG/$repo/contents/.github/dependabot.yml" --jq '.content' 2>/dev/null || echo "")
 
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     add_finding "$repo" "dependabot" "missing-config" "error" \
       "Missing \`.github/dependabot.yml\` configuration file" \
       "standards/dependabot-policy.md"
@@ -679,7 +683,7 @@ check_dependabot_config() {
       block=$(echo "$decoded" | awk "/package-ecosystem:.*(\"$eco\"|'$eco')/{found=1} found{print; if(/package-ecosystem:/ && NR>1 && !/(\"$eco\"|'$eco')/) exit}" | head -15)
       local limit
       limit=$(echo "$block" | grep 'open-pull-requests-limit:' | head -1 | grep -oE '[0-9]+' || echo "")
-      if [ -n "$limit" ] && [ "$limit" != "0" ]; then
+      if [[ -n "$limit" ]] && [[ "$limit" != "0" ]]; then
         add_finding "$repo" "dependabot" "wrong-limit-$eco" "warning" \
           "Dependabot \`$eco\` ecosystem has \`open-pull-requests-limit: $limit\` (should be \`0\` for security-only policy)" \
           "standards/dependabot-policy.md#policy"
@@ -718,14 +722,14 @@ check_repo_settings() {
     has_issues: .has_issues
   }' 2>/dev/null || echo "{}")
 
-  [ "$settings" = "{}" ] && return
+  [[ "$settings" = "{}" ]] && return
 
   # Boolean settings checks
   for entry in "${REQUIRED_SETTINGS_BOOL[@]}"; do
     IFS=':' read -r key expected severity detail <<< "$entry"
     local actual
     actual=$(printf '%s' "$settings" | jq -r --arg key "$key" '.[$key] | if . == null then "null" else tostring end')
-    if [ "$actual" != "$expected" ]; then
+    if [[ "$actual" != "$expected" ]]; then
       add_finding "$repo" "settings" "$key" "$severity" \
         "$detail (current: \`$actual\`, expected: \`$expected\`)" \
         "standards/github-settings.md#repository-settings--standard-defaults"
@@ -735,7 +739,7 @@ check_repo_settings() {
   # Default branch
   local default_branch
   default_branch=$(printf '%s' "$settings" | jq -r '.default_branch')
-  if [ "$default_branch" != "main" ]; then
+  if [[ "$default_branch" != "main" ]]; then
     add_finding "$repo" "settings" "default-branch" "error" \
       "Default branch is \`$default_branch\`, should be \`main\`" \
       "standards/github-settings.md#general"
@@ -774,7 +778,7 @@ check_labels() {
   # already guards against, mirrored here.
   local persona_out persona_rc=0
   persona_out=$(persona_opt_out_label_configs) || persona_rc=$?
-  if [ "$persona_rc" -ne 0 ]; then
+  if [[ "$persona_rc" -ne 0 ]]; then
     add_finding "$repo" "labels" "persona-opt-out-derivation-failed" "error" \
       "Could not derive the \`<id>:hands-off\` persona opt-out label family from the persona manifests (\`$PERSONA_MANIFEST_REPO\`). Failing closed: an unreadable or incomplete manifest list is NOT treated as \"no persona labels required\" — run \`scripts/apply-repo-settings.sh $repo\` once the manifests are readable to provision the family." \
       "standards/github-settings.md#derived-family--persona-opt-out-labels-idhands-off"
@@ -782,7 +786,7 @@ check_labels() {
   # Still check whatever WAS derived: a partial derivation emits its best guess,
   # and even on the happy path this is the per-persona missing-label check.
   while IFS='|' read -r label color description; do
-    [ -z "$label" ] && continue
+    [[ -z "$label" ]] && continue
     _check_or_create_label "$repo" "$label" "$color" "$description" "$existing_labels"
   done <<< "$persona_out"
 }
@@ -830,7 +834,7 @@ check_rulesets() {
   # Default branch drives which rulesets are "targeting main" below.
   local default_branch
   default_branch=$(echo "$repo_json" | jq -r '.default_branch // "main"' 2>/dev/null || echo "main")
-  if [ -z "$default_branch" ] || [ "$default_branch" = "null" ]; then
+  if [[ -z "$default_branch" ]] || [[ "$default_branch" = "null" ]]; then
     default_branch="main"
   fi
 
@@ -840,19 +844,19 @@ check_rulesets() {
   # reconstitute the per-page arrays into one flat array with jq -s '[.[]]'.
   local rulesets_json
   rulesets_json=$(gh_api --paginate "repos/$ORG/$repo/rulesets" 2>/dev/null | jq -s '[.[][]]' 2>/dev/null || echo "[]")
-  [ -z "$rulesets_json" ] && rulesets_json="[]"
+  [[ -z "$rulesets_json" ]] && rulesets_json="[]"
 
   local names
   names=$(echo "$rulesets_json" | jq -r '.[].name' 2>/dev/null || echo "")
 
   if ! echo "$names" | grep -qx "pr-quality"; then
-    add_finding "$repo" "rulesets" "missing-pr-quality" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "missing-pr-quality" "error" \
       "Missing \`pr-quality\` repository ruleset" \
       "standards/github-settings.md#pr-quality--standard-ruleset-all-repositories"
   fi
 
   if ! echo "$names" | grep -qx "code-quality"; then
-    add_finding "$repo" "rulesets" "missing-code-quality" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "missing-code-quality" "error" \
       "Missing \`code-quality\` repository ruleset (required status checks)" \
       "standards/github-settings.md#code-quality--required-checks-ruleset-all-repositories"
   fi
@@ -954,16 +958,16 @@ _ruleset_contents_one() {
 
   # --- Codified source of truth (fail closed if missing/unparseable) --------
   local codified_file="$RULESETS_SRC_DIR/$name.json"
-  if [ ! -f "$codified_file" ]; then
-    add_finding "$repo" "rulesets" "ruleset-contents-source-missing-$name" "error" \
+  if [[ ! -f "$codified_file" ]]; then
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-contents-source-missing-$name" "error" \
       "Cannot audit \`$name\` ruleset contents: codified source of truth \`standards/rulesets/$name.json\` was not found. Treating as a finding rather than a pass (fail closed) — an audit that cannot read the standard must never read as \"no drift\"." \
       "$std_ref"
     return 0
   fi
   local exp_params
   exp_params=$(jq -c --arg t "$rtype" '[.rules[]? | select(.type==$t) | .parameters][0] // empty' "$codified_file" 2>/dev/null || echo "")
-  if [ -z "$exp_params" ]; then
-    add_finding "$repo" "rulesets" "ruleset-contents-source-invalid-$name" "error" \
+  if [[ -z "$exp_params" ]]; then
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-contents-source-invalid-$name" "error" \
       "Cannot audit \`$name\` ruleset contents: codified source \`standards/rulesets/$name.json\` has no \`$rtype\` rule parameters to compare against (unparseable or malformed). Fail closed." \
       "$std_ref"
     return 0
@@ -973,13 +977,13 @@ _ruleset_contents_one() {
   # Absence-by-name is already reported by check_rulesets; stay silent here.
   local rs_id
   rs_id=$(echo "$rulesets_json" | jq -r --arg n "$name" '.[]? | select(.name==$n) | .id' 2>/dev/null || echo "")
-  [ -z "$rs_id" ] && return 0
+  [[ -z "$rs_id" ]] && return 0
 
   # --- Fetch the full live ruleset (fail closed on error/invalid JSON) ------
   local rs
   rs=$(gh_api "repos/$ORG/$repo/rulesets/$rs_id" 2>/dev/null || echo "")
-  if [ -z "$rs" ] || ! echo "$rs" | jq empty >/dev/null 2>&1; then
-    add_finding "$repo" "rulesets" "ruleset-contents-unfetchable-$name" "error" \
+  if [[ -z "$rs" ]] || ! echo "$rs" | jq empty >/dev/null 2>&1; then
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-contents-unfetchable-$name" "error" \
       "Could not fetch or parse the \`$name\` ruleset (id $rs_id) to audit its contents against \`standards/rulesets/$name.json\`. Treating as drift, not a pass (fail closed): an error must never be conflated with \"no drift\"." \
       "$std_ref"
     return 0
@@ -988,8 +992,8 @@ _ruleset_contents_one() {
   # A ruleset that exists but has lost the codified rule type entirely is drift.
   local has_rule
   has_rule=$(echo "$rs" | jq --arg t "$rtype" 'any(.rules[]?; .type==$t)' 2>/dev/null || echo "false")
-  if [ "$has_rule" != "true" ]; then
-    add_finding "$repo" "rulesets" "ruleset-drift-$name-missing-rule" "error" \
+  if [[ "$has_rule" != "true" ]]; then
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-drift-$name-missing-rule" "error" \
       "Ruleset \`$name\` exists but no longer carries a \`$rtype\` rule, so every codified parameter is unenforced. The codified standard (\`standards/rulesets/$name.json\`) requires it; run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
       "$std_ref"
     return 0
@@ -997,23 +1001,23 @@ _ruleset_contents_one() {
 
   local act_params
   act_params=$(echo "$rs" | jq -c --arg t "$rtype" '[.rules[]? | select(.type==$t) | .parameters][0] // {}' 2>/dev/null || echo "")
-  [ -z "$act_params" ] && act_params="{}"
+  [[ -z "$act_params" ]] && act_params="{}"
 
   # --- Diff codified vs live and emit one finding per drifted parameter ------
   local drift
   if ! drift=$(jq -rn --argjson exp "$exp_params" --argjson act "$act_params" "$RULESET_DRIFT_JQ" 2>/dev/null); then
-    add_finding "$repo" "rulesets" "ruleset-contents-uncomparable-$name" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-contents-uncomparable-$name" "error" \
       "Could not compare the \`$name\` ruleset (id $rs_id) against \`standards/rulesets/$name.json\` (parameter comparison failed). Fail closed." \
       "$std_ref"
     return 0
   fi
 
   local param expected actual slug
-  while IFS=$'\t' read -r param expected actual || [ -n "$param" ]; do
-    [ -z "$param" ] && continue
+  while IFS=$'\t' read -r param expected actual || [[ -n "$param" ]]; do
+    [[ -z "$param" ]] && continue
     slug=$(printf '%s' "$param" | tr '[:upper:]' '[:lower:]' | tr ' /' '--' | tr -cd 'a-z0-9_-')
-    [ -z "$slug" ] && slug="param"
-    add_finding "$repo" "rulesets" "ruleset-drift-$name-$slug" "error" \
+    [[ -z "$slug" ]] && slug="param"
+    add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-drift-$name-$slug" "error" \
       "Ruleset \`$name\` parameter \`$param\` has drifted from the codified standard: expected \`$expected\`, actual \`$actual\`. The codified JSON (\`standards/rulesets/$name.json\`) is the source of truth (#575/#580); run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
       "$std_ref"
   done <<< "$drift"
@@ -1049,13 +1053,28 @@ check_ruleset_bypass_actors() {
 
   local ids
   ids=$(echo "$rulesets_json" | jq -r '.[].id' 2>/dev/null || echo "")
-  [ -z "$ids" ] && return 0
+  [[ -z "$ids" ]] && return 0
 
   local rs_id
   for rs_id in $ids; do
     local rs
     rs=$(gh_api "repos/$ORG/$repo/rulesets/$rs_id" 2>/dev/null || echo "")
-    [ -z "$rs" ] && continue
+    if [[ -z "$rs" ]] || ! echo "$rs" | jq empty >/dev/null 2>&1; then
+      # Fail closed (consistent with _ruleset_contents_one): a ruleset we cannot
+      # fetch/parse must never read as "no finding" — that would let an
+      # incomplete audit silently pass and close existing bypass-actor findings.
+      # Mark the repo inconclusive as well: the emitted error finding alone does
+      # not stop close_resolved_issues from closing the existing
+      # ruleset-bypass-orgadmin-* / ruleset-bypass-dependabot-* issues (their
+      # check ids are absent from this partial run), and it defeats the
+      # zero-findings safeguard. Recording the repo as inconclusive keeps it from
+      # being treated as fully audited so no bypass finding is falsely resolved.
+      mark_repo_inconclusive "$repo"
+      add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-unfetchable-$rs_id" "error" \
+        "Could not fetch or parse ruleset id $rs_id to verify its required bypass actors. Treating as a finding rather than a pass (fail closed): an error must never be conflated with a compliant ruleset. Re-run the audit with a token that can read rulesets." \
+        "$std_ref"
+      continue
+    fi
 
     # Does this ruleset target the default branch? Match the GitHub aliases
     # (~DEFAULT_BRANCH, ~ALL) or an explicit refs/heads/<default> include.
@@ -1071,7 +1090,7 @@ check_ruleset_bypass_actors() {
         and (($exc | index("~DEFAULT_BRANCH")) == null)
         and (($exc | index($db)) == null)
     ' 2>/dev/null || echo "false")
-    [ "$targets_default" != "true" ] && continue
+    [[ "$targets_default" != "true" ]] && continue
 
     local rs_name
     rs_name=$(echo "$rs" | jq -r '.name' 2>/dev/null || echo "ruleset-$rs_id")
@@ -1079,7 +1098,7 @@ check_ruleset_bypass_actors() {
     # churn across runs. Ruleset names (pr-quality, code-quality, …) are stable.
     local slug
     slug=$(printf '%s' "$rs_name" | tr '[:upper:] /' '[:lower:]--' | tr -cd 'a-z0-9_-')
-    [ -z "$slug" ] && slug="$rs_id"
+    [[ -z "$slug" ]] && slug="$rs_id"
 
     # --- Bypass actor check (single jq invocation) ------------------------
     local oa_always oa_any repo_admin dep_always dep_any
@@ -1093,33 +1112,33 @@ check_ruleset_bypass_actors() {
         ([.bypass_actors[]? | select(.actor_type=="Integration" and .actor_id==$id)] | length > 0)
       ] | map(tostring) | join(" ")
     ' <<< "$rs" 2>/dev/null || echo "false false false false false")
-    [ -z "$bypass_info" ] && bypass_info="false false false false false"
+    [[ -z "$bypass_info" ]] && bypass_info="false false false false false"
     read -r oa_always oa_any repo_admin dep_always dep_any <<< "$bypass_info"
 
-    if [ "$oa_always" != "true" ]; then
-      if [ "$oa_any" = "true" ]; then
-        add_finding "$repo" "rulesets" "ruleset-bypass-orgadmin-mode-$slug" "error" \
+    if [[ "$oa_always" != "true" ]]; then
+      if [[ "$oa_any" = "true" ]]; then
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-orgadmin-mode-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants \`OrganizationAdmin\` bypass but not with \`bypass_mode: always\`. The standard requires \`always\` for emergency admin override on every ruleset targeting the default branch." \
           "$std_ref"
-      elif [ "$repo_admin" = "true" ]; then
-        add_finding "$repo" "rulesets" "ruleset-bypass-orgadmin-$slug" "error" \
+      elif [[ "$repo_admin" = "true" ]]; then
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-orgadmin-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants bypass to the **Repository admin** role (RepositoryRole id 5), not the **OrganizationAdmin** role required by the standard. Repository admin is repo-scoped and does not satisfy the org-wide emergency-override requirement. Add \`OrganizationAdmin\` with \`bypass_mode: always\`." \
           "$std_ref"
       else
-        add_finding "$repo" "rulesets" "ruleset-bypass-orgadmin-$slug" "error" \
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-orgadmin-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) is missing the required \`OrganizationAdmin\` bypass actor (\`bypass_mode: always\`) for emergency admin override." \
           "$std_ref"
       fi
     fi
 
     # --- dependabot-automerge-petry app -----------------------------------
-    if [ "$dep_always" != "true" ]; then
-      if [ "$dep_any" = "true" ]; then
-        add_finding "$repo" "rulesets" "ruleset-bypass-dependabot-mode-$slug" "error" \
+    if [[ "$dep_always" != "true" ]]; then
+      if [[ "$dep_any" = "true" ]]; then
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-dependabot-mode-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants the \`dependabot-automerge-petry\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass but with the wrong mode. \`pull_request\` mode only applies when the bypass actor opens the PR; Dependabot opens its own PRs, so its merge API calls are rejected. Set \`bypass_mode: always\`." \
           "$std_ref"
       else
-        add_finding "$repo" "rulesets" "ruleset-bypass-dependabot-$slug" "error" \
+        add_finding "$repo" "$CATEGORY_RULESETS" "ruleset-bypass-dependabot-$slug" "error" \
           "Ruleset \`$rs_name\` (targets \`$default_branch\`) is missing the required \`dependabot-automerge-petry\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass actor (\`bypass_mode: always\`). Without it, Dependabot auto-merge API calls are rejected by this ruleset — GitHub evaluates bypass per-ruleset, so it must be present on every ruleset targeting the default branch, not only \`pr-quality\`." \
           "$std_ref"
       fi
@@ -1153,7 +1172,7 @@ check_legacy_rulesets() {
 
   local ids
   ids=$(echo "$rulesets_json" | jq -r '.[].id' 2>/dev/null || echo "")
-  [ -z "$ids" ] && return 0
+  [[ -z "$ids" ]] && return 0
 
   # jq snippet: does a ruleset (full JSON on stdin) target the default branch?
   # Kept identical to check_ruleset_bypass_actors so the two agree on scope.
@@ -1178,9 +1197,9 @@ check_legacy_rulesets() {
   local rs_id rs targets rs_name
   for rs_id in $ids; do
     rs=$(gh_api "repos/$ORG/$repo/rulesets/$rs_id" 2>/dev/null || echo "")
-    [ -z "$rs" ] && continue
+    [[ -z "$rs" ]] && continue
     targets=$(echo "$rs" | jq --arg db "refs/heads/$default_branch" "$targets_jq" 2>/dev/null || echo "false")
-    [ "$targets" != "true" ] && continue
+    [[ "$targets" != "true" ]] && continue
 
     rs_name=$(echo "$rs" | jq -r '.name' 2>/dev/null || echo "ruleset-$rs_id")
     rs_cache["$rs_id"]="$rs"
@@ -1189,7 +1208,7 @@ check_legacy_rulesets() {
     if [[ " ${SANCTIONED_RULESETS[*]} " == *" $rs_name "* ]]; then
       local ctx
       ctx=$(echo "$rs" | jq -r '[.rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | .[]' 2>/dev/null || echo "")
-      [ -n "$ctx" ] && sanctioned_ctx+="$ctx"$'\n'
+      [[ -n "$ctx" ]] && sanctioned_ctx+="$ctx"$'\n'
     fi
   done
 
@@ -1203,26 +1222,26 @@ check_legacy_rulesets() {
     rs="${rs_cache[$rs_id]}"
     local slug
     slug=$(printf '%s' "$rs_name" | tr '[:upper:] /' '[:lower:]--' | tr -cd 'a-z0-9_-')
-    [ -z "$slug" ] && slug="$rs_id"
+    [[ -z "$slug" ]] && slug="$rs_id"
 
     local legacy_ctx uncovered=""
     legacy_ctx=$(echo "$rs" | jq -r '[.rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | .[]' 2>/dev/null || echo "")
     local c
     while IFS= read -r c; do
-      [ -z "$c" ] && continue
+      [[ -z "$c" ]] && continue
       if ! grep -qxF "$c" <<< "$sanctioned_ctx"; then
         uncovered+="\`$c\` "
       fi
     done <<< "$legacy_ctx"
 
     local migrate_note
-    if [ -n "$uncovered" ]; then
+    if [[ -n "$uncovered" ]]; then
       migrate_note="**Migrate before deleting** — these required checks are not yet required by \`pr-quality\` or \`code-quality\`, so deleting this ruleset would drop them as merge gates: ${uncovered}Add them to \`code-quality\` first, then delete this ruleset."
     else
       migrate_note="Every required check it carries is already required by a sanctioned ruleset, so it is **safe to delete** (e.g. \`gh api -X DELETE repos/$ORG/$repo/rulesets/$rs_id\`)."
     fi
 
-    add_finding "$repo" "rulesets" "legacy-ruleset-$slug" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "legacy-ruleset-$slug" "error" \
       "Legacy ruleset \`$rs_name\` (id $rs_id) targets the default branch. Only \`pr-quality\` and \`code-quality\` are sanctioned; classic \`protect-branches\` / ad-hoc \`main\` rulesets are deprecated and must be migrated into the two sanctioned rulesets and removed (a duplicate ruleset is a second place every bypass actor must be kept in sync). $migrate_note" \
       "$std_ref"
   done
@@ -1248,30 +1267,30 @@ check_codeowners() {
     local raw="" rc=1 i
     for i in 1 2 3; do
       raw=$(gh api "repos/$ORG/$repo/contents/$path" 2>&1) && rc=0 || rc=$?
-      [ "$rc" -eq 0 ] && break
+      [[ "$rc" -eq 0 ]] && break
       # 404 is deterministic — the file is not at this path; stop retrying it.
       response_is_http_404 "$raw" && break
-      [ "$i" -lt 3 ] && sleep $((i * 2))
+      [[ "$i" -lt 3 ]] && sleep $((i * 2))
     done
-    if [ "$rc" -ne 0 ]; then
+    if [[ "$rc" -ne 0 ]]; then
       # Non-404 failure (auth/scope/network/5xx/rate-limit) → inconclusive path.
       response_is_http_404 "$raw" || any_unreadable=true
       continue
     fi
     local content decoded
     content=$(printf '%s' "$raw" | jq -r '.content? // empty' 2>/dev/null || echo "")
-    [ -n "$content" ] || continue
+    [[ -n "$content" ]] || continue
     # The contents API returns the body as base64. Reject anything that does not
     # cleanly decode so an error body can never leak in as owner lines (#370).
     decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null) || continue
-    [ -n "$decoded" ] || continue
+    [[ -n "$decoded" ]] || continue
     found=true
     codeowners_content="$decoded"
     break
   done
 
-  if [ "$found" = false ]; then
-    if [ "$any_unreadable" = true ]; then
+  if [[ "$found" = false ]]; then
+    if [[ "$any_unreadable" = true ]]; then
       # Could not determine presence — do NOT file a `missing` finding (#437).
       add_finding "$repo" "settings" "codeowners-unreadable" "warning" \
         "Could not read CODEOWNERS (transient/auth error, not a 404) — verify GH_TOKEN scope and repo access. CODEOWNERS presence was not evaluated this run; NOT filed as missing to avoid a false finding." \
@@ -1293,7 +1312,7 @@ check_codeowners() {
   local owner_lines
   owner_lines=$(echo "$codeowners_content" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$')
 
-  if [ -z "$owner_lines" ]; then
+  if [[ -z "$owner_lines" ]]; then
     add_finding "$repo" "settings" "codeowners-empty" "error" \
       "CODEOWNERS file has no owner lines (only comments/blank)" \
       "standards/codeowners-standard.md"
@@ -1304,16 +1323,16 @@ check_codeowners() {
   # (the first whitespace-separated token after the pattern).
   local bad_first_owner=""
   while IFS= read -r line; do
-    [ -z "$line" ] && continue
+    [[ -z "$line" ]] && continue
     # awk $2 = first owner token after the pattern
     local first_owner
     first_owner=$(echo "$line" | awk '{print $2}')
-    if [ "$first_owner" != "@combsmith/org-leads" ]; then
+    if [[ "$first_owner" != "@combsmith/org-leads" ]]; then
       bad_first_owner="$line"
       break
     fi
   done <<< "$owner_lines"
-  if [ -n "$bad_first_owner" ]; then
+  if [[ -n "$bad_first_owner" ]]; then
     add_finding "$repo" "settings" "codeowners-org-leads-not-first" "error" \
       "CODEOWNERS owner lines must list \`@combsmith/org-leads\` as the FIRST owner. Offending line: \`$bad_first_owner\`" \
       "standards/codeowners-standard.md"
@@ -1327,7 +1346,7 @@ check_codeowners() {
     | grep -E '^@' \
     | grep -vE '^@[^/]+/' \
     | sort -u || true)
-  if [ -n "$individual_owners" ]; then
+  if [[ -n "$individual_owners" ]]; then
     local joined
     joined=$(echo "$individual_owners" | tr '\n' ' ')
     add_finding "$repo" "settings" "codeowners-individual-users" "error" \
@@ -1394,14 +1413,14 @@ classify_sonar_s7637_exemption() {
     | grep -E '^[[:space:]]*sonar\.issue\.ignore\.multicriteria\.[A-Za-z0-9_]+\.ruleKey[[:space:]]*=[[:space:]]*githubactions:S7637[[:space:]]*$' \
     | sed -E 's/^[[:space:]]*sonar\.issue\.ignore\.multicriteria\.([A-Za-z0-9_]+)\.ruleKey.*/\1/' || true)
 
-  if [ -z "$keys" ]; then
-    echo "missing"
+  if [[ -z "$keys" ]]; then
+    echo "$SETTING_MISSING_VALUE"
     return 0
   fi
 
   local key resourcekey base broad=0
   while IFS= read -r key; do
-    [ -z "$key" ] && continue
+    [[ -z "$key" ]] && continue
     resourcekey=$(printf '%s\n' "$content" \
       | grep -E "^[[:space:]]*sonar\\.issue\\.ignore\\.multicriteria\\.${key}\\.resourceKey[[:space:]]*=" \
       | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]*$//' | head -n1 || true)
@@ -1410,12 +1429,12 @@ classify_sonar_s7637_exemption() {
     # is a bare **. Such a pattern also matches ci.yml and would drop S7637 on
     # the third-party actions there.
     base="${resourcekey##*/}"
-    if [ "$resourcekey" = "**" ] || case "$base" in *'*'* | *'?'*) true ;; *) false ;; esac; then
+    if [[ "$resourcekey" = "**" ]] || case "$base" in *'*'* | *'?'*) true ;; *) false ;; esac; then
       broad=1
     fi
   done <<< "$keys"
 
-  if [ "$broad" -eq 1 ]; then
+  if [[ "$broad" -eq 1 ]]; then
     echo "too-broad"
   else
     echo "present"
@@ -1448,14 +1467,14 @@ classify_inline_s7637_marker() {
   uses_lines=$(printf '%s\n' "$content" \
     | grep -E '^[[:space:]]*uses:[[:space:]]*combsmith/\.github(-private)?/\.github/workflows/[^@[:space:]]+@' || true)
 
-  if [ -z "$uses_lines" ]; then
+  if [[ -z "$uses_lines" ]]; then
     echo "n/a"
     return 0
   fi
 
   local line ref channel_seen=0 missing=0
   while IFS= read -r line; do
-    [ -z "$line" ] && continue
+    [[ -z "$line" ]] && continue
     # The pinned ref is the token after the first '@', up to whitespace/comment.
     ref=$(printf '%s\n' "$line" | sed -E 's/^[^@]*@([^[:space:]#]+).*/\1/')
     # A 40-char hex SHA pin already satisfies S7637 — no inline marker needed.
@@ -1468,10 +1487,10 @@ classify_inline_s7637_marker() {
     fi
   done <<< "$uses_lines"
 
-  if [ "$channel_seen" -eq 0 ]; then
+  if [[ "$channel_seen" -eq 0 ]]; then
     echo "n/a"
-  elif [ "$missing" -eq 1 ]; then
-    echo "missing"
+  elif [[ "$missing" -eq 1 ]]; then
+    echo "$SETTING_MISSING_VALUE"
   else
     echo "present"
   fi
@@ -1495,9 +1514,9 @@ check_sonar_s7637_exemption() {
   for wf in $workflows; do
     case "$wf" in *.yml | *.yaml) ;; *) continue ;; esac
     wf_content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/$wf" --jq '.content' 2>/dev/null || echo "")
-    [ -z "$wf_content" ] && continue
+    [[ -z "$wf_content" ]] && continue
     wf_decoded=$(echo "$wf_content" | base64 -d 2>/dev/null || echo "")
-    [ -z "$wf_decoded" ] && continue
+    [[ -z "$wf_decoded" ]] && continue
     inline_verdict=$(classify_inline_s7637_marker "$wf_decoded")
     case "$inline_verdict" in
       present) inline_seen=1 ;;
@@ -1506,7 +1525,7 @@ check_sonar_s7637_exemption() {
   done
 
   # Every channel-pinned first-party stub carries the inline marker → exempt.
-  if [ "$inline_seen" -eq 1 ] && [ "$inline_missing" -eq 0 ]; then
+  if [[ "$inline_seen" -eq 1 ]] && [[ "$inline_missing" -eq 0 ]]; then
     return 0
   fi
 
@@ -1515,10 +1534,10 @@ check_sonar_s7637_exemption() {
   # sonar-project.properties carries the narrow per-stub exemption.
   local content decoded
   content=$(gh_api "repos/$ORG/$repo/contents/sonar-project.properties" --jq '.content' 2>/dev/null || echo "")
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     # No properties file. Flag only when a stub needs but lacks the inline marker
     # (a missing properties file itself is reported by check_sonarcloud).
-    if [ "$inline_missing" -eq 1 ]; then
+    if [[ "$inline_missing" -eq 1 ]]; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "sonar-s7637-exemption-missing" "warning" \
         "First-party caller stub(s) carry a channel-pinned reusable ref (\`@<name>/stable\`, \`@v1\`/\`@v2\`) without the inline \`# NOSONAR(githubactions:S7637)\` marker, and there is no legacy \`sonar-project.properties\` exemption. SonarCloud will flag them as unpinned actions even though the org exempts them from SHA-pinning. Add the inline marker to each channel-pinned first-party \`uses:\` line (canonical), or the legacy per-stub \`sonar.issue.ignore\` entry." \
         "standards/ci-standards.md#sonarcloud-exemption-first-party-reusable-ref-s7637"
@@ -1526,7 +1545,7 @@ check_sonar_s7637_exemption() {
     return 0
   fi
   decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
-  [ -z "$decoded" ] && return 0
+  [[ -z "$decoded" ]] && return 0
 
   local verdict
   verdict=$(classify_sonar_s7637_exemption "$decoded")
@@ -1535,7 +1554,7 @@ check_sonar_s7637_exemption() {
     missing)
       # Only a real gap when a channel-pinned first-party stub actually lacks the
       # inline marker; with no such stub there is nothing for S7637 to fire on.
-      if [ "$inline_missing" -eq 1 ]; then
+      if [[ "$inline_missing" -eq 1 ]]; then
         add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "sonar-s7637-exemption-missing" "warning" \
           "No \`githubactions:S7637\` exemption found. SonarCloud will flag first-party reusable-ref caller stubs (\`@<name>/stable\`, \`@v1\`/\`@v2\`) as unpinned actions even though the org exempts them from SHA-pinning. Add the inline \`# NOSONAR(githubactions:S7637)\` marker to each channel-pinned first-party \`uses:\` line (canonical), or the legacy per-stub \`sonar.issue.ignore\` exemption in \`sonar-project.properties\`." \
           "standards/ci-standards.md#sonarcloud-exemption-first-party-reusable-ref-s7637"
@@ -1602,7 +1621,7 @@ check_codeql_default_setup() {
   local api_ok=0
   raw_response=$(gh api "repos/$ORG/$repo/code-scanning/default-setup" 2>/dev/null) || api_ok=$?
 
-  if [ "$api_ok" -ne 0 ]; then
+  if [[ "$api_ok" -ne 0 ]]; then
     # Distinguish a 403 permission error from other failures (404, 500, …).
     # The gh api error body contains `"status": "403"` (a JSON string) for
     # "Resource not accessible by personal access token" responses.
@@ -1622,7 +1641,7 @@ check_codeql_default_setup() {
   else
     local state
     state=$(echo "$raw_response" | jq -r '.state // ""')
-    if [ "$state" != "configured" ]; then
+    if [[ "$state" != "configured" ]]; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-default-setup-not-configured" "error" \
         "CodeQL default setup is in state \`$state\` (expected \`configured\`). Run \`apply-repo-settings.sh $repo\` or \`gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -F state=configured -F query_suite=default\`." \
         "$CODEQL_STANDARD_REF"
@@ -1708,11 +1727,11 @@ check_workflow_permissions() {
 
     local content
     content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/$wf" --jq '.content' 2>/dev/null || echo "")
-    [ -z "$content" ] && continue
+    [[ -z "$content" ]] && continue
 
     local decoded
     decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
-    [ -z "$decoded" ] && continue
+    [[ -z "$decoded" ]] && continue
 
     # Skip reusable workflows (workflow_call-only triggers).
     # Their permissions are controlled entirely by the caller workflow, so
@@ -1731,7 +1750,7 @@ check_workflow_permissions() {
       job_count=$(echo "$decoded" | grep -cE '^  [a-zA-Z_-]+:$' || echo "0")
       local has_job_perms
       has_job_perms=$(echo "$decoded" | grep -cE '^    permissions:' || echo "0")
-      if [ "$job_count" -gt 1 ] || [ "$has_job_perms" -eq 0 ]; then
+      if [[ "$job_count" -gt 1 ]] || [[ "$has_job_perms" -eq 0 ]]; then
         add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "missing-permissions-$wf" "warning" \
           "Workflow \`$wf\` missing top-level \`permissions:\` declaration (least-privilege policy)" \
           "standards/ci-standards.md#permissions-policy"
@@ -1756,11 +1775,11 @@ check_ci_concurrency() {
 
   local content
   content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/ci.yml" --jq '.content' 2>/dev/null || echo "")
-  [ -z "$content" ] && return  # missing ci.yml is caught by check_required_workflows
+  [[ -z "$content" ]] && return  # missing ci.yml is caught by check_required_workflows
 
   local decoded
   decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
-  [ -z "$decoded" ] && return
+  [[ -z "$decoded" ]] && return
 
   # Only flag workflows that have a concurrency block but are missing github.sha.
   # Workflows with no concurrency block at all are not flagged here (they may be
@@ -1803,11 +1822,11 @@ stub_pin_acceptable() {
   local esc_reusable; esc_reusable=$(escape_ere "$reusable")
 
   local -a legacy_arr=()
-  [ -n "$legacy_csv" ] && IFS=',' read -r -a legacy_arr <<< "$legacy_csv"
+  [[ -n "$legacy_csv" ]] && IFS=',' read -r -a legacy_arr <<< "$legacy_csv"
 
   local alt="" r
   for r in "$canonical" "${legacy_arr[@]}"; do
-    [ -z "$r" ] && continue
+    [[ -z "$r" ]] && continue
     alt+="${alt:+|}$(escape_ere "$r")"
   done
 
@@ -1837,12 +1856,12 @@ ring_major_form_acceptable() {
   pinned_ref=$(printf '%s\n' "$decoded" \
     | sed -nE "s#^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@([^[:space:]]+).*#\\1#p" \
     | head -n1)
-  [ -n "$pinned_ref" ] || return 1
+  [[ -n "$pinned_ref" ]] || return 1
 
   local pinned_major; pinned_major=$(ring_pinned_major "$pinned_ref")
-  [ -n "$pinned_major" ] || return 1
+  [[ -n "$pinned_major" ]] || return 1
 
-  [ "$pinned_ref" = "$(ring_canonical_ref "$chan" "$repo" "$pinned_major")" ]
+  [[ "$pinned_ref" = "$(ring_canonical_ref "$chan" "$repo" "$pinned_major")" ]]
 }
 
 # ring_tier_for_repo(), ring_canonical_ref() and ring_legacy_csv() are provided by
@@ -1853,7 +1872,7 @@ check_centralized_workflow_stubs() {
 
   # The .github repo is the source of truth and is allowed to reference its
   # own reusables by @main; skip the stub check for it.
-  [ "$repo" = ".github" ] && return
+  [[ "$repo" = ".github" ]] && return
 
   # workflow-filename:reusable-basename:canonical-pin:legacy-accepted-csv
   #   canonical-pin       — the org-standard ref a stub should pin. The sentinel
@@ -1885,12 +1904,12 @@ check_centralized_workflow_stubs() {
   # If the listing fails (no workflows dir), there's nothing to check.
   local workflow_list
   workflow_list=$(gh_api "repos/$ORG/$repo/contents/.github/workflows" --jq '.[].name' 2>/dev/null || echo "")
-  [ -z "$workflow_list" ] && return
+  [[ -z "$workflow_list" ]] && return
 
   local entry wf reusable canonical legacy chan is_ring
   for entry in "${centralized[@]}"; do
     IFS=':' read -r wf reusable canonical legacy <<< "$entry"
-    [ -z "$canonical" ] && { echo "::error::centralized entry '$entry' missing canonical pin — expected format 'wf:reusable:canonical:legacy-csv'" >&2; exit 1; }
+    [[ -z "$canonical" ]] && { echo "::error::centralized entry '$entry' missing canonical pin — expected format 'wf:reusable:canonical:legacy-csv'" >&2; exit 1; }
     is_ring=0
     chan=""
 
@@ -1902,7 +1921,7 @@ check_centralized_workflow_stubs() {
     # #482). Higher tiers are also acceptable so a repo pinned ahead of its tier
     # (e.g. a ring1 repo still on /stable, or .github-private's /next promoted to
     # /stable) is never flagged — only @main / inline / off-channel pins are.
-    if [ "$canonical" = "RING" ]; then
+    if [[ "$canonical" = "RING" ]]; then
       is_ring=1
       chan="${reusable%-reusable}"
       canonical="$(ring_canonical_ref "$chan" "$repo")"
@@ -1918,11 +1937,11 @@ check_centralized_workflow_stubs() {
 
     local content
     content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/$wf" --jq '.content' 2>/dev/null || echo "")
-    [ -z "$content" ] && continue
+    [[ -z "$content" ]] && continue
 
     local decoded
     decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
-    [ -z "$decoded" ] && continue
+    [[ -z "$decoded" ]] && continue
 
     # Compliance rule (major-scoped-channels epic #657 F5, #861):
     #   RING reusables MUST pin the major-scoped `<name>/v<M>-<tier>` form whose
@@ -2011,14 +2030,14 @@ check_dev_lead_stub() {
 
   # .github holds the template (exercised by the reusable's own CI) and
   # .github-private runs the workflow inline rather than as a caller stub.
-  [ "$repo" = ".github" ] && return
-  [ "$repo" = ".github-private" ] && return
+  [[ "$repo" = ".github" ]] && return
+  [[ "$repo" = ".github-private" ]] && return
 
   local content decoded
   content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/dev-lead.yml" --jq '.content' 2>/dev/null || echo "")
-  [ -z "$content" ] && return  # repo hasn't adopted dev-lead — nothing to check
+  [[ -z "$content" ]] && return  # repo hasn't adopted dev-lead — nothing to check
   decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
-  [ -z "$decoded" ] && return
+  [[ -z "$decoded" ]] && return
 
   # 1) Canonical pin (non-comment `uses:` line) — a moving dev-lead channel tag
   #    (self-host channel model). The production default is `stable`; the staged
@@ -2062,7 +2081,7 @@ check_dev_lead_stub() {
   #    When uses is a v-form (e.g. v3-stable), agent_ref must match it.
   #    When uses is bare (e.g. stable), agent_ref must also be bare.
   uses_channel=$(printf '%s\n' "$decoded" | sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(v[0-9]+-(stable|next|ring[0-9]+))([[:space:]]|$).*#\1#p')
-  if [ -n "$uses_channel" ]; then
+  if [[ -n "$uses_channel" ]]; then
     if ! printf '%s\n' "$decoded" | grep -qE "^[[:space:]]*agent_ref:[[:space:]]*dev-lead/$uses_channel([[:space:]]|$)"; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "dev-lead-stub-agent-ref" "error" \
         "The \`dev-lead.yml\` caller stub must pass \`with: agent_ref: dev-lead/$uses_channel\` to match the pinned channel \`$uses_channel\`. Re-sync from \`standards/workflows/dev-lead.yml\`." \
@@ -2116,8 +2135,8 @@ check_stub_surface_drift() {
 
   # .github is the source of truth for the templates; .github-private runs these
   # workflows inline rather than as caller stubs.
-  [ "$repo" = ".github" ] && return 0
-  [ "$repo" = ".github-private" ] && return 0
+  [[ "$repo" = ".github" ]] && return 0
+  [[ "$repo" = ".github-private" ]] && return 0
 
   # Enrolled shims ("workflow.yml:comma-separated-surfaces") come from
   # STUB_SURFACE_SHIMS in lib/stub-surface.sh, shared with the deploy sweep.
@@ -2127,16 +2146,16 @@ check_stub_surface_drift() {
     IFS=':' read -r wf surfaces <<< "$entry"
 
     template="$STANDARDS_WF_DIR/$wf"
-    if [ ! -f "$template" ]; then
+    if [[ ! -f "$template" ]]; then
       warn "No canonical template at $template — skipping surface-drift check for $wf"
       continue
     fi
     canonical="$(< "$template")"
 
     content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/$wf" --jq '.content' 2>/dev/null || echo "")
-    [ -z "$content" ] && continue  # repo hasn't adopted this stub — nothing to check
+    [[ -z "$content" ]] && continue  # repo hasn't adopted this stub — nothing to check
     deployed=$(echo "$content" | base64 -d 2>/dev/null || echo "")
-    [ -z "$deployed" ] && continue
+    [[ -z "$deployed" ]] && continue
 
     IFS=',' read -r -a surface_list <<< "$surfaces"
     for surface in "${surface_list[@]}"; do
@@ -2145,7 +2164,7 @@ check_stub_surface_drift() {
       # run (it can cancel lanes — #402); a trimmed trigger or altered permission
       # breaks functionality, so those are errors.
       severity="error"
-      [ "$surface" = "concurrency" ] && severity="warning"
+      [[ "$surface" = "concurrency" ]] && severity="warning"
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "stub-surface-drift-$wf-$surface" "$severity" \
         "The \`$wf\` caller stub's \`$surface:\` surface has drifted from the canonical \`standards/workflows/$wf\`. These stubs are thin callers — the \`on:\` triggers, \`permissions:\` grants, and \`concurrency:\` block are owned centrally and are not repo-adjustable (only the documented \`with:\` inputs and the tier channel pin may differ per repo). Re-sync \`$surface:\` from \`standards/workflows/$wf\`." \
         "standards/ci-standards.md#centralization-tiers"
@@ -2230,7 +2249,7 @@ check_centralized_check_names() {
 
   # The .github repo owns the reusables; its own ruleset is allowed to
   # reference whatever check names it likes.
-  [ "$repo" = ".github" ] && return
+  [[ "$repo" = ".github" ]] && return
 
   # Map from stale name → current canonical name. Used for the rename
   # remediation message. The remediation here is "rename in the
@@ -2278,14 +2297,14 @@ check_centralized_check_names() {
     --jq '.contexts[]' 2>/dev/null || echo "")
   contexts+="$classic_contexts"
 
-  [ -z "$(echo "$contexts" | tr -d '[:space:]')" ] && return
+  [[ -z "$(echo "$contexts" | tr -d '[:space:]')" ]] && return
 
   # Check 1: stale pre-centralization names that have a safe rename
   local entry old new
   for entry in "${renames[@]}"; do
     IFS=':' read -r old new <<< "$entry"
     if echo "$contexts" | grep -qxF "$old"; then
-      add_finding "$repo" "rulesets" "stale-required-check-${old// /-}" "error" \
+      add_finding "$repo" "$CATEGORY_RULESETS" "stale-required-check-${old// /-}" "error" \
         "Required-status-check ruleset references the stale check name \`$old\`. After workflow centralization (combsmith/.github#87) this check is published as \`$new\`. Update the ruleset (and any classic branch protection) to use the new name." \
         "standards/ci-standards.md#centralization-tiers"
     fi
@@ -2301,26 +2320,26 @@ check_centralized_check_names() {
   # "review-claude / claude" all match).
   local context match_type
   while IFS= read -r context; do
-    [ -z "$context" ] && continue
+    [[ -z "$context" ]] && continue
     match_type=""
     case "$context" in
       "claude")              match_type="claude" ;;
-      "claude-issue")        match_type="claude-issue" ;;
+      "$MATCH_TYPE_CLAUDE_ISSUE")        match_type="$MATCH_TYPE_CLAUDE_ISSUE" ;;
       *"/ claude")           match_type="claude" ;;
-      *"/ claude-issue")     match_type="claude-issue" ;;
+      *"/ $MATCH_TYPE_CLAUDE_ISSUE")     match_type="$MATCH_TYPE_CLAUDE_ISSUE" ;;
       *) continue ;;
     esac
 
     # Stable check id per match type so findings don't churn across
     # audit runs from variations in caller-job-id prefixes.
     local check_id
-    if [ "$match_type" = "claude-issue" ]; then
+    if [[ "$match_type" = "$MATCH_TYPE_CLAUDE_ISSUE" ]]; then
       check_id="required-claude-issue-check-broken"
     else
       check_id="required-claude-check-broken"
     fi
 
-    add_finding "$repo" "rulesets" "$check_id" "error" \
+    add_finding "$repo" "$CATEGORY_RULESETS" "$check_id" "error" \
       "Required-status-check ruleset includes \`$context\`, which is incompatible with workflow-modifying PRs. claude-code-action's GitHub App refuses to mint an OAuth token for any PR whose diff includes a workflow file, so the check fails on every workflow PR and the merge gate becomes a deadlock. **Remove \`$context\` from required status checks** — do NOT rename it. The Claude review check still runs on normal PRs and surfaces feedback without being a merge gate. See the codified \`standards/rulesets/code-quality.json\` for the canonical required-checks list." \
       "standards/ci-standards.md#centralization-tiers"
   done <<< "$contexts"
@@ -2336,7 +2355,7 @@ check_claude_md() {
   local content
   content=$(gh_api "repos/$ORG/$repo/contents/CLAUDE.md" --jq '.content' 2>/dev/null || echo "")
 
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     add_finding "$repo" "standards" "missing-claude-md" "error" \
       "Missing \`CLAUDE.md\` — every repo must have a CLAUDE.md that references AGENTS.md" \
       "AGENTS.md"
@@ -2363,7 +2382,7 @@ check_claude_md() {
 # set. Pure.
 agents_md_lint_scope_for_repo() {
   local repo="$1"
-  if [ "$repo" = ".github" ]; then
+  if [[ "$repo" = ".github" ]]; then
     printf 'canonical'
   else
     printf 'downstream'
@@ -2381,7 +2400,7 @@ agents_md_lint_scope_for_repo() {
 # ships structural validation informational-only (docs/initiatives/agents-md-validation.md).
 record_agents_md_structural_findings() {
   local repo="$1" decoded="$2"
-  [ -n "$decoded" ] || return 0
+  [[ -n "$decoded" ]] || return 0
 
   local scope tmp
   scope="$(agents_md_lint_scope_for_repo "$repo")"
@@ -2397,7 +2416,7 @@ record_agents_md_structural_findings() {
   amdl_lint "$tmp" "$AMDL_DEFAULT_RULES" "$scope" 2>/dev/null \
     | awk -v repo="$repo" -F'\t' 'BEGIN {OFS=FS} $2 != "" {print repo, $0}' \
     >> "$STRUCTURAL_FINDINGS_FILE" || lint_rc="${PIPESTATUS[0]}"
-  if [ "$lint_rc" -ne 0 ]; then
+  if [[ "$lint_rc" -ne 0 ]]; then
     printf '%s\tamdl_lint exited %s\n' "$repo" "$lint_rc" >> "$STRUCTURAL_LINT_ERROR_FILE"
   fi
   rm -f "$tmp"
@@ -2412,7 +2431,7 @@ check_agents_md() {
   local content
   content=$(gh_api "repos/$ORG/$repo/contents/AGENTS.md" --jq '.content' 2>/dev/null || echo "")
 
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     add_finding "$repo" "standards" "missing-agents-md" "error" \
       "Missing \`AGENTS.md\` — every repo must have an AGENTS.md that references the org-level standards" \
       "AGENTS.md"
@@ -2423,16 +2442,14 @@ check_agents_md() {
   decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
 
   # For repos other than .github, AGENTS.md should reference the org-level .github/AGENTS.md
-  if [ "$repo" != ".github" ]; then
-    # Accept two forms of reference:
-    #   1. Any path containing .github/AGENTS.md (relative link text or path reference)
-    #   2. GitHub blob URL format: /combsmith/.github/blob/<ref>/AGENTS.md (in href)
-    # Both are treated as references to the org-level standards file.
-    if ! echo "$decoded" | grep -qE '(\.github/AGENTS\.md|combsmith/\.github/blob/.+/AGENTS\.md)'; then
-      add_finding "$repo" "standards" "agents-md-missing-org-ref" "error" \
-        "\`AGENTS.md\` does not reference the org-level \`.github/AGENTS.md\` standards" \
-        "AGENTS.md"
-    fi
+  # Accept two forms of reference:
+  #   1. Any path containing .github/AGENTS.md (relative link text or path reference)
+  #   2. GitHub blob URL format: /combsmith/.github/blob/<ref>/AGENTS.md (in href)
+  # Both are treated as references to the org-level standards file.
+  if [[ "$repo" != ".github" ]] && ! echo "$decoded" | grep -qE '(\.github/AGENTS\.md|combsmith/\.github/blob/.+/AGENTS\.md)'; then
+    add_finding "$repo" "standards" "agents-md-missing-org-ref" "error" \
+      "\`AGENTS.md\` does not reference the org-level \`.github/AGENTS.md\` standards" \
+      "AGENTS.md"
   fi
 
   # Phase 3 (#645): run the structural linter over the fetched file, INFORMATIONAL
@@ -2459,7 +2476,7 @@ check_copilot_setup_steps() {
   content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/copilot-setup-steps.yml" \
     --jq '.content' 2>/dev/null || echo "")
 
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     add_finding "$repo" "standards" "missing-copilot-setup-steps" "warning" \
       "Missing \`.github/workflows/copilot-setup-steps.yml\` — every repo should pre-install tools and dependencies for the Copilot cloud agent. Copy the template from the org standards and uncomment the stack block(s) for this repo." \
       "standards/ci-standards.md"
@@ -2544,13 +2561,13 @@ check_copilot_instructions() {
 
   # The .github repo holds the canonical template — exempt from the
   # per-repo requirement.
-  [ "$repo" = ".github" ] && return
+  [[ "$repo" = ".github" ]] && return
 
   local content
   content=$(gh_api "repos/$ORG/$repo/contents/.github/copilot-instructions.md" \
     --jq '.content' 2>/dev/null || echo "")
 
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     add_finding "$repo" "standards" "missing-copilot-instructions" "error" \
       "Missing \`.github/copilot-instructions.md\`. Every repo must have its own Copilot instructions file — Copilot instruction files are repository-scoped and do not propagate from the \`combsmith/.github\` repo. Copy the canonical template from \`standards/copilot-instructions-standard.md\` in \`combsmith/.github\`, then tailor it with this repo's specific tech stack, project structure, local dev commands, required environment variables, and testing configuration." \
       "standards/copilot-instructions-standard.md"
@@ -2596,19 +2613,19 @@ check_check_suite_prefs() {
   local prefs="" rc=1 i
   for i in 1 2 3; do
     prefs=$(gh api "repos/$ORG/$repo/check-suites/preferences" 2>&1) && rc=0 || rc=$?
-    if [ "$rc" -eq 0 ]; then
+    if [[ "$rc" -eq 0 ]]; then
       break
     fi
     # 404 is deterministic and benign — stop retrying and report nothing.
     if grep -q 'HTTP 404' <<< "$prefs"; then
       return 0
     fi
-    if [ "$i" -lt 3 ]; then
+    if [[ "$i" -lt 3 ]]; then
       sleep $((i * 2))
     fi
   done
 
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     add_finding "$repo" "settings" "check-suite-prefs-unreadable" "warning" \
       "Could not read check-suite preferences — verify GH_TOKEN has repo scope and the repo is accessible. Check-suite auto-trigger compliance was not evaluated." \
       "standards/github-settings.md"
@@ -2617,16 +2634,16 @@ check_check_suite_prefs() {
 
   for app_id in "${CHECK_SUITE_APP_IDS[@]}"; do
     local setting
-    setting=$(echo "$prefs" | jq -r --argjson id "$app_id" \
-      '.preferences.auto_trigger_checks // [] | map(select(.app_id == $id)) | first | .setting // "missing"')
+    setting=$(echo "$prefs" | jq -r --argjson id "$app_id" --arg missing "$SETTING_MISSING_VALUE" \
+      '.preferences.auto_trigger_checks // [] | map(select(.app_id == $id)) | first | .setting // $missing')
 
-    # "missing" means the app has never run in this repo — no orphaned suite possible
-    [ "$setting" = "missing" ] && continue
-    [ "$setting" = "false"   ] && continue
+    # "$SETTING_MISSING_VALUE" means the app has never run in this repo — no orphaned suite possible
+    [[ "$setting" = "$SETTING_MISSING_VALUE" ]] && continue
+    [[ "$setting" = "false"   ]] && continue
 
     local app_label="app_id=$app_id"
-    [ "$app_id" = "1236702" ] && app_label="Claude (1236702)"
-    [ "$app_id" = "347564"  ] && app_label="CodeRabbit (347564)"
+    [[ "$app_id" = "1236702" ]] && app_label="Claude (1236702)"
+    [[ "$app_id" = "347564"  ]] && app_label="CodeRabbit (347564)"
 
     add_finding "$repo" "settings" "check-suite-auto-trigger-${app_id}" "error" \
       "$app_label auto-trigger is enabled: GitHub creates a queued check suite on every push that is never completed, permanently blocking auto-merge. Run: \`bash scripts/apply-repo-settings.sh $repo\`" \
@@ -2690,7 +2707,7 @@ ensure_required_labels() {
 swap_rulesets_finding_to_hands_off() {
   local repo="$1" issue="$2"
 
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     info "[dry-run] would swap \`dev-lead\` -> \`dev-lead:hands-off\` on $ORG/$repo#$issue (ruleset finding)"
     return 0
   fi
@@ -2703,7 +2720,7 @@ swap_rulesets_finding_to_hands_off() {
   local swap_ok=true
   gh issue edit "$issue" --repo "$ORG/$repo" --add-label "$DEV_LEAD_HANDS_OFF_LABEL" 2>/dev/null || swap_ok=false
   gh issue edit "$issue" --repo "$ORG/$repo" --remove-label "$DEV_LEAD_LABEL" 2>/dev/null || swap_ok=false
-  if [ "$swap_ok" != "true" ]; then
+  if [[ "$swap_ok" != "true" ]]; then
     warn "Failed to fully route ruleset finding #$issue in $repo to \`dev-lead:hands-off\` (label add/remove failed — issue may be incorrectly routed)"
     return 1
   fi
@@ -2729,7 +2746,7 @@ create_issue_for_finding() {
     -q ".[] | select(.title == \"$search_title\") | .number" \
     2>/dev/null | head -1 || echo "")
 
-  if [ -n "$existing" ]; then
+  if [[ -n "$existing" ]]; then
     # Migrate the machine-owned finding label onto pre-existing issues so the
     # auto-closer (which keys on FINDING_LABEL) can retire them once resolved
     # (issue #1036, AC1c). Idempotent; a no-op if already present.
@@ -2745,7 +2762,7 @@ This finding is still open.
 **Detail:** $detail
 
 **Standard:** [$standard_ref](https://github.com/$ORG/.github/blob/main/$standard_ref)" 2>/dev/null || update_ok=false
-    if [ "$update_ok" = "true" ]; then
+    if [[ "$update_ok" = "true" ]]; then
       info "Updated existing issue #$existing in $repo for: $check"
       ISSUES_EXISTING=$((ISSUES_EXISTING + 1))
     else
@@ -2757,13 +2774,13 @@ This finding is still open.
     # we swap the actor label to dev-lead:hands-off. The comment update above
     # already re-reported the finding (AC3) — hands-off removes the actor without
     # resolving the finding; convergence happens via apply-rulesets.sh (#1045).
-    if [ "$category" = "rulesets" ]; then
+    if [[ "$category" = "$CATEGORY_RULESETS" ]]; then
       # Only drop the active dev-lead route once the re-report comment above
       # actually landed. If the update failed (update_ok=false), swapping to
       # hands-off would remove dev-lead without a successful re-report, leaving
       # the finding with no active route; keep dev-lead in place so the next
       # audit retries.
-      if [ "$update_ok" = "true" ]; then
+      if [[ "$update_ok" = "true" ]]; then
         swap_rulesets_finding_to_hands_off "$repo" "$existing"
       else
         warn "Skipped routing ruleset finding #$existing in $repo to hands-off — re-report comment failed; leaving dev-lead in place for retry"
@@ -2874,14 +2891,14 @@ ${AUDIT_GENERATED_MARKER}"
     --label "$actor_label" \
     --body "$body" 2>/dev/null || echo "")
 
-  if [ -n "$issue_url" ]; then
+  if [[ -n "$issue_url" ]]; then
     local new_issue
     new_issue=$(echo "$issue_url" | grep -oE '[0-9]+$' || echo "")
     info "Created issue #$new_issue in $repo for: $check ($issue_url)"
     ISSUES_ADDED=$((ISSUES_ADDED + 1))
 
     # Record created issue for umbrella
-    if [ -n "$new_issue" ]; then
+    if [[ -n "$new_issue" ]]; then
       jq --null-input \
         --arg repo "$repo" \
         --arg category "$category" \
@@ -2907,7 +2924,7 @@ create_umbrella_issue() {
   # Skip if no findings
   local total_findings
   total_findings=$(jq length "$FINDINGS_FILE")
-  if [ "$total_findings" -eq 0 ]; then
+  if [[ "$total_findings" -eq 0 ]]; then
     info "No findings — skipping umbrella issue"
     return
   fi
@@ -2922,7 +2939,7 @@ create_umbrella_issue() {
     -q ".[] | select(.title == \"$title\") | .number" \
     2>/dev/null | head -1 || echo "")
 
-  if [ -n "$existing_umbrella" ]; then
+  if [[ -n "$existing_umbrella" ]]; then
     info "Umbrella issue #$existing_umbrella already exists for $audit_date — skipping"
     return
   fi
@@ -2962,7 +2979,7 @@ Findings are grouped by remediation category. Address each category together to 
     local cat_count
     cat_count=$(echo "$cat_findings" | jq 'length')
 
-    [ "$cat_count" -eq 0 ] && continue
+    [[ "$cat_count" -eq 0 ]] && continue
 
     local affected_repos
     affected_repos=$(echo "$cat_findings" | jq -r '[.[].repo] | unique | join(", ")')
@@ -2985,12 +3002,12 @@ Findings are grouped by remediation category. Address each category together to 
 
       # Look up issue link if we tracked it
       local issue_link=""
-      if [ -s "$ISSUES_FILE" ]; then
+      if [[ -s "$ISSUES_FILE" ]]; then
         local issue_entry
         issue_entry=$(grep -F "\"repo\":\"$f_repo\"" "$ISSUES_FILE" 2>/dev/null | \
           jq -c --arg repo "$f_repo" --arg check "$f_check" \
           'select(.repo == $repo and .check == $check)' 2>/dev/null | head -1 || echo "")
-        if [ -n "$issue_entry" ]; then
+        if [[ -n "$issue_entry" ]]; then
           f_number=$(echo "$issue_entry" | jq -r '.number')
           f_url=$(echo "$issue_entry" | jq -r '.url')
           issue_link=" ([#$f_number]($f_url))"
@@ -3017,7 +3034,7 @@ Findings are grouped by remediation category. Address each category together to 
     --label "dev-lead" \
     --body "$body" 2>/dev/null || echo "")
 
-  if [ -n "$umbrella_url" ]; then
+  if [[ -n "$umbrella_url" ]]; then
     info "Created umbrella issue: $umbrella_url"
   else
     warn "Failed to create umbrella issue in $ORG/.github"
@@ -3056,11 +3073,11 @@ close_resolved_issues() {
   # repo is a failed scan, not a compliant org.
   local total_findings
   total_findings=$(jq 'length' "$FINDINGS_FILE" 2>/dev/null || echo "")
-  if [ -z "$total_findings" ]; then
+  if [[ -z "$total_findings" ]]; then
     warn "Could not read total finding count from $FINDINGS_FILE — skipping issue closure (fail closed)"
     return
   fi
-  if [ "$total_findings" -eq 0 ]; then
+  if [[ "$total_findings" -eq 0 ]]; then
     warn "Total finding count is zero across all repos — treating as a failed scan and refusing to close any issue (issue #1036, AC3)"
     return
   fi
@@ -3073,7 +3090,7 @@ close_resolved_issues() {
     --state open \
     --limit 1000 \
     --json number,title,body 2>/dev/null || echo "[]")
-  [ -z "$open_issues_json" ] && open_issues_json="[]"
+  [[ -z "$open_issues_json" ]] && open_issues_json="[]"
 
   # Get current findings for this repo (bail if jq fails to avoid false closures)
   local current_checks
@@ -3086,7 +3103,7 @@ close_resolved_issues() {
   # body, so a multi-line body cannot corrupt the loop).
   local obj
   while IFS= read -r obj; do
-    [ -z "$obj" ] && continue
+    [[ -z "$obj" ]] && continue
     local issue_num issue_title issue_body
     issue_num=$(jq -r '.number' <<< "$obj")
     issue_title=$(jq -r '.title' <<< "$obj")
@@ -3142,7 +3159,7 @@ print_planned_issue_actions() {
 
   local p_repo p_check
   while IFS=$'\t' read -r p_repo p_check; do
-    [ -z "$p_repo" ] && continue
+    [[ -z "$p_repo" ]] && continue
     info "  would file/update: $ORG/$p_repo — Compliance: $p_check"
   done <<< "$planned_actions"
 }
@@ -3174,7 +3191,7 @@ generate_summary() {
 
 HEREDOC
 
-  if [ "$total_findings" -eq 0 ]; then
+  if [[ "$total_findings" -eq 0 ]]; then
     echo "All repositories are fully compliant! No findings." >> "$SUMMARY_FILE"
     return
   fi
@@ -3234,7 +3251,7 @@ HEREDOC
   for category in ci-workflows reusable-workflows action-pinning dependabot settings push-protection labels rulesets standards; do
     local cat_count
     cat_count=$(jq --arg cat "$category" '[.[] | select(.category == $cat)] | length' "$FINDINGS_FILE")
-    if [ "$cat_count" -gt 0 ]; then
+    if [[ "$cat_count" -gt 0 ]]; then
       echo "- **$category:** $cat_count finding(s)" >> "$SUMMARY_FILE"
     fi
   done
@@ -3245,7 +3262,7 @@ HEREDOC
 # Issue & PR link summary (appended after issue creation)
 # ---------------------------------------------------------------------------
 append_issue_pr_links() {
-  [ -s "$ISSUES_FILE" ] || return
+  [[ -s "$ISSUES_FILE" ]] || return
 
   # Collect open PRs per affected repo (one GraphQL call per repo) to find
   # those whose closingIssuesReferences include one of our compliance issues.
@@ -3306,7 +3323,7 @@ HEREDOC
   ' "$ISSUES_FILE" 2>/dev/null || echo "")
 
   while IFS= read -r check; do
-    [ -z "$check" ] && continue
+    [[ -z "$check" ]] && continue
 
     local check_issues severity category issue_count
     check_issues=$(jq -cn --arg c "$check" '[inputs | select(.check == $c)] | sort_by(.repo)' "$ISSUES_FILE")
@@ -3355,7 +3372,7 @@ HEREDOC
 # observable from the audit issue history (issue #647, AC #1).
 structural_finding_count() {
   local file="$1"
-  [ -s "$file" ] || { printf '0'; return 0; }
+  [[ -s "$file" ]] || { printf '0'; return 0; }
   # Branch on grep's exit status instead of discarding it. grep exits 1 on zero
   # matches (a genuine finding-free cycle → 0) but exits >=2 on an actual error
   # (e.g. a non-empty file that cannot be read). Swallowing the latter would
@@ -3372,8 +3389,8 @@ structural_finding_count() {
   # the function is invoked — including from the bats tests that call it directly.
   local n rc
   if n="$(grep -c . "$file" 2>/dev/null)"; then rc=0; else rc=$?; fi
-  if [ "$rc" -eq 0 ]; then printf '%s' "$n"; return 0; fi
-  if [ "$rc" -eq 1 ]; then printf '0'; return 0; fi
+  if [[ "$rc" -eq 0 ]]; then printf '%s' "$n"; return 0; fi
+  if [[ "$rc" -eq 1 ]]; then printf '0'; return 0; fi
   printf '::error::structural_finding_count: cannot read %s (grep exit %s)\n' "$file" "$rc" >&2
   return 1
 }
@@ -3392,7 +3409,7 @@ append_structural_findings_summary() {
   # Mark the cycle INDETERMINATE so it can never be recorded as a clean
   # zero-finding cycle (issue #647, AC #1).
   local lint_incomplete=""
-  if [ -f "$STRUCTURAL_LINT_ERROR_FILE" ] && [ -s "$STRUCTURAL_LINT_ERROR_FILE" ]; then
+  if [[ -f "$STRUCTURAL_LINT_ERROR_FILE" ]] && [[ -s "$STRUCTURAL_LINT_ERROR_FILE" ]]; then
     lint_incomplete="yes"
   fi
   {
@@ -3404,7 +3421,7 @@ append_structural_findings_summary() {
     # the maintainer's confirmed-false-positive determination. The audit cannot
     # itself confirm false positives (that is a human review), so it records the
     # count and points at the append-only committed cycle log.
-    if [ -n "$lint_incomplete" ]; then
+    if [[ -n "$lint_incomplete" ]]; then
       printf '**Structural findings this cycle: INDETERMINATE.** The structural linter did not complete for one or more repositories this cycle, so the finding count is not trustworthy. **This cycle MUST NOT be recorded as clean** in the append-only [cycle log](%s) — investigate the linter failure and re-run before recording any determination. Promotion is never automatic.\n\n' \
         "$cycle_log_link"
     else
@@ -3413,8 +3430,8 @@ append_structural_findings_summary() {
     fi
   } >> "$SUMMARY_FILE"
 
-  if [ ! -s "$STRUCTURAL_FINDINGS_FILE" ]; then
-    if [ -n "$lint_incomplete" ]; then
+  if [[ ! -s "$STRUCTURAL_FINDINGS_FILE" ]]; then
+    if [[ -n "$lint_incomplete" ]]; then
       printf 'No findings were recorded, but the structural linter did not complete for every scanned repo this cycle — see the INDETERMINATE note above. This is **not** a clean cycle.\n' >> "$SUMMARY_FILE"
     else
       printf 'No structural findings — every scanned `AGENTS.md` is structurally valid.\n' >> "$SUMMARY_FILE"
@@ -3429,7 +3446,7 @@ append_structural_findings_summary() {
 
   local repo sev rule line msg
   while IFS=$'\t' read -r repo sev rule line msg; do
-    [ -n "$repo" ] || continue
+    [[ -n "$repo" ]] || continue
     # A finding message can contain a literal '|' (e.g. a rule's alternation
     # regex like /standard|development standards/); escape it so it stays inside
     # the cell instead of splitting the markdown table column.
@@ -3443,7 +3460,7 @@ append_structural_findings_summary() {
 main() {
   # Explicit apply flag (issue #1036, AC4). --apply enables mutation; it can also
   # be enabled via COMPLIANCE_AUDIT_APPLY=true (see APPLY default above).
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       --apply) APPLY="true"; shift ;;
       --) shift; break ;;
@@ -3452,7 +3469,7 @@ main() {
   done
 
   # Preflight: verify GH_TOKEN is set and gh CLI is authenticated
-  if [ -z "${GH_TOKEN:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
     echo "::error::GH_TOKEN is not set. Ensure ORG_SCORECARD_TOKEN secret is configured and passed as an env var to this step." \
       "Job-level env vars should be inherited, but add GH_TOKEN explicitly to the step env block as a workaround." >&2
     exit 1
@@ -3483,7 +3500,7 @@ main() {
   local repos
   repos=$(gh repo list "$ORG" --no-archived --json name -q '.[].name' --limit 500)
 
-  if [ -z "$repos" ]; then
+  if [[ -z "$repos" ]]; then
     warn "No repositories found in $ORG — check GH_TOKEN permissions"
     echo "[]" > "$FINDINGS_FILE"
     return 1
@@ -3496,7 +3513,7 @@ main() {
     log "Auditing $ORG/$repo"
 
     detect_ecosystems "$repo"
-    if [ ${#ECOSYSTEMS[@]} -eq 0 ]; then
+    if [[ ${#ECOSYSTEMS[@]} -eq 0 ]]; then
       info "Detected ecosystems: none"
     else
       info "Detected ecosystems: ${ECOSYSTEMS[*]}"
@@ -3505,7 +3522,7 @@ main() {
     # Fetch full repo JSON once and share with settings/push-protection checks
     local repo_json
     repo_json=$(gh_api "repos/$ORG/$repo" 2>/dev/null || echo "{}")
-    if [ "$repo_json" = "{}" ]; then
+    if [[ "$repo_json" = "{}" ]]; then
       add_finding "$repo" "settings" "repo_metadata_unavailable" "error" \
         "Could not fetch repository metadata; settings and push-protection checks were skipped" \
         "standards/github-settings.md#repository-settings--standard-defaults"
@@ -3560,7 +3577,7 @@ main() {
   append_structural_findings_summary
 
   # Create/update/close issues — only when mutation is explicitly enabled (AC4).
-  if mutations_enabled && [ "$CREATE_ISSUES" = "true" ]; then
+  if mutations_enabled && [[ "$CREATE_ISSUES" = "true" ]]; then
     info "Managing issues..."
 
     for repo in $repos; do
@@ -3569,7 +3586,7 @@ main() {
 
       # Create issues for new findings (process substitution avoids subshell)
       while IFS= read -r finding; do
-        [ -z "$finding" ] && continue
+        [[ -z "$finding" ]] && continue
         local f_check f_severity f_detail f_standard_ref f_category
         f_category=$(echo "$finding" | jq -r '.category')
         f_check=$(echo "$finding" | jq -r '.check')
@@ -3591,7 +3608,7 @@ main() {
     # Append per-check issue links and related open PRs to the step summary
     info "Fetching linked PRs for issue summary..."
     append_issue_pr_links
-  elif [ "$CREATE_ISSUES" = "true" ]; then
+  elif [[ "$CREATE_ISSUES" = "true" ]]; then
     # Read-only (or dry-run): report what issue management WOULD do, mutate nothing (AC4).
     info "Read-only — issue management skipped (APPLY=$APPLY, DRY_RUN=$DRY_RUN). Planned actions:"
     print_planned_issue_actions
@@ -3600,7 +3617,7 @@ main() {
   fi
 
   # Write issue-management counts and append to summary (conditional on issue management running)
-  if mutations_enabled && [ "$CREATE_ISSUES" = "true" ]; then
+  if mutations_enabled && [[ "$CREATE_ISSUES" = "true" ]]; then
     printf '{"added":%d,"existing":%d,"removed":%d,"retriggered":%d}\n' \
       "$ISSUES_ADDED" "$ISSUES_EXISTING" "$ISSUES_REMOVED" "$ISSUES_RETRIGGERED" > "$ISSUE_COUNTS_FILE"
     cat >> "$SUMMARY_FILE" <<HEREDOC

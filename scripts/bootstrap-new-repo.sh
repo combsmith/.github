@@ -81,7 +81,7 @@ readonly -a BOOTSTRAP_LABELS=(
   "automerge|0e8a16|Eligible for auto-merge once required checks pass"
 )
 
-_is_dry() { [ "$DRY_RUN" = "true" ]; }
+_is_dry() { [[ "$DRY_RUN" = "true" ]]; }
 
 # ── Release-ring confirmation & registration (issue #968, epic #964) ──────────
 # The default ring `stable` is record-only: a new repo is already covered by the
@@ -102,7 +102,7 @@ _ring_channels() {
 _ring_is_valid() {
   local agent="$1" ring="$2" c
   while IFS= read -r c; do
-    [ "$c" = "$ring" ] && return 0
+    [[ "$c" = "$ring" ]] && return 0
   done < <(_ring_channels "$agent")
   return 1
 }
@@ -114,10 +114,10 @@ _record_ring_decision() {
   op="$(_ring_operator)"
   ts="$(_ring_timestamp)"
   decision="recorded"
-  [ "$ring" != "stable" ] && decision="registered"
+  [[ "$ring" != "stable" ]] && decision="registered"
   line="[ring-audit] repo=${repo} agent=${agent} ring=${ring} operator=${op} at=${ts} decision=${decision}"
   echo "  $line"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     printf '%s\n' "$line" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
   fi
 }
@@ -180,13 +180,13 @@ _cross_repo_file_pr() {
   local -a sha_arg=()
   default_branch="$(gh api "repos/${repo}" --jq '.default_branch' 2>/dev/null || echo main)"
   base_sha="$(gh api "repos/${repo}/git/ref/heads/${default_branch}" --jq '.object.sha' 2>/dev/null || true)"
-  [ -n "$base_sha" ] || { echo "  [warn] ${repo}: cannot read ${default_branch} head" >&2; return 1; }
+  [[ -n "$base_sha" ]] || { echo "  [warn] ${repo}: cannot read ${default_branch} head" >&2; return 1; }
   gh api "repos/${repo}/git/refs" --method POST \
     --field "ref=refs/heads/${branch}" --field "sha=${base_sha}" --silent 2>/dev/null \
     || gh api "repos/${repo}/git/ref/heads/${branch}" --silent 2>/dev/null \
     || { echo "  [warn] ${repo}: cannot create branch ${branch}" >&2; return 1; }
   sha="$(gh api "repos/${repo}/contents/${path}?ref=${branch}" --jq '.sha' 2>/dev/null || true)"
-  [ -n "$sha" ] && sha_arg=(--field "sha=${sha}")
+  [[ -n "$sha" ]] && sha_arg=(--field "sha=${sha}")
   # Portable unwrapped base64: GNU wraps at 76 cols and BSD has no -w0, so strip
   # newlines explicitly — the Contents API rejects a wrapped payload.
   encoded="$(printf '%s' "$content" | base64 | tr -d '\n')"
@@ -197,7 +197,7 @@ _cross_repo_file_pr() {
   # gh/jq availability is checked once in main(); no need to re-check here.
   local existing_pr
   existing_pr="$(gh pr list --repo "$repo" --head "$branch" --state open --json number --jq '.[0].number' 2>/dev/null || true)"
-  if [ -n "$existing_pr" ]; then
+  if [[ -n "$existing_pr" ]]; then
     echo "  [ring] PR #$existing_pr already open for branch $branch on $repo"
   else
     gh pr create --repo "$repo" --head "$branch" --base "$default_branch" \
@@ -214,7 +214,7 @@ _cross_repo_file_pr() {
 _cross_repo_ring_pins_pr() {
   local repo="$1" agent="$2" ring="$3" content new branch
   content="$(gh api "repos/${STANDARDS_REPO}/contents/${RING_PINS_PATH}" --jq '.content' 2>/dev/null | { base64 -d 2>/dev/null || base64 -D 2>/dev/null; } || true)"
-  [ -n "$content" ] || { echo "::error::cannot fetch ${STANDARDS_REPO}:${RING_PINS_PATH} for ring-pins registration" >&2; return 1; }
+  [[ -n "$content" ]] || { echo "::error::cannot fetch ${STANDARDS_REPO}:${RING_PINS_PATH} for ring-pins registration" >&2; return 1; }
   # Ring-specific: only treat as in-sync if the repo is already in THIS ring's array
   # line (`<ring>=( … )`). A bare repo-wide match would false-positive when the repo is
   # registered in a *different* ring, leaving canary-rings.json and ring-pins.sh divergent.
@@ -245,7 +245,7 @@ _cross_repo_repin_stub_pr() {
   local repo="$1" agent="$2" ring="$3" path content new branch
   path=".github/workflows/${agent}.yml"
   content="$(gh api "repos/${repo}/contents/${path}" --jq '.content' 2>/dev/null | { base64 -d 2>/dev/null || base64 -D 2>/dev/null; } || true)"
-  [ -n "$content" ] || { echo "  [warn] ${repo}: no ${path} stub to repin" >&2; return 0; }
+  [[ -n "$content" ]] || { echo "  [warn] ${repo}: no ${path} stub to repin" >&2; return 0; }
   new="$(printf '%s' "$content" \
     | sed -E "s#@${agent}/[A-Za-z0-9_-]+#@${agent}/${ring}#g; s#(agent_ref:[[:space:]]*[\"']?)${agent}/[A-Za-z0-9_-]+#\\1${agent}/${ring}#g")"
   if [ "$new" = "$content" ]; then
@@ -263,7 +263,7 @@ _cross_repo_repin_stub_pr() {
 step_ring() {
   local repo="${1:-}" proposed
   echo "[bootstrap] (1/6) release ring confirmation (${RING_AGENT}/${RING})"
-  if [ ! -f "$CANARY_RINGS" ]; then
+  if [[ ! -f "$CANARY_RINGS" ]]; then
     echo "::error::ring SoT not found at $CANARY_RINGS" >&2
     return 1
   fi
@@ -273,7 +273,7 @@ step_ring() {
   fi
   _record_ring_decision "$repo" "$RING_AGENT" "$RING"
 
-  if [ "$RING" = "stable" ]; then
+  if [[ "$RING" = "stable" ]]; then
     echo "  ring=stable — record-only; no central-file change required (covered by the '*' catch-all)"
     return 0
   fi
@@ -370,10 +370,10 @@ step_codeowners() {
   local path
   for path in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
     encoded="$(gh api "repos/${repo}/contents/${path}" --jq '.content' 2>/dev/null || true)"
-    [ -n "$encoded" ] && [ "$encoded" != "null" ] && break
+    [[ -n "$encoded" ]] && [[ "$encoded" != "null" ]] && break
     encoded=""
   done
-  if [ -z "$encoded" ]; then
+  if [[ -z "$encoded" ]]; then
     echo "  [warn] CODEOWNERS not found on ${repo} — cannot verify team ownership" >&2
     return 0
   fi
@@ -382,7 +382,7 @@ step_codeowners() {
   first_owner="$(printf '%s\n' "$decoded" \
     | sed 's/#.*//' \
     | awk 'NF >= 2 {print $2; exit}')"
-  if [ "$first_owner" = "$CODEOWNERS_TEAM" ]; then
+  if [[ "$first_owner" = "$CODEOWNERS_TEAM" ]]; then
     echo "  verified: ${CODEOWNERS_TEAM} is the first CODEOWNERS owner"
   else
     echo "  [warn] CODEOWNERS first owner is '${first_owner:-<none>}', expected ${CODEOWNERS_TEAM}" >&2
@@ -397,7 +397,7 @@ step_codeowners() {
 step_gitignore() {
   local repo="${1:-}" block
   echo "[bootstrap] (6/6) .gitignore secrets baseline"
-  if [ ! -f "$GITIGNORE_CANONICAL" ]; then
+  if [[ ! -f "$GITIGNORE_CANONICAL" ]]; then
     echo "::error::canonical .gitignore baseline not found at $GITIGNORE_CANONICAL" >&2
     return 1
   fi
@@ -438,7 +438,7 @@ step_gitignore() {
   trap - EXIT
 
   current="$(printf '%s' "$existing")"
-  if [ "$current" = "$upserted" ]; then
+  if [[ "$current" = "$upserted" ]]; then
     echo "  ${repo}:.gitignore already carries the current baseline — nothing to do"
     return 0
   fi
@@ -454,19 +454,25 @@ step_gitignore() {
 
 main() {
   local repo=""
-  while [ $# -gt 0 ]; do
+  while [[ $# -gt 0 ]]; do
     case "$1" in
-      --ring)    [ $# -ge 2 ] || { echo "::error::--ring requires a value" >&2; return 2; }; RING="$2"; shift 2 ;;
+      --ring)    [[ $# -ge 2 ]] || { echo "::error::--ring requires a value" >&2; return 2; }; RING="$2"; shift 2 ;;
       --ring=*)  RING="${1#--ring=}"; shift ;;
-      --agent)   [ $# -ge 2 ] || { echo "::error::--agent requires a value" >&2; return 2; }; RING_AGENT="$2"; shift 2 ;;
+      --agent)   [[ $# -ge 2 ]] || { echo "::error::--agent requires a value" >&2; return 2; }; RING_AGENT="$2"; shift 2 ;;
       --agent=*) RING_AGENT="${1#--agent=}"; shift ;;
       --)        shift; break ;;
       -*)        echo "::error::unknown flag: $1" >&2; return 2 ;;
-      *)         if [ -z "$repo" ]; then repo="$1"; else echo "::error::unexpected argument: $1" >&2; return 2; fi; shift ;;
+      *)         if [[ -z "$repo" ]]; then repo="$1"; else echo "::error::unexpected argument: $1" >&2; return 2; fi; shift ;;
     esac
   done
-  if [ -z "$repo" ] && [ $# -gt 0 ]; then repo="$1"; fi
-  if [ -z "$repo" ]; then
+  # Consume the first positional after `--` as the repo, but never silently
+  # discard extra operands: a command with leftover arguments is a usage error,
+  # not a success that drops them.
+  if [[ $# -gt 0 ]]; then
+    if [[ -z "$repo" ]]; then repo="$1"; shift; fi
+    if [[ $# -gt 0 ]]; then echo "::error::unexpected argument: $1" >&2; return 2; fi
+  fi
+  if [[ -z "$repo" ]]; then
     echo "::error::usage: $0 [--ring <ring>] [--agent <agent>] owner/new-repo   (DRY_RUN=true for a no-write preview)" >&2
     return 2
   fi
@@ -479,12 +485,12 @@ main() {
     fi
   done
 
-  if [ ! -f "$APPLY_REPO_SETTINGS" ]; then
+  if [[ ! -f "$APPLY_REPO_SETTINGS" ]]; then
     echo "::error::apply-repo-settings.sh not found at $APPLY_REPO_SETTINGS" >&2
     return 1
   fi
 
-  if [ ! -f "$APPLY_RULESETS" ]; then
+  if [[ ! -f "$APPLY_RULESETS" ]]; then
     echo "::error::apply-rulesets.sh not found at $APPLY_RULESETS" >&2
     return 1
   fi
@@ -502,6 +508,6 @@ main() {
 }
 
 # Source-guard: tests source this to exercise individual step_* helpers.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi

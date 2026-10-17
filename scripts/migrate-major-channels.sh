@@ -93,7 +93,7 @@ _agent_names() { jq -r '.agents | keys[]'                         "$CANARY_RINGS
 _agent_reusable_file() {
   local agent="$1" path
   path="$(jq -r --arg a "$agent" '.agents?[$a]?.reusable? // empty' "$CANARY_RINGS")"
-  [ -z "$path" ] && path="${agent}-reusable.yml"
+  [[ -z "$path" ]] && path="${agent}-reusable.yml"
   printf '%s' "${path##*/}"
 }
 
@@ -110,7 +110,7 @@ _enrolled_consumers() {
     case "$m" in
       '*')          ;;
       '$host')      printf '%s\n' "$host" ;;
-      '$org_infra') [ "${#org_infra[@]}" -gt 0 ] && printf '%s\n' "${org_infra[@]}" ;;
+      '$org_infra') [[ "${#org_infra[@]}" -gt 0 ]] && printf '%s\n' "${org_infra[@]}" ;;
       *)            printf '%s\n' "$m" ;;
     esac
   done < <(jq -r --arg a "$agent" '.agents[$a]?.rings[]?.members[]?' "$CANARY_RINGS") | sort -u
@@ -137,7 +137,7 @@ _consumer_agent_stubs() {
   local cache_dir="/tmp/migrate-wf-cache-$$/${repo}"
   local listing_file="${cache_dir}/.listing"
 
-  if [ ! -d "$cache_dir" ]; then
+  if [[ ! -d "$cache_dir" ]]; then
     mkdir -p "$cache_dir"
     listing="$(gh api "repos/${repo}/contents/.github/workflows" --jq '.[].name' 2>&1)" || {
       if [[ "$listing" == *404* ]]; then
@@ -151,8 +151,8 @@ _consumer_agent_stubs() {
     listing="${listing//$'\r'/}"
     printf '%s\n' "$listing" > "$listing_file"
 
-    while IFS= read -r wf || [ -n "$wf" ]; do
-      [ -z "$wf" ] && continue
+    while IFS= read -r wf || [[ -n "$wf" ]]; do
+      [[ -z "$wf" ]] && continue
       case "$wf" in *.yml | *.yaml) ;; *) continue ;; esac
       response="$(gh api "repos/${repo}/contents/.github/workflows/${wf}" 2>&1)" || {
         if [[ "$response" == *404* ]]; then
@@ -169,7 +169,7 @@ _consumer_agent_stubs() {
       # bare tags for a consumer whose stubs were never verified (the #657 breakage class
       # this guard exists to prevent). Mirrors the non-404 error handling above.
       b64="$(jq -r '.content // empty' <<< "$response")"
-      if [ -z "$b64" ]; then
+      if [[ -z "$b64" ]]; then
         echo "Error: empty/oversized content for ${repo}/.github/workflows/${wf} (contents API >1MB?) — aborting (fail-closed)" >&2
         rm -rf "$cache_dir"; return 1
       fi
@@ -181,12 +181,12 @@ _consumer_agent_stubs() {
     done < "$listing_file"
   fi
 
-  [ -f "$listing_file" ] || return 0
-  while IFS= read -r wf || [ -n "$wf" ]; do
-    [ -z "$wf" ] && continue
+  [[ -f "$listing_file" ]] || return 0
+  while IFS= read -r wf || [[ -n "$wf" ]]; do
+    [[ -z "$wf" ]] && continue
     case "$wf" in *.yml | *.yaml) ;; *) continue ;; esac
     local cached_file="${cache_dir}/${wf}"
-    [ -f "$cached_file" ] || continue
+    [[ -f "$cached_file" ]] || continue
     content="$(cat "$cached_file")"
     [[ "$content" == *"${reusable}@"* ]] || continue
     # Both refs the stub carries, @-stripped: the `uses:` pin AND the `agent_ref:` input
@@ -195,7 +195,7 @@ _consumer_agent_stubs() {
     uses_refs="$(grep -oE "@${agent}/[^[:space:]\"']+" "$cached_file" | sed 's/^@//' || true)"
     agentref_refs="$(grep -oE "agent_ref: *${agent}/[^[:space:]\"']+" "$cached_file" | sed -E 's/^agent_ref: *//' || true)"
     while IFS= read -r r; do
-      [ -z "$r" ] && continue
+      [[ -z "$r" ]] && continue
       printf '%s\t%s\n' "$wf" "$r"
     done < <(printf '%s\n%s\n' "$uses_refs" "$agentref_refs" | grep -v '^[[:space:]]*$' | sort -u)
   done < "$listing_file"
@@ -206,7 +206,7 @@ _consumer_agent_stubs() {
 _is_bare_tier_ref() {
   local agent="$1" ref="$2" tier
   while IFS= read -r tier; do
-    [ "$ref" = "${agent}/${tier}" ] && return 0
+    [[ "$ref" = "${agent}/${tier}" ]] && return 0
   done < <(_agent_tiers "$agent")
   return 1
 }
@@ -220,13 +220,13 @@ create_vtags() {
   host="$(_agent_host "$agent")"
   [[ -z "$host" ]] && { log "skip $agent — host not found"; return 0; }
   major="$(ring_host_current_major "$host" "$agent")"
-  if [ -z "$major" ]; then
+  if [[ -z "$major" ]]; then
     log "skip $agent — no release major (nothing to major-scope)"
     return 0
   fi
   log "$agent — major line v${major} (host $host)"
   while IFS= read -r tier; do
-    [ -z "$tier" ] && continue
+    [[ -z "$tier" ]] && continue
     bare="${agent}/${tier}"
     vtag="${agent}/v${major}-${tier}"
     if _tag_exists "$host" "$vtag"; then
@@ -234,11 +234,11 @@ create_vtags() {
       continue
     fi
     commit="$(_tag_commit "$host" "$bare")"
-    if [ -z "$commit" ]; then
+    if [[ -z "$commit" ]]; then
       log "skip ${vtag} — bare tag ${bare} not found"
       continue
     fi
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       log "would create ${vtag} at ${commit} (same commit as ${bare})"
     else
       _create_tag_ref "$host" "$vtag" "$commit"
@@ -254,21 +254,21 @@ emit_repins() {
   trap 'rm -rf "/tmp/migrate-wf-cache-$$"' EXIT
   host="$(_agent_host "$agent")"
   major="$(ring_host_current_major "$host" "$agent")"
-  if [ -z "$major" ]; then
+  if [[ -z "$major" ]]; then
     log "skip $agent — no release major"
     return 0
   fi
   while IFS= read -r c; do
-    [ -z "$c" ] && continue
+    [[ -z "$c" ]] && continue
     if ! stubs="$(_consumer_agent_stubs "$c" "$agent")"; then
       err "could not read ${c} workflow stubs — aborting (fail-closed)"
       return 1
     fi
-    [ -z "$stubs" ] && continue
+    [[ -z "$stubs" ]] && continue
     stubs="${stubs//$'\r'/}"
-    while IFS=$'\t' read -r wf ref || [ -n "$wf" ]; do
+    while IFS=$'\t' read -r wf ref || [[ -n "$wf" ]]; do
       tier=""
-      [ -z "$ref" ] && continue
+      [[ -z "$ref" ]] && continue
       if _is_bare_tier_ref "$agent" "$ref"; then
         tier="${ref##*/}"
         log "repin ${c}/${wf}: ${ref} -> ${agent}/v${major}-${tier}"
@@ -286,30 +286,30 @@ retire_bare() {
   [[ -z "$host" ]] && { err "unknown agent: $agent"; return 1; }
   local -a offenders=()
   while IFS= read -r c; do
-    [ -z "$c" ] && continue
+    [[ -z "$c" ]] && continue
     if ! stubs="$(_consumer_agent_stubs "$c" "$agent")"; then
       err "could not read ${c} workflow stubs — aborting (fail-closed)"
       return 1
     fi
-    [ -z "$stubs" ] && continue
+    [[ -z "$stubs" ]] && continue
     stubs="${stubs//$'\r'/}"
-    while IFS=$'\t' read -r wf ref || [ -n "$wf" ]; do
-      [ -z "$ref" ] && continue
+    while IFS=$'\t' read -r wf ref || [[ -n "$wf" ]]; do
+      [[ -z "$ref" ]] && continue
       if _is_bare_tier_ref "$agent" "$ref"; then
         offenders+=("${c}/${wf} (${ref})")
       fi
     done <<< "$stubs"
   done < <(_enrolled_consumers "$agent")
 
-  if [ "${#offenders[@]}" -gt 0 ]; then
+  if [[ "${#offenders[@]}" -gt 0 ]]; then
     err "refuse to retire bare ${agent} tiers — still pinned by an enrolled consumer:"
     printf '[migrate]   - %s\n' "${offenders[@]}" >&2
     return 1
   fi
 
   while IFS= read -r tier; do
-    [ -z "$tier" ] && continue
-    if [ "$DRY_RUN" = "true" ]; then
+    [[ -z "$tier" ]] && continue
+    if [[ "$DRY_RUN" = "true" ]]; then
       log "would delete ${agent}/${tier}"
     else
       _delete_tag_ref "$host" "${agent}/${tier}"
@@ -343,9 +343,9 @@ main() {
     esac
   done
 
-  [ "$DRY_RUN" = "true" ] && log "DRY RUN — no tags will be created or deleted"
+  [[ "$DRY_RUN" = "true" ]] && log "DRY RUN — no tags will be created or deleted"
 
-  if [ ! -f "$CANARY_RINGS" ]; then
+  if [[ ! -f "$CANARY_RINGS" ]]; then
     err "canary-rings registry not found: $CANARY_RINGS"
     exit 1
   fi
@@ -355,14 +355,14 @@ main() {
       retire_bare "$retire_agent"
       ;;
     emit-repins)
-      if [ -n "$agent_filter" ]; then
+      if [[ -n "$agent_filter" ]]; then
         emit_repins "$agent_filter"
       else
         while IFS= read -r a; do emit_repins "$a"; done < <(_agent_names)
       fi
       ;;
     create)
-      if [ -n "$agent_filter" ]; then
+      if [[ -n "$agent_filter" ]]; then
         create_vtags "$agent_filter"
       else
         while IFS= read -r a; do create_vtags "$a"; done < <(_agent_names)
@@ -371,6 +371,6 @@ main() {
   esac
 }
 
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi
