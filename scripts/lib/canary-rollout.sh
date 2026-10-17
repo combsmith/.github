@@ -32,6 +32,8 @@ clamp() {
     if [[ "$value" == -* ]]; then
       sign=-1
       value="${value#-}"
+    elif [[ "$value" == +* ]]; then
+      value="${value#+}"
     fi
     printf -v "$name" "%s" "$(( sign * (10#${value:-0}) ))"
   done
@@ -46,8 +48,9 @@ round_div() {
   local n="$1" d="$2"
   # Reject a nonpositive denominator first: "10#-1" is a bash arithmetic error.
   # Then normalize to base 10 so leading-zero decimals like "08" are not misread
-  # as octal.
+  # as octal. Strip any leading plus sign before conversion.
   if [[ "${d:-0}" == -* ]] || [[ "$((10#${d:-0}))" -le 0 ]]; then echo 0; return 1; fi
+  d="${d#+}"
   d=$((10#${d:-0}))
   echo $(( (2 * n + d) / (2 * d) ))
 }
