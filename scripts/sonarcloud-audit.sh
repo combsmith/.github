@@ -199,28 +199,9 @@ sonar_project_issues() {
 # Scan: build findings.json (flat) then groups.json (per repo × family)
 # ---------------------------------------------------------------------------
 scan() {
-  local target_name="" target_owner=""
+  local target_name=""
   if [[ -n "$TARGET_REPO" ]]; then
-    # Extract owner (if present) and repo name. Reject mismatches: if TARGET_REPO
-    # specifies a different owner than $ORG, error out rather than silently
-    # targeting the wrong org's repo. sonar_project_to_repo yields just "name",
-    # so we separate target_name and validate ownership.
-    if [[ "$TARGET_REPO" == */* ]]; then
-      target_owner="${TARGET_REPO%/*}"
-      target_name="${TARGET_REPO##*/}"
-      if [[ "$target_owner" != "$ORG" ]]; then
-        printf 'Error: TARGET_REPO specifies owner "%s" but ORG is "%s" — cannot target repos outside the configured organization\n' "$target_owner" "$ORG" >&2
-        return 1
-      fi
-    else
-      target_name="$TARGET_REPO"
-    fi
-    target_name="${target_name#"${target_name%%[![:space:]]*}"}"
-    target_name="${target_name%"${target_name##*[![:space:]]}"}"
-    if [[ -z "$target_name" ]]; then
-      printf 'Error: TARGET_REPO produced an empty repository name\n' >&2
-      return 1
-    fi
+    target_name="${TARGET_REPO#"$ORG/"}"
   fi
 
   local ndjson_file="$REPORT_DIR/findings.ndjson"
