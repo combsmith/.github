@@ -91,7 +91,8 @@ bootstrap PR in step 3 is opened.
    ```
 
    Both commands need `GH_TOKEN` set (the dry run still reads the repo's current state).
-   The real run needs a **classic PAT with `repo` + `admin:org`**. It
+   The real run needs a **classic PAT with `repo` + `admin:org`**. Run it on Linux, or on
+   macOS with GNU bash 5, coreutils and gawk first on `PATH` (`brew install bash coreutils gawk`). It
    applies repo settings, GHAS + secret-scanning push protection, the `pr-quality` and
    `code-quality` rulesets (bypass actors + required checks), the standard label set,
    CODEOWNERS verification, and the release-ring record. Then, by hand:
@@ -101,6 +102,8 @@ bootstrap PR in step 3 is opened.
      every `add-to-project` run fails (`The 'client-id' … must be set to a non-empty string`).
    - Enable Discussions and create the **Ideas** and **General** categories
      (Settings → Discussions; categories have no REST API).
+   - Set the repo description and topics:
+     `gh repo edit combsmith/<name> --description "…" --add-topic <topic>`.
 3. **Hand the repo to an agent to execute `BOOTSTRAP.md`**, with the prompt from the
    template's README:
 

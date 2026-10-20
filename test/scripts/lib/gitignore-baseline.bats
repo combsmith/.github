@@ -412,3 +412,151 @@ EOF
   second="$(upsert_gitignore_baseline "$realblock" "${TT_TMP}/after1")"
   [ "$first" = "$second" ]
 }
+
+# ── worldchest#1: BSD awk must not silently delete L2 ─────────────────────────
+# On 2026-10-20 the bootstrap, run on macOS, opened combsmith/worldchest#1: a PR
+# that DELETED the template's whole L2 section (OS/editor, node_modules, dist,
+# build, coverage, *.log) while its body said L2 was preserved. Root cause:
+# _gib_neutralize_l2 passed the multi-line block as `awk -v block=…`; BSD awk
+# rejects a newline inside a -v value ("awk: newline in string"), exits 2, the
+# failure was swallowed by $(…) and the function returned an EMPTY L2. These
+# tests pin the fix: the block now reaches awk through a file, and an awk
+# failure is fatal instead of degrading into block-only output.
+
+# _worldchest_gitignore <path> — the real canonical block followed by the L2 the
+# template ships (byte-for-byte what combsmith/worldchest had before #1).
+_worldchest_gitignore() {
+  {
+    gib_extract_baseline_block "${TT_REPO_ROOT}/.gitignore"
+    cat <<'L2'
+#
+# L2 — ecosystem/OS extension (per-repo, free to edit): append language,
+# framework, and OS entries BELOW this line from the matching template at
+# https://github.com/github/gitignore. Never edit inside the markers above,
+# and never re-ignore a path the L1 block negates. See
+# standards/gitignore-standard.md.
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Dependencies / build output
+node_modules/
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+L2
+  } > "$1"
+}
+
+# _install_awk_shim <dir> <mode> — put an `awk` wrapper first on PATH.
+#   bsd  — mimic BSD awk: any `-v name=value` whose value contains a newline is
+#          fatal ("awk: newline in string", exit 2); everything else is handed to
+#          the real awk. This makes the regression reproducible on a Linux runner
+#          whose awk (gawk/mawk) happily accepts the newline.
+#   fail — every invocation exits 2 (an awk that dies for any reason).
+_install_awk_shim() {
+  local dir="$1" mode="$2" real
+  real="$(command -v awk)"
+  mkdir -p "$dir"
+  cat > "$dir/awk" <<SHIM
+#!/usr/bin/env bash
+if [ "$mode" = fail ]; then echo "awk: simulated failure" >&2; exit 2; fi
+expect=0
+for a in "\$@"; do
+  if [ "\$expect" = 1 ]; then v="\$a"; expect=0
+  elif [ "\$a" = "-v" ]; then expect=1; continue
+  elif [[ "\$a" == -v?* ]]; then v="\${a#-v}"
+  else continue; fi
+  case "\$v" in *\$'\n'*) echo "awk: newline in string \${v:0:20}... at source line 1" >&2; exit 2 ;; esac
+done
+exec "$real" "\$@"
+SHIM
+  chmod +x "$dir/awk"
+}
+
+@test "worldchest#1: markered file with the template L2 is a byte-for-byte fixed point (host awk)" {
+  local existing="${TT_TMP}/worldchest" realblock="${TT_TMP}/realblock"
+  _worldchest_gitignore "$existing"
+  gib_extract_baseline_block "${TT_REPO_ROOT}/.gitignore" > "$realblock"
+
+  local out
+  out="$(upsert_gitignore_baseline "$realblock" "$existing")"
+  [ "$out" = "$(cat "$existing")" ]
+  # The L2 that #1 deleted is all still there.
+  grep -qxF 'node_modules/' <<< "$out"
+  grep -qxF 'coverage/' <<< "$out"
+  grep -qxF '*.log' <<< "$out"
+}
+
+@test "worldchest#1: same fixed point under an awk that rejects newlines in -v (BSD mode)" {
+  local existing="${TT_TMP}/worldchest" realblock="${TT_TMP}/realblock"
+  _worldchest_gitignore "$existing"
+  gib_extract_baseline_block "${TT_REPO_ROOT}/.gitignore" > "$realblock"
+  _install_awk_shim "${TT_TMP}/bsdawk" bsd
+
+  local out rc=0
+  out="$(PATH="${TT_TMP}/bsdawk:$PATH"; export PATH; hash -r; upsert_gitignore_baseline "$realblock" "$existing")" || rc=$?
+  [ "$rc" -eq 0 ]
+  [ "$out" = "$(cat "$existing")" ]
+  grep -qxF 'node_modules/' <<< "$out"
+  grep -qxF '*.log' <<< "$out"
+}
+
+@test "worldchest#1: the BSD-mode shim really does reject a multi-line -v value (shim self-check)" {
+  _install_awk_shim "${TT_TMP}/bsdawk" bsd
+  run "${TT_TMP}/bsdawk/awk" -v block=$'a\nb' 'BEGIN { print "ran" }'
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"newline in string"* ]]
+  run "${TT_TMP}/bsdawk/awk" -v b='one line' 'BEGIN { print b }'
+  [ "$status" -eq 0 ]
+  [ "$output" = "one line" ]
+}
+
+@test "worldchest#1: an awk failure is fatal — upsert returns non-zero and prints NOTHING (never block-only output)" {
+  local existing="${TT_TMP}/worldchest" realblock="${TT_TMP}/realblock"
+  _worldchest_gitignore "$existing"
+  gib_extract_baseline_block "${TT_REPO_ROOT}/.gitignore" > "$realblock"
+  _install_awk_shim "${TT_TMP}/failawk" fail
+
+  # Markered target (the worldchest shape).
+  local out rc=0
+  out="$(PATH="${TT_TMP}/failawk:$PATH"; export PATH; hash -r; upsert_gitignore_baseline "$realblock" "$existing" 2>/dev/null)" || rc=$?
+  [ "$rc" -ne 0 ]
+  [ -z "$out" ]
+
+  # Marker-less target (the fresh-repo insert path) must fail the same way.
+  printf 'node_modules/\ndist/\n' > "${TT_TMP}/plain"
+  out="x"; rc=0
+  out="$(PATH="${TT_TMP}/failawk:$PATH"; export PATH; hash -r; upsert_gitignore_baseline "$realblock" "${TT_TMP}/plain" 2>/dev/null)" || rc=$?
+  [ "$rc" -ne 0 ]
+  [ -z "$out" ]
+
+  # And the error is named on stderr.
+  run bash -c 'PATH="$1:$PATH"; hash -r; source "$2"; upsert_gitignore_baseline "$3" "$4"' _ "${TT_TMP}/failawk" "${TT_SCRIPTS_LIB_DIR}/gitignore-baseline.sh" "$realblock" "$existing"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"awk failed"* ]]
+}
+
+@test "worldchest#1: a block line with a backslash survives the file hand-off (no -v escape processing)" {
+  # `-v` values have backslash escapes interpreted by every awk; a file read via
+  # getline does not. A block pattern like `\#literal-hash` must still be matched
+  # (and folded) exactly.
+  local block="${TT_TMP}/bsblock" existing="${TT_TMP}/bsexisting"
+  cat > "$block" <<EOB
+${GIB_BEGIN_MARKER}
+\\#literal-hash
+.env
+${GIB_END_MARKER}
+EOB
+  printf '%s\n' '\#literal-hash' 'node_modules/' > "$existing"
+  run upsert_gitignore_baseline "$block" "$existing"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -cxF -- '\#literal-hash')" -eq 1 ]   # folded, once
+  grep -qxF 'node_modules/' <<< "$output"
+}
