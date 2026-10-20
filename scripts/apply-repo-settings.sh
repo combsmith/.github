@@ -15,6 +15,9 @@
 #   # Dry run (show what would be changed):
 #   DRY_RUN=true GH_TOKEN=<admin-token> ./scripts/apply-repo-settings.sh <repo-name>
 #
+#   # <repo-name> is the bare name; the owner comes from ORG (default combsmith).
+#   # bootstrap-new-repo.sh splits its owner/repo argument this way (#1308).
+#
 # Requirements:
 #   - Bash 4+ (uses associative arrays — macOS ships Bash 3.2; use GitHub Actions or brew install bash)
 #   - GH_TOKEN must have admin:repo scope (or be an admin of the org)
@@ -28,7 +31,7 @@ if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
   exit 1
 fi
 
-ORG="combsmith"
+ORG="${ORG:-combsmith}"
 DRY_RUN="${DRY_RUN:-false}"
 
 # The standard label set — the fixed set (STANDARD_LABEL_SPECS), the persona
@@ -75,6 +78,7 @@ usage() {
   echo ""
   echo "Environment variables:"
   echo "  GH_TOKEN   GitHub token with admin:repo scope (required)"
+  echo "  ORG        Owner of <repo-name> (default: combsmith)"
   echo "  DRY_RUN    Set to 'true' to preview changes without applying (default: false)"
   exit 1
 }
@@ -417,6 +421,17 @@ apply_check_suite_prefs() {
 # before each apply_repo call and reports its contents afterward.
 FAILED_STEPS=()
 
+# fetch_repo_json <repo> — print the repo's JSON, or return 1 if the fetch failed.
+# gh api writes the error body (a 404's {"message":"Not Found",...}) to stdout
+# before it exits non-zero, so `$(gh api ... || echo "{}")` captured that body
+# plus "{}" and the "= {}" test never fired (#1308). Trust the exit status.
+fetch_repo_json() {
+  local json
+  json=$(gh api "repos/$ORG/$1" 2>/dev/null) || return 1
+  [ -n "$json" ] && [ "$json" != "{}" ] || return 1
+  printf '%s\n' "$json"
+}
+
 apply_repo() {
   local repo="$1" repo_json="$2"
   apply_settings                 "$repo" "$repo_json" || FAILED_STEPS+=("settings")
@@ -456,8 +471,7 @@ if [ "$1" = "--all" ]; then
   local repo repo_json step
   for repo in $repos; do
     # Fetch full repo JSON once and share across functions
-    repo_json=$(gh api "repos/$ORG/$repo" 2>/dev/null || echo "{}")
-    if [ "$repo_json" = "{}" ]; then
+    if ! repo_json=$(fetch_repo_json "$repo"); then
       err "Could not fetch settings for $ORG/$repo — check token permissions and repo name"
       all_failed+=("$repo:fetch")
       continue
@@ -486,8 +500,7 @@ if [ "$1" = "--all" ]; then
 
   ok "All repos processed successfully"
 else
-  repo_json=$(gh api "repos/$ORG/$1" 2>/dev/null || echo "{}")
-  if [ "$repo_json" = "{}" ]; then
+  if ! repo_json=$(fetch_repo_json "$1"); then
     err "Could not fetch settings for $ORG/$1 — check token permissions and repo name"
     exit 1
   fi

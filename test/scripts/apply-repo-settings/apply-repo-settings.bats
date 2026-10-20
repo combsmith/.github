@@ -657,3 +657,53 @@ _only_real_step() {
   [ "$rc" -eq 0 ]
   printf '%s\n' "${FAILED_STEPS[@]}" | grep -qx 'codeql_default_setup'
 }
+
+# ── repository fetch: a failed fetch is a failure (#1308) ──────────────────────
+# gh api prints a 404's error body to stdout before exiting non-zero, so the old
+# `$(gh api ... || echo "{}")` captured the body plus "{}" and never matched "{}".
+# This stub answers repos/<ORG>/ghost the way real gh does.
+_stub_gh_repo_fetch() {
+  cat > "$STUB_BIN/gh" <<EOF
+#!/usr/bin/env bash
+args="\$*"
+case "\$args" in
+  "repo list"*) printf 'ghost\nreal\n'; exit 0 ;;
+  "api repos/"*"/ghost")
+    echo '{"message":"Not Found","documentation_url":"https://docs.github.com/rest","status":"404"}'
+    echo 'gh: Not Found (HTTP 404)' >&2
+    exit 1 ;;
+  "api repos/"*"/real") printf '%s\n' "\$args" >> "$CALLS"; printf '{"name":"real"}'; exit 0 ;;
+  *) printf '{}'; exit 0 ;;
+esac
+EOF
+  chmod +x "$STUB_BIN/gh"
+}
+
+@test "main fails a single-repo run whose fetch 404s, though gh printed a body (#1308)" {
+  _stub_gh_repo_fetch
+  run main ghost
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Could not fetch settings for combsmith/ghost"* ]]
+  [[ "$output" != *"Applying standard settings"* ]]
+}
+
+@test "main --all reports <repo>:fetch for a repo whose fetch 404s (#1308)" {
+  _stub_gh_repo_fetch
+  apply_repo() { :; }
+  run main --all
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed steps: ghost:fetch"* ]]
+  [[ "$output" != *"real:fetch"* ]]
+}
+
+@test "ORG from the environment selects the owner of the bare repo name (#1308)" {
+  _stub_gh_repo_fetch
+  # Re-source with ORG in the environment, as bootstrap-new-repo.sh invokes it.
+  export ORG=acme
+  source "$APPLY"
+  apply_repo() { :; }
+  run main real
+  [ "$status" -eq 0 ]
+  grep -qx 'api repos/acme/real' "$CALLS"
+}
+

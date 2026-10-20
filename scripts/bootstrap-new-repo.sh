@@ -41,7 +41,8 @@ set -euo pipefail
 #   GH_TOKEN         classic PAT with repo + admin scope (apply-repo-settings.sh
 #                    rejects OAuth app tokens for the check-suites API).
 #   CODEOWNERS_TEAM  expected first CODEOWNERS owner (default @combsmith/org-leads).
-#   ORG              passed through to apply-repo-settings.sh (default combsmith).
+#   (apply-repo-settings.sh gets the owner half of owner/new-repo as ORG and the
+#   bare repo name as its argument — #1308.)
 #   CANARY_RINGS     ring SoT path (default standards/canary-rings.json next to this repo).
 #   STANDARDS_REPO   repo holding the cross-repo ring-pins.sh (default combsmith/.github).
 #   RING_PINS_PATH   ring-pins.sh path within STANDARDS_REPO (default scripts/lib/ring-pins.sh).
@@ -325,7 +326,11 @@ step_repo_settings() {
   echo "[bootstrap] (2/6) repo settings + security/GHAS + push protection"
   # Canonical apply-repo-settings.sh (combsmith/.github) reads DRY_RUN; bridge
   # onto it. DEV_LEAD_DRY_RUN is kept for backward-compat with any older copy.
-  DRY_RUN="$settings_dry" DEV_LEAD_DRY_RUN="$settings_dry" bash "$APPLY_REPO_SETTINGS" "$repo"
+  # apply-repo-settings.sh takes a bare repo name and prefixes $ORG itself, so
+  # split owner/repo here. Passing it whole sent every call in this step to
+  # repos/<owner>/<owner>/<repo> and 404'd (#1308).
+  DRY_RUN="$settings_dry" DEV_LEAD_DRY_RUN="$settings_dry" ORG="${repo%%/*}" \
+    bash "$APPLY_REPO_SETTINGS" "${repo#*/}"
 }
 
 # step_rulesets <repo> — apply the sanctioned fleet rulesets (pr-quality +
@@ -466,7 +471,7 @@ main() {
     esac
   done
   if [ -z "$repo" ] && [ $# -gt 0 ]; then repo="$1"; fi
-  if [ -z "$repo" ]; then
+  if [ -z "$repo" ] || [[ "$repo" != ?*/?* || "$repo" == */*/* ]]; then
     echo "::error::usage: $0 [--ring <ring>] [--agent <agent>] owner/new-repo   (DRY_RUN=true for a no-write preview)" >&2
     return 2
   fi
