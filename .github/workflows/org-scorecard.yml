@@ -16,6 +16,14 @@ jobs:
   scorecard:
     runs-on: ubuntu-latest
     steps:
+      # Needed only for scripts/lib/scorecard-triage.sh (the pure, bats-tested
+      # decision helpers sourced below). Read-only — never pushes.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Install Scorecard CLI
         run: |
           SCORECARD_VERSION="v5.5.0"
@@ -33,6 +41,11 @@ jobs:
           GH_TOKEN: ${{ secrets.ORG_SCORECARD_TOKEN }}
         run: |
           set -euo pipefail
+
+          # Pure decision helpers (scorecard_pinned_actions_only, scorecard_issue_title, …);
+          # unit-tested in test/scripts/scorecard/, gated by scorecard-tests.yml.
+          # shellcheck source=scripts/lib/scorecard-triage.sh
+          source scripts/lib/scorecard-triage.sh
 
           ORG="combsmith"
           SKIP_CHECKS="CII-Best-Practices,Contributors,Fuzzing,Maintained,Packaging,Signed-Releases"
@@ -53,8 +66,12 @@ jobs:
 
             # Run scorecard
             # We capture stderr to a separate file to detect parsing errors (malformed workflows)
+            # --show-details is REQUIRED: without it `.checks[].details` is null in the JSON
+            # output and the Pinned-Dependencies first-party exemption below can never fire
+            # (it keys off the per-detail dependency type — see #709 and
+            # test/scripts/scorecard/scorecard-triage.bats "details is null").
             ERROR_LOG="$RESULTS_DIR/${REPO}_error.log"
-            if ! scorecard --repo="github.com/$ORG/$REPO" --format=json > "$RESULT_FILE" 2> "$ERROR_LOG"; then
+            if ! scorecard --repo="github.com/$ORG/$REPO" --format=json --show-details > "$RESULT_FILE" 2> "$ERROR_LOG"; then
               # If scorecard failed, check if it was due to a malformed workflow
               if grep -q "could not parse as YAML" "$ERROR_LOG"; then
                 echo "::warning::Detected malformed YAML in $ORG/$REPO. Treating as finding."
@@ -119,15 +136,24 @@ jobs:
                 continue
               fi
 
-              ISSUE_TITLE="Scorecard: $CHECK_NAME"
+              # The score-free prefix is the issue's identity across weeks; the full
+              # title carries the current score and is refreshed when it moves.
+              ISSUE_PREFIX=$(scorecard_issue_prefix "$CHECK_NAME")
+              ISSUE_TITLE=$(scorecard_issue_title "$CHECK_NAME" "$SCORE")
 
-              # Search for existing open issue
-              EXISTING_ISSUE=$(gh issue list --repo "$ORG/$REPO" \
+              # Search for existing open issue (number + current title)
+              EXISTING_JSON=$(gh issue list --repo "$ORG/$REPO" \
                 --label scorecard --state open \
-                --search "\"$ISSUE_TITLE\" in:title" \
+                --search "\"$ISSUE_PREFIX\" in:title" \
                 --json number,title \
-                -q ".[] | select(.title | startswith(\"$ISSUE_TITLE\")) | .number" \
+                -q ".[] | select(.title | startswith(\"$ISSUE_PREFIX\"))" \
                 | head -1)
+              EXISTING_ISSUE=""
+              EXISTING_TITLE=""
+              if [ -n "$EXISTING_JSON" ]; then
+                EXISTING_ISSUE=$(jq -r '.number' <<<"$EXISTING_JSON")
+                EXISTING_TITLE=$(jq -r '.title' <<<"$EXISTING_JSON")
+              fi
 
               # First-party channel-tag exemption for Pinned-Dependencies (#709).
               # Our first-party reusable refs deliberately use mutable channel tags
@@ -143,14 +169,9 @@ jobs:
               # GitHubAction. Keep it whenever there is a non-Actions gap
               # (containerImage / pip / npm / go) or when no recognisable detail
               # lines are found (format changed — errs toward keeping the issue).
+              # Decision lives in scorecard_pinned_actions_only (scripts/lib/scorecard-triage.sh).
               if [ "$CHECK_NAME" = "Pinned-Dependencies" ] && [ "$SCORE" != "10" ]; then
-                TOTAL_WARN=$(echo "$ROW" | jq -r \
-                  '[.details[]? | select(test("not pinned by hash"; "i"))] | length' \
-                  2>/dev/null || echo "0")
-                NON_ACTION_WARN=$(echo "$ROW" | jq -r \
-                  '[.details[]? | select(test("not pinned by hash"; "i")) | select(test("GitHubAction"; "i") | not)] | length' \
-                  2>/dev/null || echo "1")
-                if [ "${TOTAL_WARN:-0}" -gt 0 ] && [ "${NON_ACTION_WARN:-1}" -eq 0 ]; then
+                if scorecard_pinned_actions_only "$ROW"; then
                   echo "Pinned-Dependencies for $REPO is Actions-only — covered by compliance-audit + deliberate first-party channel tags; suppressing issue (#709)"
                   if [ -n "$EXISTING_ISSUE" ]; then
                     EXEMPT_MSG="Auto-closing (accepted exception, #709): this Pinned-Dependencies finding is limited to GitHub Actions refs."
@@ -190,10 +211,16 @@ jobs:
           This issue was automatically created from an [OpenSSF Scorecard](https://github.com/ossf/scorecard) scan on $(date -u +%Y-%m-%d).
           HEREDOC
                   )
-                  gh issue create --repo "$ORG/$REPO" --title "$ISSUE_TITLE ($SCORE/10)" --label scorecard --body "$BODY"
+                  gh issue create --repo "$ORG/$REPO" --title "$ISSUE_TITLE" --label scorecard --body "$BODY"
                   CREATED_COUNT=$((CREATED_COUNT + 1))
                 else
-                  # Update existing issue with a comment if score changed
+                  # Refresh the title when the score has moved since the issue was
+                  # created — otherwise it keeps saying "(0/10)" for months
+                  # (repo-template#1, #6 sat at 8/10 and 9/10 under a 0/10 title).
+                  if ! scorecard_title_is_current "$EXISTING_TITLE" "$CHECK_NAME" "$SCORE"; then
+                    gh issue edit "$EXISTING_ISSUE" --repo "$ORG/$REPO" --title "$ISSUE_TITLE"
+                  fi
+                  # Update existing issue with a weekly comment
                   gh issue comment "$EXISTING_ISSUE" --repo "$ORG/$REPO" --body "Weekly update: Score is now **$SCORE/10**. Finding: $REASON"
                 fi
               fi
