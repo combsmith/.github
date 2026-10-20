@@ -2007,6 +2007,15 @@ org-level workflows that run across all repositories:
   suppressed (no issue) rather than looping forever. A finding is **still raised**
   when it includes a non-Actions gap (container image / pip / npm / go) that nothing
   else tracks — the suppression keys off Scorecard's per-detail dependency type.
+  Because of that, the CLI **must** run with `--show-details`: without it the JSON
+  `.checks[].details` array is `null`, no detail is recognised, and the exemption
+  (correctly) errs toward keeping the issue — i.e. it never fires at all.
+- **Issue titles track the score:** an issue is created as `Scorecard: <Check> (<N>/10)`
+  and the `(<N>/10)` suffix is refreshed on each weekly update when the score moves;
+  the score-free prefix `Scorecard: <Check>` is the issue's identity across runs.
+- **Decision helpers:** the exemption and title logic live in
+  `scripts/lib/scorecard-triage.sh` (pure, no network) and are gated by
+  `test/scripts/scorecard/` via `scorecard-tests.yml` on any PR touching the workflow.
 
 ---
 
