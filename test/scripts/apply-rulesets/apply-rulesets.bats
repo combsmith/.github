@@ -14,7 +14,8 @@ teardown() { [ -n "${STUB_BIN:-}" ] && rm -rf "$STUB_BIN"; return 0; }
 
 # gh stub: records writes (POST/PUT) to $CALLS (args line then --input body);
 # returns $RULESETS_LIST for the rulesets LIST (default [] → create path);
-# returns $REPO_LIST for `repo list`.
+# returns $RULESET_DETAIL for one ruleset by id (default {}; the literal FAIL
+# makes that read fail); returns $REPO_LIST for `repo list`.
 _stub_gh() {
   cat > "$STUB_BIN/gh" <<EOF
 #!/usr/bin/env bash
@@ -29,6 +30,9 @@ case "\$args" in
     done
     echo '{}' ;;
   *"repo list"*) printf '%s' "\${REPO_LIST:-}" ;;
+  *"/rulesets/"*)
+    [ "\${RULESET_DETAIL:-}" = "FAIL" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
+    empty='{}'; printf '%s' "\${RULESET_DETAIL:-\$empty}" ;;
   *"rulesets"*)  printf '%s' "\${RULESETS_LIST:-[]}" ;;
   *) echo '{}' ;;
 esac
@@ -255,4 +259,104 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
   export RULESETS_LIST='[{"id":42,"name":"pr-quality"},{"id":7,"name":"code-quality"}]'
   run bash -c "source '$APPLY' && ruleset_id_by_name combsmith/acme code-quality"
   [ "$status" -eq 0 ]; [ "$output" = "7" ]
+}
+
+# ── code-scanning merge protection: a floor, never lowered ────────────────────
+# code-quality.json's code_scanning rule (standards/github-settings.md
+# #code-scanning-merge-protection-all-repositories) is a minimum. A full-replace
+# PUT would lower a repo that is stricter (security_alerts_threshold `all`), so
+# an update keeps the stricter live value (cs_floor_payload).
+
+# _put_body — the JSON body of the single recorded PUT/POST.
+_put_body() { tail -n +2 "$CALLS"; }
+
+# _live_cq <security_alerts_threshold> <alerts_threshold> — a live code-quality ruleset.
+_live_cq() {
+  jq -c --arg s "$1" --arg a "$2" \
+    '.id = 7 | .rules |= map(if .type == "code_scanning"
+       then .parameters.code_scanning_tools = [{tool:"CodeQL",security_alerts_threshold:$s,alerts_threshold:$a}]
+       else . end)' "$RULESETS_DIR/code-quality.json"
+}
+
+@test "code-quality.json: code_scanning rule is CodeQL, medium_or_higher, errors" {
+  run jq -c '[.rules[] | select(.type=="code_scanning") | .parameters.code_scanning_tools[]]' "$RULESETS_DIR/code-quality.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = '[{"tool":"CodeQL","security_alerts_threshold":"medium_or_higher","alerts_threshold":"errors"}]' ]
+}
+
+@test "apply --repo: create POSTs the code_scanning rule" {
+  _stub_gh
+  export RULESETS_LIST='[]'
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -eq 0 ]
+  run jq -r '.rules[] | select(.type=="code_scanning") | .parameters.code_scanning_tools[0].security_alerts_threshold' < <(_put_body)
+  [ "$output" = "medium_or_higher" ]
+}
+
+@test "apply --repo: update keeps a stricter live security threshold (all), never lowers it" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]'
+  RULESET_DETAIL="$(_live_cq all errors)"; export RULESET_DETAIL
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -eq 0 ]
+  grep -q 'method PUT' "$CALLS"
+  run jq -c '.rules[] | select(.type=="code_scanning") | .parameters.code_scanning_tools[0]' < <(_put_body)
+  [ "$output" = '{"tool":"CodeQL","security_alerts_threshold":"all","alerts_threshold":"errors"}' ]
+}
+
+@test "apply --repo: update keeps a stricter live alerts threshold (errors_and_warnings)" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]'
+  RULESET_DETAIL="$(_live_cq medium_or_higher errors_and_warnings)"; export RULESET_DETAIL
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -eq 0 ]
+  run jq -r '.rules[] | select(.type=="code_scanning") | .parameters.code_scanning_tools[0].alerts_threshold' < <(_put_body)
+  [ "$output" = "errors_and_warnings" ]
+}
+
+@test "apply --repo: update raises a weaker live threshold (high_or_higher) to the floor" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]'
+  RULESET_DETAIL="$(_live_cq high_or_higher none)"; export RULESET_DETAIL
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -eq 0 ]
+  run jq -c '.rules[] | select(.type=="code_scanning") | .parameters.code_scanning_tools[0]' < <(_put_body)
+  [ "$output" = '{"tool":"CodeQL","security_alerts_threshold":"medium_or_higher","alerts_threshold":"errors"}' ]
+}
+
+@test "apply --repo: update over a live ruleset with no code_scanning rule PUTs the file as is" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]'
+  export RULESET_DETAIL='{"id":7,"name":"code-quality","rules":[{"type":"required_status_checks","parameters":{}}]}'
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -eq 0 ]
+  [ "$(_put_body | jq -cS .)" = "$(jq -cS . "$RULESETS_DIR/code-quality.json")" ]
+}
+
+@test "apply --repo: an unreadable live ruleset is not updated (nothing stricter is lowered)" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]' RULESET_DETAIL='FAIL'
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not updating it"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "apply: --dry-run says when it keeps a stricter live threshold, and writes nothing" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]'
+  RULESET_DETAIL="$(_live_cq all errors)"; export RULESET_DETAIL
+  run bash "$APPLY" --repo combsmith/acme code-quality --dry-run
+  [ "$status" -eq 0 ]
+  [ ! -f "$CALLS" ]
+  [[ "$output" == *"keeps the live, stricter code_scanning thresholds"* ]]
+  [[ "$output" == *'"security_alerts_threshold":"all"'* ]]
+}
+
+@test "cs_floor_payload: ignores an unknown live value and another tool's entry" {
+  run bash -c "source '$APPLY' && cs_floor_payload '$RULESETS_DIR/code-quality.json' \
+    '{\"rules\":[{\"type\":\"code_scanning\",\"parameters\":{\"code_scanning_tools\":[{\"tool\":\"CodeQL\",\"security_alerts_threshold\":\"bogus\",\"alerts_threshold\":\"errors\"},{\"tool\":\"Semgrep\",\"security_alerts_threshold\":\"all\",\"alerts_threshold\":\"all\"}]}}]}' \
+    | jq -c '.rules[] | select(.type==\"code_scanning\") | .parameters.code_scanning_tools'"
+  [ "$status" -eq 0 ]
+  [ "$output" = '[{"tool":"CodeQL","security_alerts_threshold":"medium_or_higher","alerts_threshold":"errors"}]' ]
 }

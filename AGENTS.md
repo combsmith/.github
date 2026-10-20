@@ -624,7 +624,9 @@ This org enforces branch protection via **classic branch protection rules** and 
 | **Require last push approval** | **Yes** — ensures a different person reviews substantive changes; the Dependabot rebase workflow updates branches and directly merges via its bypass actor, bypassing the re-approval requirement |
 | **Allowed merge methods** | Squash only |
 
-> **google-app-scripts** has an additional ruleset (`protect-branches`) with CodeQL code scanning enforcement and stricter review settings.
+> **Code scanning merge protection (all repos):** `code-quality` also carries a `code_scanning` rule — CodeQL, security alerts `medium_or_higher`, alerts `errors` —
+> so a security alert below `high` cannot merge silently.
+> A stricter threshold is compliant and never lowered. See [github-settings.md § Code scanning merge protection](standards/github-settings.md#code-scanning-merge-protection-all-repositories).
 
 #### SonarCloud Check Names
 
