@@ -118,7 +118,7 @@ PR_AUTO_REVIEW_CANONICAL=$(cat <<'EOF'
 name: PR Auto-Review — Ready Check
 
 on:
-  # TODO: replace "CI" with your repository's CI workflow name(s).
+  # Customize: replace "CI" with your repository's CI workflow name(s) if different.
   workflow_run:
     workflows: ["CI"]
     types: [completed]
