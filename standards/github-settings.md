@@ -580,25 +580,28 @@ on every owner line so the team can always satisfy `require_code_owner_review`.
 
 ## Applying to a New Repository
 
-When creating a new repository in `combsmith`:
+New repos are created from `combsmith/repo-template` and brought to compliance by
+`scripts/bootstrap-new-repo.sh`, which applies the repository-level settings, rulesets,
+labels, and CODEOWNERS checks this document describes (integration checks and the
+selected-visibility secret grant remain manual); the three-step path is in
+[AGENTS.md → Creating a new repository](../AGENTS.md#creating-a-new-repository).
+The manual checklist that used to live here is superseded by that script and the
+template's `BOOTSTRAP.md`.
 
-1. **Create the repo** with standard settings (public, `main` branch, wiki disabled, discussions enabled)
-2. **Create the `pr-quality` ruleset** matching the standard configuration above, including:
-   - Bypass actors with `bypass_mode: always` for `dependabot-automerge-petry` and `OrganizationAdmin`
-   - **Allow auto-merge enabled** — in the ruleset's "Merge settings", check the "Allow auto-merge" option.
-     Required for seamless PR automation and CI-dependent merges
-3. **Create the `code-quality` ruleset** with required checks for the repo's stack — verify check names against actual workflow runs before requiring them
-4. **Add a `CODEOWNERS` file** using the [CODEOWNERS Standard](#codeowners-standard) template, extended with any repo-specific path patterns
-5. **Add Dependabot configuration** — copy the appropriate template from
-   [`standards/dependabot/`](dependabot/) and add to `.github/dependabot.yml`
-6. **Add CI workflows** — see [CI Standards](ci-standards.md) for required workflows
-7. **Create standard labels** — all labels from the [Standard Set](#labels--standard-set) above, plus any project-specific labels
-8. **Enable auto-delete head branches** in repo settings
-9. **Connect integrations** — ensure CodeRabbit and SonarCloud (if applicable) are enabled
+Still unique to this document:
+
+1. **Verify check names before requiring them.** The `code-quality` ruleset requires
+   status checks by name; after the new repo's first `ci.yml` run, confirm the job names
+   reported on the PR match the names the ruleset requires, and fix the workflow (not the
+   ruleset) if they differ.
+2. **Connect integrations.** Confirm CodeRabbit and SonarCloud (where applicable) are
+   enabled for the new repo; SonarCloud project onboarding is not part of the bootstrap.
 
 > **Note:** All standard CI secrets are configured at the org level and inherited
 > automatically — see [Organization-Level Secrets](#organization-level-secrets-for-standard-ci).
-> No per-repo secret setup is needed for standard CI workflows.
+> The one exception is the **selected-visibility** `INITIATIVES_APP_ID` /
+> `INITIATIVES_APP_PRIVATE_KEY` pair, which an org admin grants per repo in step 2 of the
+> AGENTS.md path.
 
 ---
 
