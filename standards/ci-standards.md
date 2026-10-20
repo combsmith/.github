@@ -679,6 +679,12 @@ of how many languages are detected). The codified `code-quality` ruleset
 ([`standards/rulesets/code-quality.json`](rulesets/code-quality.json)) carries
 the `CodeQL` context, applied to each repo by `apply-rulesets.sh`.
 
+**Merge protection:** the same ruleset carries a `code_scanning` rule (CodeQL,
+security alerts `medium_or_higher`, alerts `errors`), so an alert below `high`
+blocks the merge instead of passing the `CodeQL` check silently. Default setup
+(or the advanced workflow below) is what feeds it; see
+[github-settings.md § Code scanning merge protection](github-settings.md#code-scanning-merge-protection-all-repositories).
+
 **Escape hatch — when advanced setup is justified:** A repo MAY revert to
 an inline `codeql.yml` workflow only when it has a concrete need that
 default setup cannot serve: a custom query pack, path filters to exclude

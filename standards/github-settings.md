@@ -167,7 +167,9 @@ parameter** — naming the parameter, the expected value, and the actual value.
 It covers `required_approving_review_count`, `require_code_owner_review`,
 `required_review_thread_resolution`, `dismiss_stale_reviews_on_push`,
 `require_last_push_approval`, `allowed_merge_methods`, and (for `code-quality`)
-`required_status_checks`. Only codified parameters are compared, so API-only
+`required_status_checks`. The `code_scanning` rule is checked separately, as a
+floor, by `check_code_scanning_rule()` (see
+[Code scanning merge protection](#code-scanning-merge-protection-all-repositories)). Only codified parameters are compared, so API-only
 fields never produce noise. `required_status_checks` uses **subset** semantics —
 every codified context must be present, but repo-specific *additional* checks are
 allowed (see [`code-quality`](#code-quality--required-checks-ruleset-all-repositories)
@@ -368,6 +370,94 @@ ecosystems in each check.
 | **Enforce for admins** | Yes |
 
 See [CI Standards](ci-standards.md) for workflow templates and patterns.
+
+### Code scanning merge protection (All Repositories)
+
+**Every repository's default branch MUST be protected by a `code_scanning`
+ruleset rule** — GitHub's code scanning merge protection — at these values or
+stricter:
+
+| Parameter | Value |
+|-----------|-------|
+| `tool` | `CodeQL` |
+| `security_alerts_threshold` | `medium_or_higher` |
+| `alerts_threshold` | `errors` |
+
+It is codified as the second rule of
+[`standards/rulesets/code-quality.json`](rulesets/code-quality.json), beside the
+required status checks, so `apply-rulesets.sh` applies it with the rest of
+`code-quality`:
+
+```json
+{"type":"code_scanning","parameters":{"code_scanning_tools":[{"tool":"CodeQL","security_alerts_threshold":"medium_or_higher","alerts_threshold":"errors"}]}}
+```
+
+**Why.** The required `CodeQL` status check (above) says the analysis ran; on
+its own, GitHub's code scanning check fails only on `high` or `critical`
+security alerts. A pull request that introduces a `medium` security alert, or a
+CodeQL `error` that is not a security alert, therefore merges silently. The rule
+blocks the merge instead, while the alert is still on the pull request. The org
+gates at `medium_or_higher` rather than `all` so `low` security alerts and
+non-security warnings stay advisory.
+
+**A floor, not an exact match.** A stricter value — `security_alerts_threshold`
+`all`, `alerts_threshold` `errors_and_warnings` or `all` — is compliant. Nothing
+lowers it: the audit passes it, and `apply-rulesets.sh` keeps a stricter live
+threshold when it updates `code-quality` (`cs_floor_payload` in
+[`scripts/lib/code-scanning.sh`](../scripts/lib/code-scanning.sh)). The rule may
+also live in a ruleset of the repo's own: the audit reads every rule that
+applies to the branch, not `code-quality` alone. `combsmith/software-factory`
+does both — its own `main` ruleset gates at `security_alerts_threshold` `all`,
+a departure that repo records in its decision 0014.
+
+**What feeds it.** CodeQL default setup
+([ci-standards.md §2](ci-standards.md#2-codeql-analysis-github-managed-default-setup)),
+or, for a repo in `CODEQL_ADVANCED_EXCEPTIONS`, its inline `codeql.yml`. GitHub
+blocks the merge when CodeQL finds an alert at or above a threshold, when its
+analysis is still in progress, and **when CodeQL is not configured for the
+repository**.
+
+**A repo with no CodeQL-supported language.** Because an unconfigured tool
+blocks every pull request, the rule needs CodeQL to run. Every repo that carries
+the org's required workflows has `.github/workflows/*.yml`, which CodeQL
+analyzes as the `actions` language, so default setup always has a language to
+scan; every repo in the org reports at least `actions` today. There is no
+exemption list. A repo with nothing CodeQL can analyze is already short of the
+required workflows and of the `CodeQL` required check, which has the same
+precondition: give it the required workflows and enable default setup before
+`code-quality` is applied to it. Until then the audit reports
+`codeql-default-setup-not-configured` and `code-scanning-rule-missing` on it.
+
+**Limits (from GitHub's documentation).**
+
+- Merge protection does **not** apply to **merge queue groups**. In a repo with
+  a merge queue the rule is evaluated on the pull request; the queue's
+  `merge_group` run is gated only by required status checks — for CodeQL, the
+  `CodeQL` check of the advanced `codeql.yml` that such a repo runs (§2). Whether
+  GitHub evaluates the rule when a pull request joins the queue, rather than
+  only on a direct merge, has not been verified by a trial here.
+- It does not apply to **Dependabot pull requests analyzed by default setup**.
+- It is not a status check: it never appears among a pull request's checks.
+
+**Compliance check.** `check_code_scanning_rule()` in
+[`scripts/compliance-audit.sh`](../scripts/compliance-audit.sh) reads
+`GET repos/{owner}/{repo}/rules/branches/{default_branch}` and compares the
+strictest CodeQL entry there with the floor in `code-quality.json`. Findings, all
+in the `rulesets` category (routed to `dev-lead:hands-off`, like every ruleset
+finding):
+
+| Check | When |
+|-------|------|
+| `code-scanning-rule-missing` | No `code_scanning` rule for CodeQL applies to the default branch |
+| `code-scanning-rule-weak-security_alerts_threshold` | The strictest value is weaker than `medium_or_higher` (e.g. `high_or_higher`) |
+| `code-scanning-rule-weak-alerts_threshold` | The strictest value is weaker than `errors` (`none`) |
+| `code-scanning-rule-unreadable` | The branch rules could not be read (fail closed; the repo is marked inconclusive) |
+| `code-scanning-rule-source-invalid` | `code-quality.json` carries no `code_scanning` rule (fail closed) |
+
+**Remediation.** `GH_TOKEN=<admin> bash scripts/apply-rulesets.sh --repo combsmith/<repo> code-quality`,
+or the weekly `apply-repo-settings` self-heal on repos that carry its stub. A
+repo that sets its own rulesets adds the rule to one of them at the floor or
+stricter.
 
 ---
 
