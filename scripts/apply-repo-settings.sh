@@ -181,6 +181,7 @@ apply_settings() {
     allow_rebase_merge: .allow_rebase_merge,
     has_discussions: .has_discussions,
     has_issues: .has_issues,
+    has_wiki: .has_wiki,
     squash_merge_commit_title: .squash_merge_commit_title,
     squash_merge_commit_message: .squash_merge_commit_message
   }' 2>/dev/null || echo "{}")
@@ -199,6 +200,7 @@ apply_settings() {
     [allow_rebase_merge]="true"
     [has_discussions]="true"
     [has_issues]="true"
+    [has_wiki]="false"
   )
 
   local needs_patch=false
