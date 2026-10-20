@@ -2057,22 +2057,23 @@ autofix:
 
 ## Applying CI to a New Repository
 
-1. **Determine tech stack** and select the matching workflow patterns above
-2. **Create `ci.yml`** with lint, format, typecheck, and test stages
-3. **Enable CodeQL default setup** via `apply-repo-settings.sh` (or `gh api -X PATCH repos/<org>/<repo>/code-scanning/default-setup -F state=configured`) — do **not** add a `codeql.yml` workflow file
-   (a repo that needs a merge queue is the exception: see [§2](#2-codeql-analysis-github-managed-default-setup))
-4. **Add `sonarcloud.yml`** and configure `sonar-project.properties`
-5. **Add `dev-lead.yml`** from [`standards/workflows/`](workflows/) for AI-driven PR automation
-6. **Add `dependabot.yml`** from the appropriate template in [`standards/dependabot/`](dependabot/)
-7. **Add `dependabot-automerge.yml`** from [`standards/workflows/`](workflows/)
-8. **Add `dependency-audit.yml`** from [`standards/workflows/`](workflows/)
-9. **Add `agent-shield.yml`** from [`standards/workflows/`](workflows/)
-10. **Add `copilot-setup-steps.yml`** from [`standards/workflows/`](workflows/) — uncomment the
-    stack block(s) that match the repo's tech stack, delete the rest, then merge to `main` and
-    run manually from the Actions tab to verify
-11. **Configure secrets** in the repository settings
-12. **Set required status checks** in branch protection (see [GitHub Settings](github-settings.md))
-13. **Pin all action references** to commit SHAs
+New repos are created from `combsmith/repo-template`, which already ships every standard
+workflow stub (`ci.yml`, `sonarcloud.yml`, `dev-lead.yml`, `dependabot-automerge.yml`,
+`dependency-audit.yml`, `agent-shield.yml`, `copilot-setup-steps.yml`, and the rest) plus a
+`BOOTSTRAP.md` runbook for the per-stack picks (Dependabot stack, `ci.yml` stages); the
+three-step path is in [AGENTS.md → Creating a new repository](../AGENTS.md#creating-a-new-repository).
+The manual checklist that used to live here is superseded by the template and
+`scripts/bootstrap-new-repo.sh`; ongoing updates to an existing repo still flow through the
+PR-based standards sync (`deploy-standard-workflows.sh`), not by re-templating.
+
+Still unique to this document:
+
+1. **CodeQL is GitHub default setup — never a `codeql.yml`.** `bootstrap-new-repo.sh` (via
+   `apply-repo-settings.sh`) enables it; do not add a workflow file. A repo that needs a
+   merge queue is the exception: see [§2](#2-codeql-analysis-github-managed-default-setup).
+2. **Verify check names before requiring them.** The `code-quality` ruleset requires checks
+   by name; after the first `ci.yml` run, confirm the job names match what the ruleset
+   requires (see [GitHub Settings](github-settings.md#applying-to-a-new-repository)).
 
 ---
 
