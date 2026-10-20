@@ -316,6 +316,12 @@ RULESETS_SRC_DIR="${RULESETS_SRC_DIR:-$SCRIPT_DIR/../standards/rulesets}"
 # shellcheck source=lib/codeql-advanced.sh
 . "$SCRIPT_DIR/lib/codeql-advanced.sh"
 
+# Code-scanning merge-protection floor — cs_floor_tools(), cs_floor_shortfall().
+# Shared with apply-rulesets.sh so the audit's "short of the floor" and the
+# applier's "keep the stricter live value" use one threshold ordering.
+# shellcheck source=lib/code-scanning.sh
+. "$SCRIPT_DIR/lib/code-scanning.sh"
+
 # AGENTS.md structural linter — the pure, data-driven driver (amdl_lint) and its
 # default rule-set path (AMDL_DEFAULT_RULES). Sourced, not exec'd: agents-md-lint.sh
 # guards its CLI behind a BASH_SOURCE check, so sourcing only defines functions.
@@ -860,6 +866,7 @@ check_rulesets() {
   check_ruleset_bypass_actors "$repo" "$default_branch" "$rulesets_json"
   check_legacy_rulesets "$repo" "$default_branch" "$rulesets_json"
   check_ruleset_contents "$repo" "$rulesets_json"
+  check_code_scanning_rule "$repo" "$default_branch"
 }
 
 # ---------------------------------------------------------------------------
@@ -1017,6 +1024,79 @@ _ruleset_contents_one() {
       "Ruleset \`$name\` parameter \`$param\` has drifted from the codified standard: expected \`$expected\`, actual \`$actual\`. The codified JSON (\`standards/rulesets/$name.json\`) is the source of truth (#575/#580); run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
       "$std_ref"
   done <<< "$drift"
+}
+
+# ---------------------------------------------------------------------------
+# Check: Code-scanning merge protection on the default branch
+# ---------------------------------------------------------------------------
+# The standard (github-settings.md § "Code scanning merge protection") requires
+# that the default branch be protected by a `code_scanning` rule at or above the
+# floor codified in standards/rulesets/code-quality.json: CodeQL,
+# security_alerts_threshold `medium_or_higher`, alerts_threshold `errors`.
+# GitHub's own default only blocks on `high_or_higher`, so without the rule a
+# medium-severity security alert merges silently.
+#
+# Design constraints:
+#   - It reads the rules that APPLY to the branch
+#     (GET repos/{o}/{r}/rules/branches/{branch}), across every active ruleset,
+#     not the `code-quality` ruleset alone. A repo that carries the rule in a
+#     ruleset of its own (a recorded departure) is compliant.
+#   - The floor is a minimum, never an exact match. A stricter threshold
+#     (`all`) passes; the remediation (apply-rulesets.sh) keeps it. Only a
+#     missing rule or a weaker threshold is a finding (cs_floor_shortfall).
+#   - Fail closed: an unreadable codified floor or branch-rules read is a
+#     finding, never a pass, and the repo is marked inconclusive so an open
+#     finding is not closed on a check that did not run.
+CODE_SCANNING_STANDARD_REF="standards/github-settings.md#code-scanning-merge-protection-all-repositories"
+
+# check_code_scanning_rule <repo> <default_branch>
+check_code_scanning_rule() {
+  local repo="$1" default_branch="$2"
+
+  local floor
+  floor=$(cs_floor_tools "$RULESETS_SRC_DIR/code-quality.json")
+  if [ -z "$floor" ]; then
+    add_finding "$repo" "rulesets" "code-scanning-rule-source-invalid" "error" \
+      "Cannot audit code-scanning merge protection: the codified source \`standards/rulesets/code-quality.json\` has no \`code_scanning\` rule to compare against (missing, unparseable or malformed). Fail closed." \
+      "$CODE_SCANNING_STANDARD_REF"
+    return 0
+  fi
+
+  # Not gh_api(): on failure it retries and concatenates error bodies, and a
+  # paginated array of pages must be flattened (jq -s 'add').
+  local rules="" api_ok=0
+  rules=$(gh api --paginate "repos/$ORG/$repo/rules/branches/$default_branch" 2>/dev/null | jq -cs 'add // []' 2>/dev/null) || api_ok=$?
+  if [ "$api_ok" -ne 0 ] || ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$rules"; then
+    add_finding "$repo" "rulesets" "code-scanning-rule-unreadable" "error" \
+      "Could not read the rules that apply to \`$default_branch\` (\`GET repos/$ORG/$repo/rules/branches/$default_branch\`), so code-scanning merge protection could not be checked. Treating as a finding, not a pass (fail closed)." \
+      "$CODE_SCANNING_STANDARD_REF"
+    mark_repo_inconclusive "$repo"
+    return 0
+  fi
+
+  local shortfall
+  if ! shortfall=$(cs_floor_shortfall "$floor" "$rules" 2>/dev/null); then
+    add_finding "$repo" "rulesets" "code-scanning-rule-uncomparable" "error" \
+      "Could not compare the code-scanning rules on \`$default_branch\` against \`standards/rulesets/code-quality.json\`. Fail closed." \
+      "$CODE_SCANNING_STANDARD_REF"
+    mark_repo_inconclusive "$repo"
+    return 0
+  fi
+
+  local remedy="Run \`scripts/apply-rulesets.sh --repo $ORG/$repo code-quality\` (it adds the rule to \`code-quality\` and never lowers a stricter threshold); a repo that sets its own rulesets adds it to one of them at this floor or stricter."
+  local tool field want have
+  while IFS=$'\t' read -r tool field want have || [ -n "$tool" ]; do
+    [ -z "$tool" ] && continue
+    if [ "$field" = "missing" ]; then
+      add_finding "$repo" "rulesets" "code-scanning-rule-missing" "error" \
+        "No \`code_scanning\` rule for \`$tool\` applies to \`$default_branch\`, so a pull request can merge with open code-scanning alerts (GitHub's default blocks only \`high_or_higher\` security alerts, and only where a rule asks it to). The standard requires \`$tool\` with \`security_alerts_threshold\` \`medium_or_higher\` or stricter and \`alerts_threshold\` \`errors\` or stricter. $remedy" \
+        "$CODE_SCANNING_STANDARD_REF"
+    else
+      add_finding "$repo" "rulesets" "code-scanning-rule-weak-$field" "error" \
+        "The \`code_scanning\` rule for \`$tool\` on \`$default_branch\` sets \`$field\` to \`$have\`, weaker than the standard's floor \`$want\`. A stricter value passes; a weaker one lets alerts merge. $remedy" \
+        "$CODE_SCANNING_STANDARD_REF"
+    fi
+  done <<< "$shortfall"
 }
 
 # ---------------------------------------------------------------------------

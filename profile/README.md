@@ -1,7 +1,7 @@
 # CombSmith
 
 A collection of open-source tools and experiments spanning terminal UX, market data, AI content tooling,
-beekeeping tech, and agent orchestration.
+beekeeping tech, personal finance, and agent orchestration.
 
 ---
 
@@ -9,14 +9,17 @@ beekeeping tech, and agent orchestration.
 
 | Repository | Description | Language |
 | --- | --- | --- |
-| [TalkTerm](https://github.com/combsmith/TalkTerm) | Terminal-based communication tool | HTML |
+| [TalkTerm](https://github.com/combsmith/TalkTerm) | Terminal-based communication tool | Shell |
 | [markets](https://github.com/combsmith/markets) | Market data and analysis tooling (dual-licensed AGPL / Commercial) | HTML |
 | [broodly](https://github.com/combsmith/broodly) | A test implementation of the BMAD method | HTML |
-| [broodminder-export](https://github.com/combsmith/broodminder-export) | Extract all of your data from the BroodMinder API into portable files — resumable, rate-limit-aware. | Python |
+| [broodminder-data](https://github.com/combsmith/broodminder-data) | Unified Python client, CLI, bulk export, periodic delta sync, OpenAPI 3.1 spec, and MCP server for BroodMinder beehive data | Python |
+| [empower-personal-dashboard](https://github.com/combsmith/empower-personal-dashboard) | Modern Python client and CLI for the Empower Personal Dashboard (formerly Personal Capital) API with 2FA, session persistence, balances, holdings, and transactions. | Python |
 | [ContentTwin](https://github.com/combsmith/ContentTwin) | AI-powered Social Media Agent for small organizations — enterprise-quality social presence at non-profit pricing | Shell |
 | [bmad-bgreat-suite](https://github.com/combsmith/bmad-bgreat-suite) | BMad Operations Suite — SRE and DevOps agents and workflows for the BMad Method ecosystem | Shell |
 | [google-app-scripts](https://github.com/combsmith/google-app-scripts) | A place to share Google AppScripts for personal productivity | JavaScript |
-| [incubator](https://github.com/combsmith/incubator) | Product incubator: pre-product idea Discussions, decision briefs/PRD-lite, and disposable POCs. Ideas graduate to their own product repo once a POC proves out. Front-of-funnel for the `.github-private` ideation pipeline. | Shell |
+| [incubator](https://github.com/combsmith/incubator) | Product incubator: pre-product idea Discussions, decision briefs/PRD-lite, and disposable POCs. Ideas graduate to their own product repo once a POC proves out. Front-of-funnel for the `.github-private` ideation pipeline. | Python |
+| [software-factory](https://github.com/combsmith/software-factory) | — | Python |
+| [software-factory-canary](https://github.com/combsmith/software-factory-canary) | Throwaway repo for the Factory's platform trials. Nothing here is depended on. | — |
 | [repo-template](https://github.com/combsmith/repo-template) | Org template repository: one-click scaffold for new combsmith repos. Files via 'Use this template'; non-file standards via bootstrap. | Shell |
 | [.github-private](https://github.com/combsmith/.github-private) | Org-wide Copilot custom agents, automated workflows, prompts, and scripts | Shell |
 | [.github](https://github.com/combsmith/.github) | Organization-wide GitHub configuration, CI templates, and engineering standards | Shell |
