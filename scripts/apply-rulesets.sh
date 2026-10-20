@@ -5,7 +5,9 @@ set -euo pipefail
 # CANONICAL org tooling (combsmith/.github#580 / #575). Reads the codified source
 # of truth in standards/rulesets/*.json (code-quality.json, pr-quality.json) and
 # creates/updates the named ruleset on the target repo(s). Re-running converges to the
-# file's desired state (a no-op when already in sync).
+# file's desired state (a no-op when already in sync). One exception: code-quality's
+# code_scanning thresholds are a floor, so an update keeps a stricter live threshold
+# instead of lowering it (scripts/lib/code-scanning.sh).
 #
 # This REPLACES the retired detection-based builder, which dynamically probed each
 # repo's workflow files and *generated* the ruleset in-code. That approach DIVERGED
@@ -55,6 +57,11 @@ DRY_RUN="${DRY_RUN:-false}"
 # wide — it is applied only when named explicitly (e.g. `--repo <meta> release-channel-tags`).
 readonly FLEET_RULESETS=(code-quality pr-quality)
 
+# The code-scanning threshold floor (cs_floor_payload): code-quality.json's
+# code_scanning rule is a minimum, so an update keeps any stricter live threshold.
+# shellcheck source=lib/code-scanning.sh
+. "${SCRIPT_DIR}/lib/code-scanning.sh"
+
 # ruleset_id_by_name <repo> <name> — echo the id of an existing ruleset, or empty.
 ruleset_id_by_name() {
   local repo="$1" name="$2"
@@ -81,11 +88,35 @@ apply_one() {
 
   if [ -n "$id" ]; then
     echo "  update ruleset '${name}' (id ${id}) on ${repo}"
-    if [ "$DRY_RUN" = "true" ]; then echo "    [dry-run] PUT repos/${repo}/rulesets/${id}"; return 0; fi
-    gh api --method PUT "repos/${repo}/rulesets/${id}" --input "$file" >/dev/null || {
+    # A full-replace PUT of the file would lower a stricter live code_scanning
+    # threshold (e.g. security_alerts_threshold `all` → `medium_or_higher`). Read
+    # the live ruleset and keep the stricter value; if it cannot be read, do not
+    # PUT at all rather than risk lowering it.
+    local live payload
+    live="$(gh api "repos/${repo}/rulesets/${id}" 2>/dev/null)" && jq -e 'type == "object"' >/dev/null 2>&1 <<< "$live" || {
+      echo "::error::failed to read ruleset '${name}' (id ${id}) on ${repo}; not updating it, so no stricter setting is lowered" >&2
+      return 1
+    }
+    payload="$(mktemp)"
+    cs_floor_payload "$file" "$live" > "$payload" || {
+      rm -f "$payload"
+      echo "::error::failed to build the payload for ruleset '${name}' on ${repo}" >&2
+      return 1
+    }
+    if [ "$DRY_RUN" = "true" ]; then
+      echo "    [dry-run] PUT repos/${repo}/rulesets/${id}"
+      if ! cmp -s <(jq -cS . "$file") <(jq -cS . "$payload"); then
+        echo "    [dry-run] keeps the live, stricter code_scanning thresholds: $(jq -c '[.rules[] | select(.type == "code_scanning") | .parameters.code_scanning_tools[]]' "$payload")"
+      fi
+      rm -f "$payload"
+      return 0
+    fi
+    gh api --method PUT "repos/${repo}/rulesets/${id}" --input "$payload" >/dev/null || {
+      rm -f "$payload"
       echo "::error::failed to update ruleset '${name}' on ${repo}" >&2
       return 1
     }
+    rm -f "$payload"
   else
     echo "  create ruleset '${name}' on ${repo}"
     if [ "$DRY_RUN" = "true" ]; then echo "    [dry-run] POST repos/${repo}/rulesets"; return 0; fi
