@@ -684,6 +684,7 @@ EOF
   run main ghost
   [ "$status" -ne 0 ]
   [[ "$output" == *"Could not fetch settings for combsmith/ghost"* ]]
+  [[ "$output" == *"failed steps for ghost: fetch"* ]]
   [[ "$output" != *"Applying standard settings"* ]]
 }
 

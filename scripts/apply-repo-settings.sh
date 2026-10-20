@@ -430,7 +430,7 @@ FAILED_STEPS=()
 fetch_repo_json() {
   local json
   json=$(gh api "repos/$ORG/$1" 2>/dev/null) || return 1
-  [ -n "$json" ] && [ "$json" != "{}" ] || return 1
+  [[ -n "$json" && "$json" != "{}" ]] || return 1
   printf '%s\n' "$json"
 }
 
@@ -503,6 +503,7 @@ if [ "$1" = "--all" ]; then
   ok "All repos processed successfully"
 else
   if ! repo_json=$(fetch_repo_json "$1"); then
+    echo "::error::apply-repo-settings: failed steps for $1: fetch"
     err "Could not fetch settings for $ORG/$1 — check token permissions and repo name"
     exit 1
   fi
