@@ -2,6 +2,8 @@
 
 _Epic #964 · Phase 3 (#970). Validation recorded 2026-06-28._
 
+> **Discoverable summary of this path:** [AGENTS.md → Creating a new repository](../../AGENTS.md#creating-a-new-repository).
+
 This is the recorded, end-to-end validation that the documented onboarding path —
 **"Use this template" → `scripts/bootstrap-new-repo.sh` → ring confirmation** —
 produces a fully org-compliant repo, exercised under `DRY_RUN` with no drift.
@@ -103,7 +105,8 @@ caller stub — and asserts no drift before writing:
 The two onboarding checklists live in **`combsmith/.github`**, not in this
 repo, so they are landed via the standards cross-repo PR pattern
 (`STANDARDS_REPO=combsmith/.github`, as `aw-standards-sync.sh` does), not on
-this branch. The cutover content to apply:
+this branch. The cutover content to apply (landed: both sections now point to
+[AGENTS.md → Creating a new repository](../../AGENTS.md#creating-a-new-repository)):
 
 - **`standards/github-settings.md` — "Applying to a New Repository":** lead with
   **"Use this template" + `scripts/bootstrap-new-repo.sh`** as the primary,
