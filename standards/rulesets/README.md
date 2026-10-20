@@ -21,7 +21,7 @@ these rulesets are enforced.
 | File | Ruleset | Target | Enforces |
 |------|---------|--------|----------|
 | [`pr-quality.json`](pr-quality.json) | `pr-quality` | `~DEFAULT_BRANCH` | 1 approval, code-owner review, thread resolution, dismiss-stale, squash-only merge |
-| [`code-quality.json`](code-quality.json) | `code-quality` | `~DEFAULT_BRANCH` | Required status checks (SonarCloud, CodeQL, agent-shield, dependency-audit) |
+| [`code-quality.json`](code-quality.json) | `code-quality` | `~DEFAULT_BRANCH` | Required status checks (SonarCloud, CodeQL, agent-shield, dependency-audit), and code scanning merge protection: CodeQL, security alerts `medium_or_higher`, alerts `errors` — a floor the applier never lowers ([standard](../github-settings.md#code-scanning-merge-protection-all-repositories)) |
 | [`release-channel-tags.json`](release-channel-tags.json) | `release-channel-tags` | `refs/tags/**` | Blocks unauthorized **update/deletion** of any tag (protects moving channel pointers + version tags); creation stays free |
 | [`duplicate-decl-gate.json`](duplicate-decl-gate.json) | `duplicate-decl-gate` | `~DEFAULT_BRANCH` | Required status check `duplicate-decl-gate` — the #1485 corruption-class merge backstop. **Targeted** to the reusable-hosting meta-repos only (see below) |
 
