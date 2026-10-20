@@ -516,13 +516,18 @@ drop old column in a separate, human-approved change. Never combine add and drop
 
 ## BMAD Method — Spec-Driven Development
 
-All project repositories MUST install and use the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) to enforce **Spec-Driven Development (SDD)**.
+Product repositories use the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) to enforce **Spec-Driven Development (SDD)**.
 BMAD provides structured agents, workflows, and planning artifacts that ensure every feature is fully specified before implementation begins.
 
 ### Setup
 
-- Install BMAD in every new repo: `npx bmad-method install`
-- Keep BMAD up to date: `npx bmad-method install` (re-run periodically)
+- **BMAD is vendored, never installed.** When a project needs BMAD (or any other agent framework), it is added as a
+  `git subtree` from the `frameworks/` tree in `combsmith/.github-private` (or from `software-factory`) — the same copy
+  the whole org runs. Do not run `npx bmad-method install` in any repo.
+- **Keep it current by refreshing the subtree** (`git subtree pull` against the vendoring remote), not by re-running an
+  installer. Edits land upstream in the vendoring repo, never in the per-repo copy.
+- **Agents never prompt a maintainer about BMAD.** Bootstrapping and onboarding agents do not ask whether to install,
+  enable or configure it; a repo that needs it gets the subtree added by a maintainer, on demand.
 
 ### Required Workflow
 
