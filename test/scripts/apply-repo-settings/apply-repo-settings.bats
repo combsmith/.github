@@ -439,7 +439,7 @@ _stub_apply_steps() {
   gh() { [[ "$*" == *PATCH*"repos/$ORG/acme"* ]] && return 1; printf '{}'; }
   # repo_json is compliant except has_issues=false, so exactly one PATCH is attempted.
   run apply_settings acme \
-    '{"allow_auto_merge":true,"delete_branch_on_merge":true,"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,"has_discussions":true,"has_issues":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}'
+    '{"allow_auto_merge":true,"delete_branch_on_merge":true,"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,"has_discussions":true,"has_issues":false,"has_wiki":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}'
   [ "$status" -eq 1 ]
 }
 
