@@ -40,12 +40,20 @@ GIB_END_MARKER='# <<< END combsmith secrets baseline <<<'
 gib_extract_baseline_block() {
   local file="${1:-}"
   [ -n "$file" ] && [ -f "$file" ] || { echo "gib: canonical gitignore not found: ${file:-<none>}" >&2; return 2; }
+  # The two -v values are single-line constants (no newline, no backslash), so
+  # they are safe under every awk — see _gib_neutralize_l2 for why that matters.
+  local rc=0
   tr -d '\r' < "$file" | awk -v b="$GIB_BEGIN_MARKER" -v e="$GIB_END_MARKER" '
     $0 == b { inb = 1 }
     inb     { print }
     $0 == e && inb { found = 1; exit }
     END     { exit(found ? 0 : 1) }
-  ' || { echo "gib: no complete BEGIN..END baseline block in $file" >&2; return 1; }
+  ' || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    1) echo "gib: no complete BEGIN..END baseline block in $file" >&2; return 1 ;;
+    *) echo "gib: awk failed (exit $rc) while extracting the baseline block from $file" >&2; return "$rc" ;;
+  esac
 }
 
 # _gib_has_markers — read stdin; succeed iff BOTH markers are present as whole lines.
@@ -88,16 +96,29 @@ _gib_has_markers() {
 # are themselves block negation patterns, so a second pass strips them before
 # pass 2 recomputes them identically. An already-current file stays byte-for-byte
 # identical on re-run — and, with the conditional tail, on the FIRST application.
+#
+# Portability (combsmith/worldchest#1): the block is handed to awk through a temp
+# file read with getline — NEVER as `awk -v block="$block"`. BSD awk (the stock
+# /usr/bin/awk on macOS) rejects a -v value that contains a newline ("awk: newline
+# in string") and exits 2, and every awk re-processes backslash escapes in -v
+# values. Under the old form that failure was swallowed by $(...): the body came
+# back EMPTY, the caller printed block + nothing, and the target's whole L2 was
+# deleted while the PR body claimed it was preserved. awk's exit status is now
+# checked and any failure is fatal — this function never returns an empty body
+# on error.
 _gib_neutralize_l2() {
   local block="$1"
   block="$(tr -d '\r' <<< "$block")"
 
-  local body
-  body="$(tr -d '\r' | awk -v block="$block" '
+  local blockfile
+  blockfile="$(mktemp -t gitignore-baseline.XXXXXX)" \
+    || { echo "gib: mktemp failed in _gib_neutralize_l2" >&2; return 1; }
+  printf '%s\n' "$block" > "$blockfile"
+
+  local body rc=0
+  body="$(tr -d '\r' | awk -v bf="$blockfile" '
     BEGIN {
-      n = split(block, barr, "\n")
-      for (i = 1; i <= n; i++) {
-        bl = barr[i]
+      while ((r = (getline bl < bf)) > 0) {
         sub(/[ \t]+$/, "", bl)
         if (bl ~ /^[ \t]*$/) continue                 # skip blank block lines
         if (bl ~ /^[ \t]*#/) {                         # block comment line
@@ -106,6 +127,8 @@ _gib_neutralize_l2() {
         }
         drop[bl] = 1
       }
+      close(bf)
+      if (r < 0) exit 2                               # unreadable block file: fatal, never "no drops"
       prev_blank = 1   # squeeze any blank lines that would lead the output
     }
     {
@@ -119,7 +142,12 @@ _gib_neutralize_l2() {
       print line
       prev_blank = is_blank
     }
-  ')"
+  ')" || rc=$?
+  rm -f "$blockfile"
+  if [ "$rc" -ne 0 ]; then
+    echo "gib: awk failed (exit $rc) while neutralizing L2; refusing to emit a .gitignore with L2 dropped" >&2
+    return 1
+  fi
 
   local tail
   tail="$(_gib_negation_tail "$block" "$body")"
@@ -239,7 +267,7 @@ upsert_gitignore_baseline() {
   # any L2 line that duplicates/fights the block (see _gib_neutralize_l2).
   if [ "$has_begin" -eq 0 ]; then
     local l2
-    l2="$(_gib_neutralize_l2 "$block" <<< "$existing")"
+    l2="$(_gib_neutralize_l2 "$block" <<< "$existing")" || return 1
     printf '%s\n' "$block"
     [ -n "$l2" ] && printf '%s\n' "$l2"
     return 0
@@ -248,10 +276,14 @@ upsert_gitignore_baseline() {
   # Replace in place: keep anything above BEGIN (standard forbids it, but don't
   # drop bytes) and the full L2 below END; swap only the block itself.
   # Strip CRLF so exact-match works on files with Windows line endings.
+  # Every step is status-checked: an awk that dies must fail the upsert, never
+  # degrade it into "block only" output (the worldchest#1 failure mode).
   local pre post
-  pre="$(tr -d '\r' <<< "$existing" | awk -v b="$GIB_BEGIN_MARKER" '$0 == b { exit } { print }')"
-  post="$(tr -d '\r' <<< "$existing" | awk -v e="$GIB_END_MARKER" 'seen { print } $0 == e { seen = 1 }')"
-  post="$(_gib_neutralize_l2 "$block" <<< "$post")"
+  pre="$(tr -d '\r' <<< "$existing" | awk -v b="$GIB_BEGIN_MARKER" '$0 == b { exit } { print }')" \
+    || { echo "gib: awk failed while splitting content above BEGIN" >&2; return 1; }
+  post="$(tr -d '\r' <<< "$existing" | awk -v e="$GIB_END_MARKER" 'seen { print } $0 == e { seen = 1 }')" \
+    || { echo "gib: awk failed while splitting L2 below END" >&2; return 1; }
+  post="$(_gib_neutralize_l2 "$block" <<< "$post")" || return 1
 
   [ -n "$pre" ] && printf '%s\n' "$pre"
   printf '%s\n' "$block"
