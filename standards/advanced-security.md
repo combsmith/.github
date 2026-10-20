@@ -219,6 +219,10 @@ The weekly audit MUST confirm, for every repo:
    gh api repos/combsmith/<repo>/code-scanning/default-setup -q '.state'
    ```
 
+5. The default branch carries a `code_scanning` rule for CodeQL at security
+   alerts `medium_or_higher` and alerts `errors`, or stricter
+   ([github-settings.md § Code scanning merge protection](github-settings.md#code-scanning-merge-protection-all-repositories)).
+
 A periodic **push-protection live-fire test** (verification step 4) SHOULD be
 run after any change to the org configuration, using a push-protection-eligible
 canary, to catch enforcement regressions that the settings flags alone cannot
