@@ -389,6 +389,44 @@ step_codeowners() {
   fi
 }
 
+# _gitignore_l2_lines <content> — print the non-blank per-repo L2 lines of a
+# .gitignore: everything below the END marker when the markers are present, the
+# whole file when they are not (upsert turns a marker-less file into L2).
+_gitignore_l2_lines() {
+  local content="$1"
+  if printf '%s\n' "$content" | grep -qxF -- "$GIB_END_MARKER"; then
+    printf '%s\n' "$content" | tr -d '\r' | awk -v e="$GIB_END_MARKER" 'seen && !/^[ \t]*$/ { print } $0 == e { seen = 1 }'
+  else
+    printf '%s\n' "$content" | tr -d '\r' | awk '!/^[ \t]*$/ { print }'
+  fi
+}
+
+# _gitignore_l2_lost <existing> <upserted> <block> — print every non-blank L2 line
+# of <existing> that is absent from <upserted>'s L2 and is not itself a line of the
+# L1 <block>. The lib may legitimately fold away L2 lines that duplicate the block
+# (a stale unmarkered baseline, a bare re-hider); anything else that disappears is
+# per-repo content the bootstrap has no business deleting. Empty output = no loss.
+#
+# Why this exists (combsmith/worldchest#1): under BSD awk the lib's L2 pass used to
+# fail silently and return an empty L2, so the bootstrap opened a PR that deleted
+# the template's whole L2 section while its body said L2 was preserved. The lib is
+# fixed; this is the belt-and-braces check that a future regression of the same
+# shape aborts the step instead of shipping a destructive PR.
+_gitignore_l2_lost() {
+  local existing="$1" upserted="$2" block="$3"
+  local before after line key
+  before="$(_gitignore_l2_lines "$existing")"
+  after="$(_gitignore_l2_lines "$upserted")"
+  [ -n "$before" ] || return 0
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    printf '%s\n' "$after" | grep -qxF -- "$line" && continue
+    key="${line%"${line##*[![:space:]]}"}"   # rstrip trailing whitespace, as the lib does
+    printf '%s\n' "$block" | grep -qxF -- "$key" && continue
+    printf '%s\n' "$line"
+  done <<< "$before"
+}
+
 # step_gitignore <repo> — seed/refresh the org secrets baseline (L1) in the repo's
 # .gitignore so a new repo auto-onboards to the .gitignore standard (#798). Uses the
 # shared upsert_gitignore_baseline(): inserts the marker-wrapped block on a fresh
@@ -436,6 +474,16 @@ step_gitignore() {
   }
   rm -f "${tmpfiles[@]}"
   trap - EXIT
+
+  # Defensive guard: never open a PR that drops per-repo L2 content. See
+  # _gitignore_l2_lost for why (worldchest#1).
+  local lost
+  lost="$(_gitignore_l2_lost "$existing" "$upserted" "$block")"
+  if [ -n "$lost" ]; then
+    echo "::error::gitignore upsert for ${repo} would drop $(printf '%s\n' "$lost" | grep -c '') per-repo L2 line(s) that are not part of the baseline block — refusing to open a PR (first: $(printf '%s\n' "$lost" | head -1))" >&2
+    printf '%s\n' "$lost" | sed 's/^/    would drop: /' >&2
+    return 1
+  fi
 
   current="$(printf '%s' "$existing")"
   if [ "$current" = "$upserted" ]; then
