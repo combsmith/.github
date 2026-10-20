@@ -154,10 +154,12 @@ pin, without that ID ever becoming the hard-coded default.
 
 ## BMAD Method Workflows
 
-Repositories with BMAD Method installed (presence of `_bmad/`, `_bmad-output/`,
-or equivalent BMAD planning artifacts) MUST include the **Feature Ideation**
-workflow, which runs the BMAD Analyst (Mary) on a weekly schedule to research
-the market and produce evidence-grounded feature proposals as GitHub Discussions.
+Repositories with the BMAD Method vendored in — a `git subtree` from
+`combsmith/.github-private` or `software-factory`, never `npx bmad-method install`
+(see [AGENTS.md § BMAD Method](../AGENTS.md#bmad-method--spec-driven-development)) —
+detected by the presence of `_bmad/`, `_bmad-output/`, or equivalent BMAD
+planning artifacts, MUST include the **Feature Ideation** workflow, which runs
+the BMAD Analyst (Mary) on a weekly schedule to research the market and produce evidence-grounded feature proposals as GitHub Discussions.
 
 See [CI Standards §8 — Feature Ideation](ci-standards.md#8-feature-ideation-feature-ideationyml--bmad-method-repos)
 for the full standard, including the multi-skill ideation pipeline and the
