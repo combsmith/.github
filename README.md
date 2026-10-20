@@ -52,11 +52,12 @@ The `standards/` directory contains the authoritative policy documents for this 
 | [`agent-standards`](standards/agent-standards.md) | Copilot and agentic workflow standards | Required files, agent configuration security, AgentShield CI workflow, Decision-Making Reusables, BMAD Method Workflows |
 | [`ci-standards`](standards/ci-standards.md) | CI pipeline conventions and enforcement | Staged promotion through concentric rings, reusable workflow versioning (`stable` channel), action pinning policy, permissions policy, required workflows |
 | [`codeowners-standard`](standards/codeowners-standard.md) | CODEOWNERS file policy | Rule, team composition, required setup for new bots, branch protection |
+| [`commercial-support-standard`](standards/commercial-support-standard.md) | Commercial support offering policy | Purpose & scope, canonical README section, standard commercial offerings & rate card, repository adoption guidelines |
 | [`copilot-instructions-standard`](standards/copilot-instructions-standard.md) | Copilot instructions file conventions | Canonical instruction files, adding a new language, content quality rules, compliance |
 | [`dependabot-policy`](standards/dependabot-policy.md) | Dependabot configuration and auto-merge rules | Policy, configuration files, auto-merge workflow, CODEOWNERS approval timing, vulnerability audit CI check |
 | [`feature-ideation-sources`](standards/feature-ideation-sources.md) | Sources and process for feature ideation | AI/ML vendor & lab sources, developer tooling changelogs, security & compliance, newsletters, podcasts |
 | [`github-settings`](standards/github-settings.md) | Repository settings policy | Repository rulesets, organization-level secrets, GitHub Apps & integrations, labels — standard set, compliance audit process |
-| [`gitignore-standard`](standards/gitignore-standard.md) | gitignore policy and org-managed baseline (covering secrets, agent worktrees, and CI artifacts) | Two-Layer Model, L1 baseline (verbatim, required), managed-block markers, negation discipline, compliance check |
+| [`gitignore-standard`](standards/gitignore-standard.md) | gitignore policy and org-managed secrets baseline | Two-Layer Model, L1 baseline (verbatim, required), managed-block markers, negation discipline, compliance check |
 | [`initiatives-project`](standards/initiatives-project.md) | GitHub Projects board conventions | What belongs on the board, fields, Theme → Initiative, how the auto-add works, views |
 | [`persona-standards`](standards/persona-standards.md) | Agent and persona definition standards | The trigger matrix, canary onboarding, trust & permissions, definition layers, Definition of Done |
 | [`pr-limits`](standards/pr-limits.md) | Pull request size and scope limits | What is limited, exempt actors, reconciliation with Dependabot cap, operator runbook |
@@ -77,5 +78,5 @@ Scheduled workflows in this repo post audit reports and status digests as issues
 
 ## Related
 
-The companion repository [`combsmith/.github-private`](https://github.com/combsmith/.github-private) holds private automation:
+The companion repository [`combsmith/.github-private`](https://github.com/combsmith/.github-private) holds org automation:
 Copilot custom agents, agentic workflow scripts, installed frameworks, and scheduled CI.
