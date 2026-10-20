@@ -90,7 +90,8 @@ bootstrap PR in step 3 is opened.
    bash scripts/bootstrap-new-repo.sh combsmith/<name>
    ```
 
-   The real run needs `GH_TOKEN` set to a **classic PAT with `repo` + `admin:org`**. It
+   Both commands need `GH_TOKEN` set (the dry run still reads the repo's current state).
+   The real run needs a **classic PAT with `repo` + `admin:org`**. It
    applies repo settings, GHAS + secret-scanning push protection, the `pr-quality` and
    `code-quality` rulesets (bypass actors + required checks), the standard label set,
    CODEOWNERS verification, and the release-ring record. Then, by hand:

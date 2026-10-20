@@ -581,8 +581,9 @@ on every owner line so the team can always satisfy `require_code_owner_review`.
 ## Applying to a New Repository
 
 New repos are created from `combsmith/repo-template` and brought to compliance by
-`scripts/bootstrap-new-repo.sh`, which applies every setting, ruleset, label, and
-CODEOWNERS check this document describes; the three-step path is in
+`scripts/bootstrap-new-repo.sh`, which applies the repository-level settings, rulesets,
+labels, and CODEOWNERS checks this document describes (integration checks and the
+selected-visibility secret grant remain manual); the three-step path is in
 [AGENTS.md → Creating a new repository](../AGENTS.md#creating-a-new-repository).
 The manual checklist that used to live here is superseded by that script and the
 template's `BOOTSTRAP.md`.

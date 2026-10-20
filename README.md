@@ -23,6 +23,24 @@ Organization-wide GitHub configuration and workflows for the `combsmith` org.
 Full steps: [AGENTS.md → Creating a new repository](AGENTS.md#creating-a-new-repository).
 Recorded validation: [`docs/bootstrap/new-repo-validation.md`](docs/bootstrap/new-repo-validation.md).
 
+## Local Development Commands
+
+This repo has no build step. Run the checks CI runs:
+
+```bash
+shellcheck scripts/*.sh                                   # lint shell scripts
+DRY_RUN=true bash scripts/bootstrap-new-repo.sh combsmith/<name>   # preview a repo bootstrap
+```
+
+See [AGENTS.md](AGENTS.md) for the full list of CI checks and standards.
+
+## Required Environment Variables
+
+| Variable | Used by | Notes |
+|----------|---------|-------|
+| `GH_TOKEN` | `scripts/bootstrap-new-repo.sh`, `scripts/apply-repo-settings.sh` | Required for dry runs and real runs; the real run needs a classic PAT with `repo` + `admin:org` |
+| `DRY_RUN` | `scripts/bootstrap-new-repo.sh` | Set to `true` for a no-write preview |
+
 ## Engineering Standards
 
 The `standards/` directory contains the authoritative policy documents for this org.
