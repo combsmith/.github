@@ -71,6 +71,50 @@ reappears.
 > Treat `.github` as the intended canonical home; do not extend the `.github-private`
 > copies.
 
+## Creating a new repository
+
+Three steps, in this order. **A fresh repo has no rulesets until step 2 runs**, so its
+first PRs can merge with no review and no required checks — finish step 2 before the
+bootstrap PR in step 3 is opened.
+
+1. **Create the repo from the template.** On
+   [`combsmith/repo-template`](https://github.com/combsmith/repo-template) choose
+   **Use this template**. This seeds day-0 only: the thin-caller workflow stubs, the
+   baseline files (CODEOWNERS, AGENTS.md/CLAUDE.md pointers, LICENSE, SECURITY.md,
+   `.gitignore`), and `BOOTSTRAP.md`.
+2. **Org admin: run the bootstrap, then the two manual grants.** In a checkout of this
+   repo, preview and then apply:
+
+   ```bash
+   DRY_RUN=true bash scripts/bootstrap-new-repo.sh combsmith/<name>
+   bash scripts/bootstrap-new-repo.sh combsmith/<name>
+   ```
+
+   Both commands need `GH_TOKEN` set (the dry run still reads the repo's current state).
+   The real run needs a **classic PAT with `repo` + `admin:org`**. It
+   applies repo settings, GHAS + secret-scanning push protection, the `pr-quality` and
+   `code-quality` rulesets (bypass actors + required checks), the standard label set,
+   CODEOWNERS verification, and the release-ring record. Then, by hand:
+   - Grant the new repo access to the **selected-visibility** org secrets
+     `INITIATIVES_APP_ID` and `INITIATIVES_APP_PRIVATE_KEY`, and confirm the
+     `combsmith-planner` GitHub App installation includes the repo. Until both are done,
+     every `add-to-project` run fails (`The 'client-id' … must be set to a non-empty string`).
+   - Enable Discussions and create the **Ideas** and **General** categories
+     (Settings → Discussions; categories have no REST API).
+3. **Hand the repo to an agent to execute `BOOTSTRAP.md`**, with the prompt from the
+   template's README:
+
+   > Follow `BOOTSTRAP.md` to bootstrap this repo. Stack: `<frontend | backend-go |
+   > backend-python | backend-rust | fullstack | infra-terraform | none>`.
+   > Description: `<one sentence>`. Project context: `<3–5 sentences>`.
+
+[`docs/bootstrap/new-repo-validation.md`](https://github.com/combsmith/.github/blob/main/docs/bootstrap/new-repo-validation.md)
+is the recorded end-to-end validation of this path;
+[`combsmith/repo-template` → `BOOTSTRAP.md`](https://github.com/combsmith/repo-template/blob/main/BOOTSTRAP.md)
+is the per-repo runbook step 3 executes. Ongoing standards updates to an existing repo
+flow through the PR-based standards sync (`deploy-standard-workflows.sh`), not by
+re-templating.
+
 ---
 
 ## Project Context
