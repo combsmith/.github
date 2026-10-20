@@ -1,0 +1,64 @@
+# Quality gate for the weekly OpenSSF Scorecard review's decision helpers: the
+# pure lib sourced by org-scorecard.yml and its validating bats tests.
+#
+# Triggered on any PR that touches:
+#   - scripts/lib/scorecard-triage.sh
+#   - .github/workflows/org-scorecard.yml
+#   - test/scripts/scorecard/**
+#   - .github/workflows/scorecard-tests.yml
+#
+# Gate: bats validates that the Pinned-Dependencies first-party exemption (#709)
+# fires only for Actions-only findings and stays off for non-Actions gaps, for
+# unexpected wording and — the regression that motivated this suite — for a
+# null/missing `.details` array (scorecard run without --show-details); and that
+# issue titles are built from a stable prefix and detected as stale when the
+# score moves. ShellCheck of the lib is covered by the scripts/**/*.sh job in
+# ci.yml. Standard: standards/ci-standards.md → "OpenSSF Scorecard".
+# Modeled on .github/workflows/cron-timing-tests.yml.
+
+name: Scorecard Tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/lib/scorecard-triage.sh'
+      - '.github/workflows/org-scorecard.yml'
+      - 'test/scripts/scorecard/**'
+      - '.github/workflows/scorecard-tests.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/lib/scorecard-triage.sh'
+      - '.github/workflows/org-scorecard.yml'
+      - 'test/scripts/scorecard/**'
+      - '.github/workflows/scorecard-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scorecard-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Validate scorecard triage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          # Read-only test job — never pushes; don't leave the token in git config.
+          persist-credentials: false
+
+      - name: Install bats
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bats
+
+      - name: Run bats suite
+        run: bats --print-output-on-failure test/scripts/scorecard/
