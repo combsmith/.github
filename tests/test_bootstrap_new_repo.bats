@@ -340,3 +340,89 @@ _ring_sot_copy() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"FAIL"* ]]
 }
+
+# ── worldchest#1: never open a PR that drops per-repo L2 ─────────────────────
+# On macOS the lib's L2 pass used to die under BSD awk and return an EMPTY L2, so
+# the bootstrap opened combsmith/worldchest#1 — a PR deleting the template's whole
+# L2 section while its body said L2 was preserved. The lib is fixed (see
+# test/scripts/lib/gitignore-baseline.bats); these pin the bootstrap-side guard:
+# if the upserted content lost any L2 line that is not part of the block, the step
+# aborts with ::error and makes NO write call.
+
+# _stub_gh_with_gitignore <file> — a gh stub whose contents/.gitignore read returns
+# <file> base64-encoded (the real step pipes the stub's output straight into
+# base64 -d, so the stub must print the raw encoded string) and which logs every
+# write (branch create, file PUT, pr create) to $CALLS.
+_stub_gh_with_gitignore() {
+  local file="$1" b64
+  b64="$(base64 < "$file" | tr -d '\n')"
+  cat > "$STUB_BIN/gh" <<EOF
+#!/usr/bin/env bash
+args="\$*"
+case "\$args" in
+  *"contents/.gitignore"*"--jq"*) echo "$b64" ;;
+  *"--method POST"*|*"--method PUT"*|*"PATCH"*|*"pr create"*)
+    echo "\$args" >> "$CALLS"
+    echo '{"full_name":"stub/repo"}'
+    ;;
+  *) echo '{"full_name":"stub/repo"}' ;;
+esac
+EOF
+  chmod +x "$STUB_BIN/gh"
+}
+
+# _markered_gitignore <path> — the real canonical block + a template-style L2.
+_markered_gitignore() {
+  bash -c 'source "$1"; gib_extract_baseline_block "$2"' _ \
+    "$SCRIPT_DIR/scripts/lib/gitignore-baseline.sh" "$SCRIPT_DIR/.gitignore" > "$1"
+  printf '#\n# L2 — per-repo\n\n# OS / editor\n.DS_Store\n\n# Dependencies / build output\nnode_modules/\ndist/\n\n# Logs\n*.log\n' >> "$1"
+}
+
+@test "gitignore guard: an upsert that drops L2 aborts with ::error and opens no PR (worldchest#1)" {
+  _markered_gitignore "$STUB_DIR/existing.gitignore"
+  _stub_gh_with_gitignore "$STUB_DIR/existing.gitignore"
+  # Simulate the pre-fix lib failure mode: upsert returns the block alone, L2 gone.
+  run bash -c '
+    source "$1"
+    upsert_gitignore_baseline() { cat "$1"; }
+    step_gitignore owner/new-repo
+  ' _ "$BOOTSTRAP"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::error::"* ]]
+  [[ "$output" == *"would drop"* ]]
+  [[ "$output" == *"node_modules/"* ]]
+  [[ "$output" == *"*.log"* ]]
+  # No branch, no file write, no PR.
+  [ ! -f "$CALLS" ] || ! grep -qE -- '--method (PUT|POST)|pr create' "$CALLS"
+}
+
+@test "gitignore guard: an already-current markered file with L2 is a no-op (no write calls)" {
+  _markered_gitignore "$STUB_DIR/existing.gitignore"
+  _stub_gh_with_gitignore "$STUB_DIR/existing.gitignore"
+  run bash -c 'source "$1"; step_gitignore owner/new-repo' _ "$BOOTSTRAP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already carries the current baseline"* ]]
+  [ ! -f "$CALLS" ] || ! grep -qE -- '--method (PUT|POST)|pr create' "$CALLS"
+}
+
+@test "gitignore guard: legitimate dedup of block lines in L2 is NOT flagged as loss" {
+  # An L2 that re-states block lines (a bare *.pem, the block's own section
+  # comment) is folded away by the lib on purpose; only genuine per-repo lines count.
+  run bash -c '
+    source "$1"
+    block="$(gib_extract_baseline_block "$2")"
+    existing="$(printf "%s\n%s\n" "$block" "*.pem
+# combsmith baseline .gitignore — SECRETS ONLY
+node_modules/")"
+    upserted="$(printf "%s\n%s\n" "$block" "node_modules/")"
+    lost="$(_gitignore_l2_lost "$existing" "$upserted" "$block")"
+    [ -z "$lost" ] && echo NO-LOSS
+    # …but a genuine per-repo line that vanished IS reported.
+    upserted2="$(printf "%s\n" "$block")"
+    _gitignore_l2_lost "$existing" "$upserted2" "$block"
+  ' _ "$BOOTSTRAP" "$SCRIPT_DIR/.gitignore"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NO-LOSS"* ]]
+  [[ "$output" == *"node_modules/"* ]]
+  [[ "$output" != *"*.pem"* ]]
+}
