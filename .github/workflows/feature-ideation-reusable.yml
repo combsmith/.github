@@ -105,16 +105,20 @@ on:
       tooling_ref:
         description: |
           Ref of combsmith/.github to source the feature-ideation scripts from.
-          Defaults to `v1` to align with the @v1 pin convention used by caller stubs
-          (see standards/ci-standards.md tier model). When the v1 tag is moved
-          forward to a new release, callers automatically pick up the matching
-          script + schema versions in lockstep with the workflow file.
+          Leave empty (the default) to source them from THIS reusable's own
+          commit (`github.job_workflow_sha`), so the scripts, schema and
+          requirements file always match the channel the caller pinned
+          (e.g. `@feature-ideation/v1-stable`), with no skew. (Previously
+          defaulted to `v1`, which predates
+          scripts/feature-ideation-requirements.txt and made every fleet run
+          fail at "Install Python jsonschema" — see issue #839; same fix as
+          auto-rebase #465.)
 
           Override only for:
             - Testing a fork or PR branch end-to-end (`tooling_ref: my-feature-branch`)
             - Bleeding-edge testing against the latest main (`tooling_ref: main`)
         required: false
-        default: 'v1'
+        default: ''
         type: string
       sources_file:
         description: |
@@ -162,7 +166,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: combsmith/.github
-          ref: ${{ inputs.tooling_ref }}
+          # This reusable's own commit unless overridden — see `tooling_ref` (#839).
+          ref: ${{ inputs.tooling_ref || github.job_workflow_sha }}
           path: .feature-ideation-tooling
           fetch-depth: 1
 
@@ -219,7 +224,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: combsmith/.github
-          ref: ${{ inputs.tooling_ref }}
+          # This reusable's own commit unless overridden — see `tooling_ref` (#839).
+          ref: ${{ inputs.tooling_ref || github.job_workflow_sha }}
           path: .feature-ideation-tooling
           fetch-depth: 1
 
