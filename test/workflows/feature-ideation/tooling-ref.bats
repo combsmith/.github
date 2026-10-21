@@ -28,12 +28,14 @@ EXPECTED_REF='${{ inputs.tooling_ref || job.workflow_sha }}'
 }
 
 @test "reusable: every tooling checkout falls back to the reusable's own commit" {
-  run yq -r '.jobs[].steps[] | select(.with.path == ".feature-ideation-tooling") | .with.ref' "$REUSABLE"
-  [ "$status" -eq 0 ]
-  [ -n "$output" ]
-  while IFS= read -r ref; do
-    [ "$ref" = "$EXPECTED_REF" ] || { echo "tooling checkout ref drifted: $ref"; return 1; }
-  done <<< "$output"
+  for job in gather-signals analyze; do
+    run yq -r ".jobs.\"${job}\".steps[] | select(.with.path == \".feature-ideation-tooling\") | .with.ref" "$REUSABLE"
+    [ "$status" -eq 0 ]
+    [ -n "$output" ] || { echo "$job has no tooling checkout"; return 1; }
+    while IFS= read -r ref; do
+      [ "$ref" = "$EXPECTED_REF" ] || { echo "$job tooling checkout ref drifted: $ref"; return 1; }
+    done <<< "$output"
+  done
 }
 
 @test "reusable: never relies on github.job_workflow_sha (empty at step level)" {
