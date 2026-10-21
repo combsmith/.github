@@ -186,6 +186,45 @@ EOF
   [ "$status" -ne 0 ]
 }
 
+@test "errors when the repo argument is not owner/repo" {
+  _stub_gh
+  run bash "$BOOTSTRAP" acme-service
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"owner/new-repo"* ]]
+}
+
+# ── repo-settings target: owner/repo, never a doubled owner (#1308) ───────────
+# bootstrap takes owner/repo; apply-repo-settings.sh takes a bare name and prefixes
+# ORG itself. Passing owner/repo straight through sent every step-2 call to
+# repos/<owner>/<owner>/<repo>. This wraps the normal stub so any doubled-owner
+# path gets what real gh gives it — the 404 body on stdout and a non-zero exit —
+# and runs the REAL apply-repo-settings.sh, so the argument is actually exercised.
+_stub_gh_rejecting_doubled_owner() {
+  _stub_gh
+  mv "$STUB_BIN/gh" "$STUB_BIN/gh-inner"
+  cat > "$STUB_BIN/gh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$STUB_BIN/gh-args.log"
+if printf '%s' "\$*" | grep -qE 'repos/([^/ ]+)/\1/'; then
+  echo '{"message":"Not Found","documentation_url":"https://docs.github.com/rest","status":"404"}'
+  echo 'gh: Not Found (HTTP 404)' >&2
+  exit 1
+fi
+exec "$STUB_BIN/gh-inner" "\$@"
+EOF
+  chmod +x "$STUB_BIN/gh"
+}
+
+@test "repo settings act on repos/<owner>/<repo> and name it once (#1308)" {
+  _stub_gh_rejecting_doubled_owner
+  run env DRY_RUN=true bash "$BOOTSTRAP" combsmith/acme-service
+  [ "$status" -eq 0 ]
+  grep -q 'repos/combsmith/acme-service' "$STUB_BIN/gh-args.log"
+  [ -z "$(grep -E 'repos/([^/ ]+)/\1/' "$STUB_BIN/gh-args.log")" ]
+  [[ "$output" == *"Applying standard settings to combsmith/acme-service"* ]]
+  [[ "$output" != *"combsmith/combsmith"* ]]
+}
+
 # ── release-ring confirmation + registration (#968) ───────────────────────────
 # A throwaway copy of the real ring SoT so non-stable tests can assert intent
 # without mutating the tracked file.
