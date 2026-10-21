@@ -7,8 +7,11 @@
 # (feature-ideation/v1-*) advanced the reusable to a version whose pip step
 # needs scripts/feature-ideation-requirements.txt, while the tooling checkout
 # stayed on the older `v1` tag that lacks it — every fleet run failed. The
-# reusable and its tooling must come from the same commit
-# (`github.job_workflow_sha`), the same pattern auto-rebase adopted in #465.
+# reusable and its tooling must come from the same commit (`job.workflow_sha`).
+#
+# Not `github.job_workflow_sha`: it evaluates empty at step level, so
+# actions/checkout silently falls back to the default branch (`main`) —
+# observed in a live run, and in the job-context probe for #839.
 
 load 'helpers/setup'
 
@@ -16,7 +19,7 @@ REUSABLE="${TT_REPO_ROOT}/.github/workflows/feature-ideation-reusable.yml"
 STUB="${TT_REPO_ROOT}/standards/workflows/feature-ideation.yml"
 SELF_CALLER="${TT_REPO_ROOT}/.github/workflows/feature-ideation.yml"
 
-EXPECTED_REF='${{ inputs.tooling_ref || github.job_workflow_sha }}'
+EXPECTED_REF='${{ inputs.tooling_ref || job.workflow_sha }}'
 
 @test "reusable: tooling_ref defaults to empty (no floating tag)" {
   run yq -r '.on.workflow_call.inputs.tooling_ref.default' "$REUSABLE"
@@ -31,6 +34,11 @@ EXPECTED_REF='${{ inputs.tooling_ref || github.job_workflow_sha }}'
   while IFS= read -r ref; do
     [ "$ref" = "$EXPECTED_REF" ] || { echo "tooling checkout ref drifted: $ref"; return 1; }
   done <<< "$output"
+}
+
+@test "reusable: never relies on github.job_workflow_sha (empty at step level)" {
+  run grep -nE '\$\{\{[^}]*github\.job_workflow_sha' "$REUSABLE"
+  [ "$status" -eq 1 ]
 }
 
 @test "reusable: every tooling checkout targets combsmith/.github" {

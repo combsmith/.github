@@ -106,13 +106,14 @@ on:
         description: |
           Ref of combsmith/.github to source the feature-ideation scripts from.
           Leave empty (the default) to source them from THIS reusable's own
-          commit (`github.job_workflow_sha`), so the scripts, schema and
+          commit (`job.workflow_sha`), so the scripts, schema and
           requirements file always match the channel the caller pinned
           (e.g. `@feature-ideation/v1-stable`), with no skew. (Previously
           defaulted to `v1`, which predates
           scripts/feature-ideation-requirements.txt and made every fleet run
-          fail at "Install Python jsonschema" — see issue #839; same fix as
-          auto-rebase #465.)
+          fail at "Install Python jsonschema" — see issue #839.)
+          Not `github.job_workflow_sha`: it evaluates empty at step level,
+          which makes actions/checkout silently fall back to `main`.
 
           Override only for:
             - Testing a fork or PR branch end-to-end (`tooling_ref: my-feature-branch`)
@@ -167,7 +168,7 @@ jobs:
         with:
           repository: combsmith/.github
           # This reusable's own commit unless overridden — see `tooling_ref` (#839).
-          ref: ${{ inputs.tooling_ref || github.job_workflow_sha }}
+          ref: ${{ inputs.tooling_ref || job.workflow_sha }}
           path: .feature-ideation-tooling
           fetch-depth: 1
 
@@ -225,7 +226,7 @@ jobs:
         with:
           repository: combsmith/.github
           # This reusable's own commit unless overridden — see `tooling_ref` (#839).
-          ref: ${{ inputs.tooling_ref || github.job_workflow_sha }}
+          ref: ${{ inputs.tooling_ref || job.workflow_sha }}
           path: .feature-ideation-tooling
           fetch-depth: 1
 
