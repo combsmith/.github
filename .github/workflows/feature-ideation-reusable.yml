@@ -63,10 +63,10 @@ on:
         default: 'standard'
         type: string
       model:
-        description: >
-          Model family — `opus` (default, recommended), `sonnet`, or `haiku`.
-          The resolver/CLI maps the family to the current version ID. An
-          operator MAY override with a concrete model ID for a one-off pin.
+        # The Claude Code CLI resolves the family client-side (`--model opus`
+        # in the analyst step) to the current version ID — never pin a
+        # version ID here. See standards/agent-standards.md.
+        description: 'Model family (`opus` recommended - Sonnet produces shallower adversarial passes) or an explicit model id override.'
         required: false
         default: 'opus'
         type: string
