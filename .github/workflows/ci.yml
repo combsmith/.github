@@ -81,7 +81,8 @@ jobs:
           rm actionlint.tar.gz
           # Lint our own workflow files (fail on errors, ignore shellcheck style hints)
           # `job_workflow_sha` is a valid reusable-workflow context property; actionlint 1.7.7 schema omits it
-          ./actionlint -ignore 'SC2129' -ignore '"job_workflow_sha" is not defined' .github/workflows/*.yml
+          # `job.workflow_sha` likewise (the reusable's own commit; #839) — actionlint's job schema omits it
+          ./actionlint -ignore 'SC2129' -ignore '"job_workflow_sha" is not defined' -ignore 'property "workflow_sha" is not defined in object type' .github/workflows/*.yml
           # Template workflows use placeholder expressions — informational only
           ./actionlint -ignore 'context' standards/workflows/*.yml || true
 
