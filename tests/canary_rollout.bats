@@ -3893,10 +3893,22 @@ GITEOF
   [[ "$output" != *"DRY-RUN"* ]]     # no move — --confirm did not bypass reliability
 }
 
+@test "orchestrator: --override does NOT advance AWAITING_CONFIRMATION — only --confirm clears it" {
+  # --override forces past a reliability BLOCK, but it must never silently satisfy
+  # the opt-in human go/no-go: an AWAITING_CONFIRMATION frontier holds until the
+  # purpose-built --confirm is dispatched, even under --override (#668 increment 3).
+  _confirm_stub success 0
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" promote dev-lead --override --dry-run
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"AWAITING_CONFIRMATION"* ]]
+  [[ "$output" != *"DRY-RUN"* ]]     # no move planned — --override did not clear confirmation
+  [[ "$output" == *"--confirm"* ]]   # still tells the human the required clearing action
+}
+
 @test "_confirm_body: renders the compare diff link + the promote --confirm instruction" {
   run env CANARY_RINGS="$RINGS" bash -c \
     "source '$ORCH' && _confirm_body dev-lead 'ring1->stable' cccccccccccc bbbbbbbbbbbb combsmith/.github-private 5 1"
-  [ "$status" -eq 0 ]
+  [[ "$status" -eq 0 ]]
   [[ "$output" == *"canary-confirm:dev-lead"* ]]                              # idempotency marker
   [[ "$output" == *"compare/bbbbbbbbbbbb...cccccccccccc"* ]]                  # stable -> candidate diff
   [[ "$output" == *"--confirm"* ]]                                           # the go action

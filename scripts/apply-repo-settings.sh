@@ -25,7 +25,7 @@
 
 set -euo pipefail
 
-if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
   echo "[ERROR] Bash 4+ required (associative arrays). Found: $BASH_VERSION" >&2
   echo "        On macOS: brew install bash, then run with /opt/homebrew/bin/bash" >&2
   exit 1
@@ -116,7 +116,7 @@ apply_labels() {
   # the function in a subshell whose EXIT CODE is unreachable (mapfile reports its
   # own status), so a failure there could never be seen — which is exactly how the
   # fail-open survived review. $( ) is also a subshell, but its status propagates.
-  if [ "$_PERSONA_OPT_OUT_CONFIGS_CACHED" != true ]; then
+  if [[ "$_PERSONA_OPT_OUT_CONFIGS_CACHED" != true ]]; then
     local persona_out=""
     if persona_out=$(persona_opt_out_label_configs); then
       # Cache only a GOOD derivation. Caching a failure would mean a transient
@@ -132,11 +132,11 @@ apply_labels() {
     _PERSONA_OPT_OUT_CONFIGS_CACHE=()
     # Guard the empty case: `mapfile <<< ""` yields one empty element, which would
     # become a bogus "||" label config.
-    if [ -n "$persona_out" ]; then
+    if [[ -n "$persona_out" ]]; then
       mapfile -t _PERSONA_OPT_OUT_CONFIGS_CACHE <<< "$persona_out"
     fi
   fi
-  if [ "${#_PERSONA_OPT_OUT_CONFIGS_CACHE[@]}" -gt 0 ]; then
+  if [[ "${#_PERSONA_OPT_OUT_CONFIGS_CACHE[@]}" -gt 0 ]]; then
     label_configs+=("${_PERSONA_OPT_OUT_CONFIGS_CACHE[@]}")
   fi
 
@@ -149,7 +149,7 @@ apply_labels() {
   local label_failed=false
   for config in "${label_configs[@]}"; do
     IFS='|' read -r name color description <<< "$config"
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       skip "DRY_RUN=true — would create/update label '$name' (#$color) in $ORG/$repo"
     else
       if gh label create "$name" \
@@ -165,7 +165,7 @@ apply_labels() {
     fi
   done
 
-  if [ "$label_failed" = true ]; then
+  if [[ "$label_failed" = true ]]; then
     return 1
   fi
 }
@@ -190,7 +190,7 @@ apply_settings() {
     squash_merge_commit_message: .squash_merge_commit_message
   }' 2>/dev/null || echo "{}")
 
-  if [ "$current" = "{}" ] || [ "$current" = "null" ]; then
+  if [[ "$current" = "{}" ]] || [[ "$current" = "null" ]]; then
     err "Could not parse settings for $ORG/$repo"
     return 1
   fi
@@ -215,7 +215,7 @@ apply_settings() {
     actual=$(printf '%s' "$current" | jq -r --arg key "$key" '.[$key] | if . == null then "null" else tostring end')
     local expected="${EXPECTED[$key]}"
 
-    if [ "$actual" != "$expected" ]; then
+    if [[ "$actual" != "$expected" ]]; then
       info "  $key: $actual → $expected"
       needs_patch=true
       patch_args+=(-F "$key=$expected")
@@ -227,7 +227,7 @@ apply_settings() {
   # Check string settings separately (jq -f flag for strings)
   local squash_title
   squash_title=$(printf '%s' "$current" | jq -r '.squash_merge_commit_title // "null"')
-  if [ "$squash_title" != "PR_TITLE" ]; then
+  if [[ "$squash_title" != "PR_TITLE" ]]; then
     info "  squash_merge_commit_title: $squash_title → PR_TITLE"
     needs_patch=true
     patch_args+=(-f squash_merge_commit_title=PR_TITLE)
@@ -237,7 +237,7 @@ apply_settings() {
 
   local squash_msg
   squash_msg=$(printf '%s' "$current" | jq -r '.squash_merge_commit_message // "null"')
-  if [ "$squash_msg" != "COMMIT_MESSAGES" ]; then
+  if [[ "$squash_msg" != "COMMIT_MESSAGES" ]]; then
     info "  squash_merge_commit_message: $squash_msg → COMMIT_MESSAGES"
     needs_patch=true
     patch_args+=(-f squash_merge_commit_message=COMMIT_MESSAGES)
@@ -245,12 +245,12 @@ apply_settings() {
     ok "  squash_merge_commit_message: already COMMIT_MESSAGES"
   fi
 
-  if [ "$needs_patch" = false ]; then
+  if [[ "$needs_patch" = false ]]; then
     ok "$ORG/$repo is already fully compliant — no changes needed"
     return 0
   fi
 
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     skip "DRY_RUN=true — skipping PATCH for $ORG/$repo"
     return 0
   fi
@@ -306,12 +306,12 @@ apply_codeql_default_setup() {
   local current_state
   current_state=$(gh api "repos/$ORG/$repo/code-scanning/default-setup" --jq '.state' 2>/dev/null || echo "")
 
-  if [ "$current_state" = "configured" ]; then
+  if [[ "$current_state" = "configured" ]]; then
     ok "  CodeQL default setup already configured"
     return 0
   fi
 
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     skip "DRY_RUN=true — would enable CodeQL default setup (current state: ${current_state:-unknown})"
     return 0
   fi
@@ -358,7 +358,7 @@ apply_check_suite_prefs() {
       setting=$(jq -r --argjson id "$app_id" \
         '.preferences.auto_trigger_checks // [] | map(select(.app_id == $id)) | first | .setting | if . == null then "missing" else . end' <<< "$prefs")
       # "missing" means the app has never run in this repo — no orphaned suite possible, skip
-      if [ "$setting" != "false" ] && [ "$setting" != "missing" ]; then
+      if [[ "$setting" != "false" ]] && [[ "$setting" != "missing" ]]; then
         all_disabled=false
       fi
     done
@@ -367,12 +367,12 @@ apply_check_suite_prefs() {
     all_disabled=false
   fi
 
-  if [ "$all_disabled" = true ]; then
+  if [[ "$all_disabled" = true ]]; then
     ok "$ORG/$repo check-suite prefs already correct"
     return 0
   fi
 
-  if [ "${DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DRY_RUN:-false}" = "true" ]]; then
     skip "DRY_RUN — skipping check-suite prefs PATCH for $repo"
     return 0
   fi
@@ -447,22 +447,22 @@ apply_repo() {
 # Main
 # ---------------------------------------------------------------------------
 main() {
-if [ $# -eq 0 ]; then
+if [[ $# -eq 0 ]]; then
   usage
 fi
 
-if [ -z "${GH_TOKEN:-}" ]; then
+if [[ -z "${GH_TOKEN:-}" ]]; then
   err "GH_TOKEN is required — provide a personal access token or GitHub App token with admin:repo scope"
   exit 1
 fi
 
 export GH_TOKEN
 
-if [ "$1" = "--all" ]; then
+if [[ "$1" = "--all" ]]; then
   info "Fetching all non-archived repos in $ORG ..."
   repos=$(gh repo list "$ORG" --no-archived --json name -q '.[].name' --limit 500)
 
-  if [ -z "$repos" ]; then
+  if [[ -z "$repos" ]]; then
     err "No repositories found in $ORG — check GH_TOKEN permissions"
     exit 1
   fi
@@ -486,7 +486,7 @@ if [ "$1" = "--all" ]; then
     done
   done
 
-  if [ "${#all_failed[@]}" -gt 0 ]; then
+  if [[ "${#all_failed[@]}" -gt 0 ]]; then
     echo "::error::apply-repo-settings: failed steps: ${all_failed[*]}"
     err "${#all_failed[@]} step(s) failed — check output above for details"
     exit 1
@@ -495,7 +495,7 @@ if [ "$1" = "--all" ]; then
   # The persona opt-out family is the escape hatch §4 rule 4 mandates. If it could
   # not be derived faithfully, the static labels still landed — but this run did
   # NOT do what it claims, and saying so is the whole point (#755).
-  if [ "$_PERSONA_OPT_OUT_SYNC_FAILED" = true ]; then
+  if [[ "$_PERSONA_OPT_OUT_SYNC_FAILED" = true ]]; then
     err "persona opt-out labels could not be derived faithfully — static labels applied, but the <id>:hands-off family is incomplete or guessed"
     exit 1
   fi
@@ -513,7 +513,7 @@ else
 
   # Same guard as --all: a single-repo run must not exit 0 while the mandated
   # opt-out hatch is missing from that repo.
-  if [ "$_PERSONA_OPT_OUT_SYNC_FAILED" = true ]; then
+  if [[ "$_PERSONA_OPT_OUT_SYNC_FAILED" = true ]]; then
     err "persona opt-out labels could not be derived faithfully — static labels applied, but the <id>:hands-off family is incomplete or guessed"
     exit 1
   fi
@@ -521,7 +521,7 @@ else
   # A cosmetic step failing must not have aborted the security-critical ones — but
   # the run still exits non-zero, naming the failed steps, so the failure is visible
   # (issue #1038).
-  if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+  if [[ "${#FAILED_STEPS[@]}" -gt 0 ]]; then
     echo "::error::apply-repo-settings: failed steps for $1: ${FAILED_STEPS[*]}"
     err "${#FAILED_STEPS[@]} step(s) failed for $ORG/$1 — check output above for details"
     exit 1
@@ -530,6 +530,6 @@ fi
 }
 
 # Run main only when executed directly, not when sourced (e.g. by the bats suite).
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi
