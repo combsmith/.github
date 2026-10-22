@@ -31,9 +31,10 @@ EXPECTED_REF='${{ inputs.tooling_ref || job.workflow_sha }}'
   for job in gather-signals analyze; do
     run yq -r ".jobs.\"${job}\".steps[] | select(.with.path == \".feature-ideation-tooling\") | .with.ref" "$REUSABLE"
     [ "$status" -eq 0 ]
-    [ -n "$output" ] || { echo "$job has no tooling checkout"; return 1; }
+    [ -n "$output" ] || { echo "$job: no tooling checkout step"; return 1; }
     while IFS= read -r ref; do
-      [ "$ref" = "$EXPECTED_REF" ] || { echo "$job tooling checkout ref drifted: $ref"; return 1; }
+      [ -n "$ref" ] || { echo "$job: tooling checkout ref is empty"; return 1; }
+      [ "$ref" = "$EXPECTED_REF" ] || { echo "$job: tooling checkout ref drifted to $ref (expected $EXPECTED_REF)"; return 1; }
     done <<< "$output"
   done
 }
