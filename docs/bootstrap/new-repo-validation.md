@@ -14,8 +14,8 @@ produces a fully org-compliant repo, exercised under `DRY_RUN` with no drift.
    (`seed-repo-template.sh`, in `combsmith/.github-private`, keeps that template in sync with `combsmith/.github`
    `standards/`). This seeds day-0 only: the thin-caller workflow stubs pinned to
    their published `@<name>/stable` channel tags plus the root/baseline files
-   (CODEOWNERS, AGENTS.md/CLAUDE.md pointers, LICENSE, SECURITY.md, `.gitignore`,
-   `BOOTSTRAP.md`). Then follow `BOOTSTRAP.md` for the two per-stack picks
+   (CODEOWNERS, AGENTS.md/CLAUDE.md pointers, LICENSE, `.gitignore`,
+   `BOOTSTRAP.md`; `SECURITY.md` is inherited org-wide from `combsmith/.github`). Then follow `BOOTSTRAP.md` for the two per-stack picks
    (Dependabot stack, `ci.yml`).
 2. **Run the bootstrap.** `bash scripts/bootstrap-new-repo.sh owner/new-repo`
    brings repo settings, security/GHAS + secret-scanning push protection, the two
