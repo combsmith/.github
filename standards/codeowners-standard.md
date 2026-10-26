@@ -12,9 +12,13 @@ Every owner line in a CODEOWNERS file MUST follow these rules:
 1. **`@combsmith/org-leads` MUST be the FIRST owner** on every owner line
    (so it always satisfies `require_code_owner_review`, regardless of
    path-specific overrides).
-2. **Additional teams are allowed** as subsequent owners when finer-grained
-   ownership is desired (e.g., `@combsmith/security-leads` for
-   `/SECURITY.md`).
+2. **Additional teams are allowed on path-specific rules** as subsequent owners
+   when finer-grained ownership is desired (e.g., `@combsmith/security-leads`
+   for `/SECURITY.md`). **The default `*` catch-all rule MUST list ONLY
+   `@combsmith/org-leads`** (`* @combsmith/org-leads`) with no additional teams
+   (because GitHub permits any listed owner on a matching rule to satisfy
+   `require_code_owner_review`, adding another team to `*` would grant that
+   team repo-wide code-owner approval standing).
 3. **Individual named users are forbidden** as owners. All owners MUST be
    teams in the form `@combsmith/<team-slug>`. Manage individual
    membership through team membership instead.
@@ -28,11 +32,14 @@ Every owner line in a CODEOWNERS file MUST follow these rules:
 /.github/       @combsmith/org-leads @combsmith/platform-leads
 ```
 
-The legacy direct-listing pattern is **forbidden**:
+The legacy direct-listing pattern and extra teams on the `*` catch-all are **forbidden**:
 
 ```text
 # DO NOT USE — individuals and bot accounts as owners
 * @don-petry @dependabot-automerge-petry
+
+# DO NOT USE — additional teams on the default '*' catch-all
+* @combsmith/org-leads @combsmith/security-leads
 ```
 
 ## Why
