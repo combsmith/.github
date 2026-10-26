@@ -102,6 +102,15 @@ EOF
   [ "$output" = "false" ]
 }
 
+@test "pr-quality.json: enforces branch deletion and force-push protection (deletion + non_fast_forward)" {
+  # Anti-divergence guard: github-settings.md#pr-quality requires Allow force
+  # pushes: No (non_fast_forward) and Allow deletions: No (deletion), which
+  # OpenSSF Scorecard Branch-Protection also checks on the default branch.
+  run jq -r '[.rules[].type] | sort | join(",")' "$RULESETS_DIR/pr-quality.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "deletion,non_fast_forward,pull_request" ]
+}
+
 @test "release-channel-tags.json: tag ruleset, generic refs/tags/** include, update+deletion only" {
   run jq -er '.target == "tag"
     and (.conditions.ref_name.include == ["refs/tags/**"])
