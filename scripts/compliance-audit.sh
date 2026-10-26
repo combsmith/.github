@@ -1024,6 +1024,23 @@ _ruleset_contents_one() {
       "Ruleset \`$name\` parameter \`$param\` has drifted from the codified standard: expected \`$expected\`, actual \`$actual\`. The codified JSON (\`standards/rulesets/$name.json\`) is the source of truth (#575/#580); run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
       "$std_ref"
   done <<< "$drift"
+
+  # --- Check parameterless rule types codified in the source of truth --------
+  # Rules like `deletion` and `non_fast_forward` in pr-quality.json carry no
+  # `.parameters` block, so the parameter-level diff above does not inspect
+  # them. Verify each parameterless rule type in the codified source is present
+  # in the live ruleset.
+  local req_types req_type has_req_type
+  req_types=$(jq -r '.rules[]? | select((has("parameters") | not) or .parameters == null) | .type // empty' "$codified_file" 2>/dev/null || echo "")
+  while IFS= read -r req_type; do
+    [ -z "$req_type" ] && continue
+    has_req_type=$(echo "$rs" | jq --arg t "$req_type" 'any(.rules[]?; .type==$t)' 2>/dev/null || echo "false")
+    if [ "$has_req_type" != "true" ]; then
+      add_finding "$repo" "rulesets" "ruleset-drift-$name-missing-rule-$req_type" "error" \
+        "Ruleset \`$name\` is missing required \`$req_type\` rule codified in \`standards/rulesets/$name.json\`; run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
+        "$std_ref"
+    fi
+  done <<< "$req_types"
 }
 
 # ---------------------------------------------------------------------------
@@ -1314,7 +1331,8 @@ check_legacy_rulesets() {
 check_codeowners() {
   local repo="$1"
 
-  # CODEOWNERS can be in root, .github/, or docs/
+  # CODEOWNERS can be in .github/, root, or docs/ (probed in GitHub's actual
+  # precedence order: .github/CODEOWNERS → CODEOWNERS → docs/CODEOWNERS).
   local found=false
   local codeowners_content=""
   # #437: distinguish a genuinely-absent file (a deterministic HTTP 404 on every
@@ -1324,7 +1342,7 @@ check_codeowners() {
   # (#487): capture the raw response + status that gh_api's `--jq` masks, retry
   # non-deterministic failures, and treat any non-404 failure as inconclusive.
   local any_unreadable=false
-  for path in CODEOWNERS .github/CODEOWNERS docs/CODEOWNERS; do
+  for path in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
     local raw="" rc=1 i
     for i in 1 2 3; do
       raw=$(gh api "repos/$ORG/$repo/contents/$path" 2>&1) && rc=0 || rc=$?
@@ -1364,14 +1382,20 @@ check_codeowners() {
     return 0
   fi
 
-  # Extract non-comment, non-blank owner lines for accurate matching.
-  # Each such line has the form: <pattern> <owner1> [<owner2> ...]
+  # Extract non-comment, non-blank owner lines (stripping inline `#` comments)
+  # for accurate matching. Each such line has the form:
+  #   <pattern> <owner1> [<owner2> ...]
   # Standard (codeowners-standard.md):
   #   1. @combsmith/org-leads MUST be the FIRST owner on every line.
-  #   2. Additional teams (@combsmith/<slug>) are allowed.
-  #   3. Individual users (@username without "/") are forbidden.
+  #   2. Additional teams (@combsmith/<slug>) are allowed on path-specific rules;
+  #      the default `*` catch-all rule MUST list only `@combsmith/org-leads`.
+  #   3. Individual users and non-org owners are forbidden — every owner token
+  #      must be a team in the form `@combsmith/<slug>`.
   local owner_lines
-  owner_lines=$(echo "$codeowners_content" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$')
+  owner_lines=$(printf '%s\n' "$codeowners_content" \
+    | grep -v '^[[:space:]]*#' \
+    | sed -E 's/[[:space:]]+#.*$//' \
+    | grep -v '^[[:space:]]*$' || true)
 
   if [ -z "$owner_lines" ]; then
     add_finding "$repo" "settings" "codeowners-empty" "error" \
@@ -1388,39 +1412,53 @@ check_codeowners() {
     # awk $2 = first owner token after the pattern
     local first_owner
     first_owner=$(echo "$line" | awk '{print $2}')
-    if [ "$first_owner" != "@combsmith/org-leads" ]; then
+    if [ "$first_owner" != "@${ORG}/org-leads" ]; then
       bad_first_owner="$line"
       break
     fi
   done <<< "$owner_lines"
   if [ -n "$bad_first_owner" ]; then
     add_finding "$repo" "settings" "codeowners-org-leads-not-first" "error" \
-      "CODEOWNERS owner lines must list \`@combsmith/org-leads\` as the FIRST owner. Offending line: \`$bad_first_owner\`" \
+      "CODEOWNERS owner lines must list \`@${ORG}/org-leads\` as the FIRST owner. Offending line: \`$bad_first_owner\`" \
       "standards/codeowners-standard.md"
   fi
 
-  # Rule 3: no individual users — every owner token must be a team (contain "/").
-  # Collect owner tokens from all lines (everything starting with @).
+  # Rule 3: no individual users or non-org owners — every owner token (fields
+  # 2..NF on each owner line) must match `@combsmith/<team-slug>`.
   local individual_owners
-  individual_owners=$(echo "$owner_lines" \
-    | tr ' \t' '\n' \
-    | grep -E '^@' \
-    | grep -vE '^@[^/]+/' \
+  individual_owners=$(printf '%s\n' "$owner_lines" \
+    | awk -v org="$ORG" '{
+        for (i = 2; i <= NF; i++) {
+          if ($i ~ /^#/) break
+          if ($i !~ ("^@" org "/[A-Za-z0-9_.-]+$")) print $i
+        }
+      }' \
     | sort -u || true)
   if [ -n "$individual_owners" ]; then
     local joined
     joined=$(echo "$individual_owners" | tr '\n' ' ')
     add_finding "$repo" "settings" "codeowners-individual-users" "error" \
-      "CODEOWNERS contains forbidden individual user owners: ${joined% } — only teams (@combsmith/<slug>) are allowed; manage membership via teams" \
+      "CODEOWNERS contains forbidden individual user or non-org owners: ${joined% } — only teams (@${ORG}/<slug>) are allowed; manage membership via teams" \
       "standards/codeowners-standard.md"
   fi
 
-  # Advisory: a catch-all `*` pattern should exist so files unmatched by any
-  # path-specific rule still have an owner.
+  # Catch-all `*` rule: a default `*` pattern should exist so files unmatched by
+  # any path-specific rule still have an owner, and it must list ONLY
+  # `@combsmith/org-leads` (additional teams belong on path-specific rules only,
+  # otherwise they can satisfy `require_code_owner_review` repo-wide).
   if ! echo "$owner_lines" | awk '{print $1}' | grep -qxF '*'; then
     add_finding "$repo" "settings" "codeowners-no-catchall" "warning" \
       "CODEOWNERS has no default \`*\` catch-all pattern — files not matched by a path rule will have no owner and \`require_code_owner_review\` will not apply to them" \
       "standards/codeowners-standard.md"
+  else
+    local bad_catchall=""
+    bad_catchall=$(printf '%s\n' "$owner_lines" \
+      | awk '$1 == "*" && NF > 2 { print; exit }')
+    if [ -n "$bad_catchall" ]; then
+      add_finding "$repo" "settings" "codeowners-catchall-extra-owners" "error" \
+        "Default \`*\` catch-all line in CODEOWNERS must list ONLY \`@${ORG}/org-leads\` (\`* @${ORG}/org-leads\`); assign additional teams on path-specific rules instead. Offending line: \`$bad_catchall\`" \
+        "standards/codeowners-standard.md"
+    fi
   fi
 }
 

@@ -77,3 +77,90 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   run _has_catchall "$(cat "$REPO_ROOT/.github/CODEOWNERS")"
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# End-to-end check_codeowners validation (precedence, inline comments,
+# catch-all extra owners, non-org/bare owner tokens)
+# ---------------------------------------------------------------------------
+
+_run_codeowners_body() {
+  local body="$1"
+  local tmp
+  tmp="$(mktemp -d "$BATS_TEST_TMPDIR/co.XXXXXX")"
+  mkdir -p "$tmp/bin"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/sleep"
+  chmod +x "$tmp/bin/sleep"
+  local b64
+  b64="$(printf '%s' "$body" | base64 | tr -d '\n')"
+  cat > "$tmp/bin/gh" <<EOF
+#!/usr/bin/env bash
+printf '{"content":"%s"}\n' "$b64"
+EOF
+  chmod +x "$tmp/bin/gh"
+  PATH="$tmp/bin:$PATH" REPORT_DIR="$tmp" bash -c '
+    set -uo pipefail
+    echo "[]" > "$REPORT_DIR/findings.json"
+    # shellcheck disable=SC1090
+    source "'"$REPO_ROOT"'/scripts/compliance-audit.sh"
+    check_codeowners "demo-repo"
+    cat "$REPORT_DIR/findings.json"
+  '
+  local rc=$?
+  rm -rf "$tmp"
+  return "$rc"
+}
+
+@test "check_codeowners: inline '#' comments on catch-all and path rules are ignored" {
+  body=$'* @combsmith/org-leads # default owner (not @individual)\n/security/ @combsmith/org-leads @combsmith/security-leads # cc @someone\n'
+  run _run_codeowners_body "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "check_codeowners: catch-all '*' with extra team is flagged (codeowners-catchall-extra-owners)" {
+  body=$'* @combsmith/org-leads @combsmith/other-team\n'
+  run _run_codeowners_body "$body"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codeowners-catchall-extra-owners"* ]]
+  [[ "$output" == *"error"* ]]
+}
+
+@test "check_codeowners: non-org team or bare username is flagged (codeowners-individual-users)" {
+  body=$'* @combsmith/org-leads\n/docs/ @combsmith/org-leads @other-org/team bareuser\n'
+  run _run_codeowners_body "$body"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codeowners-individual-users"* ]]
+  [[ "$output" == *"@other-org/team"* ]]
+  [[ "$output" == *"bareuser"* ]]
+}
+
+@test "check_codeowners: probes .github/CODEOWNERS before root CODEOWNERS (GitHub precedence)" {
+  local tmp
+  tmp="$(mktemp -d "$BATS_TEST_TMPDIR/co-prec.XXXXXX")"
+  mkdir -p "$tmp/bin"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/sleep"
+  chmod +x "$tmp/bin/sleep"
+  local good_b64 bad_b64
+  good_b64="$(printf '* @combsmith/org-leads\n' | base64 | tr -d '\n')"
+  bad_b64="$(printf '* @individual\n' | base64 | tr -d '\n')"
+  cat > "$tmp/bin/gh" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"contents/.github/CODEOWNERS"*) printf '{"content":"%s"}\n' "$good_b64" ;;
+  *"contents/CODEOWNERS"*)         printf '{"content":"%s"}\n' "$bad_b64" ;;
+  *) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+esac
+EOF
+  chmod +x "$tmp/bin/gh"
+  run env PATH="$tmp/bin:$PATH" REPORT_DIR="$tmp" bash -c '
+    set -uo pipefail
+    echo "[]" > "$REPORT_DIR/findings.json"
+    # shellcheck disable=SC1090
+    source "'"$REPO_ROOT"'/scripts/compliance-audit.sh"
+    check_codeowners "demo-repo"
+    cat "$REPORT_DIR/findings.json"
+  '
+  rm -rf "$tmp"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}

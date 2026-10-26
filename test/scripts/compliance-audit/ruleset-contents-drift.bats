@@ -63,9 +63,12 @@ case "\$path" in
     ;;
   */rulesets/101)
     prq='$prq'
+    prq_default='$PRQ_PARAMS'
     if [ "\$prq" = "FETCHFAIL" ]; then echo "gh: Server Error (HTTP 500)" >&2; exit 1; fi
     if [ "\$prq" = "NORULE" ]; then echo '{"name":"pr-quality","id":101,"rules":[{"type":"deletion","parameters":null}]}'; exit 0; fi
-    echo "{\"name\":\"pr-quality\",\"id\":101,\"source\":\"combsmith/demo-repo\",\"rules\":[{\"type\":\"pull_request\",\"parameters\":\$prq}]}"
+    if [ "\$prq" = "NODELETION" ]; then echo "{\"name\":\"pr-quality\",\"id\":101,\"source\":\"combsmith/demo-repo\",\"rules\":[{\"type\":\"non_fast_forward\"},{\"type\":\"pull_request\",\"parameters\":\$prq_default}]}"; exit 0; fi
+    if [ "\$prq" = "NONONFF" ]; then echo "{\"name\":\"pr-quality\",\"id\":101,\"source\":\"combsmith/demo-repo\",\"rules\":[{\"type\":\"deletion\"},{\"type\":\"pull_request\",\"parameters\":\$prq_default}]}"; exit 0; fi
+    echo "{\"name\":\"pr-quality\",\"id\":101,\"source\":\"combsmith/demo-repo\",\"rules\":[{\"type\":\"deletion\"},{\"type\":\"non_fast_forward\"},{\"type\":\"pull_request\",\"parameters\":\$prq}]}"
     ;;
   */rulesets/102)
     cq='$cq'
@@ -190,5 +193,19 @@ MOCK
   run _run_contents "NORULE" "$CQ_PARAMS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ruleset-drift-pr-quality-missing-rule"* ]]
+  [[ "$output" == *"error"* ]]
+}
+
+@test "pr-quality present but missing its deletion rule → finding" {
+  run _run_contents "NODELETION" "$CQ_PARAMS"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ruleset-drift-pr-quality-missing-rule-deletion"* ]]
+  [[ "$output" == *"error"* ]]
+}
+
+@test "pr-quality present but missing its non_fast_forward rule → finding" {
+  run _run_contents "NONONFF" "$CQ_PARAMS"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ruleset-drift-pr-quality-missing-rule-non_fast_forward"* ]]
   [[ "$output" == *"error"* ]]
 }
