@@ -32,6 +32,7 @@ on:
         type: string
         default: |
           CLAUDE.md
+          GEMINI.md
           AGENTS.md
       org-standards-ref:
         description: "String AGENTS.md must reference (regex, basic grep -E)"
@@ -86,6 +87,12 @@ jobs:
           if [ -f "CLAUDE.md" ] && \
              ! grep -qi 'AGENTS.md' CLAUDE.md; then
             echo "::error file=CLAUDE.md::Must reference AGENTS.md"
+            status=1
+          fi
+
+          if [ -f "GEMINI.md" ] && \
+             ! grep -qi 'AGENTS.md' GEMINI.md; then
+            echo "::error file=GEMINI.md::Must reference AGENTS.md"
             status=1
           fi
 

@@ -2434,6 +2434,32 @@ check_claude_md() {
 }
 
 # ---------------------------------------------------------------------------
+# Check: GEMINI.md exists and references AGENTS.md
+# ---------------------------------------------------------------------------
+check_gemini_md() {
+  local repo="$1"
+
+  local content
+  content=$(gh_api "repos/$ORG/$repo/contents/GEMINI.md" --jq '.content' 2>/dev/null || echo "")
+
+  if [ -z "$content" ]; then
+    add_finding "$repo" "standards" "missing-gemini-md" "error" \
+      "Missing \`GEMINI.md\` — every repo must have a GEMINI.md that references AGENTS.md" \
+      "AGENTS.md"
+    return
+  fi
+
+  local decoded
+  decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
+
+  if ! echo "$decoded" | grep -qi 'AGENTS\.md'; then
+    add_finding "$repo" "standards" "gemini-md-missing-agents-ref" "error" \
+      "\`GEMINI.md\` does not reference \`AGENTS.md\`" \
+      "AGENTS.md"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Check: AGENTS.md exists and references org .github/AGENTS.md
 # ---------------------------------------------------------------------------
 # agents_md_lint_scope_for_repo <repo> — which structural rule scope to lint
@@ -3018,7 +3044,7 @@ create_umbrella_issue() {
     "reusable-workflows|Reusable Workflows (disabled_manually)|gh workflow disable <workflow> -R <repo>"
     "action-pinning|Action SHA Pinning|pin actions to SHA in each workflow file"
     "dependabot|Dependabot Configuration|per-repo .github/dependabot.yml"
-    "standards|Agent Standards (CLAUDE.md / AGENTS.md / copilot-setup-steps.yml)|per-repo doc and workflow additions"
+    "standards|Agent Standards (CLAUDE.md / GEMINI.md / AGENTS.md / copilot-setup-steps.yml)|per-repo doc and workflow additions"
   )
 
   local body
@@ -3613,6 +3639,7 @@ main() {
     check_verbatim_stubs "$repo"
     check_centralized_check_names "$repo"
     check_claude_md "$repo"
+    check_gemini_md "$repo"
     check_agents_md "$repo"
     check_copilot_setup_steps "$repo"
     check_copilot_instructions "$repo"

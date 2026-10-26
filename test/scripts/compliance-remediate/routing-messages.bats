@@ -160,3 +160,27 @@ teardown() {
 
   ! grep -q 'review manually' "$report_dir/skipped.md"
 }
+
+# ---------------------------------------------------------------------------
+# standards/missing-gemini-md & standards/gemini-md-missing-agents-ref
+# ---------------------------------------------------------------------------
+
+@test "missing-gemini-md and gemini-md-missing-agents-ref route to the content-agent path" {
+  for check_name in missing-gemini-md gemini-md-missing-agents-ref; do
+    findings="$(tt_write_finding "broodminder-export" "standards" "$check_name")"
+    report_dir="${TT_TMP}/report-${check_name}"
+
+    GH_TOKEN=fake \
+      FINDINGS_FILE="$findings" \
+      REPORT_DIR="$report_dir" \
+      DRY_RUN=false \
+      run bash "$TT_SCRIPT"
+
+    [ "$status" -eq 0 ]
+
+    grep -q "$check_name" "$report_dir/skipped.md"
+    ! grep -q "$check_name" "$report_dir/remediation-report.md"
+    grep -q 'GEMINI.md creation/update requires content knowledge' "$report_dir/skipped.md"
+    ! grep -q 'review manually' "$report_dir/skipped.md"
+  done
+}

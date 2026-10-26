@@ -874,6 +874,10 @@ remediate_finding() {
       report_skip "$repo" "$check" \
         "CLAUDE.md creation/update requires content knowledge — trigger Claude agent on the finding issue"
       ;;
+    standards/missing-gemini-md | standards/gemini-md-missing-agents-ref)
+      report_skip "$repo" "$check" \
+        "GEMINI.md creation/update requires content knowledge — trigger Claude agent on the finding issue"
+      ;;
     standards/missing-agents-md | standards/agents-md-missing-org-ref)
       report_skip "$repo" "$check" \
         "AGENTS.md creation/update requires content knowledge — trigger Claude agent on the finding issue"
