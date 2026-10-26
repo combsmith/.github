@@ -189,10 +189,11 @@ MOCK
 # ---------------------------------------------------------------------------
 # A ruleset that exists but has lost the codified rule type entirely is drift
 # ---------------------------------------------------------------------------
-@test "pr-quality present but missing its pull_request rule → finding" {
+@test "pr-quality present but missing its pull_request rule → finding (plus any missing parameterless rule)" {
   run _run_contents "NORULE" "$CQ_PARAMS"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"ruleset-drift-pr-quality-missing-rule"* ]]
+  [[ "$output" == *"ruleset-drift-pr-quality-missing-rule\""* ]]
+  [[ "$output" == *"ruleset-drift-pr-quality-missing-rule-non_fast_forward"* ]]
   [[ "$output" == *"error"* ]]
 }
 

@@ -125,13 +125,28 @@ EOF
   [[ "$output" == *"error"* ]]
 }
 
-@test "check_codeowners: non-org team or bare username is flagged (codeowners-individual-users)" {
-  body=$'* @combsmith/org-leads\n/docs/ @combsmith/org-leads @other-org/team bareuser\n'
+@test "check_codeowners: non-org team, bare username, or malformed team slug is flagged (codeowners-individual-users)" {
+  body=$'* @combsmith/org-leads\n/docs/ @combsmith/org-leads @other-org/team bareuser @combsmith/Org_Leads.With.Dots\n'
   run _run_codeowners_body "$body"
   [ "$status" -eq 0 ]
   [[ "$output" == *"codeowners-individual-users"* ]]
   [[ "$output" == *"@other-org/team"* ]]
   [[ "$output" == *"bareuser"* ]]
+  [[ "$output" == *"@combsmith/Org_Leads.With.Dots"* ]]
+}
+
+@test "check_codeowners: CRLF line endings do not trigger false positives" {
+  body=$'* @combsmith/org-leads\r\n/docs/ @combsmith/org-leads @combsmith/doc-leads\r\n'
+  run _run_codeowners_body "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "check_codeowners: escaped-space path patterns do not mis-tokenize owners" {
+  body=$'* @combsmith/org-leads\nmy\\ dir/ @combsmith/org-leads\npath/with\\ multiple\\ spaces/ @combsmith/org-leads @combsmith/platform-leads\n'
+  run _run_codeowners_body "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
 }
 
 @test "check_codeowners: probes .github/CODEOWNERS before root CODEOWNERS (GitHub precedence)" {

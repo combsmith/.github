@@ -992,6 +992,24 @@ _ruleset_contents_one() {
     return 0
   fi
 
+  # --- Check parameterless rule types codified in the source of truth --------
+  # Rules like `deletion` and `non_fast_forward` in pr-quality.json carry no
+  # `.parameters` block, so the parameter-level diff below does not inspect
+  # them. Run this before the `$rtype` early return so that a live ruleset
+  # missing both `$rtype` and a parameterless rule reports all missing rules in
+  # a single audit run.
+  local req_types req_type has_req_type
+  req_types=$(jq -r '.rules[]? | select((has("parameters") | not) or .parameters == null) | .type // empty' "$codified_file" 2>/dev/null || echo "")
+  while IFS= read -r req_type; do
+    [ -z "$req_type" ] && continue
+    has_req_type=$(echo "$rs" | jq --arg t "$req_type" 'any(.rules[]?; .type==$t)' 2>/dev/null || echo "false")
+    if [ "$has_req_type" != "true" ]; then
+      add_finding "$repo" "rulesets" "ruleset-drift-$name-missing-rule-$req_type" "error" \
+        "Ruleset \`$name\` is missing required \`$req_type\` rule codified in \`standards/rulesets/$name.json\`; run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
+        "$std_ref"
+    fi
+  done <<< "$req_types"
+
   # A ruleset that exists but has lost the codified rule type entirely is drift.
   local has_rule
   has_rule=$(echo "$rs" | jq --arg t "$rtype" 'any(.rules[]?; .type==$t)' 2>/dev/null || echo "false")
@@ -1024,23 +1042,6 @@ _ruleset_contents_one() {
       "Ruleset \`$name\` parameter \`$param\` has drifted from the codified standard: expected \`$expected\`, actual \`$actual\`. The codified JSON (\`standards/rulesets/$name.json\`) is the source of truth (#575/#580); run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
       "$std_ref"
   done <<< "$drift"
-
-  # --- Check parameterless rule types codified in the source of truth --------
-  # Rules like `deletion` and `non_fast_forward` in pr-quality.json carry no
-  # `.parameters` block, so the parameter-level diff above does not inspect
-  # them. Verify each parameterless rule type in the codified source is present
-  # in the live ruleset.
-  local req_types req_type has_req_type
-  req_types=$(jq -r '.rules[]? | select((has("parameters") | not) or .parameters == null) | .type // empty' "$codified_file" 2>/dev/null || echo "")
-  while IFS= read -r req_type; do
-    [ -z "$req_type" ] && continue
-    has_req_type=$(echo "$rs" | jq --arg t "$req_type" 'any(.rules[]?; .type==$t)' 2>/dev/null || echo "false")
-    if [ "$has_req_type" != "true" ]; then
-      add_finding "$repo" "rulesets" "ruleset-drift-$name-missing-rule-$req_type" "error" \
-        "Ruleset \`$name\` is missing required \`$req_type\` rule codified in \`standards/rulesets/$name.json\`; run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
-        "$std_ref"
-    fi
-  done <<< "$req_types"
 }
 
 # ---------------------------------------------------------------------------
@@ -1382,8 +1383,8 @@ check_codeowners() {
     return 0
   fi
 
-  # Extract non-comment, non-blank owner lines (stripping inline `#` comments)
-  # for accurate matching. Each such line has the form:
+  # Extract non-comment, non-blank owner lines (stripping carriage returns and
+  # inline `#` comments) for accurate matching. Each such line has the form:
   #   <pattern> <owner1> [<owner2> ...]
   # Standard (codeowners-standard.md):
   #   1. @combsmith/org-leads MUST be the FIRST owner on every line.
@@ -1393,6 +1394,7 @@ check_codeowners() {
   #      must be a team in the form `@combsmith/<slug>`.
   local owner_lines
   owner_lines=$(printf '%s\n' "$codeowners_content" \
+    | tr -d '\r' \
     | grep -v '^[[:space:]]*#' \
     | sed -E 's/[[:space:]]+#.*$//' \
     | grep -v '^[[:space:]]*$' || true)
@@ -1405,13 +1407,14 @@ check_codeowners() {
   fi
 
   # Rule 1: @combsmith/org-leads MUST be the first owner on every line
-  # (the first whitespace-separated token after the pattern).
+  # (the first whitespace-separated token after the pattern, normalizing any
+  # `\ ` escaped spaces inside the path pattern first).
   local bad_first_owner=""
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    # awk $2 = first owner token after the pattern
+    # Collapse `\ ` escaped spaces in the pattern so awk $2 is the first owner token
     local first_owner
-    first_owner=$(echo "$line" | awk '{print $2}')
+    first_owner=$(printf '%s\n' "$line" | sed 's/\\ /\\x20/g' | awk '{print $2}')
     if [ "$first_owner" != "@${ORG}/org-leads" ]; then
       bad_first_owner="$line"
       break
@@ -1423,14 +1426,17 @@ check_codeowners() {
       "standards/codeowners-standard.md"
   fi
 
-  # Rule 3: no individual users or non-org owners — every owner token (fields
-  # 2..NF on each owner line) must match `@combsmith/<team-slug>`.
+  # Rule 3: no individual users, non-org owners, or malformed team slugs —
+  # every owner token (fields 2..NF on each owner line after normalizing `\ `
+  # escaped spaces in the pattern) must match `@combsmith/<team-slug>` where
+  # GitHub team slugs are lowercase alphanumeric and hyphens (`[a-z0-9-]+`).
   local individual_owners
   individual_owners=$(printf '%s\n' "$owner_lines" \
+    | sed 's/\\ /\\x20/g' \
     | awk -v org="$ORG" '{
         for (i = 2; i <= NF; i++) {
           if ($i ~ /^#/) break
-          if ($i !~ ("^@" org "/[A-Za-z0-9_.-]+$")) print $i
+          if ($i !~ ("^@" org "/[a-z0-9-]+$")) print $i
         }
       }' \
     | sort -u || true)
@@ -1438,7 +1444,7 @@ check_codeowners() {
     local joined
     joined=$(echo "$individual_owners" | tr '\n' ' ')
     add_finding "$repo" "settings" "codeowners-individual-users" "error" \
-      "CODEOWNERS contains forbidden individual user or non-org owners: ${joined% } — only teams (@${ORG}/<slug>) are allowed; manage membership via teams" \
+      "CODEOWNERS contains forbidden individual user, non-org, or invalid-slug owners: ${joined% } — only teams (@${ORG}/<slug>) are allowed; manage membership via teams" \
       "standards/codeowners-standard.md"
   fi
 
@@ -1446,7 +1452,7 @@ check_codeowners() {
   # any path-specific rule still have an owner, and it must list ONLY
   # `@combsmith/org-leads` (additional teams belong on path-specific rules only,
   # otherwise they can satisfy `require_code_owner_review` repo-wide).
-  if ! echo "$owner_lines" | awk '{print $1}' | grep -qxF '*'; then
+  if ! printf '%s\n' "$owner_lines" | sed 's/\\ /\\x20/g' | awk '{print $1}' | grep -qxF '*'; then
     add_finding "$repo" "settings" "codeowners-no-catchall" "warning" \
       "CODEOWNERS has no default \`*\` catch-all pattern — files not matched by a path rule will have no owner and \`require_code_owner_review\` will not apply to them" \
       "standards/codeowners-standard.md"
