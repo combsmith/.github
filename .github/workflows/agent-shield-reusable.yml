@@ -84,10 +84,13 @@ jobs:
       - name: Fetch cross-reference helper
         env:
           GH_TOKEN: ${{ github.token }}
+          # The reusable's own commit (job.workflow_sha), so the helper
+          # is versioned, promoted and rolled back together with this file.
+          HELPER_REF: ${{ job.workflow_sha }}
         run: |
           mkdir -p "$RUNNER_TEMP/org-lib"
           gh api -H 'Accept: application/vnd.github.raw+json' \
-            repos/combsmith/.github/contents/scripts/lib/agent-md-xref.sh \
+            "repos/combsmith/.github/contents/scripts/lib/agent-md-xref.sh?ref=${HELPER_REF}" \
             > "$RUNNER_TEMP/org-lib/agent-md-xref.sh"
 
       - name: Validate cross-references

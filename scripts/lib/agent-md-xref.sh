@@ -13,5 +13,7 @@
 #                                 Empty input is non-compliant (exit 1).
 
 agent_md_references_agents() {
-  grep -qFi 'AGENTS.md'
+  # No -q: grep must drain stdin, or a piped writer gets SIGPIPE and pipefail
+  # turns a successful early match into a failure.
+  grep -Fi 'AGENTS.md' > /dev/null
 }

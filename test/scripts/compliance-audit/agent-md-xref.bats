@@ -33,3 +33,8 @@ setup() { source "$LIB"; }
   grep -q 'scripts/lib/agent-md-xref.sh' "$WORKFLOW"
   ! grep -q "grep -qFi 'AGENTS.md'" "$WORKFLOW"
 }
+
+@test "agent_md_references_agents: early match on large piped input survives pipefail" {
+  run bash -c 'set -o pipefail; . "$0"; { echo "See AGENTS.md"; head -c 131072 /dev/zero | tr "\0" x; } | agent_md_references_agents' "$LIB"
+  [ "$status" -eq 0 ]
+}
