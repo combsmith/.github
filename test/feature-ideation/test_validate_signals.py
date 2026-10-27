@@ -142,6 +142,52 @@ class TestPathConfinement:
         assert rc == 2
         assert "outside the allowed directories" in capsys.readouterr().err
 
+    def test_missing_signals_inside_root_reports_not_found(self, confined, capsys):
+        """A missing file inside an allowed root keeps the ``not found`` exit 2."""
+        rc = module.main(["validate-signals.py", "missing.json", str(self.SCHEMA)])
+        assert rc == 2
+        assert "not found" in capsys.readouterr().err
+
+    def test_missing_schema_inside_root_reports_not_found(self, confined, capsys):
+        """A missing schema inside an allowed root keeps the ``schema not found`` exit 2."""
+        (confined / "signals.json").write_text(
+            self.FIXTURE.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        rc = module.main(["validate-signals.py", "signals.json", "nope/schema.json"])
+        assert rc == 2
+        assert "schema not found" in capsys.readouterr().err
+
+    def test_confined_path_is_rebuilt_from_directory_entries(self, confined, monkeypatch):
+        """The returned path is assembled from scandir entries under the root."""
+        nested = confined / "a" / "b"
+        nested.mkdir(parents=True)
+        target = nested / "signals.json"
+        target.write_text("{}", encoding="utf-8")
+        seen = []
+        real_scandir = module.os.scandir
+
+        def spy(path):
+            seen.append(str(path))
+            return real_scandir(path)
+
+        monkeypatch.setattr(module.os, "scandir", spy)
+        result = module._confine_path("a/b/../b/signals.json")
+        monkeypatch.undo()
+        assert result == target.resolve()
+        assert seen == [str(confined.resolve()), str(confined.resolve() / "a"),
+                        str(confined.resolve() / "a" / "b")]
+
+    def test_confined_root_itself_is_returned(self, confined):
+        """An argument naming an allowed root resolves to that root."""
+        assert module._confine_path(".") == confined.resolve()
+
+    def test_confined_missing_component_raises_not_found(self, confined):
+        """A missing file or intermediate directory inside a root raises FileNotFoundError."""
+        with pytest.raises(FileNotFoundError):
+            module._confine_path("missing.json")
+        with pytest.raises(FileNotFoundError):
+            module._confine_path("no/such/dir/signals.json")
+
     def test_default_allowed_roots_exclude_system_temp(self, tmp_path, monkeypatch):
         """Default roots cover CWD, $RUNNER_TEMP and the repo, not the system temp dir."""
         import os
