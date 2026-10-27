@@ -2457,18 +2457,32 @@ check_centralized_check_names() {
 check_claude_md() {
   local repo="$1"
 
-  local content
-  content=$(gh_api "repos/$ORG/$repo/contents/CLAUDE.md" --jq '.content' 2>/dev/null || echo "")
+  local content rc raw i
+  for i in 1 2 3; do
+    raw=$(gh api "repos/$ORG/$repo/contents/CLAUDE.md" 2>&1) && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && break
+    response_is_http_404 "$raw" && break
+    [ "$i" -lt 3 ] && sleep $((i * 2))
+  done
 
-  if [ -z "$content" ]; then
-    add_finding "$repo" "standards" "missing-claude-md" "error" \
-      "Missing \`CLAUDE.md\` — every repo must have a CLAUDE.md that references AGENTS.md" \
-      "AGENTS.md"
+  if [ "$rc" -ne 0 ]; then
+    if response_is_http_404 "$raw"; then
+      add_finding "$repo" "standards" "missing-claude-md" "error" \
+        "Missing \`CLAUDE.md\` — every repo must have a CLAUDE.md that references AGENTS.md" \
+        "AGENTS.md"
+    else
+      info "CLAUDE.md not readable for $repo (not a 404) — marking the repo inconclusive"
+      mark_repo_inconclusive "$repo"
+    fi
     return
   fi
 
+  content=$(printf '%s' "$raw" | jq -r '.content? // empty' 2>/dev/null || echo "")
+  [ -n "$content" ] || return
+
   local decoded
-  decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
+  decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null) || return
+  [ -n "$decoded" ] || return
 
   if ! echo "$decoded" | grep -qi 'AGENTS\.md'; then
     add_finding "$repo" "standards" "claude-md-missing-agents-ref" "error" \
@@ -2483,18 +2497,32 @@ check_claude_md() {
 check_gemini_md() {
   local repo="$1"
 
-  local content
-  content=$(gh_api "repos/$ORG/$repo/contents/GEMINI.md" --jq '.content' 2>/dev/null || echo "")
+  local content rc raw i
+  for i in 1 2 3; do
+    raw=$(gh api "repos/$ORG/$repo/contents/GEMINI.md" 2>&1) && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && break
+    response_is_http_404 "$raw" && break
+    [ "$i" -lt 3 ] && sleep $((i * 2))
+  done
 
-  if [ -z "$content" ]; then
-    add_finding "$repo" "standards" "missing-gemini-md" "error" \
-      "Missing \`GEMINI.md\` — every repo must have a GEMINI.md that references AGENTS.md" \
-      "AGENTS.md"
+  if [ "$rc" -ne 0 ]; then
+    if response_is_http_404 "$raw"; then
+      add_finding "$repo" "standards" "missing-gemini-md" "error" \
+        "Missing \`GEMINI.md\` — every repo must have a GEMINI.md that references AGENTS.md" \
+        "AGENTS.md"
+    else
+      info "GEMINI.md not readable for $repo (not a 404) — marking the repo inconclusive"
+      mark_repo_inconclusive "$repo"
+    fi
     return
   fi
 
+  content=$(printf '%s' "$raw" | jq -r '.content? // empty' 2>/dev/null || echo "")
+  [ -n "$content" ] || return
+
   local decoded
-  decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
+  decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null) || return
+  [ -n "$decoded" ] || return
 
   if ! echo "$decoded" | grep -qi 'AGENTS\.md'; then
     add_finding "$repo" "standards" "gemini-md-missing-agents-ref" "error" \

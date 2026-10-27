@@ -91,7 +91,7 @@ jobs:
           fi
 
           if [ -f "GEMINI.md" ] && \
-             ! grep -qi 'AGENTS.md' GEMINI.md; then
+             ! grep -qFi 'AGENTS.md' GEMINI.md; then
             echo "::error file=GEMINI.md::Must reference AGENTS.md"
             status=1
           fi
