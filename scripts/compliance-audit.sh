@@ -281,6 +281,10 @@ RULESETS_SRC_DIR="${RULESETS_SRC_DIR:-$SCRIPT_DIR/../standards/rulesets}"
 # shellcheck source=lib/push-protection.sh
 . "$SCRIPT_DIR/lib/push-protection.sh"
 
+# Shared agent-file cross-reference verdict (also used by agent-shield-reusable.yml).
+# shellcheck source=lib/agent-md-xref.sh
+. "$SCRIPT_DIR/lib/agent-md-xref.sh"
+
 # Shared label source of truth — STANDARD_LABEL_SPECS (fixed set) and
 # persona_opt_out_label_configs (derived <id>:hands-off family). Sourced after
 # warn() is defined so the library uses this script's logging helper (issue #1139).
@@ -2477,14 +2481,22 @@ check_claude_md() {
     return
   fi
 
+  # An empty file is a successful API response with empty content: it is
+  # non-compliant (no AGENTS.md reference), not a reason to abort the audit.
+  # Undecodable content is inconclusive. Neither may fall through to a bare
+  # `return` carrying a failed test status, which would trip `set -e`.
   content=$(printf '%s' "$raw" | jq -r '.content? // empty' 2>/dev/null || echo "")
-  [ -n "$content" ] || return
 
-  local decoded
-  decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null) || return
-  [ -n "$decoded" ] || return
+  local decoded=""
+  if [ -n "$content" ]; then
+    if ! decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null); then
+      info "CLAUDE.md content not decodable for $repo — marking the repo inconclusive"
+      mark_repo_inconclusive "$repo"
+      return 0
+    fi
+  fi
 
-  if ! echo "$decoded" | grep -qi 'AGENTS\.md'; then
+  if ! printf '%s' "$decoded" | agent_md_references_agents; then
     add_finding "$repo" "standards" "claude-md-missing-agents-ref" "error" \
       "\`CLAUDE.md\` does not reference \`AGENTS.md\`" \
       "AGENTS.md"
@@ -2517,14 +2529,22 @@ check_gemini_md() {
     return
   fi
 
+  # An empty file is a successful API response with empty content: it is
+  # non-compliant (no AGENTS.md reference), not a reason to abort the audit.
+  # Undecodable content is inconclusive. Neither may fall through to a bare
+  # `return` carrying a failed test status, which would trip `set -e`.
   content=$(printf '%s' "$raw" | jq -r '.content? // empty' 2>/dev/null || echo "")
-  [ -n "$content" ] || return
 
-  local decoded
-  decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null) || return
-  [ -n "$decoded" ] || return
+  local decoded=""
+  if [ -n "$content" ]; then
+    if ! decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null); then
+      info "GEMINI.md content not decodable for $repo — marking the repo inconclusive"
+      mark_repo_inconclusive "$repo"
+      return 0
+    fi
+  fi
 
-  if ! echo "$decoded" | grep -qi 'AGENTS\.md'; then
+  if ! printf '%s' "$decoded" | agent_md_references_agents; then
     add_finding "$repo" "standards" "gemini-md-missing-agents-ref" "error" \
       "\`GEMINI.md\` does not reference \`AGENTS.md\`" \
       "AGENTS.md"

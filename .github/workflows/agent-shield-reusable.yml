@@ -78,23 +78,32 @@ jobs:
           done <<< "$REQUIRED_FILES"
           exit $status
 
+      # The AGENTS.md reference verdict lives in scripts/lib/agent-md-xref.sh
+      # (bats-tested; shared with the fleet compliance audit). Fetch just that
+      # file from the org repo; this step is thin glue around it.
+      - name: Fetch cross-reference helper
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/org-lib"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            repos/combsmith/.github/contents/scripts/lib/agent-md-xref.sh \
+            > "$RUNNER_TEMP/org-lib/agent-md-xref.sh"
+
       - name: Validate cross-references
         env:
           ORG_REF: ${{ inputs.org-standards-ref }}
         run: |
+          # shellcheck source=/dev/null
+          . "$RUNNER_TEMP/org-lib/agent-md-xref.sh"
           status=0
 
-          if [ -f "CLAUDE.md" ] && \
-             ! grep -qi 'AGENTS.md' CLAUDE.md; then
-            echo "::error file=CLAUDE.md::Must reference AGENTS.md"
-            status=1
-          fi
-
-          if [ -f "GEMINI.md" ] && \
-             ! grep -qFi 'AGENTS.md' GEMINI.md; then
-            echo "::error file=GEMINI.md::Must reference AGENTS.md"
-            status=1
-          fi
+          for f in CLAUDE.md GEMINI.md; do
+            if [ -f "$f" ] && ! agent_md_references_agents < "$f"; then
+              echo "::error file=$f::Must reference AGENTS.md"
+              status=1
+            fi
+          done
 
           if [ -f "AGENTS.md" ] && \
              ! grep -qiE "$ORG_REF" AGENTS.md; then
