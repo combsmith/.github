@@ -1438,7 +1438,7 @@ The adversarial pass is the load-bearing part: ideas that survive it are
 | **Schedule** | Weekly (template uses Friday 07:00 UTC) |
 | **Output** | GitHub Discussions in the Ideas category, one per proposal |
 | **Inputs** | `focus_area` (optional), `research_depth` (quick/standard/deep) |
-| **Permissions** | `contents: read`, `discussions: write`, `id-token: write` |
+| **Permissions** | Caller grants `contents: read`, `discussions: write`, `id-token: write`. Inside the reusable, the model job is read-only; only the model-free `publish` job uses `discussions: write` (#1389) |
 | **Required secrets** | `CLAUDE_CODE_OAUTH_TOKEN` (org-level) |
 | **Typical cost** | ~$2-3 per run on Opus, standard depth, 25-40 turns |
 
@@ -1508,7 +1508,10 @@ understanding why they exist:**
    `addDiscussionComment` mutation fails silently with `FORBIDDEN: Resource
    not accessible by integration` — the run reports success and produces
    no Discussions. Passing the workflow's `GITHUB_TOKEN` makes the job-level
-   `permissions: discussions: write` grant apply.
+   grant apply. Since #1389 that grant is read-only in the model job: the
+   model records its mutations to a plan, and a separate `publish` job with
+   no model validates the plan against the caller's `dry_run` and
+   `target_discussion` and executes it.
 
 2. **The `model` input defaults to the `opus` family.**
    The reusable workflow passes this via `--model ${{ inputs.model }}` to the

@@ -50,14 +50,19 @@ create_discussion() {
   local body="$4"
 
   if _is_dry_run; then
-    local entry
+    # planned_id stands in for the id the Discussion will get, so a later
+    # add_label_to_discussion in the same plan can name it; the publish job
+    # swaps in the real id when it executes the plan (#1389).
+    local entry planned_n
+    planned_n=$(grep -c '"op":"create_discussion"' "${DRY_RUN_LOG:-./dry-run.jsonl}" 2>/dev/null || true)
     entry=$(jq -nc \
       --arg op "create_discussion" \
       --arg repo_id "$repo_id" \
       --arg category_id "$category_id" \
       --arg title "$title" \
       --arg body "$body" \
-      '{op: $op, repo_id: $repo_id, category_id: $category_id, title: $title, body: $body}')
+      --arg planned_id "planned-discussion-$((${planned_n:-0} + 1))" \
+      '{op: $op, repo_id: $repo_id, category_id: $category_id, title: $title, body: $body, planned_id: $planned_id}')
     _dry_run_log "$entry"
     printf '%s' "$entry"
     return 0

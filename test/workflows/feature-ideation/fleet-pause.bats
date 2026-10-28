@@ -52,10 +52,12 @@ setup() { fp_setup; }
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     n=$((n + 1))
   done
-  # gather-signals only feeds analyze; skipping it too leaves no orphan artifact.
-  [ "$n" -eq 2 ]
+  # gather-signals only feeds analyze, and publish only executes analyze's plan
+  # (#1389); skipping them too leaves no orphan artifact or empty publish.
+  [ "$n" -eq 3 ]
   [[ " ${jobs[*]} " == *" gather-signals "* ]]
   [[ " ${jobs[*]} " == *" analyze "* ]]
+  [[ " ${jobs[*]} " == *" publish "* ]]
 }
 
 # ── skipped when true, runs when unset or false (acceptance criterion 1) ─────
@@ -106,11 +108,13 @@ setup() { fp_setup; }
   [[ "$output" == *"if=vars.AGENTS_PAUSED == 'true'"* ]]
   [[ "$output" == *"standalone=True"* ]]
   # Nothing reads a result the paused run does not produce: analyze waits on
-  # gather-signals (both skipped), and no job waits on analyze or the notice.
+  # gather-signals and publish on analyze (all three skipped), and no job
+  # waits on the notice.
   grep -qx "needs.gather-signals=" <<< "$output"
   grep -qx "needs.analyze=gather-signals" <<< "$output"
+  grep -qx "needs.publish=analyze" <<< "$output"
   grep -qx "needs.fleet-paused=" <<< "$output"
-  [ "$(grep -c '^needs\.' <<< "$output")" -eq 3 ]
+  [ "$(grep -c '^needs\.' <<< "$output")" -eq 4 ]
   grep -qx "workflow_outputs=" <<< "$output"
 }
 

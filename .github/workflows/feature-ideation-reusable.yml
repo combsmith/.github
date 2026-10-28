@@ -16,6 +16,12 @@
 #   - DRY_RUN mode lets adopters smoke-test on a sandbox repo without
 #     writing real Discussions — every mutation is logged to a JSONL file
 #     and uploaded as an artifact.
+#   - The model never holds a token that can write Discussions (#1389). Its
+#     job (`analyze`) is read-only and only RECORDS mutations to a plan; the
+#     `publish` job, which runs no model, validates that plan against the
+#     caller's `dry_run` / `target_discussion` / `enhance_backlog` inputs and
+#     executes it. A policy enforced inside the model's own shell (env vars,
+#     helper flags) is advisory: the Bash tool can change it.
 #
 # Why a reusable workflow:
 #   - The 5-phase ideation pipeline (Market Research → Brainstorming → Party
@@ -27,7 +33,7 @@
 #     are baked in here so callers cannot accidentally regress them.
 #
 # Fleet pause (AGENTS_PAUSED, #1295):
-#   - With the Actions variable AGENTS_PAUSED=true the two jobs below are
+#   - With the Actions variable AGENTS_PAUSED=true the three jobs below are
 #     skipped by their `if:` and `fleet-paused` prints one notice naming the
 #     pause source and until time. The run ends green having called no model.
 #   - `vars` is read in the CALLING repository's context, so an organisation
@@ -210,10 +216,16 @@ jobs:
     if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout_minutes }}
+    # Read-only on purpose (#1389). The model in this job runs Bash, and every
+    # token the job holds is reachable from that shell (claude-code-action
+    # exports `github.token` to its process). So this job can read Discussions
+    # but never write them; writes are recorded to a plan and performed by
+    # `publish` below, which has no model. No `id-token: write` either: the
+    # action does not need OIDC when `github_token` is passed, and an OIDC
+    # token could be exchanged for a GitHub App token with write access.
     permissions:
       contents: read
-      discussions: write
-      id-token: write
+      discussions: read
       actions: read  # agent-rate-limit gate reads this workflow's run history (log-only, #640)
     steps:
       - name: Checkout calling repository
@@ -281,8 +293,13 @@ jobs:
       - name: Run Claude Code — BMAD Analyst
         id: claude
         env:
+          # Read-only here (see the job's permissions).
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          # Always 1: the helpers record every mutation to DRY_RUN_LOG, the
+          # plan the `publish` job validates and executes (#1389). The
+          # caller's dry_run is CALLER_DRY_RUN, enforced by `publish`.
+          DRY_RUN: '1'
+          CALLER_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           DRY_RUN_LOG: ${{ runner.temp }}/dry-run.jsonl
           SIGNALS_PATH: ${{ runner.temp }}/signals.json
           PROPOSALS_PATH: ${{ runner.temp }}/proposals.json
@@ -296,10 +313,11 @@ jobs:
         uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # CRITICAL: pass the workflow's GITHUB_TOKEN explicitly so the
-          # job-level `permissions: discussions: write` grant applies. Without
-          # this, the action uses its own GitHub App token (claude[bot]) which
-          # lacks discussions:write and silently fails every mutation.
+          # CRITICAL: pass the workflow's GITHUB_TOKEN explicitly so the action
+          # uses this job's read-only grant. Without it the action exchanges an
+          # OIDC token for its own GitHub App token (claude[bot]), which this
+          # job does not allow (no `id-token: write`) and which must not reach
+          # the model anyway (#1389).
           github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: |
             --model ${{ inputs.model }}
@@ -341,12 +359,16 @@ jobs:
             - `$PROPOSALS_PATH`   — where to write your proposals.json (you create this)
             - `$MATCH_PLAN_PATH`  — where the matcher writes its decision plan
             - `$TOOLING_DIR`      — path to `.github/scripts/feature-ideation/` (canonical scripts)
-            - `$DRY_RUN`          — "1" = mutations are logged to `$DRY_RUN_LOG`, not executed
+            - `$DRY_RUN`          — always "1" here: the mutation helpers RECORD each mutation
+                                    to `$DRY_RUN_LOG` (the mutation plan); nothing is written now
+            - `$CALLER_DRY_RUN`   — "1" = preview run: the plan is only logged. Otherwise a
+                                    separate publish step validates the plan after you finish
+                                    and executes it
             - `$FOCUS_AREA`       — optional focus area (empty = open exploration)
             - `$TARGET_DISCUSSION`— if non-empty, a Discussion number to enhance (single-idea mode)
             - `$ENHANCE_BACKLOG`  — "1" = backlog enhancement sweep (used only when `$TARGET_DISCUSSION` is empty)
             - `$RESEARCH_DEPTH`   — quick | standard | deep
-            - `$GH_TOKEN`         — workflow token with `discussions: write`
+            - `$GH_TOKEN`         — READ-ONLY workflow token (`discussions: read`); it cannot write
 
             The current date is in `$SIGNALS_PATH` as `.scan_date` — read it from there
             when you need it for Discussion timestamps.
@@ -373,6 +395,8 @@ jobs:
                `comment_on_discussion "$DISCUSSION_ID" "$BODY"` (the Phase-8 helper).
                Do **NOT** create new Discussions, run the matcher, or comment on anything
                else. If the Discussion is not in the `ideas` category, exit without posting.
+               The publish step accepts exactly one comment, on this Discussion only; any
+               other mutation in the plan makes it publish nothing.
             5. Idempotency (marker continuity): treat the Discussion as ALREADY ENHANCED —
                and do nothing — if any existing comment carries EITHER
                `<!-- feature-ideation:enhanced -->` OR the legacy
@@ -402,8 +426,8 @@ jobs:
                enhancement comment as single-idea steps 2–4 above, beginning the comment with
                the canonical `<!-- feature-ideation:enhanced -->` marker. Post **exactly one**
                comment per candidate via `comment_on_discussion "$DISCUSSION_ID" "$BODY"` (the
-               Phase-8 helper, which honors `$DRY_RUN`: when `$DRY_RUN` is "1" it logs the
-               intended comment to `$DRY_RUN_LOG` and posts NOTHING). Do **NOT** create
+               Phase-8 helper, which records it to the plan; the publish step posts it
+               unless `$CALLER_DRY_RUN` is "1"). Do **NOT** create
                Discussions, run the matcher, or comment on non-candidates.
 
             **If `$TARGET_DISCUSSION` is empty AND `$ENHANCE_BACKLOG` is not "1"**, ignore the
@@ -618,9 +642,8 @@ jobs:
             ## Phase 7: Resolve repository + category IDs
 
             **Auth note:** All `gh` and `gh api` commands use the `GH_TOKEN` environment
-            variable (already set to the workflow's `GITHUB_TOKEN`), which has
-            `discussions: write` permission via the job-level grant. You do NOT need to
-            authenticate manually.
+            variable (already set to the workflow's `GITHUB_TOKEN`). It is READ-ONLY: use it
+            for queries. You do NOT need to authenticate manually.
 
             Fetch the repository ID and the "Ideas" category ID:
 
@@ -643,9 +666,10 @@ jobs:
 
             ## Phase 8: Execute the plan via discussion-mutations.sh
 
-            Source the mutation helpers and call them per the match plan. The helpers
-            automatically honor `$DRY_RUN` — when `$DRY_RUN=1` they log a JSONL entry to
-            `$DRY_RUN_LOG` instead of calling GitHub.
+            Source the mutation helpers and call them per the match plan. In this step they
+            never call GitHub: each call appends one JSONL entry to `$DRY_RUN_LOG` (the
+            mutation plan) and prints it. After you finish, a separate publish step with
+            write access validates the plan and executes it (unless `$CALLER_DRY_RUN` is "1").
 
             ```bash
             source "$TOOLING_DIR/discussion-mutations.sh"
@@ -660,10 +684,12 @@ jobs:
             ```
 
             Then add the `enhancement` label if your repo has one (resolve the label ID
-            first; skip silently if it doesn't exist):
+            first; skip silently if it doesn't exist). The new Discussion has no id yet, so
+            pass the `planned_id` field from `create_discussion`'s output (for example
+            `planned-discussion-1`); the publish step substitutes the real id:
 
             ```bash
-            add_label_to_discussion "$DISCUSSION_ID" "$LABEL_ID"
+            add_label_to_discussion "$PLANNED_ID" "$LABEL_ID"
             ```
 
             ### For each entry in `.matched` with genuinely new information
@@ -690,8 +716,8 @@ jobs:
             - Existing ideas updated (link to the comment)
             - Ideas reviewed with no update needed
             - Top 2-3 market trend bullets
-            - **If `$DRY_RUN=1`,** append the contents of `$DRY_RUN_LOG` (formatted) so
-              reviewers can audit what would have been written.
+            - **If `$CALLER_DRY_RUN` is "1",** append the contents of `$DRY_RUN_LOG` (formatted)
+              so reviewers can audit what would have been written.
 
             ## Rules
 
@@ -701,7 +727,8 @@ jobs:
             - **Always go through the deterministic matcher** in Phase 6 — never invent
               your own fuzzy match logic.
             - **Always go through `discussion-mutations.sh`** — never call createDiscussion
-              or addDiscussionComment GraphQL mutations directly. The helpers handle DRY_RUN.
+              or addDiscussionComment GraphQL mutations directly. Your token cannot write;
+              only what the helpers record in the plan is published.
             - **Ground every proposal in evidence** from the signals file or your research.
             - **Be specific about next steps.**
             - **Respect the project's architecture** documented in AGENTS.md and planning
@@ -802,10 +829,79 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Stage mutation plan
+        # Always produce the file, even empty, so `publish` can download it.
+        env:
+          DRY_RUN_LOG: ${{ runner.temp }}/dry-run.jsonl
+          PLAN_DIR: ${{ runner.temp }}/mutation-plan
+        run: |
+          set -euo pipefail
+          mkdir -p "$PLAN_DIR"
+          if [ -f "$DRY_RUN_LOG" ]; then
+            cp "$DRY_RUN_LOG" "$PLAN_DIR/plan.jsonl"
+          else
+            : > "$PLAN_DIR/plan.jsonl"
+          fi
+
+      - name: Upload mutation plan
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-plan
+          path: ${{ runner.temp }}/mutation-plan/plan.jsonl
+          retention-days: 7
+
   # ---------------------------------------------------------------------------
-  # Job 3: Fleet pause notice — what a paused run does instead (#1295)
+  # Job 3: Publish — validate the analyst's plan and execute it (#1389)
   # ---------------------------------------------------------------------------
-  # With AGENTS_PAUSED=true the two jobs above are skipped by their `if:`, and
+  # The only job that can write Discussions, and it runs no model. It takes
+  # dry_run and target_discussion from the caller's inputs, never from the
+  # analyze job, and rejects the whole plan if any entry breaks them (single-
+  # idea: one comment on the target Ideas Discussion only; backlog: comments
+  # only; scheduled: at most 5 new Discussions). On dry_run it validates and
+  # writes nothing. Rules: .github/scripts/feature-ideation/lib/mutation-plan.sh.
+  publish:
+    name: Publish Discussion Mutations
+    needs: [analyze]
+    # AGENTS_PAUSED (#1295): skipped with analyze; there is nothing to publish.
+    if: vars.AGENTS_PAUSED != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      discussions: write
+    steps:
+      - name: Checkout feature-ideation tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          # This reusable's own commit unless overridden — see `tooling_ref` (#839).
+          ref: ${{ inputs.tooling_ref || job.workflow_sha }}
+          path: .feature-ideation-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download mutation plan
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mutation-plan
+          path: ${{ runner.temp }}/mutation-plan
+
+      - name: Validate and publish the plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLAN_PATH: ${{ runner.temp }}/mutation-plan/plan.jsonl
+          CALLER_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          TARGET_DISCUSSION: ${{ inputs.target_discussion || '' }}
+          ENHANCE_BACKLOG: ${{ inputs.enhance_backlog && '1' || '0' }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          bash .feature-ideation-tooling/.github/scripts/feature-ideation/publish-mutation-plan.sh
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Fleet pause notice — what a paused run does instead (#1295)
+  # ---------------------------------------------------------------------------
+  # With AGENTS_PAUSED=true the three jobs above are skipped by their `if:`, and
   # a skipped job cannot log. This job runs instead and says why in one line.
   # It stands alone (no `needs:`, or a skipped dependency would silence it) and
   # runs while the fleet is paused, so it holds no secret, no token and no

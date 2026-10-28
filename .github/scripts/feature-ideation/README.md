@@ -29,7 +29,9 @@ caught **before UAT** instead of after.
 | `collect-signals.sh` | Orchestrator: drives all `gh` calls, composes signals.json, emits truncation warnings. | R1, R3, R4, R11 |
 | `validate-signals.py` | JSON Schema 2020-12 validator for signals.json against `../schemas/signals.schema.json`. | R3 |
 | `match-discussions.sh` | Deterministic Jaccard-similarity matcher between Mary's proposals and existing Ideas Discussions. Replaces the prose "use fuzzy matching" instruction. | R5, R6 |
-| `discussion-mutations.sh` | `create_discussion`, `comment_on_discussion`, `add_label_to_discussion` wrappers with `DRY_RUN=1` audit-log mode. | Smoke testing |
+| `discussion-mutations.sh` | `create_discussion`, `comment_on_discussion`, `add_label_to_discussion` wrappers with `DRY_RUN=1` audit-log mode. In the `analyze` job `DRY_RUN` is always 1, so the log is the mutation plan. | Smoke testing |
+| `lib/mutation-plan.sh` | Pure validation of the mutation plan against the caller's mode: single-idea (one comment, on the target only), backlog (comments only), scheduled (at most 5 creates). All-or-nothing. | #1389 |
+| `publish-mutation-plan.sh` | Runs in the model-free `publish` job: resolves the caller's target, validates the plan, then executes it unless the caller asked for `dry_run`. | #1389 |
 | `lint-prompt.sh` | Scans every workflow file for unescaped `$()` / `${VAR}` inside `direct_prompt:` (v0) and `prompt:` (v1) blocks (which YAML and `claude-code-action` pass verbatim instead of expanding). | R2 |
 
 ## Running the tests
@@ -49,7 +51,7 @@ bats test/workflows/feature-ideation/gh-safe.bats
 # Lint shell scripts
 (cd .github/scripts/feature-ideation && \
   shellcheck -x collect-signals.sh lint-prompt.sh match-discussions.sh \
-                 discussion-mutations.sh lib/*.sh)
+                 discussion-mutations.sh publish-mutation-plan.sh lib/*.sh)
 
 # Lint workflow prompt blocks (direct_prompt: and prompt:)
 bash .github/scripts/feature-ideation/lint-prompt.sh
@@ -63,10 +65,30 @@ workflow file. See `.github/workflows/feature-ideation-tests.yml`.
 To smoke-test the workflow on a fork without writing to GitHub Discussions:
 
 1. Trigger via `workflow_dispatch` with `dry_run: true`.
-2. The `analyze` job will source `discussion-mutations.sh` with `DRY_RUN=1`,
-   so every `create_discussion` / `comment_on_discussion` / `add_label_to_discussion`
-   call writes a JSONL entry to `$DRY_RUN_LOG` instead of executing.
+2. The `analyze` job sources `discussion-mutations.sh` with `DRY_RUN=1` (on
+   every run, not only dry runs), so every `create_discussion` /
+   `comment_on_discussion` / `add_label_to_discussion` call writes a JSONL
+   entry to `$DRY_RUN_LOG` instead of executing.
 3. The dry-run log is uploaded as the `dry-run-log` artifact for human review.
+4. The `publish` job validates the plan and, because `dry_run` is true,
+   writes nothing.
+
+### Why the model cannot write (#1389)
+
+Mary runs with the Bash tool, so anything in her job's environment is hers to
+read or change: a `DRY_RUN` flag, the target number, and every token the job
+holds. The policies are therefore enforced by job boundaries, not by flags:
+
+- `analyze` (the model) has read-only permissions (`discussions: read`, no
+  `id-token: write`). It can only record mutations.
+- `publish` (no model) holds `discussions: write`. It reads `dry_run`,
+  `target_discussion` and `enhance_backlog` from the caller's inputs, resolves
+  the target's node id itself, and rejects the whole plan if any entry breaks
+  the mode's rules (`lib/mutation-plan.sh`).
+
+What the plan validation does not decide: the content of a comment or
+Discussion, and, in scheduled and backlog modes, which Discussions in the
+repository receive comments (that is the model's job in those modes).
 
 ## Schema as contract
 
