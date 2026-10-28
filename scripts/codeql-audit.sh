@@ -465,18 +465,21 @@ generate_summary() {
     if [ "$inconclusive" -gt 0 ]; then
       echo ""
       echo "> [!WARNING]"
-      echo "> Alerts could not be read for: $(paste -sd ',' "$INCONCLUSIVE_FILE" | sed 's/,/, /g'). Their issues were left untouched (not updated, not closed)."
+      echo "> $inconclusive repo(s) had unreadable alerts (may include private repos). Their issues were left untouched (not updated, not closed). Check the workflow logs for details."
     fi
     echo ""
-    echo "## By repo × family (one issue each)"
-    echo "| Repo | Family | Alerts | Worst severity | Priority |"
-    echo "|---|---|---:|---|---|"
-    local g r f c s
-    while IFS= read -r g; do
-      r=$(jq -r '.repo' <<< "$g"); f=$(family_title "$(jq -r '.family' <<< "$g")")
-      c=$(jq -r '.count' <<< "$g"); s=$(jq -r '.max_severity' <<< "$g")
-      echo "| $r | $f | $c | $s | $(severity_priority_label "$s") |"
-    done < <(jq -c '.[]' "$GROUPS_FILE")
+    echo "## Alert groups filed"
+    echo ""
+    echo "**Summary:** $(jq 'length' "$GROUPS_FILE") alert group(s) across $(jq -r '[.[].repo] | unique | length' "$GROUPS_FILE") repository(ies), one issue per repo × language family. Check those issues for details."
+    echo ""
+    echo "Severity distribution:"
+    echo ""
+    jq -r '.max_severity' "$GROUPS_FILE" | sort | uniq -c | {
+      while read -r count sev; do
+        prio=$(severity_priority_label "$sev")
+        echo "- **$sev** ($prio): $count"
+      done
+    }
     echo ""
     echo "## Suppressed (not filed — tracked elsewhere or exempt by policy)"
     echo "| Rule | Reason | Alerts |"
