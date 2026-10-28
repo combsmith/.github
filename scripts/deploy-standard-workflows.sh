@@ -158,9 +158,6 @@ DEPLOYABLE_WORKFLOWS=(
   pr-auto-review.yml
   feature-ideation.yml
   pr-review.yml
-  idea-enhancer.yml
-  idea-triage.yml
-  initiative-planner.yml
 )
 
 # Deployable workflows whose stub BODY carries a documented per-repo edit the
@@ -223,11 +220,6 @@ readonly REPLACE_IF_PRESENT_WORKFLOWS=(
 # the sweep must never read, replace or re-pin it.
 declare -A ENGINE_HOST_REPOS=(
   ["pr-review.yml"]="$ENGINE_HOST_REPO"
-  # The central BMAD idea engines live under these names in .github-private; their
-  # callers here are stubs, so the sweep must not treat the engines as consumers.
-  ["idea-enhancer.yml"]="$ENGINE_HOST_REPO"
-  ["idea-triage.yml"]="$ENGINE_HOST_REPO"
-  ["initiative-planner.yml"]="$ENGINE_HOST_REPO"
 )
 
 # is_replace_if_present_workflow <name.yml> -> 0 if the workflow deploys only over
@@ -672,21 +664,6 @@ strip_stale_stable_header() {
   grep -vE "^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)" || true
 }
 
-# Workflows an adopter may or may not have (BMAD idea pipeline). The sweep never
-# seeds them; it only migrates an existing caller, re-pinning its OWN body in place.
-readonly PRESENT_ONLY_WORKFLOWS=(
-  idea-enhancer.yml
-  idea-triage.yml
-  initiative-planner.yml
-)
-
-is_present_only_workflow() {
-  local w="$1" p
-  for p in "${PRESENT_ONLY_WORKFLOWS[@]}"; do
-    [[ "$w" == "$p" ]] && return 0
-  done
-  return 1
-}
 
 # is_already_compliant <existing_content> <template> <repo> -> 0 if the deployed
 # stub needs no re-deploy. A stub is compliant only when it is BOTH pin-compliant
@@ -724,8 +701,7 @@ is_already_compliant() {
   fi
   stub_has_stale_stable_header "$existing_content" "$template" "$repo" && return 1
   if is_replace_if_present_workflow "$workflow" \
-     || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
-          && ! is_present_only_workflow "$workflow"; }; then
+     || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
   fi
   if ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
@@ -973,17 +949,6 @@ deploy_repo() {
       fi
       # A channel consumer stub: re-pin the meta-repo's OWN stub body in place —
       # never overwrite its bespoke content with the generic template.
-      if [[ "$DRY_RUN" != "true" ]]; then
-        repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
-        printf '%s\n' "$existing_content" > "$repin_source"
-      fi
-    elif is_present_only_workflow "$workflow"; then
-      # Optional pipeline stub: never seed; otherwise re-pin its OWN body in place.
-      if [[ -z "$existing_sha" ]]; then
-        skip "$repo/$workflow (present-only: no existing caller — never seeded)"
-        continue
-      fi
-      mode="repin-in-place"
       if [[ "$DRY_RUN" != "true" ]]; then
         repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
         printf '%s\n' "$existing_content" > "$repin_source"
