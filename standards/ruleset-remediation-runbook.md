@@ -183,9 +183,19 @@ bash scripts/automerge-standards-sync.sh --repo combsmith/<repo> --pr <n> --dry-
 
 Eligibility is gated to a **trusted source**: the PR must carry the
 `standards-sync` label, its head branch must be a `standards-sync/` branch, and
-its author must be in `TRUSTED_AUTHORS` (default = `ORG_LEADS_MEMBERS`). Anything
-else is skipped untouched. Every run emits an `AUDIT pr=… approver=…
-merge=native-auto-merge admin=none` line.
+its author must be in `TRUSTED_AUTHORS` (default = `ORG_LEADS_MEMBERS`). Those
+only say who opened the PR, so the script also verifies the **current head**
+before approving ([#1386](https://github.com/combsmith/.github/issues/1386)):
+every commit is authored and committed by the PR author (a verified GitHub
+"Update branch" merge by that author is allowed), every push GitHub recorded for
+the head branch was made by the PR author, and every changed path is a
+`.github/workflows/<w>` stub listed in `DEPLOYABLE_WORKFLOWS` of
+`deploy-standard-workflows.sh` (added or modified only). The approval is posted
+against that verified head SHA, and auto-merge is enabled with
+`--match-head-commit` only after re-checking the head has not moved. Anything
+else is skipped untouched, with the reason logged. Every run emits an `AUDIT
+pr=… approver=… merge=native-auto-merge admin=none` line (live runs also record
+`head=<sha>`).
 
 > **Genuine deadlock (author + last-pusher consume every code-owner).** With only
 > `{don-petry, donpetry-bot}` as code-owners, a PR whose author is one and whose
