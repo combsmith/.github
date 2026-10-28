@@ -1019,3 +1019,141 @@ TRUST_FLOOR_CLAUSE_PR="contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"
     esac
   done
 }
+
+# ===========================================================================
+# Comment-path gating regressions (#1398, #1407)
+# ===========================================================================
+
+# --- #1407: the mention surface floor only TIGHTENS the persona-wide floor --
+
+@test "pm_mention_trust_floor cannot widen the persona-wide floor (#1407)" {
+  # persona-standards.md: a per-surface trust_floor "may tighten it but never
+  # loosen below it". The persona-wide floor is [OWNER, MEMBER, COLLABORATOR];
+  # the mention surface adds CONTRIBUTOR, which must be dropped. Surface-wins
+  # would emit "OWNER CONTRIBUTOR" and admit a CONTRIBUTOR.
+  run pm_mention_trust_floor "$(manifest '    - surface: mention
+      enabled: true
+      mode: advisory
+      trust_floor: [OWNER, CONTRIBUTOR]')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "OWNER" ]
+}
+
+@test "pm_mention_trust_floor + pm_trust_ok deny an association only the surface lists (#1407)" {
+  local floor
+  floor="$(pm_mention_trust_floor "$(manifest '    - surface: mention
+      enabled: true
+      mode: advisory
+      trust_floor: [OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR]')")"
+  # shellcheck disable=SC2086  # floor is a set
+  run pm_trust_ok CONTRIBUTOR $floor
+  [ "$status" -eq 1 ]
+  # shellcheck disable=SC2086
+  run pm_trust_ok MEMBER $floor
+  [ "$status" -eq 0 ]
+}
+
+# --- #1398: the comment path reads EVERY page of labels, failing closed -----
+#
+# `gh` is stubbed on PATH. The stub serves 30 filler labels on page 1 and the
+# hold/opt-out labels on page 2, and only returns page 2 when called with
+# --paginate (as the real gh api does). GH_STUB_FAIL=all fails outright;
+# GH_STUB_FAIL=page2 prints page 1 then fails, like a mid-pagination error.
+
+make_gh_stub() {
+  GH_STUB_DIR="$BATS_TEST_TMPDIR/ghstub"
+  mkdir -p "$GH_STUB_DIR"
+  export GH_STUB_LOG="$GH_STUB_DIR/args.log"
+  : >"$GH_STUB_LOG"
+  cat >"$GH_STUB_DIR/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$GH_STUB_LOG"
+[ "${GH_STUB_FAIL:-}" = "all" ] && { echo "HTTP 502" >&2; exit 1; }
+for i in $(seq 1 30); do printf 'filler-%s\n' "$i"; done
+case " $* " in
+  *" --paginate "*)
+    [ "${GH_STUB_FAIL:-}" = "page2" ] && { echo "HTTP 502" >&2; exit 1; }
+    printf '%s\n' 'qa-lead:hands-off' 'needs-human-review' ;;
+esac
+exit 0
+STUB
+  chmod +x "$GH_STUB_DIR/gh"
+  PATH="$GH_STUB_DIR:$PATH"
+}
+
+@test "pm_item_labels returns labels beyond the first page (#1398)" {
+  make_gh_stub
+  run pm_item_labels combsmith/example 7
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 32 ]
+  printf '%s\n' "$output" | grep -qxF 'qa-lead:hands-off'
+  printf '%s\n' "$output" | grep -qxF 'needs-human-review'
+}
+
+@test "pm_item_labels requests the item's labels paginated at per_page=100 (#1398)" {
+  make_gh_stub
+  run pm_item_labels combsmith/example 7
+  [ "$status" -eq 0 ]
+  grep -q -- '--paginate' "$GH_STUB_LOG"
+  grep -qF -- '/repos/combsmith/example/issues/7/labels?per_page=100' "$GH_STUB_LOG"
+}
+
+@test "a page-2 opt-out and stop marker are both seen by the decision helpers (#1398)" {
+  make_gh_stub
+  local labels
+  labels="$(pm_item_labels combsmith/example 7)"
+  printf '%s\n' "$labels" | grep -qxF -- 'qa-lead:hands-off'
+  run pm_first_stop_marker 'interaction:
+  stop_markers: [needs-human-review]' <<<"$labels"
+  [ "$status" -eq 0 ]
+  [ "$output" = "needs-human-review" ]
+}
+
+@test "pm_item_labels fails closed when the label fetch fails (#1398)" {
+  make_gh_stub
+  GH_STUB_FAIL=all run pm_item_labels combsmith/example 7
+  [ "$status" -ne 0 ]
+}
+
+@test "pm_item_labels fails closed when a later page fails (never a partial set) (#1398)" {
+  make_gh_stub
+  GH_STUB_FAIL=page2 run pm_item_labels combsmith/example 7
+  [ "$status" -ne 0 ]
+}
+
+@test "pm_item_labels refuses a missing repo or item number (#1398)" {
+  make_gh_stub
+  run pm_item_labels "" 7
+  [ "$status" -ne 0 ]
+  run pm_item_labels combsmith/example ""
+  [ "$status" -ne 0 ]
+  [ ! -s "$GH_STUB_LOG" ]
+}
+
+@test "every labels read in the router is paginated (#1398)" {
+  # Parse each job's run: scripts (not the raw file, so a YAML comment cannot
+  # satisfy or trip it). Any gh call against an issue's /labels must paginate,
+  # and the comment path must read labels through pm_item_labels.
+  run python3 - "$WORKFLOW" <<'PY'
+import re, sys, yaml
+with open(sys.argv[1]) as f:
+    wf = yaml.safe_load(f)
+bad, route_uses_helper = [], False
+for job_name, job in wf["jobs"].items():
+    for step in job.get("steps", []):
+        for line in (step.get("run") or "").splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            if re.search(r"\bgh(_retry)?\s+api\b", line) and "/labels" in line \
+                    and "--paginate" not in line:
+                bad.append(f"{job_name}: {line.strip()}")
+            if job_name == "route" and re.search(r"\bpm_item_labels\b", line):
+                route_uses_helper = True
+for b in bad:
+    print("unpaginated labels read:", b)
+if not route_uses_helper:
+    print("route job does not read labels via pm_item_labels")
+sys.exit(1 if bad or not route_uses_helper else 0)
+PY
+  [ "$status" -eq 0 ]
+}
