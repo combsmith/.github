@@ -4,19 +4,23 @@
 #   - a workflow that provides a required check (SonarCloud, CodeQL,
 #     agent-shield, dependency-audit, duplicate-decl-gate), or a reusable one
 #     of them calls
+#   - standards/workflows/sonarcloud.yml    (the SonarCloud template)
 #   - standards/rulesets/**                 (the required-context lists)
 #   - test/workflows/required-checks/**     (the guard itself)
 #
 # Gate: bats — every required context has a providing workflow that triggers on
 #       `merge_group` and still produces the exact context name, so a merge
 #       queue on this repo cannot be stalled by a check that never reports.
-#       See test/workflows/required-checks/merge-group.bats.
+#       See test/workflows/required-checks/merge-group.bats. Also: a failed
+#       SonarCloud quality gate fails the required `SonarCloud` check, in the
+#       repo workflow and the template (sonarcloud-quality-gate.bats).
 name: Required Checks Tests
 
 on:
   pull_request:
     paths:
       - '.github/workflows/sonarcloud.yml'
+      - 'standards/workflows/sonarcloud.yml'
       - '.github/workflows/codeql.yml'
       - '.github/workflows/agent-shield.yml'
       - '.github/workflows/dependency-audit.yml'
@@ -30,6 +34,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/sonarcloud.yml'
+      - 'standards/workflows/sonarcloud.yml'
       - '.github/workflows/codeql.yml'
       - '.github/workflows/agent-shield.yml'
       - '.github/workflows/dependency-audit.yml'
