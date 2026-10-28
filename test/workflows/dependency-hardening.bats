@@ -96,9 +96,11 @@ workflow_command_lines() {
         path="${path#\"}"
         path="${path%\'}"
         path="${path%\"}"
-        # Reusable workflows check the tooling out under .feature-ideation-tooling/;
-        # map that runtime prefix back to the repo root for the existence check.
+        # Reusable workflows check the tooling out under .feature-ideation-tooling/
+        # or .dependency-audit-tooling/; map that runtime prefix back to the repo
+        # root for the existence check.
         path="${path#.feature-ideation-tooling/}"
+        path="${path#.dependency-audit-tooling/}"
         if [ -z "$path" ]; then
           echo "EMPTY path extracted from: ${file##*/}: $cmd"; fail=1
         elif [ ! -f "$REPO_ROOT/$path" ]; then
