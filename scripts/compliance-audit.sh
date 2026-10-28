@@ -2917,15 +2917,24 @@ create_issue_for_finding() {
   # Normalize title for search
   local search_title="${title}"
 
-  # Check for existing open issue with same title
+  # Check for existing open issue with same title. The title can carry
+  # repository-controlled text (a workflow filename), so it is bound to jq as
+  # data, never spliced into the program (#1385).
   local existing
   existing=$(gh issue list --repo "$ORG/$repo" \
     --label "$AUDIT_LABEL" \
     --state open \
     --search "\"$search_title\" in:title" \
     --json number,title \
-    -q ".[] | select(.title == \"$search_title\") | .number" \
-    2>/dev/null | head -1 || echo "")
+    2>/dev/null \
+    | jq -r --arg t "$search_title" '.[] | select(.title == $t) | .number' 2>/dev/null \
+    | head -1 || echo "")
+
+  # Only a plain issue number may reach `gh issue edit/comment` below.
+  if [ -n "$existing" ] && ! [[ "$existing" =~ ^[0-9]+$ ]]; then
+    warn "Ignoring non-numeric existing-issue lookup result in $repo for: $check — not updating or creating an issue"
+    return 0
+  fi
 
   if [ -n "$existing" ]; then
     # Migrate the machine-owned finding label onto pre-existing issues so the
@@ -3309,8 +3318,17 @@ close_resolved_issues() {
 
     local check_name="${issue_title#Compliance: }"
 
-    # If this check is no longer in findings, close the issue
-    if ! echo "$current_checks" | grep -qx "$check_name"; then
+    # If this check is no longer in findings, close the issue. The check id is
+    # repository-derived, so compare it as a fixed whole-line string, and only a
+    # definite no-match (exit 1) means resolved; an evaluation error (>1) must
+    # never close a possibly-live finding (#1401).
+    local match_rc=0
+    grep -Fxq -- "$check_name" <<< "$current_checks" || match_rc=$?
+    if [ "$match_rc" -gt 1 ]; then
+      warn "Could not evaluate whether check '$check_name' is still present in $repo (grep exit $match_rc) — not closing #$issue_num"
+      continue
+    fi
+    if [ "$match_rc" -eq 1 ]; then
       if gh issue close "$issue_num" --repo "$ORG/$repo" \
           --comment "Resolved! This check is now passing as of $(date -u +%Y-%m-%d). Closing automatically." \
           2>/dev/null; then
