@@ -1,7 +1,8 @@
 # Regression guard for the flaky "Lint GitHub Actions" download in ci.yml
 # (issue #894): every curl download in ci.yml must carry bounded retries so a
 # transient GitHub Releases blip retries instead of failing the job.
-# See test/workflows/ci/install-resilience.bats.
+# See test/workflows/ci/install-resilience.bats. Also runs the gitleaks config
+# detection tests (issue #1395, test/workflows/ci/secret-scan-config.bats).
 name: CI Workflow Tests
 
 on:
@@ -10,12 +11,16 @@ on:
       - '.github/workflows/ci.yml'
       - 'test/workflows/ci/**'
       - '.github/workflows/ci-tests.yml'
+      - '.gitleaks.toml'
+      - 'standards/gitleaks.toml'
   push:
     branches: [main]
     paths:
       - '.github/workflows/ci.yml'
       - 'test/workflows/ci/**'
       - '.github/workflows/ci-tests.yml'
+      - '.gitleaks.toml'
+      - 'standards/gitleaks.toml'
 
 permissions: {}
 
@@ -50,6 +55,32 @@ jobs:
           done
           echo "Apt install failed after 3 attempts" >&2
           exit 1
+
+      # The secret-scan detection tests (test/workflows/ci/secret-scan-config.bats,
+      # issue #1395) run the real scanner, so install the exact release ci.yml's
+      # secret-scan job pins — same version, retry loop and checksum as ci.yml
+      # (the bats suite asserts the version/checksum stay in lockstep).
+      - name: Install gitleaks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          downloaded=0
+          for attempt in 1 2 3; do
+            if timeout 30 gh release download v8.30.1 --repo gitleaks/gitleaks --pattern 'gitleaks_8.30.1_linux_x64.tar.gz' --output /tmp/gitleaks.tar.gz --clobber; then
+              downloaded=1
+              break
+            fi
+            echo "gitleaks download attempt ${attempt} failed" >&2
+            [ "${attempt}" -lt 3 ] && sleep $((attempt * 5))
+          done
+          if [ "${downloaded}" -ne 1 ]; then
+            echo "gitleaks download failed after 3 attempts" >&2
+            exit 1
+          fi
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
 
       - name: bats
         run: bats --print-output-on-failure test/workflows/ci/
