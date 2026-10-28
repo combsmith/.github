@@ -17,7 +17,13 @@
 #      bringing it up to date. CI triggers normally because the APP_TOKEN is
 #      a GitHub App installation token — NOT the repository's GITHUB_TOKEN,
 #      which is the only token subject to GitHub's recursive-trigger guard.
-#   2. Merges any Dependabot PR that is up-to-date and passing required CI.
+#   2. Merges any Dependabot PR that is up-to-date and whose head commit passes
+#      the merge gate (issues #1399, #1400) — auto-merge requested, MERGEABLE,
+#      EVERY check on the head commit successful (success/neutral/skipped;
+#      every check the base branch's rules require must be present), and every
+#      commit on the PR from Dependabot or a branch update by this App. The
+#      merge is bound to the verified head SHA. Decision logic lives in
+#      .github/scripts/dependabot/lib/ (bats-tested); this file is glue.
 #
 # Why update-branch with APP_TOKEN (not GITHUB_TOKEN or @dependabot rebase):
 #   - GITHUB_TOKEN: GitHub's recursive-trigger guard prevents events from
@@ -36,7 +42,9 @@
 # its dependabot/fetch-metadata verification step (since the latest commit
 # is not from Dependabot), but this is safe — the rebase workflow merges
 # directly via the APP_TOKEN bypass actor and does not rely on the automerge
-# workflow's re-approval.
+# workflow's re-approval. These App-made merge commits are the only
+# non-Dependabot commits the merge gate accepts; any other commit on the
+# branch keeps the PR out of the automated merge.
 #
 # Required org/repo secrets (passed explicitly by caller via secrets: mapping):
 #   APP_ID         — GitHub App ID with contents:write and pull-requests:write
@@ -59,8 +67,20 @@ jobs:
   update-and-merge:
     runs-on: ubuntu-latest
     permissions:
+      contents: read       # check out the gate scripts from combsmith/.github
       pull-requests: write
     steps:
+      - name: Checkout Dependabot gate tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          # This reusable's own commit, so the gate scripts always match the
+          # channel the caller pinned (same pattern as feature-ideation, #839).
+          ref: ${{ job.workflow_sha }}
+          path: .dependabot-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Check app secrets
         env:
           APP_ID: ${{ secrets.APP_ID }}
@@ -81,8 +101,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           REPO: ${{ github.repository }}
         run: |
+          # shellcheck source=/dev/null
+          . .dependabot-tooling/.github/scripts/dependabot/lib/gates.sh
+          # shellcheck source=/dev/null
+          . .dependabot-tooling/.github/scripts/dependabot/lib/gh-io.sh
+
+          # Branch updates this App makes (update-branch merge commits) are the
+          # only non-Dependabot commits the merge gate accepts.
+          APP_LOGIN="${APP_SLUG:+${APP_SLUG}[bot]}"
+
           # Find open Dependabot PRs
           PRS=$(gh pr list --repo "$REPO" --author "app/dependabot" \
             --json number,headRefName \
@@ -139,45 +169,25 @@ jobs:
               continue
             fi
 
-            # Check if auto-merge is enabled (set by the automerge workflow)
-            AUTO_MERGE=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-              --json autoMergeRequest --jq '.autoMergeRequest != null')
-
-            if [[ "$AUTO_MERGE" != "true" ]]; then
-              echo "  Skipping — auto-merge not enabled"
+            # The App merges with ruleset bypass, so GitHub's own gates do not
+            # stop it — the merge gate must. It requires auto-merge requested
+            # (set by the automerge workflow), MERGEABLE, EVERY check on the
+            # head commit successful (fail closed on failure, cancelled,
+            # timed_out, action_required, stale, startup_failure, pending or a
+            # missing required check), and every commit from Dependabot or a
+            # branch update by this App (#1399, #1400).
+            if ! dependabot_merge_gate "$REPO" "$PR_NUMBER" "$APP_LOGIN"; then
+              echo "  Skipping — $DEPENDABOT_GATE_REASON"
               continue
             fi
 
-            # Trust GitHub's MERGEABLE state: it already accounts for all
-            # REQUIRED status checks, review rules, and branch-up-to-date.
-            # Non-required checks (e.g. gitleaks false positives) that happen
-            # to fail do not block merges as long as required checks pass.
-            MERGEABLE=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-              --json mergeable --jq '.mergeable')
-
-            if [[ "$MERGEABLE" != "MERGEABLE" ]]; then
-              echo "  Skipping — not mergeable ($MERGEABLE)"
-              continue
-            fi
-
-            # Also confirm no checks are still in progress — avoids merging
-            # mid-CI when GitHub reports MERGEABLE based on a previous run.
-            CHECKS_PENDING=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-              --json statusCheckRollup | \
-              jq '[.statusCheckRollup[]? | select(.name != null and .status != "COMPLETED")] | length')
-
-            if [[ "$CHECKS_PENDING" -gt 0 ]]; then
-              echo "  Skipping — $CHECKS_PENDING check(s) still pending"
-              continue
-            fi
-
-            echo "  All required checks pass — merging PR #$PR_NUMBER"
+            echo "  Merge gate passed ($DEPENDABOT_GATE_REASON) — merging PR #$PR_NUMBER at $DEPENDABOT_GATE_SHA"
             # Use app token for merge so the resulting push to main is attributed to the
             # app bot — this triggers the workflow again via push event, enabling the
             # self-sustaining chain that serializes Dependabot PR merges one at a time.
-            if GH_TOKEN="$APP_TOKEN" gh api "repos/$REPO/pulls/$PR_NUMBER/merge" \
-              -X PUT -f merge_method=squash \
-              --silent; then
+            # The merge is bound to the verified head SHA: GitHub rejects it if
+            # the branch moved after the gate ran.
+            if GH_TOKEN="$APP_TOKEN" dependabot_merge_pr "$REPO" "$PR_NUMBER" "$DEPENDABOT_GATE_SHA"; then
               echo "  Merged PR #$PR_NUMBER"
               MERGED=true
             else

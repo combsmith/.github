@@ -15,6 +15,14 @@
 # security updates. This workflow adds defense-in-depth by also checking
 # the package ecosystem.
 #
+# Provenance gate (issue #1400): Dependabot metadata describes only the
+# Dependabot commit, so before approving, every commit on the PR must be from
+# Dependabot (or a branch update made by this App via update-branch) and the
+# head must still be the commit this event was for. The approval and the
+# auto-merge request are bound to that head SHA. If a later commit fails the
+# gate, auto-merge is disabled and this App's earlier approvals are dismissed.
+# Decision logic lives in .github/scripts/dependabot/lib/ (bats-tested).
+#
 # Required org/repo secrets (passed via `secrets: inherit` from caller):
 #   APP_ID         — GitHub App ID with contents:write and pull-requests:write
 #   APP_PRIVATE_KEY — GitHub App private key
@@ -88,11 +96,54 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+      - name: Checkout Dependabot gate tooling
+        if: steps.eligible.outputs.eligible == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          # This reusable's own commit, so the gate scripts always match the
+          # channel the caller pinned (same pattern as feature-ideation, #839).
+          ref: ${{ job.workflow_sha }}
+          path: .dependabot-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Approve and enable auto-merge
         if: steps.eligible.outputs.eligible == 'true'
         run: |
-          gh pr review --approve "$PR_URL"
-          gh pr merge --auto --squash "$PR_URL"
+          # shellcheck source=/dev/null
+          . .dependabot-tooling/.github/scripts/dependabot/lib/gates.sh
+          # shellcheck source=/dev/null
+          . .dependabot-tooling/.github/scripts/dependabot/lib/gh-io.sh
+
+          APP_LOGIN="${APP_SLUG:+${APP_SLUG}[bot]}"
+
+          # Reads use the job's GITHUB_TOKEN; only the writes use the App token.
+          rc=0
+          GH_TOKEN="$READ_TOKEN" dependabot_provenance_check "$REPO" "$PR_NUMBER" "$APP_LOGIN" "$EVENT_HEAD_SHA" || rc=$?
+          if [[ "$rc" -eq 2 ]]; then
+            echo "::error::Not approving PR #$PR_NUMBER — $DEPENDABOT_GATE_REASON"
+            exit 1
+          fi
+          if [[ "$rc" -ne 0 ]]; then
+            if [[ "$DEPENDABOT_GATE_STALE" == "true" ]]; then
+              # A newer push superseded this event; its own run decides.
+              echo "Not approving PR #$PR_NUMBER — $DEPENDABOT_GATE_REASON"
+              exit 0
+            fi
+            # Commits on the PR that did not come from Dependabot: withdraw any
+            # earlier automated approval / auto-merge and leave it to a human.
+            echo "::warning::Not approving PR #$PR_NUMBER — $DEPENDABOT_GATE_REASON"
+            dependabot_revoke_automation "$REPO" "$PR_NUMBER" "$APP_LOGIN" "$DEPENDABOT_GATE_REASON"
+            exit 0
+          fi
+
+          echo "Provenance gate passed ($DEPENDABOT_GATE_REASON) — approving $DEPENDABOT_GATE_SHA"
+          dependabot_approve_and_automerge "$REPO" "$PR_NUMBER" "$DEPENDABOT_GATE_SHA"
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
