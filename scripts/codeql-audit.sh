@@ -52,7 +52,7 @@ ISSUES_REMOVED=0
 # dl_cycle_trigger_label(). Only sourced when present (skipped under bats).
 _LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/dev-lead-retrigger.sh"
 # shellcheck source=/dev/null
-[ -f "$_LIB" ] && source "$_LIB"
+[[ -f "$_LIB" ]] && source "$_LIB"
 
 info() { echo "[info] $*" >&2; }
 warn() { echo "[warn] $*" >&2; }
@@ -203,7 +203,7 @@ repo_open_alerts() {
   local msg
   msg="$(cat "$err") $out"
   rm -f "$err"
-  if [ "$(alerts_error_kind "$msg")" = "none" ]; then
+  if [[ "$(alerts_error_kind "$msg")" = "none" ]]; then
     echo "[]"
     return 0
   fi
@@ -212,7 +212,7 @@ repo_open_alerts() {
 }
 
 list_repos() {
-  if [ -n "$TARGET_REPO" ]; then
+  if [[ -n "$TARGET_REPO" ]]; then
     echo "${TARGET_REPO#"$ORG/"}"
     return
   fi
@@ -238,7 +238,7 @@ scan() {
 
     local row rule msg sec rsev file
     while IFS= read -r row; do
-      [ -z "$row" ] && continue
+      [[ -z "$row" ]] && continue
       rule=$(jq -r '.rule.id // ""' <<< "$row")
       msg=$(jq -r '.most_recent_instance.message.text // ""' <<< "$row")
       sec=$(jq -r '.rule.security_severity_level // ""' <<< "$row")
@@ -258,7 +258,7 @@ scan() {
   done
 
   local all='[]'
-  [ -s "$ndjson" ] && all=$(jq -s '.' "$ndjson")
+  [[ -s "$ndjson" ]] && all=$(jq -s '.' "$ndjson")
   jq '[.[] | select(.suppressed == "")]' <<< "$all" > "$FINDINGS_FILE"
   jq '[.[] | select(.suppressed != "")]' <<< "$all" > "$SUPPRESSED_FILE"
 
@@ -279,7 +279,7 @@ scan() {
       })
   ' "$FINDINGS_FILE" > "$GROUPS_FILE"
 
-  if [ ! -s "$SCANNED_FILE" ] && [ -s "$INCONCLUSIVE_FILE" ]; then
+  if [[ ! -s "$SCANNED_FILE" ]] && [[ -s "$INCONCLUSIVE_FILE" ]]; then
     warn "no repo's code-scanning alerts could be read — check the token's code-scanning (security_events) read access"
   fi
 }
@@ -367,9 +367,9 @@ manage_group_issue() {
   prio=$(severity_priority_label "$max_sev")
 
   labels="$CODEQL_AUDIT_LABEL,dev-lead,$prio"
-  [ "$(jq -r '.has_security' <<< "$group")" = "true" ] && labels="$labels,security"
+  [[ "$(jq -r '.has_security' <<< "$group")" = "true" ]] && labels="$labels,security"
 
-  if [ "$DRY_RUN" = "true" ] || [ "$CREATE_ISSUES" != "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]] || [[ "$CREATE_ISSUES" != "true" ]]; then
     info "[dry-run] $repo :: $stable_title [$labels] ($(jq -r '.count' <<< "$group") alert(s))"
     return
   fi
@@ -387,14 +387,14 @@ manage_group_issue() {
   existing=$(jq -r --arg m "$marker" '.[] | select((.body // "") | contains($m)) | .number' <<< "$list" || echo "")
   existing=$(head -1 <<< "$existing")
 
-  if [ -n "$existing" ]; then
+  if [[ -n "$existing" ]]; then
     gh issue edit "$existing" --repo "$ORG/$repo" --body "$body" \
       --add-label "$prio" 2>/dev/null || true
-    [ "$(jq -r '.has_security' <<< "$group")" = "true" ] && \
+    [[ "$(jq -r '.has_security' <<< "$group")" = "true" ]] && \
       gh issue edit "$existing" --repo "$ORG/$repo" --add-label "security" 2>/dev/null || true
     local other
     for other in priority:blocker priority:critical priority:major priority:minor priority:info; do
-      [ "$other" != "$prio" ] && gh issue edit "$existing" --repo "$ORG/$repo" \
+      [[ "$other" != "$prio" ]] && gh issue edit "$existing" --repo "$ORG/$repo" \
         --remove-label "$other" 2>/dev/null || true
     done
     gh issue comment "$existing" --repo "$ORG/$repo" \
@@ -415,7 +415,7 @@ manage_group_issue() {
   local url
   url=$(gh issue create --repo "$ORG/$repo" --title "$stable_title" \
     --label "$labels" --body "$body" 2>/dev/null || echo "")
-  if [ -n "$url" ]; then
+  if [[ -n "$url" ]]; then
     ISSUES_ADDED=$((ISSUES_ADDED + 1))
     info "Created $url"
   else
@@ -431,15 +431,15 @@ close_resolved() {
   open_issues=$(gh issue list --repo "$ORG/$repo" --label "$CODEQL_AUDIT_LABEL" --state open \
     --json number,body --limit 200 2>/dev/null \
     | jq -r '.[] | "\(.number)\t" + ((.body // "") | (try (capture("codeql-audit:key=[^/]+/(?<fam>[a-z0-9]+)").fam) catch ""))' 2>/dev/null || echo "")
-  [ -z "$open_issues" ] && return
+  [[ -z "$open_issues" ]] && return
 
   local current_fams
   current_fams=$(jq -r --arg repo "$repo" '.[] | select(.repo == $repo) | .family' "$GROUPS_FILE")
 
   local num fam
   while IFS=$'\t' read -r num fam; do
-    [ -z "$num" ] && continue
-    [ -z "$fam" ] && continue   # not a marker-bearing audit issue — leave it alone
+    [[ -z "$num" ]] && continue
+    [[ -z "$fam" ]] && continue   # not a marker-bearing audit issue — leave it alone
     if ! grep -qxF "$fam" <<< "$current_fams"; then
       gh issue close "$num" --repo "$ORG/$repo" \
         --comment "Resolved! No open CodeQL alerts remain in this group as of $(date -u +%Y-%m-%d). Closing automatically." 2>/dev/null \
@@ -462,7 +462,7 @@ generate_summary() {
     echo "# CodeQL Audit — $(date -u +%Y-%m-%d)"
     echo ""
     echo "**Org:** \`${ORG}\` · **Repos scanned:** ${scanned} · **Open alerts filed:** ${total} · **Suppressed:** ${suppressed} · **Inconclusive repos:** ${inconclusive}"
-    if [ "$inconclusive" -gt 0 ]; then
+    if [[ "$inconclusive" -gt 0 ]]; then
       echo ""
       echo "> [!WARNING]"
       echo "> $inconclusive repo(s) had unreadable alerts (may include private repos). Their issues were left untouched (not updated, not closed). Check the workflow logs for details."
@@ -510,9 +510,9 @@ main() {
     manage_group_issue "$group"
   done < <(jq -c '.[]' "$GROUPS_FILE")
 
-  if [ "$CREATE_ISSUES" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+  if [[ "$CREATE_ISSUES" = "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
     while IFS= read -r repo; do
-      [ -n "$repo" ] && close_resolved "$repo"
+      [[ -n "$repo" ]] && close_resolved "$repo"
     done < "$SCANNED_FILE"
   fi
 
@@ -525,7 +525,7 @@ main() {
 
   # Fail loud on partial coverage so the run shows red, after the summary is
   # written and every readable repo has been handled.
-  if [ -s "$INCONCLUSIVE_FILE" ]; then
+  if [[ -s "$INCONCLUSIVE_FILE" ]]; then
     warn "$(grep -c . "$INCONCLUSIVE_FILE") repo(s) inconclusive — see summary"
     return 1
   fi
