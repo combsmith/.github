@@ -54,6 +54,13 @@ jobs:
             echo "name=" >> "$GITHUB_OUTPUT"
           fi
 
+      # The scan waits for the SonarCloud quality gate on pull requests
+      # (sonar.qualitygate.wait), so a failed gate fails this job and the
+      # required `SonarCloud` check. Without it the job passed whenever the
+      # upload succeeded, whatever the gate said. push and merge_group runs do
+      # not wait: the gate was enforced on the PR, and a main-branch gate
+      # verdict would only fail post-merge runs or stall the merge queue.
+      #
       # First attempt. continue-on-error lets the retry step below recover from
       # transient 403/5xx responses from binaries.sonarsource.com (the scanner
       # CLI download), without failing the job on a single CDN blip.
@@ -66,12 +73,31 @@ jobs:
             ${{ steps.branch.outputs.name != '' &&
             format('-Dsonar.branch.name={0}', steps.branch.outputs.name)
             || '' }}
+            ${{ github.event_name == 'pull_request' &&
+            '-Dsonar.qualitygate.wait=true' || '' }}
         continue-on-error: true
+      # Retry only when no analysis reached SonarCloud. The scanner writes
+      # .scannerwork/report-task.txt once the upload succeeds, before it polls
+      # the gate, so its presence means the first attempt failed on the gate
+      # (or the gate wait timed out), not on a transient download error.
       - name: SonarCloud Scan (retry)
-        if: ${{ env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' }}
+        id: sonar_retry
+        if: ${{ env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && hashFiles('.scannerwork/report-task.txt') == '' }}
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
         with:
           args: >-
             ${{ steps.branch.outputs.name != '' &&
             format('-Dsonar.branch.name={0}', steps.branch.outputs.name)
             || '' }}
+            ${{ github.event_name == 'pull_request' &&
+            '-Dsonar.qualitygate.wait=true' || '' }}
+      # continue-on-error keeps a failed first attempt from failing the job, so
+      # a gate failure that skipped the retry has to fail the job here.
+      - name: Fail on SonarCloud quality gate
+        if: ${{ env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && steps.sonar_retry.outcome == 'skipped' }}
+        run: |
+          msg="The analysis was uploaded but the quality gate failed or did not "
+          msg="${msg}finish. See the SonarCloud Scan step log and the 'SonarCloud "
+          msg="${msg}Code Analysis' check for details."
+          echo "::error title=SonarCloud quality gate::${msg}"
+          exit 1
