@@ -226,3 +226,59 @@ _source_audit() {
   # Issue should NOT be closed
   [[ "$output" != *"6001"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# #1401: the check id is compared LITERALLY against the current findings, and a
+# matcher error is never read as "resolved". The id derives from repository
+# content (unpinned-actions-<workflow filename>), so it must not be evaluated as
+# a regular expression.
+# ---------------------------------------------------------------------------
+
+@test "#1401: still-live finding whose check id has regex metacharacters survives" {
+  # `[` is an unbalanced bracket expression as a regex: grep errors (exit 2),
+  # which must not be mistaken for "no longer in findings".
+  findings='[{"repo":"demo-repo","check":"unpinned-actions-ci[.yml"}]'
+  issues="[$(_issue 7001 'Compliance: unpinned-actions-ci[.yml' "generated $MARKER")]"
+  run _run_close "$findings" "$issues" "demo-repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"7001"* ]]
+}
+
+@test "#1401: check id is matched literally, not as a pattern (resolved finding is closed)" {
+  # As a regex, `.` would match the X in a different, still-live check and keep
+  # this resolved issue open forever. Literal comparison closes it.
+  findings='[{"repo":"demo-repo","check":"unpinned-actions-aXyml"}]'
+  issues="[$(_issue 7002 'Compliance: unpinned-actions-a.yml' "generated $MARKER")]"
+  run _run_close "$findings" "$issues" "demo-repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"7002"* ]]
+}
+
+@test "#1401: a check id that looks like a grep option is still compared literally" {
+  findings='[{"repo":"demo-repo","check":"-v"}]'
+  issues="[$(_issue 7003 'Compliance: -v' "generated $MARKER")]"
+  run _run_close "$findings" "$issues" "demo-repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"7003"* ]]
+}
+
+@test "#1401: a matcher evaluation error (grep exit >1) never closes the issue" {
+  # Wrap grep so the membership test for one sentinel check id fails with exit 2
+  # (an evaluation error, not a no-match); every other grep call is real.
+  local real_grep
+  real_grep="$(command -v grep)"
+  cat > "$MOCK_BIN/grep" << GREP
+#!/usr/bin/env bash
+for a in "\$@"; do
+  [ "\$a" = "sentinel-grep-error" ] && { echo "grep: simulated failure" >&2; exit 2; }
+done
+exec "$real_grep" "\$@"
+GREP
+  chmod +x "$MOCK_BIN/grep"
+
+  findings='[{"repo":"demo-repo","check":"missing-ci.yml"}]'
+  issues="[$(_issue 7004 'Compliance: sentinel-grep-error' "generated $MARKER")]"
+  run _run_close "$findings" "$issues" "demo-repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"7004"* ]]
+}
