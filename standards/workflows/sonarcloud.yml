@@ -13,8 +13,11 @@
 # CONVENTIONS (enforced by the standard):
 #   • permissions: {} at top, least-privilege per job (contents + pull-requests: read)
 #   • triggers: push + pull_request to main; checkout with fetch-depth: 0
-#   • first scan is continue-on-error with a single retry (SonarCloud's analysis
-#     endpoint is occasionally flaky)
+#   • on pull_request the scan waits for the quality gate
+#     (-Dsonar.qualitygate.wait=true), so a failed gate fails the required check
+#   • first scan is continue-on-error with a single retry, taken only when no
+#     analysis was uploaded (the scanner CLI download is occasionally flaky);
+#     a gate failure is never retried, and a final step fails the job on it
 #   • SHA-pin every third-party action (never a tag/branch)
 # ─────────────────────────────────────────────────────────────────────────────
 name: SonarCloud Analysis
@@ -47,11 +50,32 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      # The scan waits for the SonarCloud quality gate on pull requests
+      # (sonar.qualitygate.wait), so a failed gate fails this job and the
+      # required `SonarCloud` check. push runs do not wait: the gate was
+      # enforced on the PR, and a main-branch verdict would only fail
+      # post-merge runs.
       - name: SonarCloud Scan
         id: sonar
         if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        with:
+          args: ${{ github.event_name == 'pull_request' && '-Dsonar.qualitygate.wait=true' || '' }}
         continue-on-error: true
+      # Retry only when no analysis reached SonarCloud. The scanner writes
+      # .scannerwork/report-task.txt once the upload succeeds, before it polls
+      # the gate, so its presence means the first attempt failed on the gate,
+      # not on a transient download error.
       - name: SonarCloud Scan (retry)
-        if: env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure'
+        id: sonar_retry
+        if: env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && hashFiles('.scannerwork/report-task.txt') == ''
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        with:
+          args: ${{ github.event_name == 'pull_request' && '-Dsonar.qualitygate.wait=true' || '' }}
+      # continue-on-error keeps a failed first attempt from failing the job, so
+      # a gate failure that skipped the retry has to fail the job here.
+      - name: Fail on SonarCloud quality gate
+        if: env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && steps.sonar_retry.outcome == 'skipped'
+        run: |
+          echo "::error title=SonarCloud quality gate::The analysis was uploaded but the quality gate failed or did not finish. See the SonarCloud Scan step log and the 'SonarCloud Code Analysis' check for details."
+          exit 1
