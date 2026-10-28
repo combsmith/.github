@@ -758,7 +758,7 @@ jobs:
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # First attempt. continue-on-error lets the retry step below recover from
@@ -767,25 +767,70 @@ jobs:
       - name: SonarCloud Scan
         id: sonar
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        with:
+          args: ${{ github.event_name == 'pull_request' && '-Dsonar.qualitygate.wait=true' || '' }}
         continue-on-error: true
       - name: SonarCloud Scan (retry)
-        if: env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure'
-        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
+        id: sonar_retry
+        if: env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && hashFiles('.scannerwork/report-task.txt') == ''
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        with:
+          args: ${{ github.event_name == 'pull_request' && '-Dsonar.qualitygate.wait=true' || '' }}
+      - name: Fail on SonarCloud quality gate
+        if: env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && steps.sonar_retry.outcome == 'skipped'
+        run: exit 1
 ```
+
+This block is abridged; copy
+[`standards/workflows/sonarcloud.yml`](https://github.com/combsmith/.github/blob/main/standards/workflows/sonarcloud.yml)
+verbatim rather than this excerpt.
 
 **Required secrets:** `SONAR_TOKEN`
 
 Each repo needs a `sonar-project.properties` file at root with project key and org.
 
-**Why the retry?** `SonarSource/sonarqube-scan-action` first downloads the
-SonarScanner CLI binary from `binaries.sonarsource.com`. That CDN occasionally
-returns transient `403`/`5xx` responses unrelated to the workflow, secrets, or
-runner — a single blip would otherwise fail the whole job and skew the fleet
+**The required `SonarCloud` check carries the quality gate.** On
+`pull_request` the scan passes `-Dsonar.qualitygate.wait=true`: the scanner
+uploads the analysis, polls SonarCloud until the gate is computed (up to
+`sonar.qualitygate.timeout`, 300 s by default), and exits non-zero when the
+gate is not `OK`. A failed gate therefore fails the job, and with it the
+`SonarCloud` context that the `code-quality` ruleset requires. Without the
+flag the job succeeds as soon as the upload does, whatever the gate says. On
+2026-10-27, 5 of 5 org PRs whose gate was `ERROR` in SonarCloud
+(`broodly#51`, `broodminder-data#230`, `software-factory#59`, `#67`, `#69`)
+had a green Actions `SonarCloud` job; `software-factory#59` and `#67` merged
+that way.
+
+`push` and `merge_group` runs do not wait. The gate was already enforced on
+the PR; on `push` a main-branch verdict could only fail a run after the merge,
+and on `merge_group` it would stall the queue on main's long-term gate
+rather than the PR's.
+
+Two other checks report alongside it and are **not** the gate:
+
+| Check run | App | What it reports |
+|---|---|---|
+| `SonarCloud` | `github-actions` | This job. Fails when the scan fails or, on a PR, when the gate fails. |
+| `SonarCloud` | `github-advanced-security` | Sonar's security findings imported into code scanning. Fails only on new security alerts, not on coverage, duplication or maintainability conditions. The required context is not bound to an app, so GitHub counts this run as required `SonarCloud` too. |
+| `SonarCloud Code Analysis` | `sonarqubecloud` | The gate result posted by the SonarCloud app. Not required: it is posted by an external app, not by a workflow that triggers on `merge_group`, so it cannot be relied on to report on a merge queue ref (see **Required-check stubs must support `merge_group`** under [Centralization tiers](#centralization-tiers); `merge-group.bats` rejects a required context with no such provider). |
+
+**Why the retry, and why it skips a gate failure?**
+`SonarSource/sonarqube-scan-action` first downloads the SonarScanner CLI
+binary from `binaries.sonarsource.com`. That CDN occasionally returns
+transient `403`/`5xx` responses unrelated to the workflow, secrets, or runner —
+a single blip would otherwise fail the whole job and skew the fleet
 failure-rate metric. The first scan step uses `continue-on-error: true` and an
 `id`; the second step re-invokes the same pinned action only when the first
-attempt reports `outcome == 'failure'`. The job fails only when both attempts
-fail, so a single transient CDN error no longer trips the workflow.
+attempt reports `outcome == 'failure'` **and no analysis was uploaded**. The
+scanner writes `.scannerwork/report-task.txt` right after a successful upload
+and before it polls the gate, so the file's presence means the first attempt
+failed on the gate (or the gate wait timed out). Re-analysing would only reach
+the same verdict, so the retry is skipped and the `Fail on SonarCloud quality
+gate` step fails the job instead — `continue-on-error` would otherwise leave it
+green. A download blip still gets its single retry, and the job fails when
+both attempts fail. `test/workflows/required-checks/sonarcloud-quality-gate.bats` guards this
+wiring in both the repo workflow and the template.
 
 #### SonarCloud Exemption: First-Party Reusable-Ref S7637
 
@@ -815,7 +860,10 @@ so the exemption travels **with the stub file** — adopters who copy the templa
 verbatim inherit it with **zero** per-repo `sonar-project.properties` entries and
 **no file rename**. Spike-validated on `bmad-bgreat-suite#334` (`3cbfa005`):
 Quality Gate ERROR → OK, `new_security_rating` C → A, required `SonarCloud`
-check fail → pass.
+check fail → pass. (S7637 is a security finding, so at the time the failing
+`SonarCloud` check was the code-scanning one from `github-advanced-security`;
+the Actions job did not yet wait for the gate. See
+[§3](#3-sonarcloud-analysis-sonarcloudyml).)
 
 The marker goes **only on first-party reusable-ref lines** pinned to a moving
 channel/tag (`@<name>/stable`, `@v1`/`@v2`). A SHA-pinned ref (e.g.
@@ -2293,8 +2341,9 @@ The cron's three `repository_dispatch` retry types — `dev-lead-ci-failure`,
    under the [canary-rings rollout](#reusable-workflow-versioning--the-stable-channel).
    That mutable ref is intentionally **not** SHA-pinned, so without the marker
    SonarCloud's `githubactions:S7637` would flag it at HIGH severity, drive
-   `new_security_rating` to **C**, and fail the Quality Gate — blocking the
-   required `SonarCloud` check. The inline marker suppresses S7637 on exactly
+   `new_security_rating` to **C**, and fail the Quality Gate — failing the
+   required `SonarCloud` check (the scan waits for the gate on pull requests,
+   and the code-scanning `SonarCloud` check also fails on the new alert). The inline marker suppresses S7637 on exactly
    that line and travels with the file. **No `sonar-project.properties` entry is
    needed.** (The legacy per-file `s7637_devlead` criterion keyed to
    `**/dev-lead.yml` still works and is accepted during the transition, but is
