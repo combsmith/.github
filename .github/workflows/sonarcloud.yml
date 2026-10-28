@@ -15,27 +15,68 @@ on:
   merge_group:
 
 jobs:
-  sonarcloud:
-    name: SonarCloud
+  # Runs the PR / merge-queue revision's Python (dependency install + pytest)
+  # to produce coverage. It gets NO secrets: SONAR_TOKEN must never share a job
+  # with code from the revision under test (#1392). The report reaches the
+  # SonarCloud job below as an artifact; that job executes no repo code.
+  coverage:
+    name: SonarCloud coverage
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Install pytest and dependencies
         run: 'pip install --quiet --require-hashes --only-binary :all: -r scripts/pytest-requirements.txt'
 
       - name: Generate coverage report
+        env:
+          COVERAGE_XML: ${{ runner.temp }}/sonar-coverage/coverage.xml
         run: |
           set -euo pipefail
           python3 -m pytest test/feature-ideation/test_validate_signals.py \
-            --cov --cov-report=xml:test/feature-ideation/coverage.xml
+            --cov --cov-report="xml:${COVERAGE_XML}"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sonar-coverage
+          path: ${{ runner.temp }}/sonar-coverage/coverage.xml
+          if-no-files-found: error
+          retention-days: 1
+
+  sonarcloud:
+    name: SonarCloud
+    needs: coverage
+    # Run even when coverage failed: a skipped required job reports success, so
+    # this job has to run and fail on a bad coverage result instead.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Require a successful coverage job
+        if: ${{ needs.coverage.result != 'success' }}
+        env:
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+        run: |
+          echo "::error::The coverage job finished with result '${COVERAGE_RESULT}'; see the 'SonarCloud coverage' job."
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # sonar.python.coverage.reportPaths (sonar-project.properties) points here.
+      - name: Download coverage report
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sonar-coverage
+          path: test/feature-ideation
 
       # On a merge queue run GITHUB_REF is the temporary gh-readonly-queue/* ref.
       # Left alone, the scanner would record it as a new long-lived branch in
@@ -54,6 +95,39 @@ jobs:
             echo "name=" >> "$GITHUB_OUTPUT"
           fi
 
+      # The required check must not pass a fork PR just because the token is
+      # unavailable to it (#1390). Same script as the standards template
+      # (standards/workflows/sonarcloud.yml); keep the two identical.
+      - name: Check SonarCloud token
+        id: token
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_BOOTSTRAP: ${{ vars.SONAR_BOOTSTRAP }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          if [ -n "${SONAR_TOKEN:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "present=false" >> "$GITHUB_OUTPUT"
+          if [ "${SONAR_BOOTSTRAP:-}" = "true" ]; then
+            echo "::notice title=SonarCloud skipped::SONAR_BOOTSTRAP is 'true' and SONAR_TOKEN is unavailable, so no analysis ran. Delete the SONAR_BOOTSTRAP variable once SonarCloud is onboarded."
+            exit 0
+          fi
+          if [ "${EVENT_NAME:-}" = "pull_request" ] && [ "${HEAD_REPO:-}" != "${BASE_REPO:-}" ]; then
+            msg="This pull request comes from a fork. GitHub does not pass SONAR_TOKEN to fork runs,"
+            msg="${msg} so SonarCloud cannot analyse it and this required check fails."
+            msg="${msg} A maintainer can push the branch to this repository and open a same-repo"
+            msg="${msg} pull request so the analysis runs (combsmith/.github standards/ci-standards.md, section 3)."
+            echo "::error title=SonarCloud not run::${msg}"
+            exit 1
+          fi
+          msg="SONAR_TOKEN is not available to this run, so no analysis ran. Add the SONAR_TOKEN secret"
+          msg="${msg} (see BOOTSTRAP.md); Dependabot runs only see it if it is also a Dependabot secret."
+          echo "::warning title=SonarCloud skipped::${msg}"
+
       # The scan waits for the SonarCloud quality gate on pull requests
       # (sonar.qualitygate.wait), so a failed gate fails this job and the
       # required `SonarCloud` check. Without it the job passed whenever the
@@ -64,10 +138,13 @@ jobs:
       # First attempt. continue-on-error lets the retry step below recover from
       # transient 403/5xx responses from binaries.sonarsource.com (the scanner
       # CLI download), without failing the job on a single CDN blip.
+      # SONAR_TOKEN is scoped to the two scan steps, never the job env (#1392).
       - name: SonarCloud Scan
         id: sonar
-        if: ${{ env.SONAR_TOKEN != '' }}
+        if: ${{ steps.token.outputs.present == 'true' }}
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >-
             ${{ steps.branch.outputs.name != '' &&
@@ -82,8 +159,10 @@ jobs:
       # (or the gate wait timed out), not on a transient download error.
       - name: SonarCloud Scan (retry)
         id: sonar_retry
-        if: ${{ env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && hashFiles('.scannerwork/report-task.txt') == '' }}
+        if: ${{ steps.token.outputs.present == 'true' && steps.sonar.outcome == 'failure' && hashFiles('.scannerwork/report-task.txt') == '' }}
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >-
             ${{ steps.branch.outputs.name != '' &&
@@ -94,7 +173,7 @@ jobs:
       # continue-on-error keeps a failed first attempt from failing the job, so
       # a gate failure that skipped the retry has to fail the job here.
       - name: Fail on SonarCloud quality gate
-        if: ${{ env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && steps.sonar_retry.outcome == 'skipped' }}
+        if: ${{ steps.token.outputs.present == 'true' && steps.sonar.outcome == 'failure' && steps.sonar_retry.outcome == 'skipped' }}
         run: |
           msg="The analysis was uploaded but the quality gate failed or did not "
           msg="${msg}finish. See the SonarCloud Scan step log and the 'SonarCloud "

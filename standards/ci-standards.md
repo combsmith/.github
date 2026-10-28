@@ -753,30 +753,45 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    # No job-level env: SONAR_TOKEN is scoped to the gate and scan steps only.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # Token gate: outputs present=true|false; fails a fork PR that has no
+      # token unless vars.SONAR_BOOTSTRAP == 'true'. Full script:
+      # standards/workflows/sonarcloud.yml (the canonical copy).
+      - name: Check SonarCloud token
+        id: token
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_BOOTSTRAP: ${{ vars.SONAR_BOOTSTRAP }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: ...  # see standards/workflows/sonarcloud.yml
       # First attempt. continue-on-error lets the retry step below recover from
       # transient 403/5xx responses from binaries.sonarsource.com (the scanner
       # CLI download), without failing the job on a single CDN blip.
       - name: SonarCloud Scan
         id: sonar
-        if: env.SONAR_TOKEN != ''
+        if: steps.token.outputs.present == 'true'
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
         with:
           args: ${{ github.event_name == 'pull_request' && '-Dsonar.qualitygate.wait=true' || '' }}
         continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       - name: SonarCloud Scan (retry)
         id: sonar_retry
-        if: env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && hashFiles('.scannerwork/report-task.txt') == ''
+        if: steps.token.outputs.present == 'true' && steps.sonar.outcome == 'failure' && hashFiles('.scannerwork/report-task.txt') == ''
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: ${{ github.event_name == 'pull_request' && '-Dsonar.qualitygate.wait=true' || '' }}
       - name: Fail on SonarCloud quality gate
-        if: env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && steps.sonar_retry.outcome == 'skipped'
+        if: steps.token.outputs.present == 'true' && steps.sonar.outcome == 'failure' && steps.sonar_retry.outcome == 'skipped'
         run: exit 1
 ```
 
@@ -785,6 +800,27 @@ This block is abridged; copy
 verbatim rather than this excerpt.
 
 **Required secrets:** `SONAR_TOKEN`
+
+**Keep `SONAR_TOKEN` away from the code under test.** Never set `SONAR_TOKEN`
+in a job- or workflow-level `env:`. Only the token gate and the two scan steps
+may reference it. A repo that builds or tests its code to produce coverage
+(dependency install, test runner, build tool) does that in a **separate job
+with no secrets** and passes the report to the `SonarCloud` job as an artifact.
+That job must use `if: ${{ !cancelled() }}` and fail explicitly when the
+coverage job did not succeed, because a skipped required job counts as passing.
+This repo's own `.github/workflows/sonarcloud.yml` is the reference
+implementation. Guards: `test/scripts/standards-templates/sonarcloud-token-gate.bats`
+and `test/workflows/required-checks/sonarcloud-token-scope.bats`.
+
+**When the token is unavailable.** `SonarCloud` is a required check, so the
+gate decides whether a run that cannot analyse may still pass:
+
+| Situation | Result |
+|-----------|--------|
+| `SONAR_TOKEN` available | Analysis runs |
+| No token, `vars.SONAR_BOOTSTRAP == 'true'` | Passes with a notice. This is an explicit opt-in for a repo not yet onboarded to SonarCloud; delete the variable once it is |
+| No token, pull request from a fork | **Fails.** GitHub never passes secrets to fork runs, so the change cannot be analysed. A maintainer can push the branch to the repo and open a same-repo PR |
+| No token, same-repo run (push, same-repo PR, merge queue; this includes Dependabot PRs, which do not receive Actions secrets) | Passes with a warning |
 
 Each repo needs a `sonar-project.properties` file at root with project key and org.
 
