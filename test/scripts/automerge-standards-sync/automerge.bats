@@ -5,10 +5,13 @@
 # the PR merges on required-checks-green THROUGH branch protection (never
 # `--admin`).
 #
-# A fake `gh` returns a single `pr view --json …` blob per PR (env
-# GH_PR_VIEW_JSON) and logs every invocation to GH_CALLS so the assertions can
-# prove exactly which mutating calls were (not) made — and that no call ever
-# carries `--admin`.
+# A fake `gh` (helpers/gh-stub.bash) returns a single `pr view --json …` blob
+# per PR (env GH_PR_VIEW_JSON) and logs every invocation to GH_CALLS so the
+# assertions can prove exactly which mutating calls were (not) made — and that
+# no call ever carries `--admin`. Its default commit/push/file fixtures model a
+# clean deploy, so the provenance gate (#1386, see provenance.bats) passes here.
+
+load 'helpers/gh-stub'
 
 setup() {
   TT_TMP="$(mktemp -d)"
@@ -21,26 +24,6 @@ setup() {
 
 teardown() { rm -rf "$TT_TMP"; }
 
-install_gh_stub() {
-  local bin="${TT_TMP}/bin"
-  mkdir -p "$bin"
-  cat > "$bin/gh" <<'STUB'
-#!/usr/bin/env bash
-{ printf 'gh'; for a in "$@"; do printf ' %s' "$a"; done; printf '\n'; } >> "$GH_CALLS"
-case "$1 ${2:-}" in
-  "pr view")  printf '%s' "${GH_PR_VIEW_JSON:-null}" ; exit 0 ;;
-  "pr list")  printf '%s' "${GH_PR_LIST_JSON:-[]}" ; exit 0 ;;
-  "pr review") exit 0 ;;
-  "pr merge")  exit 0 ;;
-  "api user") printf '%s' "${GH_API_USER_LOGIN:-donpetry-bot}" ; exit 0 ;;
-  "auth status") exit 0 ;;
-esac
-exit 0
-STUB
-  chmod +x "$bin/gh"
-  PATH="${bin}:${PATH}"; export PATH
-}
-
 # Build a pr view JSON blob: $1 author, $2 headRefName, $3 last-commit author,
 # $4 comma-separated label list.
 pr_json() {
@@ -52,11 +35,13 @@ pr_json() {
   fi
   jq -nc \
     --arg author "$author" --arg head "$head" --arg last "$last" \
+    --arg sha "$GH_FIXTURE_HEAD" \
     --argjson labels "$labels_json" '
     { number: 42,
       url: "https://github.com/combsmith/acme/pull/42",
       author: {login: $author},
       headRefName: $head,
+      headRefOid: $sha,
       labels: $labels,
       commits: [ {authors: [ {login: $last} ]} ] }'
 }
@@ -75,8 +60,8 @@ run_single() {  # extra args passed through
   [ "$status" -eq 0 ]
   echo "$output" | grep -qi 'skip'
   echo "$output" | grep -qi 'standards-sync'
-  ! grep -q 'pr review' "$GH_CALLS"
-  ! grep -q 'pr merge' "$GH_CALLS"
+  refute_call 'pr review|pulls/[0-9]+/reviews'
+  refute_call 'pr merge'
 }
 
 @test "skips a PR whose author is not trusted" {
@@ -85,8 +70,8 @@ run_single() {  # extra args passed through
   run_single
   [ "$status" -eq 0 ]
   echo "$output" | grep -qi 'skip'
-  ! grep -q 'pr review' "$GH_CALLS"
-  ! grep -q 'pr merge' "$GH_CALLS"
+  refute_call 'pr review|pulls/[0-9]+/reviews'
+  refute_call 'pr merge'
 }
 
 @test "skips a PR whose head branch is not a standards-sync branch" {
@@ -95,8 +80,8 @@ run_single() {  # extra args passed through
   run_single
   [ "$status" -eq 0 ]
   echo "$output" | grep -qi 'skip'
-  ! grep -q 'pr review' "$GH_CALLS"
-  ! grep -q 'pr merge' "$GH_CALLS"
+  refute_call 'pr review|pulls/[0-9]+/reviews'
+  refute_call 'pr merge'
 }
 
 # ── Happy path: distinct reviewer resolves the deadlock ───────────────────────
@@ -108,14 +93,14 @@ run_single() {  # extra args passed through
   run_single
   [ "$status" -eq 0 ]
   # A real approval review was posted…
-  grep -q 'pr review 42 --repo combsmith/acme --approve' "$GH_CALLS"
+  grep -qE 'api repos/combsmith/acme/pulls/42/reviews --method POST -f event=APPROVE' "$GH_CALLS"
   # …and native auto-merge (squash) was enabled — merge fires on green THROUGH protection.
   grep -qE 'pr merge 42 --repo combsmith/acme .*--auto' "$GH_CALLS"
   grep -q -- '--squash' "$GH_CALLS"
   # The chosen approver is the code-owner that is neither author nor last-pusher.
   echo "$output" | grep -q 'donpetry-bot'
   # NEVER an admin bypass — anywhere.
-  ! grep -q -- '--admin' "$GH_CALLS"
+  refute_call '--admin'
   echo "$output" | grep -q 'admin=none'
 }
 
@@ -124,9 +109,11 @@ run_single() {  # extra args passed through
   export GH_PR_VIEW_JSON
   # here don-petry is the free code-owner, so the approver token authenticates as don-petry
   GH_API_USER_LOGIN=don-petry; export GH_API_USER_LOGIN
+  # …and donpetry-bot is the deployer whose commits/pushes are on the branch
+  GH_FIXTURE_LOGIN=donpetry-bot; export GH_FIXTURE_LOGIN
   run_single
   [ "$status" -eq 0 ]
-  ! grep -q -- '--admin' "$GH_CALLS"
+  refute_call '--admin'
   # here don-petry is the free code-owner
   echo "$output" | grep -q 'don-petry'
 }
@@ -139,9 +126,9 @@ run_single() {  # extra args passed through
   run_single
   [ "$status" -ne 0 ]
   echo "$output" | grep -qi 'deadlock'
-  ! grep -q 'pr review' "$GH_CALLS"
-  ! grep -q 'pr merge' "$GH_CALLS"
-  ! grep -q -- '--admin' "$GH_CALLS"
+  refute_call 'pr review|pulls/[0-9]+/reviews'
+  refute_call 'pr merge'
+  refute_call '--admin'
 }
 
 # ── Approver-token identity is verified before any approval is posted ─────────
@@ -155,9 +142,9 @@ run_single() {  # extra args passed through
   run_single
   [ "$status" -ne 0 ]
   echo "$output" | grep -qi 'misattributed'
-  ! grep -q 'pr review' "$GH_CALLS"
-  ! grep -q 'pr merge' "$GH_CALLS"
-  ! grep -q -- '--admin' "$GH_CALLS"
+  refute_call 'pr review|pulls/[0-9]+/reviews'
+  refute_call 'pr merge'
+  refute_call '--admin'
 }
 
 # ── Dry-run mutates nothing ───────────────────────────────────────────────────
@@ -168,8 +155,8 @@ run_single() {  # extra args passed through
   run_single --dry-run
   [ "$status" -eq 0 ]
   echo "$output" | grep -qi 'dry'
-  ! grep -q 'pr review' "$GH_CALLS"
-  ! grep -q 'pr merge' "$GH_CALLS"
+  refute_call 'pr review|pulls/[0-9]+/reviews'
+  refute_call 'pr merge'
 }
 
 # ── Meta-repo (.github-private / SKIP_REPOS) is handled the same way ───────────
@@ -180,7 +167,7 @@ run_single() {  # extra args passed through
   run env GH_TOKEN=x APPROVER_TOKEN=faketoken bash "$SCRIPT" \
     --repo combsmith/.github-private --pr 42
   [ "$status" -eq 0 ]
-  grep -q 'pr review 42 --repo combsmith/.github-private --approve' "$GH_CALLS"
+  grep -qE 'api repos/combsmith/.github-private/pulls/42/reviews --method POST -f event=APPROVE' "$GH_CALLS"
   grep -qE 'pr merge 42 --repo combsmith/.github-private .*--auto' "$GH_CALLS"
-  ! grep -q -- '--admin' "$GH_CALLS"
+  refute_call '--admin'
 }
