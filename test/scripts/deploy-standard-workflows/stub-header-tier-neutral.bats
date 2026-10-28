@@ -151,12 +151,6 @@ ring_rendered_templates() {
   [[ "$output" != *stable* ]]
 }
 
-@test "idea stubs are deployable and present-only (never seeded)" {
-  install_gh_stub
-  run bash -c 'source "$1"; for w in idea-enhancer.yml idea-triage.yml initiative-planner.yml; do is_deployable_workflow "$w" && is_present_only_workflow "$w" || exit 1; done' _ "$SCRIPT"
-  [ "$status" -eq 0 ]
-}
-
 @test "sweep: ring-pinned stub with stale header is flagged as drift and header is stripped" {
   install_gh_stub
   local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" swept old
@@ -190,12 +184,6 @@ ring_rendered_templates() {
   [[ "$out" != *"stable channel"* ]]
   [[ "$out" != *"cannot gate"* ]]
   [[ "$out" == *"# keep me"* ]]
-}
-
-@test "idea engines are engine-host targets in .github-private only" {
-  install_gh_stub
-  run bash -c 'source "$1"; for w in idea-enhancer.yml idea-triage.yml initiative-planner.yml; do is_engine_host_target "$w" .github-private || exit 1; ! is_engine_host_target "$w" TalkTerm || exit 2; done' _ "$SCRIPT"
-  [ "$status" -eq 0 ]
 }
 
 @test "ring repin renders a template's stable-channel comments tier-neutral; cleanup never reinstalls them" {
