@@ -7770,6 +7770,16 @@ _wf_run_script() {
   ! rollback_ring_allowed stable "" || return 1   # unregistered agent: no channels at all
   ! rollback_ring_allowed "stable," "next,ring0,ring1,stable" || return 1
 }
+@test "rollback_ring_allowed: rejects v-scoped ring when major differs from registered majors (#1402)" {
+  ! rollback_ring_allowed v1-stable "v2-next,v2-ring0,v2-ring1,v2-stable" || return 1
+  ! rollback_ring_allowed v3-ring0 "v2-next,v2-ring0,v2-ring1,v2-stable" || return 1
+  ! rollback_ring_allowed v1-stable "v2-stable,v2-ring0,v2-ring1,v2-next" || return 1
+}
+@test "rollback_ring_allowed: accepts v-scoped ring when major matches registered majors (#1402)" {
+  rollback_ring_allowed v2-stable "v2-next,v2-ring0,v2-ring1,v2-stable"
+  rollback_ring_allowed v2-ring0 "v2-next,v2-ring0,v2-ring1,v2-stable"
+  rollback_ring_allowed v139-ring1 "v139-stable,v139-ring0,v139-ring1,v139-next"
+}
 
 @test "movable_channel_tag_name: accepts bare and v-scoped channel tags (#1402)" {
   movable_channel_tag_name "dev-lead/stable"
@@ -7788,6 +7798,14 @@ _wf_run_script() {
   ! movable_channel_tag_name "dev-lead/.stable" || return 1
   ! movable_channel_tag_name "dev-lead/sta ble" || return 1
   ! movable_channel_tag_name "" || return 1
+}
+@test "movable_channel_tag_name: rejects segments ending in .lock or trailing dot (#1402)" {
+  ! movable_channel_tag_name "dev-lead/stable.lock" || return 1
+  ! movable_channel_tag_name "dev-lead/v139-stable.lock" || return 1
+  ! movable_channel_tag_name "standards/next.lock" || return 1
+  ! movable_channel_tag_name "dev-lead/stable." || return 1
+  ! movable_channel_tag_name "dev-lead/v139-stable." || return 1
+  ! movable_channel_tag_name "standards/next." || return 1
 }
 
 # A gh stub for dev-lead (cross-repo, host=.github-private): the --to release and a few channel

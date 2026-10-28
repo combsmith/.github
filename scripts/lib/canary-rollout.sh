@@ -311,11 +311,15 @@ is_release_tag_name() { [[ "${1##*/}" =~ ^v?[0-9]+\.[0-9]+ ]]; }
 # movable_channel_tag_name <tag> — return 0 iff <tag> may be handed to the force-moving channel
 # writer (_gh_move_tag): a well-formed ref path whose segments are [A-Za-z0-9._-] starting with
 # an alphanumeric (no empty, "." or ".." segment, no leading/trailing "/"), and NOT an immutable
-# release name. The last-line guard so no caller can rewrite a release tag (#1402). Pure.
+# release name. Segments must not end in .lock or a trailing dot. The last-line guard so no caller
+# can rewrite a release tag (#1402). Pure.
 movable_channel_tag_name() {
   local seg='[A-Za-z0-9][A-Za-z0-9._-]*'
   [[ "$1" =~ ^${seg}(/${seg})*$ ]] || return 1
   [[ "$1" != *..* ]] || return 1
+  [[ "$1" != *.lock ]] || return 1
+  [[ "$1" != */.lock ]] || return 1
+  [[ "$1" != *. && "$1" != */. ]] || return 1
   ! is_release_tag_name "$1"
 }
 
@@ -323,18 +327,38 @@ movable_channel_tag_name() {
 # rollback target ring) names one of the agent's REGISTERED channels <channels_csv> (e.g.
 # "next,ring0,ring1,stable"), either bare (<tier>) or v-scoped (v<M>-<tier>). An immutable
 # release name, an unregistered channel, a ref path, or an empty channel list (unregistered
-# agent) is rejected. Pure. (#1402)
+# agent) is rejected. A v-scoped ring is rejected if its numeric major differs from any
+# v-scoped channel in the list (the agent's established major). Pure. (#1402)
 rollback_ring_allowed() {
-  local ring="$1" csv="$2" tier ch
-  local chs=()
+  local ring="$1" csv="$2" tier ring_major ch ch_major ch_tier
+  local chs=() reg_majors=()
   [ -n "$ring" ] && [ -n "$csv" ] || return 1
   [[ "$ring" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || return 1
   is_release_tag_name "$ring" && return 1
   tier="$ring"
-  if [[ "$ring" =~ ^v[0-9]+-(.+)$ ]]; then tier="${BASH_REMATCH[1]}"; fi
+  ring_major=""
+  if [[ "$ring" =~ ^v([0-9]+)-(.+)$ ]]; then
+    ring_major="${BASH_REMATCH[1]}"
+    tier="${BASH_REMATCH[2]}"
+  fi
   IFS=, read -r -a chs <<< "$csv"
   for ch in "${chs[@]}"; do
-    [ -n "$ch" ] && [ "$ch" = "$tier" ] && return 0
+    if [[ "$ch" =~ ^v([0-9]+)-(.+)$ ]]; then
+      reg_majors+=("${BASH_REMATCH[1]}")
+    fi
+  done
+  if [ "${#reg_majors[@]}" -gt 0 ] && [ -n "$ring_major" ]; then
+    local found=0
+    for ch_major in "${reg_majors[@]}"; do
+      if [ "$ring_major" = "$ch_major" ]; then found=1; break; fi
+    done
+    [ "$found" -eq 1 ] || return 1
+  fi
+  for ch in "${chs[@]}"; do
+    if [ -z "$ch" ]; then continue; fi
+    ch_tier="$ch"
+    if [[ "$ch" =~ ^v[0-9]+-(.+)$ ]]; then ch_tier="${BASH_REMATCH[1]}"; fi
+    [ "$ch_tier" = "$tier" ] && return 0
   done
   return 1
 }
