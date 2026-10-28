@@ -96,5 +96,8 @@ jobs:
       - name: Fail on SonarCloud quality gate
         if: ${{ env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure' && steps.sonar_retry.outcome == 'skipped' }}
         run: |
-          echo "::error title=SonarCloud quality gate::The analysis was uploaded but the quality gate failed or did not finish. See the SonarCloud Scan step log and the 'SonarCloud Code Analysis' check for details."
+          msg="The analysis was uploaded but the quality gate failed or did not "
+          msg="${msg}finish. See the SonarCloud Scan step log and the 'SonarCloud "
+          msg="${msg}Code Analysis' check for details."
+          echo "::error title=SonarCloud quality gate::${msg}"
           exit 1
