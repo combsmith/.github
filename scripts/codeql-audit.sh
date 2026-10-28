@@ -383,7 +383,8 @@ manage_group_issue() {
   if ! list=$(gh issue list --repo "$ORG/$repo" --label "$CODEQL_AUDIT_LABEL" --state open \
     --json number,body --limit 200); then
     warn "$repo: could not list issues, skipping $stable_title"
-    echo "$repo" >> "$INCONCLUSIVE_FILE"; return
+    echo "$repo" >> "$INCONCLUSIVE_FILE"
+    return 1
   fi
   existing=$(jq -r --arg m "$marker" '.[] | select((.body // "") | contains($m)) | .number' <<< "$list" || echo "")
   existing=$(head -1 <<< "$existing")
@@ -479,12 +480,13 @@ generate_summary() {
     echo ""
     echo "Severity distribution:"
     echo ""
-    jq -r '.[].max_severity' "$GROUPS_FILE" | sort | uniq -c | {
+    jq -r '.[] | .max_severity' "$GROUPS_FILE" 2>/dev/null | sort | uniq -c | {
       while read -r count sev; do
+        [[ -z "$sev" ]] && continue
         prio=$(severity_priority_label "$sev")
         echo "- **$sev** ($prio): $count"
       done
-    }
+    } || true
     echo ""
     echo "## Suppressed (not filed — tracked elsewhere or exempt by policy)"
     echo "| Rule | Reason | Alerts |"
@@ -510,9 +512,9 @@ main() {
   info "CodeQL audit — org=$ORG dry_run=$DRY_RUN create_issues=$CREATE_ISSUES target=${TARGET_REPO:-all}"
   scan
 
-  local group repo
+  local group repo group_failed=0
   while IFS= read -r group; do
-    manage_group_issue "$group"
+    manage_group_issue "$group" || group_failed=1
   done < <(jq -c '.[]' "$GROUPS_FILE")
 
   if [[ "$CREATE_ISSUES" = "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
@@ -532,6 +534,10 @@ main() {
   # written and every readable repo has been handled.
   if [[ -s "$INCONCLUSIVE_FILE" ]]; then
     warn "$(grep -c . "$INCONCLUSIVE_FILE") repo(s) inconclusive — see summary"
+    return 1
+  fi
+  if [[ "$group_failed" = "1" ]]; then
+    warn "one or more group issues failed to manage — see summary"
     return 1
   fi
 }
