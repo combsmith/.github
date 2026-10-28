@@ -13,7 +13,8 @@
 #                                 Empty input is non-compliant (exit 1).
 
 agent_md_references_agents() {
-  # No -q: grep must drain stdin, or a piped writer gets SIGPIPE and pipefail
-  # turns a successful early match into a failure.
-  grep -Fi 'AGENTS.md' > /dev/null
+  # Use here-string redirection to avoid SIGPIPE when grep matches early
+  # in large files. This allows the verdict logic to work correctly with
+  # pipefail enabled in compliance-audit.sh.
+  grep -Fi 'AGENTS.md' <<< "$(cat)" > /dev/null
 }

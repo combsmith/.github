@@ -90,7 +90,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/org-lib"
           gh api -H 'Accept: application/vnd.github.raw+json' \
-            "repos/combsmith/.github/contents/scripts/lib/agent-md-xref.sh?ref=${HELPER_REF}" \
+            "repos/combsmith/.github/contents/scripts/lib/agent-md-xref.sh" \
+            -F ref="${HELPER_REF}" \
             > "$RUNNER_TEMP/org-lib/agent-md-xref.sh"
 
       - name: Validate cross-references
