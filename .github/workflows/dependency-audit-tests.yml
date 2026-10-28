@@ -1,0 +1,67 @@
+# Quality gates for the reusable dependency-audit workflow and its supporting
+# discovery/coverage/gate library.
+#
+# Triggered on any PR that touches:
+#   - .github/workflows/dependency-audit*.yml
+#   - .github/scripts/dependency-audit/**
+#   - test/workflows/dependency-audit/**
+#   - standards/workflows/dependency-audit.yml
+#
+# Gates (all must pass before merge):
+#   1. shellcheck — static analysis for the library and the test helpers
+#   2. bats       — unit tests for the discovery/coverage/gate logic, plus the
+#                   reusable's own `run:` steps executed against fixtures with
+#                   stubbed scanners (#1393, #1394, #1404, #1406)
+
+name: Dependency Audit Tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/dependency-audit*.yml'
+      - '.github/scripts/dependency-audit/**'
+      - 'test/workflows/dependency-audit/**'
+      - 'standards/workflows/dependency-audit.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dependency-audit*.yml'
+      - '.github/scripts/dependency-audit/**'
+      - 'test/workflows/dependency-audit/**'
+      - 'standards/workflows/dependency-audit.yml'
+
+permissions: {}
+
+concurrency:
+  group: dependency-audit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and bats
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install bats, shellcheck, and jq (yq is preinstalled on the runner)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bats shellcheck jq
+
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          shellcheck -x \
+            .github/scripts/dependency-audit/lib/dependency-audit.sh \
+            test/workflows/dependency-audit/helpers/setup.bash
+
+      - name: Run bats suite
+        run: bats --print-output-on-failure test/workflows/dependency-audit/
