@@ -18,7 +18,9 @@
 #
 # The core is side-effect-free and network-free by construction (fetching is the
 # workflow's job, not the library's), so the suite pins routing behaviour —
-# especially the two-axis recursion guard — with no API access at all. That
+# especially the two-axis recursion guard — with no API access at all. The one
+# exception, the paginated label reader pm_item_labels, is tested against a
+# stubbed `gh` on PATH (#1398). That
 # matters here: .github-private#860 burned 1,481 acks in 4.5h from a single
 # self-loop, and a regression in pm_should_route is the expensive kind.
 
