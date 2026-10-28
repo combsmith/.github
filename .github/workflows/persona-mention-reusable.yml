@@ -192,7 +192,9 @@ jobs:
             echo "::error::no item number resolved for event '${EVENT_NAME}' — cannot check opt-out or gate labels"
             exit 1
           else
-            if ! LABELS="$(gh api "/repos/${SOURCE_REPO}/issues/${ITEM_NUMBER}/labels" --jq '.[].name')"; then
+            # EVERY page (#1398): an opt-out or hold label past page 1 must still
+            # stop the dispatch. pm_item_labels paginates and fails closed.
+            if ! LABELS="$(pm_item_labels "$SOURCE_REPO" "$ITEM_NUMBER")"; then
               echo "::error::could not read labels for ${SOURCE_REPO}#${ITEM_NUMBER} — refusing to route (an unreadable label set must never be read as 'no opt-out, no gate')"
               exit 1
             fi
