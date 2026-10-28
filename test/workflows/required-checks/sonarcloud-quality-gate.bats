@@ -44,10 +44,12 @@ code_lines() {
 }
 
 @test "scan and retry both wait for the quality gate" {
-  local f n
+  local f step
   for f in "${FILES[@]}"; do
-    n="$(code_lines "$f" | grep -c -- '-Dsonar.qualitygate.wait=true')"
-    [ "$n" -eq 2 ] || { echo "${f}: expected qualitygate.wait on scan and retry, found ${n}"; return 1; }
+    for step in "SonarCloud Scan" "SonarCloud Scan (retry)"; do
+      step_body "$f" "$step" | grep -Fq -- '-Dsonar.qualitygate.wait=true' \
+        || { echo "${f}: '${step}' is missing qualitygate.wait"; return 1; }
+    done
   done
 }
 
