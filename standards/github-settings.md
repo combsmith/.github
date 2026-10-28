@@ -315,7 +315,7 @@ the reclassification table and sequencing note that follow.
 | **SonarCloud** | ✅ Required (codified) | `SonarCloud` | Code quality, maintainability, security hotspots. The context is exactly as codified in `code-quality.json`; verify with `gh pr checks <PR>` if a repo's SonarCloud workflow reports under a different name |
 | **CodeQL** | ✅ Required (codified) | `CodeQL` | SAST via GitHub-managed default setup — auto-detects all supported languages (see [ci-standards.md §2](ci-standards.md#2-codeql-analysis-github-managed-default-setup)) |
 | **AgentShield** | ✅ Required (codified) | `agent-shield / AgentShield` | Deep agent-config security scan on every PR |
-| **Dependency Audit** | ✅ Required (codified) | `dependency-audit / Detect ecosystems` | Only the unconditional `Detect ecosystems` job is required; per-ecosystem audit jobs are gated on lockfile presence and would fail as required-but-skipped |
+| **Dependency Audit** | ✅ Required (codified) | `dependency-audit / Detect ecosystems` | Only the unconditional `Detect ecosystems` job is required; per-ecosystem audit jobs are gated on lockfile presence and would fail as required-but-skipped. `Detect ecosystems` passes once discovery finishes, whatever the scanners find. The reusable also publishes `dependency-audit / Audit gate`, which runs on every run and fails when detection or any audit job failed or was cancelled. It is not required yet: switching the required context to it is a pending decision (#1406), to be made only after the channel the fleet pins ships the job |
 
 The following are **intentionally NOT** in `code-quality.json` today:
 
