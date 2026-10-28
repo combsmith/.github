@@ -414,14 +414,18 @@ manage_group_issue() {
     return
   fi
 
-  local url
+  local url err_file err_msg
+  err_file=$(mktemp)
   url=$(gh issue create --repo "$ORG/$repo" --title "$stable_title" \
-    --label "$labels" --body "$body" 2>/dev/null || echo "")
+    --label "$labels" --body "$body" 2>"$err_file" || echo "")
+  err_msg=$(<"$err_file")
+  rm -f "$err_file"
   if [[ -n "$url" ]]; then
     ISSUES_ADDED=$((ISSUES_ADDED + 1))
     info "Created $url"
   else
-    warn "Failed to create issue in $repo :: $stable_title"
+    warn "Failed to create issue in $repo :: $stable_title :: ${err_msg:-no error output}"
+    return 1
   fi
 }
 
