@@ -195,6 +195,9 @@ jobs:
               echo "  Branch updated"
             else
               echo "  Update failed: $UPDATE_OUTPUT"
+              # The base ref goes into copy-paste shell commands below; a branch
+              # name can contain shell syntax, so quote it (#1396).
+              MANUAL_BASE_REF=$(auto_rebase_shell_quote "origin/$BASE_BRANCH")
 
               if echo "$UPDATE_OUTPUT" | grep -qF "without \`workflows\` permission"; then
                 # GitHub blocks update-branch when merging the base would add
@@ -215,7 +218,7 @@ jobs:
                   BLOCKED_BODY+=" but the auto-rebase workflow's token does not have that permission."
                   BLOCKED_BODY+=$'\n\n'"Please rebase this branch manually:"
                   BLOCKED_BODY+=$'\n'"\`\`\`"$'\n'"git fetch origin"
-                  BLOCKED_BODY+=$'\n'"git rebase origin/$BASE_BRANCH"
+                  BLOCKED_BODY+=$'\n'"git rebase $MANUAL_BASE_REF"
                   BLOCKED_BODY+=$'\n'"git push --force-with-lease"$'\n'"\`\`\`"
                   auto_rebase_post_comment_best_effort "$PR_NUMBER" "$REPO" "$BLOCKED_BODY"
                 fi
@@ -255,7 +258,7 @@ jobs:
                     CONFLICT_BODY+=" (automatic resolution requires \`GH_PAT_WORKFLOWS\` to be configured):"
                   fi
                   CONFLICT_BODY+=$'\n'"\`\`\`"$'\n'"git fetch origin"
-                  CONFLICT_BODY+=$'\n'"git merge origin/$BASE_BRANCH"
+                  CONFLICT_BODY+=$'\n'"git merge $MANUAL_BASE_REF"
                   CONFLICT_BODY+=$'\n'"# resolve conflicts, then:"
                   CONFLICT_BODY+=$'\n'"git add ."$'\n'"git commit"$'\n'"git push"$'\n'"\`\`\`"
                   # Best-effort: a comment-side failure (e.g. GitHub's 2500-comment

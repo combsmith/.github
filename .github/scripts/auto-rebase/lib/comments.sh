@@ -24,3 +24,20 @@ auto_rebase_post_comment_best_effort() {
     || echo "::warning::could not post conflict comment on #$pr_number (comment cap / API error) — continuing" >&2
   return 0
 }
+
+# auto_rebase_shell_quote VALUE
+#   Prints VALUE as a single POSIX-shell word, for pasting into the manual
+#   recovery commands the comments publish (`git rebase <ref>`, issue #1396).
+#   A git branch name may legally contain $, `, ;, |, &, (, ), quotes, so a raw
+#   base branch could run extra commands when a maintainer copies the snippet.
+#   Values made only of [A-Za-z0-9_./+-] are printed unchanged so ordinary refs
+#   stay readable (`origin/main`); anything else is single-quoted, with each
+#   embedded ' written as '\'' . Works in bash, zsh and sh alike (unlike %q).
+auto_rebase_shell_quote() {
+  local v="$1"
+  if [[ -n "$v" && "$v" != *[!A-Za-z0-9_./+-]* ]]; then
+    printf '%s' "$v"
+  else
+    printf "'%s'" "${v//\'/\'\\\'\'}"
+  fi
+}
