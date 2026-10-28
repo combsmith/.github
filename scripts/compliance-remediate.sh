@@ -409,6 +409,32 @@ Ref: \`standards/codeowners-standard.md\`
 # ---------------------------------------------------------------------------
 # PR-based: pin unpinned GitHub Actions to SHAs
 # ---------------------------------------------------------------------------
+
+# pin_ref_literal <ref> <replacement> — read workflow text on stdin and rewrite
+# every `uses:<ws><ref>` as `uses: <replacement>`. <ref> is compared as a literal
+# string and <replacement> is inserted verbatim: neither is ever interpreted as a
+# regex or sed program (#1397). Values travel via ENVIRON so awk applies no
+# escape processing to them.
+pin_ref_literal() {
+  PIN_REF="$1" PIN_REPL="$2" awk '
+    BEGIN { ref = ENVIRON["PIN_REF"]; repl = ENVIRON["PIN_REPL"]; n = length(ref) }
+    {
+      out = ""; rest = $0
+      while (n > 0 && match(rest, /uses:[[:space:]]+/)) {
+        head = substr(rest, 1, RSTART - 1)
+        tail = substr(rest, RSTART + RLENGTH)
+        if (substr(tail, 1, n) == ref) {
+          out = out head "uses: " repl
+          rest = substr(tail, n + 1)
+        } else {
+          out = out substr(rest, 1, RSTART + RLENGTH - 1)
+          rest = tail
+        }
+      }
+      print out rest
+    }'
+}
+
 remediate_unpinned_actions() {
   local repo="$1" workflow_file="$2"
 
@@ -463,6 +489,16 @@ remediate_unpinned_actions() {
     action_part="${ref%@*}"
     tag_part="${ref##*@}"
 
+    # The ref comes from the target repo's workflow file: accept only a strict
+    # owner/repo[/path]@ref shape before it reaches the API or the patch (#1397).
+    if ! [[ "$action_part" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_./-]+)?$ ]] \
+        || ! [[ "$tag_part" =~ ^[A-Za-z0-9_.+/-]+$ ]] \
+        || [[ "$ref" == *..* ]]; then
+      warn "Unsupported characters in action ref $ref — skipping"
+      pins_failed=$((pins_failed + 1))
+      continue
+    fi
+
     # `action_part` may be either a direct action (`owner/repo`) or a reusable
     # workflow path (`owner/repo/.github/workflows/file.yml`). The git/refs and
     # commits APIs take `owner/repo`, so peel off any trailing path segments
@@ -512,15 +548,18 @@ remediate_unpinned_actions() {
       pins_failed=$((pins_failed + 1))
       continue
     fi
+    if ! [[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
+      warn "Resolved value for $ref is not a commit SHA — skipping"
+      pins_failed=$((pins_failed + 1))
+      continue
+    fi
 
     # Replace `uses:<ws>owner/action@tag` → `uses: owner/action@sha # tag`.
-    # Use [[:space:]]+ so any amount of tabs/spaces between `uses:` and the ref
-    # matches (still valid YAML). Indentation before `uses:` is preserved
-    # because it sits outside the match.
-    local escaped_ref
-    escaped_ref=$(printf '%s' "$ref" | sed 's/[][\.*^$()+?{|/]/\\&/g')
+    # Any amount of tabs/spaces between `uses:` and the ref matches (still valid
+    # YAML). Indentation before `uses:` is preserved because it sits outside the
+    # match. Literal replacement — the ref is data, not a sed program (#1397).
     patched_content=$(echo "$patched_content" \
-      | sed -E "s|uses:[[:space:]]+${escaped_ref}|uses: ${action_part}@${commit_sha} # ${tag_part}|g")
+      | pin_ref_literal "$ref" "${action_part}@${commit_sha} # ${tag_part}")
 
     ok "  Pinned $ref → $commit_sha"
     pins_applied=$((pins_applied + 1))
@@ -944,12 +983,17 @@ or a Claude agent to address.
 HEADER
 
   # Read all findings and group by repo
-  local repos jq_stderr
-  if ! repos=$(jq -r '[.[].repo] | unique[]' "$FINDINGS_FILE" 2>/tmp/_cr_jq_err); then
-    jq_stderr=$(cat /tmp/_cr_jq_err 2>/dev/null || true)
+  # jq's stderr goes to a private mktemp file, never a fixed shared /tmp path
+  # that a pre-planted symlink could redirect (#1387).
+  local repos jq_stderr jq_err_file
+  jq_err_file=$(mktemp)
+  if ! repos=$(jq -r '[.[].repo] | unique[]' "$FINDINGS_FILE" 2>"$jq_err_file"); then
+    jq_stderr=$(cat "$jq_err_file" 2>/dev/null || true)
+    rm -f "$jq_err_file"
     err "Failed to parse FINDINGS_FILE ($FINDINGS_FILE): $jq_stderr"
     exit 1
   fi
+  rm -f "$jq_err_file"
 
   if [ -z "$repos" ]; then
     info "No findings to remediate — nothing to do"
