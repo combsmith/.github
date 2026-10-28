@@ -374,11 +374,16 @@ manage_group_issue() {
   body=$(render_body "$group")
   ensure_labels "$repo"
 
-  local existing marker
+  local existing marker list
   marker="codeql-audit:key=${repo}/${family}"
-  existing=$(gh issue list --repo "$ORG/$repo" --label "$CODEQL_AUDIT_LABEL" --state open \
-    --json number,body --limit 200 2>/dev/null \
-    | jq -r --arg m "$marker" '.[] | select((.body // "") | contains($m)) | .number' 2>/dev/null | head -1 || echo "")
+  if ! list=$(gh issue list --repo "$ORG/$repo" --label "$CODEQL_AUDIT_LABEL" --state open \
+    --json number,body --limit 200); then
+    warn "$repo: could not list issues, skipping $stable_title"; return
+  fi
+  if ! existing=$(jq -r --arg m "$marker" '.[] | select((.body // "") | contains($m)) | .number' <<< "$list"); then
+    warn "$repo: could not parse issue list, skipping $stable_title"; return
+  fi
+  existing=$(head -1 <<< "$existing")
 
   if [ -n "$existing" ]; then
     gh issue edit "$existing" --repo "$ORG/$repo" --body "$body" \
