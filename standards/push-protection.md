@@ -275,8 +275,23 @@ BMAD knowledge file paths (e.g. `api-request.md`, `auth-session.md` inside
 API-key indicators. The allowlist suppresses these false positives without
 disabling the rule org-wide.
 
+**The `[extend] useDefault = true` block is mandatory.** A file passed via
+`--config` *replaces* gitleaks' built-in ruleset rather than adding to it. An
+allowlist-only config therefore loads **zero detection rules**, and the scan
+reports "no leaks found" on any history — including one that contains real
+credentials (issue #1395). Keep the `[extend]` block and only add `[allowlist]`
+entries. To verify a config, scan a throwaway repo holding a synthetic key
+(see `test/workflows/ci/secret-scan-config.bats`) and confirm it is reported.
+
 ```toml
 title = "gitleaks config"
+
+# REQUIRED: inherit gitleaks' built-in ruleset. A custom config passed via
+# --config replaces the defaults entirely, so without this block the scan
+# runs with ZERO rules and always passes (issue #1395). Only add allowlist
+# entries below — never remove this block.
+[extend]
+useDefault = true
 
 # Add repo-specific allowlists below.
 # Common false-positive paths:
