@@ -382,7 +382,8 @@ manage_group_issue() {
   marker="codeql-audit:key=${repo}/${family}"
   if ! list=$(gh issue list --repo "$ORG/$repo" --label "$CODEQL_AUDIT_LABEL" --state open \
     --json number,body --limit 200); then
-    warn "$repo: could not list issues, skipping $stable_title"; return
+    warn "$repo: could not list issues, skipping $stable_title"
+    echo "$repo" >> "$INCONCLUSIVE_FILE"; return
   fi
   existing=$(jq -r --arg m "$marker" '.[] | select((.body // "") | contains($m)) | .number' <<< "$list" || echo "")
   existing=$(head -1 <<< "$existing")
@@ -468,13 +469,17 @@ generate_summary() {
       echo "> $inconclusive repo(s) had unreadable alerts (may include private repos). Their issues were left untouched (not updated, not closed). Check the workflow logs for details."
     fi
     echo ""
-    echo "## Alert groups filed"
+    if [[ "$DRY_RUN" = "true" ]]; then
+      echo "## Alert groups proposed (dry run — no issues written)"
+    else
+      echo "## Alert groups filed"
+    fi
     echo ""
-    echo "**Summary:** $(jq 'length' "$GROUPS_FILE") alert group(s) across $(jq -r '[.[].repo] | unique | length' "$GROUPS_FILE") repository(ies), one issue per repo × language family. Check those issues for details."
+    echo "**Summary:** $(jq 'length' "$GROUPS_FILE") alert group(s) across $(jq -r '[.[].repo] | unique | length' "$GROUPS_FILE") repository(ies), one issue per repo × language family. $([[ "$DRY_RUN" = "true" ]] && echo 'Dry run: see the workflow logs for the proposed groups.' || echo 'Check those issues for details.')"
     echo ""
     echo "Severity distribution:"
     echo ""
-    jq -r '.max_severity' "$GROUPS_FILE" | sort | uniq -c | {
+    jq -r '.[].max_severity' "$GROUPS_FILE" | sort | uniq -c | {
       while read -r count sev; do
         prio=$(severity_priority_label "$sev")
         echo "- **$sev** ($prio): $count"
