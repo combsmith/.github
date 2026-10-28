@@ -36,7 +36,8 @@ setup() {
 
   # gh mock: logs every invocation's argv (one entry per call), and returns just
   # enough for the code paths under test.
-  #   issue list   -> the pre-filtered `existing` value gh -q would emit ("" = new)
+  #   issue list   -> the --json array: one issue titled MOCK_EXISTING_TITLE
+  #                   numbered MOCK_EXISTING, or [] when MOCK_EXISTING is "" (new)
   #   issue create -> a URL ending in digits so the created-issue is recorded
   #   issue close  -> records the closed number (must stay empty in these tests)
   #   api /pulls?  -> "0" open dev-lead PRs (dl_dev_lead_active PR-count lookup)
@@ -54,7 +55,12 @@ case "$1 $2" in
     esac ;;
 esac
 case "$1 $2" in
-  "issue list")   printf '%s' "${MOCK_EXISTING:-}" ;;
+  "issue list")
+    if [ -n "${MOCK_EXISTING:-}" ]; then
+      jq -n --arg n "$MOCK_EXISTING" --arg t "$MOCK_EXISTING_TITLE" '[{number:($n|tonumber),title:$t}]'
+    else
+      echo '[]'
+    fi ;;
   "issue create") echo "https://github.com/combsmith/demo/issues/4242" ;;
   "issue close")  echo "$3" >> "$MOCK_CLOSED_FILE" ;;
   "api")
@@ -76,11 +82,12 @@ teardown() { rm -rf "$TEST_TMP"; }
 # number exercises the new-finding path; a number exercises the existing path.
 _cif() {
   local existing="${7:-}"
-  MOCK_EXISTING="$existing" MOCK_ARGS_LOG="$MOCK_ARGS_LOG" MOCK_CLOSED_FILE="$MOCK_CLOSED_FILE" \
+  MOCK_EXISTING="$existing" MOCK_EXISTING_TITLE="Compliance: $3" \
+  MOCK_ARGS_LOG="$MOCK_ARGS_LOG" MOCK_CLOSED_FILE="$MOCK_CLOSED_FILE" \
   MOCK_FAIL_COMMENT="${MOCK_FAIL_COMMENT:-}" MOCK_FAIL_LABEL="${MOCK_FAIL_LABEL:-}" \
   PATH="$MOCK_BIN:$PATH" REPORT_DIR="$TEST_TMP" bash -c '
     set -uo pipefail
-    export MOCK_EXISTING MOCK_ARGS_LOG MOCK_CLOSED_FILE MOCK_FAIL_COMMENT MOCK_FAIL_LABEL
+    export MOCK_EXISTING MOCK_EXISTING_TITLE MOCK_ARGS_LOG MOCK_CLOSED_FILE MOCK_FAIL_COMMENT MOCK_FAIL_LABEL
     echo "[]" > "'"$TEST_TMP"'/findings.json"
     # shellcheck disable=SC1090
     source "'"$REPO_ROOT"'/scripts/compliance-audit.sh"
