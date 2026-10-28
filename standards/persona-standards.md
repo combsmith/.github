@@ -288,8 +288,9 @@ The router is
 [`persona-mention-reusable.yml`](../.github/workflows/persona-mention-reusable.yml),
 its decision core is
 [`scripts/lib/persona-mention.sh`](../scripts/lib/persona-mention.sh) (pure and
-network-free, so `tests/persona_mention.bats` pins the guards without API
-access), and repos adopt it by copying the one stub
+network-free apart from the paginated, fail-closed label reader `pm_item_labels`,
+so `tests/persona_mention.bats` pins the guards without API access, stubbing
+`gh` for that reader), and repos adopt it by copying the one stub
 [`standards/workflows/persona-mention.yml`](workflows/persona-mention.yml).
 
 **There is no persona index, by design.** Because `address.handle`'s slug MUST
