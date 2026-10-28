@@ -202,6 +202,7 @@ scan() {
   local target_name=""
   if [[ -n "$TARGET_REPO" ]]; then
     target_name="${TARGET_REPO#"$ORG/"}"
+    [[ -n "$target_name" ]] || { warn "TARGET_REPO '$TARGET_REPO' is invalid (expected org-qualified repo, got empty name after org removal)"; return 1; }
   fi
 
   local ndjson_file="$REPORT_DIR/findings.ndjson"
