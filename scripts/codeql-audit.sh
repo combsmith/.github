@@ -97,7 +97,7 @@ family_title() {
 }
 
 # Why an alert must NOT be filed, or nothing when it should be.
-# args: <rule_id> <alert message>
+# args: <rule_id> <alert message> <file_path>
 #
 # - actions/unpinned-tag on a first-party ORG ref: the org pins its own reusable
 #   workflows to moving channel tags on purpose (ci-standards.md § Exception:
@@ -105,10 +105,11 @@ family_title() {
 #   SHA-pin a ref the standard forbids SHA-pinning.
 # - actions/unpinned-tag on anything else: compliance-audit.sh
 #   check_action_pinning already files `Compliance: unpinned-actions-<wf>`.
-# - actions/missing-workflow-permissions: compliance-audit.sh
-#   check_workflow_permissions already files `Compliance: missing-permissions-<wf>`.
+# - actions/missing-workflow-permissions: suppress only for regular workflows in
+#   .github/workflows/ (not reusable-*). Uncovered workflows and reusable workflows
+#   are reported.
 suppression_reason() {
-  local rule="$1" message="${2:-}"
+  local rule="$1" message="${2:-}" file="${3:-}"
   case "$rule" in
     actions/unpinned-tag)
       if [[ "$message" == *"'${ORG}/"* ]]; then
@@ -117,7 +118,9 @@ suppression_reason() {
         echo "filed by compliance audit (unpinned-actions)"
       fi ;;
     actions/missing-workflow-permissions)
-      echo "filed by compliance audit (missing-permissions)" ;;
+      if [[ "$file" == .github/workflows/*.y*ml && "$file" != *-reusable.y*ml ]]; then
+        echo "filed by compliance audit (missing-permissions)"
+      fi ;;
   esac
 }
 
@@ -233,16 +236,17 @@ scan() {
     fi
     echo "$repo" >> "$SCANNED_FILE"
 
-    local row rule msg sec rsev
+    local row rule msg sec rsev file
     while IFS= read -r row; do
       [ -z "$row" ] && continue
       rule=$(jq -r '.rule.id // ""' <<< "$row")
       msg=$(jq -r '.most_recent_instance.message.text // ""' <<< "$row")
       sec=$(jq -r '.rule.security_severity_level // ""' <<< "$row")
       rsev=$(jq -r '.rule.severity // ""' <<< "$row")
+      file=$(jq -r '.most_recent_instance.location.path // ""' <<< "$row")
       jq -c --arg repo "$repo" --arg family "$(classify_family "$rule")" \
          --arg severity "$(alert_severity "$sec" "$rsev")" \
-         --arg suppressed "$(suppression_reason "$rule" "$msg")" '
+         --arg suppressed "$(suppression_reason "$rule" "$msg" "$file")" '
         {repo:$repo, family:$family, severity:$severity, suppressed:$suppressed,
          number:.number, url:.html_url, rule:(.rule.id // ""),
          rule_name:(.rule.description // .rule.name // ""),
@@ -380,14 +384,14 @@ manage_group_issue() {
     --json number,body --limit 200); then
     warn "$repo: could not list issues, skipping $stable_title"; return
   fi
-  if ! existing=$(jq -r --arg m "$marker" '.[] | select((.body // "") | contains($m)) | .number' <<< "$list"); then
-    warn "$repo: could not parse issue list, skipping $stable_title"; return
-  fi
+  existing=$(jq -r --arg m "$marker" '.[] | select((.body // "") | contains($m)) | .number' <<< "$list" || echo "")
   existing=$(head -1 <<< "$existing")
 
   if [ -n "$existing" ]; then
     gh issue edit "$existing" --repo "$ORG/$repo" --body "$body" \
       --add-label "$prio" 2>/dev/null || true
+    [ "$(jq -r '.has_security' <<< "$group")" = "true" ] && \
+      gh issue edit "$existing" --repo "$ORG/$repo" --add-label "security" 2>/dev/null || true
     local other
     for other in priority:blocker priority:critical priority:major priority:minor priority:info; do
       [ "$other" != "$prio" ] && gh issue edit "$existing" --repo "$ORG/$repo" \

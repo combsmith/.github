@@ -83,8 +83,16 @@ call() {
   [ "$output" = "filed by compliance audit (unpinned-actions)" ]
 }
 @test "missing-workflow-permissions is suppressed as filed by the compliance audit" {
-  call suppression_reason "actions/missing-workflow-permissions" "Actions job or workflow does not limit the permissions"
+  call suppression_reason "actions/missing-workflow-permissions" "Actions job or workflow does not limit the permissions" ".github/workflows/ci.yml"
   [ "$output" = "filed by compliance audit (missing-permissions)" ]
+}
+@test "missing-workflow-permissions for reusable workflows is NOT suppressed" {
+  call suppression_reason "actions/missing-workflow-permissions" "Actions job or workflow does not limit the permissions" ".github/workflows/ci-reusable.yml"
+  [ "$status" -eq 0 ]; [ -z "$output" ]
+}
+@test "missing-workflow-permissions for files outside .github/workflows/ is NOT suppressed" {
+  call suppression_reason "actions/missing-workflow-permissions" "Actions job or workflow does not limit the permissions" "src/action.yml"
+  [ "$status" -eq 0 ]; [ -z "$output" ]
 }
 @test "other actions rules are filed (no suppression)" {
   call suppression_reason "actions/untrusted-checkout/medium" "Potential unsafe checkout"
