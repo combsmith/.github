@@ -1,20 +1,27 @@
 # Tests for scripts/automerge-standards-sync.sh — the merge-side primitive that
 # clears the pr-quality reviewer deadlock on standards-sync PRs by approving from
 # a distinct code-owner identity and enabling native auto-merge (issue #852).
-# Gates: shellcheck (the script) + bats (eligibility gating, distinct-reviewer
-# resolution, deadlock detection, and the "never --admin" invariant).
+# Gates: shellcheck (the script + its provenance lib) + bats (eligibility gating,
+# head-provenance verification (#1386), distinct-reviewer resolution, deadlock
+# detection, and the "never --admin" invariant). deploy-standard-workflows.sh is
+# a trigger path because the allowed-path set is derived from its
+# DEPLOYABLE_WORKFLOWS.
 name: Automerge Standards-Sync Tests
 
 on:
   pull_request:
     paths:
       - 'scripts/automerge-standards-sync.sh'
+      - 'scripts/lib/standards-sync-provenance.sh'
+      - 'scripts/deploy-standard-workflows.sh'
       - 'test/scripts/automerge-standards-sync/**'
       - '.github/workflows/automerge-standards-sync-tests.yml'
   push:
     branches: [main]
     paths:
       - 'scripts/automerge-standards-sync.sh'
+      - 'scripts/lib/standards-sync-provenance.sh'
+      - 'scripts/deploy-standard-workflows.sh'
       - 'test/scripts/automerge-standards-sync/**'
       - '.github/workflows/automerge-standards-sync-tests.yml'
 
@@ -42,7 +49,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends bats shellcheck jq
 
       - name: shellcheck
-        run: shellcheck --severity=warning -x scripts/automerge-standards-sync.sh
+        run: shellcheck --severity=warning -x scripts/automerge-standards-sync.sh scripts/lib/standards-sync-provenance.sh
 
       - name: bats
         run: bats --print-output-on-failure test/scripts/automerge-standards-sync/
