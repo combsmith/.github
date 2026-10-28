@@ -295,18 +295,16 @@ pm_mention_decision() {
 }
 
 # pm_mention_trust_floor <manifest-yaml> — emit the floor for the mention
-# surface, space-separated. A per-surface trust_floor tightens the persona-wide
-# trust.author_association_floor; when absent, the persona-wide floor applies
-# (§5). Surface floor, if declared, overrides the persona-wide floor. Emits
-# nothing when neither is declared — pm_trust_ok then denies, which is the safe
-# direction.
+# surface, space-separated. A per-surface trust_floor may only TIGHTEN the
+# persona-wide trust.author_association_floor, never widen it (§5): when both
+# are declared the effective floor is their intersection; when the surface
+# declares none, the persona-wide floor applies. Emits nothing when neither is
+# declared — pm_trust_ok then denies, which is the safe direction. Delegates to
+# pm_surface_trust_floor so the mention and pull_request paths share one rule
+# (#1407: surface-wins let a broader surface list admit associations the
+# persona-wide floor excludes).
 pm_mention_trust_floor() {
-  # shellcheck disable=SC2016  # $m is a jq variable, not a shell expansion
-  printf '%s' "$1" | pm_manifest_query '
-    ((.triggers.surfaces // []) | map(select(.surface == "mention")) | first) as $m
-    | ($m.trust_floor // .trust.author_association_floor // [])
-    | join(" ")
-  '
+  pm_surface_trust_floor "$1" mention
 }
 
 # pm_mention_gate_label <manifest-yaml> — the label that ARMS a write-mode
@@ -406,6 +404,26 @@ pm_first_stop_marker() {
     esac
   done <<<"$markers"
   return 0
+}
+
+# pm_item_labels <owner/repo> <issue-or-pr-number> — emit EVERY label name on
+# the item, one per line, via `gh api` (GH_TOKEN from the caller's env).
+#
+# The labels back the opt-out, the stop-marker hold, and the write-mode gate, so
+# the set must be COMPLETE: the endpoint pages at 30 by default and a bare
+# `gh api` returns only page 1, which let an opt-out or hold label on a later
+# page go unseen before the dispatch (#1398). --paginate walks every page; --jq
+# runs per page, so names from all pages concatenate (no --slurp needed).
+#
+# Fails CLOSED: any error — including a failure on a later page after earlier
+# pages printed — returns non-zero, and the caller must refuse to route rather
+# than act on a partial set. The only network helper in this library; kept here
+# so the fetch is unit-testable with a stubbed `gh`.
+pm_item_labels() {
+  local repo="$1" number="$2" out
+  [ -n "$repo" ] && [ -n "$number" ] || return 2
+  out="$(gh api --paginate "/repos/${repo}/issues/${number}/labels?per_page=100" --jq '.[].name')" || return 1
+  [ -z "$out" ] || printf '%s\n' "$out"
 }
 
 # ----------------------------------------------------------------------------
