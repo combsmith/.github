@@ -5,6 +5,12 @@
 #
 # Auto-detects ecosystems present in the repository and runs the appropriate
 # audit tool. Fails the build if any dependency has a known security advisory.
+# The `Audit gate` job is the aggregate result of detection plus every audit.
+#
+# Cargo/Python discovery and the gate verdict live in
+# .github/scripts/dependency-audit/lib/dependency-audit.sh (bats-tested in
+# test/workflows/dependency-audit/); the jobs check this repo out at the
+# reusable's own commit and source it.
 #
 # Pinned tool versions (update deliberately):
 #   govulncheck v1.1.4 | cargo-audit 0.22.1 | pip-audit 2.9.0
@@ -153,7 +159,25 @@ jobs:
     if: needs.detect.outputs.cargo == 'true'
     runs-on: ubuntu-latest
     steps:
+      # The audited repo goes in `repo/` so the tooling checkout below is never
+      # part of the tree being scanned.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          persist-credentials: false
+
+      # Discovery/coverage logic lives in .github/scripts/dependency-audit/
+      # (bats-tested). Source it from THIS reusable's own commit so it always
+      # matches the channel the caller pinned. `job.workflow_sha`, not
+      # `github.job_workflow_sha`, which is empty at step level (#839).
+      - name: Check out dependency-audit tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          ref: ${{ job.workflow_sha }}
+          path: .dependency-audit-tooling
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Install Rust stable toolchain
         run: rustup toolchain install stable --profile minimal
@@ -162,59 +186,15 @@ jobs:
         run: cargo install cargo-audit@0.22.1 --locked
 
       - name: Audit Cargo dependencies
+        working-directory: repo
         run: |
-          # cargo audit operates on Cargo.lock at workspace root, so for a
-          # workspace a single audit at the root covers every member crate.
-          # Iterating every Cargo.toml would re-audit the same lockfile N
-          # times in workspaces.
-          #
-          # Strategy:
-          #   1. Find every Cargo.toml that declares [workspace] — those
-          #      are workspace roots; emit them.
-          #   2. Find every Cargo.toml that does NOT declare [workspace];
-          #      those are either standalone crates or workspace members.
-          #      Emit them only if no parent dir is already a workspace
-          #      root we found in step 1.
-          status=0
-
-          mapfile -t WORKSPACES < <(
-            find . -name Cargo.toml -not -path '*/target/*' -print0 \
-              | xargs -0 grep -l '^\[workspace\]' 2>/dev/null \
-              | xargs -n1 dirname 2>/dev/null \
-              | sort -u
-          )
-
-          mapfile -t NON_WORKSPACES < <(
-            find . -name Cargo.toml -not -path '*/target/*' -print0 \
-              | xargs -0 grep -L '^\[workspace\]' 2>/dev/null \
-              | xargs -n1 dirname 2>/dev/null \
-              | sort -u
-          )
-
-          # Standalone crates: those whose dir is not under any workspace root
-          STANDALONE=()
-          for dir in "${NON_WORKSPACES[@]}"; do
-            covered=0
-            for ws in "${WORKSPACES[@]}"; do
-              # Trim trailing slash from $ws for accurate prefix match
-              ws_trim="${ws%/}"
-              case "$dir/" in
-                "$ws_trim/"*) covered=1; break ;;
-              esac
-            done
-            if [ "$covered" -eq 0 ]; then
-              STANDALONE+=("$dir")
-            fi
-          done
-
-          for dir in "${WORKSPACES[@]}" "${STANDALONE[@]}"; do
-            echo "::group::cargo audit $dir"
-            if ! (cd "$dir" && cargo generate-lockfile 2>/dev/null; cargo audit); then
-              status=1
-            fi
-            echo "::endgroup::"
-          done
-          exit $status
+          # One audit per workspace root that covers a Cargo.toml, as reported
+          # by `cargo metadata` (a crate the parent workspace excludes is its own
+          # root and is audited on its own, #1393). A committed Cargo.lock is
+          # audited as committed; one is generated only when none exists (#1394).
+          # shellcheck source=/dev/null
+          . ../.dependency-audit-tooling/.github/scripts/dependency-audit/lib/dependency-audit.sh
+          dep_audit_cargo_run .
 
   audit-pip:
     name: pip-audit
@@ -222,39 +202,69 @@ jobs:
     if: needs.detect.outputs.pip == 'true'
     runs-on: ubuntu-latest
     steps:
+      # The audited repo goes in `repo/` so the tooling checkout below is never
+      # part of the tree being scanned.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          persist-credentials: false
+
+      # Same tooling source as audit-cargo. It also carries the hash-locked
+      # pip-audit requirements, which the audited repo does not have.
+      - name: Check out dependency-audit tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          ref: ${{ job.workflow_sha }}
+          path: .dependency-audit-tooling
+          fetch-depth: 1
+          persist-credentials: false
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.x"
 
       - name: Install pip-audit
-        run: 'pip install --require-hashes --only-binary :all: -r scripts/pip-audit-requirements.txt'
+        run: 'pip install --require-hashes --only-binary :all: -r .dependency-audit-tooling/scripts/pip-audit-requirements.txt'
 
       - name: Audit Python dependencies
+        working-directory: repo
         run: |
-          status=0
           # Audit each Python project found in the repo. Some projects ship
           # both pyproject.toml (tooling/build) and requirements.txt (pinned
           # runtime deps) — audit BOTH when both are present rather than
-          # short-circuiting on pyproject.toml.
-          while IFS= read -r dir; do
-            echo "::group::pip-audit $dir"
-            if [ -f "$dir/pyproject.toml" ]; then
-              if ! pip-audit "$dir"; then
-                status=1
-              fi
-            fi
-            if [ -f "$dir/requirements.txt" ]; then
-              if ! pip-audit -r "$dir/requirements.txt"; then
-                status=1
-              fi
-            fi
-            echo "::endgroup::"
-          done < <(
-            {
-              find . -name 'pyproject.toml' -not -path '*/.venv/*' -not -path '*/venv/*' -exec dirname {} \;
-              find . -name 'requirements.txt' -not -path '*/.venv/*' -not -path '*/venv/*' -exec dirname {} \;
-            } | sort -u
-          )
-          exit $status
+          # short-circuiting on pyproject.toml. Discovery is NUL-delimited and
+          # a discovered project that cannot be audited fails the job (#1404).
+          # shellcheck source=/dev/null
+          . ../.dependency-audit-tooling/.github/scripts/dependency-audit/lib/dependency-audit.sh
+          dep_audit_python_run .
+
+  # Aggregate result of the whole audit (#1406). `Detect ecosystems` succeeds
+  # as soon as discovery finishes, whatever the scanners find; this job fails
+  # when detection or any scanner failed or was cancelled (a scanner skipped
+  # because its ecosystem is absent is fine). `always()` — not `!cancelled()` —
+  # so a cancelled run reports a failure here instead of a skip. Every audit-*
+  # job MUST be listed in `needs` (pinned by test/workflows/dependency-audit/).
+  audit-gate:
+    name: Audit gate
+    needs: [detect, audit-npm, audit-pnpm, audit-go, audit-cargo, audit-pip]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out dependency-audit tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          ref: ${{ job.workflow_sha }}
+          path: .dependency-audit-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Require every audit to pass
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          # shellcheck source=/dev/null
+          . .dependency-audit-tooling/.github/scripts/dependency-audit/lib/dependency-audit.sh
+          printf '%s' "$NEEDS_JSON" | dep_audit_gate_verdict
