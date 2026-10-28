@@ -60,6 +60,14 @@ for _cmd in gh jq; do
 done
 unset _cmd
 
+# Provenance gate (#1386): approve only a head that is still a pure standards
+# deploy. The allowed paths come from deploy-standard-workflows.sh itself; if
+# they cannot be loaded every PR is skipped (fail closed).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/standards-sync-provenance.sh
+source "$SCRIPT_DIR/lib/standards-sync-provenance.sh"
+SSP_ALLOWED_PATHS="$(ssp_allowed_paths "$SCRIPT_DIR/deploy-standard-workflows.sh" || true)"
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -123,7 +131,7 @@ process_pr() {
   local pr_json author head last url labels
 
   pr_json=$(gh pr view "$pr" --repo "$REPO" \
-    --json number,url,author,headRefName,labels,commits 2>/dev/null) || {
+    --json number,url,author,headRefName,headRefOid,labels,commits 2>/dev/null) || {
     echo "  [warn] ${REPO}#${pr} — could not read PR" >&2
     return 0
   }
@@ -146,6 +154,16 @@ process_pr() {
   fi
   if ! in_list "$author" "$TRUSTED_AUTHORS"; then
     echo "  [skip] ${url} — author '${author}' is not in the trusted allowlist"
+    return 0
+  fi
+  # Who opened the PR says nothing about what is on its branch now. Verify the
+  # current head (commits, pushes, changed paths) is still the deployer's
+  # standards-only change, and bind the approval + auto-merge to that SHA.
+  local head_sha reject
+  head_sha=$(jq -r '.headRefOid // empty' <<< "$pr_json")
+  if ! reject=$(ssp_fetch_and_verify "$REPO" "$pr" "$head" "$head_sha" "$author" "$SSP_ALLOWED_PATHS"); then
+    echo "::warning::${url} — not approving: provenance not verified (${reject})"
+    echo "  [skip] ${url} — provenance not verified: ${reject}"
     return 0
   fi
 
@@ -193,19 +211,32 @@ process_pr() {
   fi
 
   echo "  [approve] ${url} — approving as '${approver}' (distinct code-owner: neither author nor last pusher)"
-  if ! GH_TOKEN="$APPROVER_TOKEN" gh pr review "$pr" --repo "$REPO" --approve \
-      --body "Code-owner approval by @${approver} to clear the pr-quality reviewer deadlock on this standards-sync PR (issue #852). Merges via native auto-merge on required-checks-green — through branch protection, no admin bypass."; then
+  # The review is posted against the verified head (commit_id), so it never
+  # covers a commit pushed after verification.
+  if ! GH_TOKEN="$APPROVER_TOKEN" gh api "repos/${REPO}/pulls/${pr}/reviews" --method POST \
+      -f event=APPROVE -f commit_id="$head_sha" \
+      -f body="Code-owner approval by @${approver} of verified head ${head_sha} on this standards-sync PR (issues #852, #1386). Merges via native auto-merge on required-checks-green — through branch protection, no admin bypass." \
+      --silent; then
     echo "::error::${url} — failed to post approval review as '${approver}'" >&2
     return 1
   fi
 
-  echo "  [automerge] ${url} — enabling native auto-merge (squash); merges on required-checks-green through branch protection"
-  if ! gh pr merge "$pr" --repo "$REPO" --auto --squash; then
+  # Re-check the head before enabling auto-merge: if it moved, the approval is
+  # for a commit that is no longer the head and auto-merge must not be enabled.
+  local now_sha
+  now_sha=$(gh pr view "$pr" --repo "$REPO" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
+  if [ "$now_sha" != "$head_sha" ]; then
+    echo "::error::${url} — head moved from ${head_sha} to '${now_sha}' after verification; approval is bound to ${head_sha}, NOT enabling auto-merge" >&2
+    return 1
+  fi
+
+  echo "  [automerge] ${url} — enabling native auto-merge (squash) for head ${head_sha}; merges on required-checks-green through branch protection"
+  if ! gh pr merge "$pr" --repo "$REPO" --auto --squash --match-head-commit "$head_sha"; then
     echo "::error::${url} — failed to enable native auto-merge" >&2
     return 1
   fi
 
-  echo "AUDIT pr=${url} approver=${approver} merge=native-auto-merge admin=none"
+  echo "AUDIT pr=${url} approver=${approver} head=${head_sha} merge=native-auto-merge admin=none"
   return 0
 }
 
