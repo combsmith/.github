@@ -423,3 +423,83 @@ setup_sweep_stub() {
   run classify_by_rules "make canary-rollout semver-major aware — major-version channels + per-major shim pins |  | combsmith/.github-private"
   [ "$output" = "Release Strategy" ]
 }
+
+# ---------------------------------------------------------------------------
+# Untrusted titles must not reach runner stdout/stderr as workflow commands
+# (combsmith/.github#1384). The Actions runner parses `::cmd::` at the start of
+# a line and the legacy `##[cmd]` marker ANYWHERE in a line, so a raw title
+# could forge annotations or `stop-commands` the rest of the step.
+# ---------------------------------------------------------------------------
+
+# Fails if any output line carries a runner command the TITLE injected: a legacy
+# `##[` marker anywhere, or a line whose first non-blank chars are `::` other
+# than the script's own ::warning:: lines.
+assert_no_injected_commands() {
+  local line trimmed
+  [[ "$output" != *'##['* ]] || { printf 'legacy ##[ marker leaked:\n%s\n' "$output" >&2; return 1; }
+  while IFS= read -r line; do
+    trimmed="${line#"${line%%[![:space:]]*}"}"
+    case "$trimmed" in
+      '::warning::failed to set '*|'::warning::rule matched '*) : ;;
+      '::'*) printf 'injected command line: %s\n' "$line" >&2; return 1 ;;
+    esac
+  done <<<"$output"
+}
+
+@test "atp_log_safe: an ordinary title passes through unchanged" {
+  run atp_log_safe "SonarCloud: fix S7635 stubs (#12)"
+  [ "$status" -eq 0 ]
+  [ "$output" = "SonarCloud: fix S7635 stubs (#12)" ]
+}
+
+@test "atp_log_safe: CR/LF are flattened so a title cannot start a new runner line" {
+  run atp_log_safe $'a\n::error::x\r\nb'
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "$output" != *$'\r'* ]]
+}
+
+@test "atp_log_safe: '::' and legacy '##[' command markers are neutralised" {
+  local v
+  for v in '::error::forged' 'x ##[error]forged' '##[stop-commands]tok' ':::warning:::' '###[x]' 'std::io'; do
+    run atp_log_safe "$v"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *'::'* ]] || { echo "still has :: for $v -> $output"; return 1; }
+    [[ "$output" != *'##['* ]] || { echo "still has ##[ for $v -> $output"; return 1; }
+  done
+}
+
+setup_injection_stub() {
+  local set_exit="$1" fields="${TT_TMP}/fields.json" items="${TT_TMP}/items.json"
+  write_fields_schema "$fields"
+  write_items_page "$items" \
+    '{"id":"PVTI_A","initiative":null,"content":{"__typename":"Issue","title":"SonarCloud ##[error]forged-match","labels":{"nodes":[]},"repository":{"nameWithOwner":"combsmith/.github"}}}' \
+    '{"id":"PVTI_C","initiative":null,"content":{"__typename":"DraftIssue","title":"zzq ##[stop-commands]tok\n::error::forged-unmatched"}}'
+  local script="${TT_TMP}/script.txt"
+  {
+    gh_script_line 0 "$fields" "-"
+    gh_script_line 0 "$items" "-"
+    gh_script_line "$set_exit" "-" "-"   # (apply) set Initiative on A
+    gh_script_line 0 "-" "-"             # (apply) set Theme on A
+  } >"$script"
+  export GH_STUB_SCRIPT="$script"
+}
+
+@test "sweep_project: hostile titles in MATCH/UNMATCHED lines cannot inject runner commands" {
+  setup_injection_stub 0
+  DRY_RUN=1 run sweep_project
+  [ "$status" -eq 0 ]
+  # Titles are still logged (readably) ...
+  [[ "$output" == *"MATCH  Org Standards"*"forged-match"* ]]
+  [[ "$output" == *"UNMATCHED"*"forged-unmatched"* ]]
+  # ... but never as commands.
+  assert_no_injected_commands
+}
+
+@test "sweep_project: hostile title in the ::warning:: set-failure line stays inside one annotation" {
+  setup_injection_stub 1
+  run sweep_project
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::warning::failed to set Initiative"*"forged-match"* ]]
+  assert_no_injected_commands
+}
