@@ -204,7 +204,7 @@ call() {
   [ "$status" -eq 0 ]
   [[ "$output" == *'js/polynomial-redos'* ]]
   [[ "$output" == *'| high | 2 |'* ]]
-  [[ "$output" == *'<!-- codeql-audit:key=incubator/js -->'* ]]
+  [[ "$output" == *'<!-- codeql-audit:key=incubator/js -->'* ]]  # gitleaks:allow — idempotency marker, not a secret
   [[ "$output" != *'### Alerts'* ]]
   [[ "$output" != *'/security/code-scanning/'[0-9]* ]]
 }
