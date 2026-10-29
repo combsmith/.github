@@ -417,19 +417,26 @@ _gitignore_l2_lines() {
 # the template's whole L2 section while its body said L2 was preserved. The lib is
 # fixed; this is the belt-and-braces check that a future regression of the same
 # shape aborts the step instead of shipping a destructive PR.
+#
+# One awk pass over the three line sets (#1403) — not a grep pipeline per line,
+# which was quadratic and could misreport under pipefail. Inputs reach awk as
+# files, never `awk -v` (BSD awk rejects newlines in -v; worldchest#1). An awk
+# failure returns non-zero (fail closed) instead of an empty "no loss".
 _gitignore_l2_lost() {
   local existing="$1" upserted="$2" block="$3"
-  local before after line key
+  local before
   before="$(_gitignore_l2_lines "$existing")"
-  after="$(_gitignore_l2_lines "$upserted")"
   [ -n "$before" ] || return 0
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    printf '%s\n' "$after" | grep -qxF -- "$line" && continue
-    key="${line%"${line##*[![:space:]]}"}"   # rstrip trailing whitespace, as the lib does
-    printf '%s\n' "$block" | grep -qxF -- "$key" && continue
-    printf '%s\n' "$line"
-  done <<< "$before"
+  awk '
+    FILENAME == ARGV[1] { after[$0] = 1; next }
+    FILENAME == ARGV[2] { blk[$0] = 1; next }
+    $0 == "" || ($0 in after) { next }
+    { key = $0; sub(/[[:space:]]+$/, "", key)   # rstrip, as the lib does
+      if (!(key in blk)) print }
+  ' <(_gitignore_l2_lines "$upserted") <(printf '%s\n' "$block") <(printf '%s\n' "$before") || {
+    echo "::error::gitignore L2-preservation check failed (awk error) — cannot verify per-repo L2 is preserved" >&2
+    return 1
+  }
 }
 
 # step_gitignore <repo> — seed/refresh the org secrets baseline (L1) in the repo's
@@ -480,20 +487,21 @@ step_gitignore() {
   rm -f "${tmpfiles[@]}"
   trap - EXIT
 
-  # Defensive guard: never open a PR that drops per-repo L2 content. See
-  # _gitignore_l2_lost for why (worldchest#1).
-  local lost
-  lost="$(_gitignore_l2_lost "$existing" "$upserted" "$block")"
-  if [ -n "$lost" ]; then
-    echo "::error::gitignore upsert for ${repo} would drop $(printf '%s\n' "$lost" | grep -c '') per-repo L2 line(s) that are not part of the baseline block — refusing to open a PR (first: $(printf '%s\n' "$lost" | head -1))" >&2
-    printf '%s\n' "$lost" | sed 's/^/    would drop: /' >&2
-    return 1
-  fi
-
   current="$(printf '%s' "$existing")"
   if [ "$current" = "$upserted" ]; then
     echo "  ${repo}:.gitignore already carries the current baseline — nothing to do"
     return 0
+  fi
+
+  # Defensive guard: never open a PR that drops per-repo L2 content. See
+  # _gitignore_l2_lost for why (worldchest#1). An unchanged file cannot lose L2,
+  # so the no-change shortcut above runs first (#1403).
+  local lost
+  lost="$(_gitignore_l2_lost "$existing" "$upserted" "$block")" || return 1
+  if [ -n "$lost" ]; then
+    echo "::error::gitignore upsert for ${repo} would drop $(printf '%s\n' "$lost" | grep -c '') per-repo L2 line(s) that are not part of the baseline block — refusing to open a PR (first: $(printf '%s\n' "$lost" | head -1))" >&2
+    printf '%s\n' "$lost" | sed 's/^/    would drop: /' >&2
+    return 1
   fi
 
   branch="gitignore-baseline/$(date -u +%Y-%m-%d)"
