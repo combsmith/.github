@@ -1,0 +1,84 @@
+# Weekly org-wide CodeQL (code scanning) audit.
+#
+# Reads every org repo's open CodeQL alerts, groups them per (repo × language
+# family), and idempotently creates/updates/closes one GitHub issue per group
+# with dev-lead + priority:<severity> labels. Alerts another audit already
+# files, or that policy exempts, are suppressed and only counted in the
+# summary. Emits a dashboard to the workflow step summary.
+#
+# Runs Wednesdays, between the Tuesday SonarCloud audit and the Friday
+# compliance audit, so the three never contend for the same issue surface or
+# dev-lead capacity on the same day.
+#
+# Idempotency, labeling, suppression and lifecycle live in scripts/codeql-audit.sh.
+# Standard: standards/ci-standards.md#codeql-audit-codeql-audityml
+name: CodeQL Audit
+
+on:
+  schedule:
+    # Minute 2 = cron_offset_minute codeql-audit.yml (scripts/lib/cron-timing.sh).
+    - cron: '2 17 * * 3'    # Every Wednesday at 17:02 UTC
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Limit to a specific repo (owner/name or name). Leave blank to scan all.'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run — scan and report only, skip issue writes'
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: codeql-audit
+  cancel-in-progress: false   # let a running audit finish to avoid partial issue state
+
+jobs:
+  audit:
+    name: CodeQL Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # Needs, on every org repo: Code scanning alerts (read), Issues (read/write),
+      # Metadata (read); plus Organization metadata (read) to list repos.
+      GH_TOKEN: ${{ secrets.ORG_SCORECARD_TOKEN }}
+    steps:
+      - name: Checkout .github repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run CodeQL audit
+        env:
+          ORG: ${{ github.repository_owner }}
+          REPORT_DIR: ${{ runner.temp }}/codeql-report
+          TARGET_REPO: ${{ inputs.target_repo || '' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          CREATE_ISSUES: 'true'
+        run: bash scripts/codeql-audit.sh
+
+      - name: Write step summary
+        if: always()
+        env:
+          SUMMARY: ${{ runner.temp }}/codeql-report/summary.md
+        run: |
+          if [ -f "$SUMMARY" ]; then
+            cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "CodeQL audit did not produce a summary." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: codeql-report
+          # Summary only: findings/groups JSON carry private-repo alert details,
+          # and this repo is public.
+          path: ${{ runner.temp }}/codeql-report/summary.md
+          retention-days: 90
