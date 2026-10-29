@@ -73,13 +73,25 @@ call() {
     "Job Job: dev-lead in 'Dev-Lead Agent' uses reusable workflow 'combsmith/.github-private/.github/workflows/dev-lead-reusable.yml' with ref 'dev-lead/v139-stable', not a pinned commit hash"
   [ "$output" = "first-party channel ref (exempt by ci-standards.md)" ]
 }
-@test "third-party unpinned action is suppressed as filed by the compliance audit" {
+@test "third-party unpinned action in a workflow is suppressed as filed by the compliance audit" {
   call suppression_reason "actions/unpinned-tag" \
-    "Unpinned 3rd party Action 'CI' step Uses Step uses 'someone/action' with ref 'v1', not a pinned commit hash"
+    "Unpinned 3rd party Action 'CI' step Uses Step uses 'someone/action' with ref 'v1', not a pinned commit hash" \
+    ".github/workflows/ci.yml"
   [ "$output" = "filed by compliance audit (unpinned-actions)" ]
 }
+@test "third-party unpinned action in a composite action.yml is NOT suppressed" {
+  call suppression_reason "actions/unpinned-tag" \
+    "Unpinned 3rd party Action 'setup' step Uses Step uses 'someone/action' with ref 'v1', not a pinned commit hash" \
+    ".github/actions/setup/action.yml"
+  [ "$status" -eq 0 ]; [ -z "$output" ]
+}
+@test "first-party channel-tag ref is exempt even outside .github/workflows" {
+  call suppression_reason "actions/unpinned-tag" \
+    "uses reusable workflow 'combsmith/.github/.github/workflows/x-reusable.yml' with ref 'x/v1-stable'" "action.yml"
+  [ "$output" = "first-party channel ref (exempt by ci-standards.md)" ]
+}
 @test "an ORG name only as a substring of another owner is not first-party" {
-  call suppression_reason "actions/unpinned-tag" "uses 'notcombsmith/x' with ref 'v1'"
+  call suppression_reason "actions/unpinned-tag" "uses 'notcombsmith/x' with ref 'v1'" ".github/workflows/ci.yml"
   [ "$output" = "filed by compliance audit (unpinned-actions)" ]
 }
 @test "missing-workflow-permissions is suppressed as filed by the compliance audit" {

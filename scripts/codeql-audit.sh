@@ -103,8 +103,9 @@ family_title() {
 #   workflows to moving channel tags on purpose (ci-standards.md § Exception:
 #   Internal Reusable Workflow References). Filing it would send dev-lead to
 #   SHA-pin a ref the standard forbids SHA-pinning.
-# - actions/unpinned-tag on anything else: compliance-audit.sh
+# - actions/unpinned-tag on anything else in .github/workflows/: compliance-audit.sh
 #   check_action_pinning already files `Compliance: unpinned-actions-<wf>`.
+#   Elsewhere (composite action.yml files) it is filed here.
 # - actions/missing-workflow-permissions: suppress only for regular workflows in
 #   .github/workflows/ (not reusable-*). Uncovered workflows and reusable workflows
 #   are reported.
@@ -114,7 +115,9 @@ suppression_reason() {
     actions/unpinned-tag)
       if [[ "$message" == *"'${ORG}/"* ]]; then
         echo "first-party channel ref (exempt by ci-standards.md)"
-      else
+      elif [[ "$file" == .github/workflows/*.y*ml ]]; then
+        # check_action_pinning reads only .github/workflows; composite
+        # action.yml files are filed here.
         echo "filed by compliance audit (unpinned-actions)"
       fi ;;
     actions/missing-workflow-permissions)
@@ -216,7 +219,13 @@ list_repos() {
     echo "${TARGET_REPO#"$ORG/"}"
     return
   fi
-  gh repo list "$ORG" --no-archived --limit 200 --json name -q '.[].name'
+  # Paginated with no cap. Repos the token cannot see are not listed at all,
+  # so ORG_SCORECARD_TOKEN must cover all repositories (ci-standards.md).
+  local names
+  names=$(gh api --paginate "orgs/$ORG/repos?type=all&per_page=100" \
+    --jq '.[] | select(.archived | not) | .name') || return 1
+  [[ -n "$names" ]] || { warn "token lists no repos in $ORG"; return 1; }
+  echo "$names"
 }
 
 # ---------------------------------------------------------------------------
@@ -388,8 +397,11 @@ manage_group_issue() {
   existing=$(head -1 <<< "$existing")
 
   if [[ -n "$existing" ]]; then
-    gh issue edit "$existing" --repo "$ORG/$repo" --body "$body" \
-      --add-label "$prio" 2>/dev/null || true
+    if ! gh issue edit "$existing" --repo "$ORG/$repo" --body "$body" \
+        --add-label "$prio" >/dev/null; then
+      warn "$repo: could not update #$existing :: $stable_title"
+      return 1
+    fi
     [[ "$(jq -r '.has_security' <<< "$group")" = "true" ]] && \
       gh issue edit "$existing" --repo "$ORG/$repo" --add-label "security" 2>/dev/null || true
     local other
@@ -431,25 +443,34 @@ manage_group_issue() {
 # for repos whose alerts were read successfully this run.
 close_resolved() {
   local repo="$1"
-  local open_issues
-  open_issues=$(gh issue list --repo "$ORG/$repo" --label "$CODEQL_AUDIT_LABEL" --state open \
-    --json number,body --limit 200 2>/dev/null \
-    | jq -r '.[] | "\(.number)\t" + ((.body // "") | (try (capture("codeql-audit:key=[^/]+/(?<fam>[a-z0-9]+)").fam) catch ""))' 2>/dev/null || echo "")
-  [[ -z "$open_issues" ]] && return
+  local list_json open_issues
+  if ! list_json=$(gh issue list --repo "$ORG/$repo" --label "$CODEQL_AUDIT_LABEL" --state open \
+      --json number,body --limit 200); then
+    warn "$repo: could not list audit issues for cleanup"
+    return 1
+  fi
+  open_issues=$(jq -r '.[] | "\(.number)\t" + ((.body // "") | (try (capture("codeql-audit:key=[^/]+/(?<fam>[a-z0-9]+)").fam) catch ""))' <<< "$list_json")
+  [[ -z "$open_issues" ]] && return 0
 
   local current_fams
   current_fams=$(jq -r --arg repo "$repo" '.[] | select(.repo == $repo) | .family' "$GROUPS_FILE")
 
-  local num fam
+  local num fam failed=0
   while IFS=$'\t' read -r num fam; do
     [[ -z "$num" ]] && continue
     [[ -z "$fam" ]] && continue   # not a marker-bearing audit issue — leave it alone
     if ! grep -qxF "$fam" <<< "$current_fams"; then
-      gh issue close "$num" --repo "$ORG/$repo" \
-        --comment "Resolved! No open CodeQL alerts remain in this group as of $(date -u +%Y-%m-%d). Closing automatically." 2>/dev/null \
-        && { ISSUES_REMOVED=$((ISSUES_REMOVED + 1)); info "Closed resolved #$num in $repo"; } || true
+      if gh issue close "$num" --repo "$ORG/$repo" \
+          --comment "Resolved! No open CodeQL alerts remain in this group as of $(date -u +%Y-%m-%d). Closing automatically." >/dev/null; then
+        ISSUES_REMOVED=$((ISSUES_REMOVED + 1))
+        info "Closed resolved #$num in $repo"
+      else
+        warn "$repo: could not close resolved #$num"
+        failed=1
+      fi
     fi
   done <<< "$open_issues"
+  return "$failed"
 }
 
 # ---------------------------------------------------------------------------
@@ -521,7 +542,8 @@ main() {
 
   if [[ "$CREATE_ISSUES" = "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
     while IFS= read -r repo; do
-      [[ -n "$repo" ]] && close_resolved "$repo"
+      [[ -z "$repo" ]] && continue
+      close_resolved "$repo" || group_failed=1
     done < "$SCANNED_FILE"
   fi
 
@@ -539,7 +561,7 @@ main() {
     return 1
   fi
   if [[ "$group_failed" = "1" ]]; then
-    warn "one or more group issues failed to manage — see summary"
+    warn "one or more audit issues could not be listed, created, updated or closed — see the log"
     return 1
   fi
 }

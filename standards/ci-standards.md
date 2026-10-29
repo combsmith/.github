@@ -2107,7 +2107,7 @@ org-level workflows that run across all repositories:
   | Rule | Why |
   |---|---|
   | `actions/unpinned-tag` on a `combsmith/*` ref | First-party channel-tag refs are exempt from SHA-pinning ([Exception: Internal Reusable Workflow References](#exception-internal-reusable-workflow-references)) |
-  | `actions/unpinned-tag` on any other ref | Filed by the compliance audit as `Compliance: unpinned-actions-<wf>` |
+  | `actions/unpinned-tag` on any other ref in `.github/workflows/` | Filed by the compliance audit as `Compliance: unpinned-actions-<wf>`. That check reads only `.github/workflows/`, so alerts in composite `action.yml` files are **not** suppressed and are filed here |
   | `actions/missing-workflow-permissions` in a non-reusable workflow under `.github/workflows/` | Filed by the compliance audit as `Compliance: missing-permissions-<wf>`. That check skips `*-reusable.yml`, so alerts in reusable workflows are **not** suppressed and are filed here |
 
   The SonarCloud audit reads SonarCloud, not code scanning, and uses its own
@@ -2119,7 +2119,9 @@ org-level workflows that run across all repositories:
 - **Dispatch inputs:** `target_repo` (one repo) and `dry_run` (scan and report,
   no issue writes).
 - **Token (`ORG_SCORECARD_TOKEN`):** additionally needs **Code scanning alerts:
-  Read-only** on every repo.
+  Read-only** on every repo. Its repository access must be **All repositories**:
+  the audit lists repos with that token (paginated, no cap), and a repo the token
+  cannot see is never listed, so it cannot be reported as skipped.
 - **Code and tests:** `scripts/codeql-audit.sh`; pure helpers gated by
   `test/scripts/codeql-audit/` via `codeql-audit-tests.yml`.
 
