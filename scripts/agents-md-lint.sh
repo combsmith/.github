@@ -233,6 +233,38 @@ amdl_classify_reference() {
 }
 
 # ---------------------------------------------------------------------------
+# amdl_extract_inline_targets <file> — print "<lineno>\t<target>" for every
+# inline link [text](target), in ONE linear pass over the file (#1408). Same
+# result as the former per-line loop that re-matched '(.*)\]\(([^)]*)\)(.*)' and
+# rebuilt the line around each match (quadratic on a link-dense line): take the
+# rightmost "](" that has a ")" after it, the target is the text up to the first
+# ")", splice "](target)" out, repeat. A right-to-left scan with a stack of the
+# already-reduced suffix does exactly that; targets come out in the same
+# right-to-left order. LC_ALL=C: byte-wise, identical under gawk/mawk/BSD awk.
+# ---------------------------------------------------------------------------
+amdl_extract_inline_targets() {
+  LC_ALL=C awk '
+    {
+      sp = 0; nclose = 0
+      n = split($0, ch, "")   # one split, not substr() per char (O(n) in BSD awk)
+      for (i = n; i >= 1; i--) {
+        c = ch[i]
+        if (c == "]" && sp > 0 && st[sp] == "(" && nclose > 0) {
+          sp--
+          printf "%d\t", NR
+          while (st[sp] != ")") { printf "%s", st[sp]; sp-- }
+          sp--; nclose--
+          printf "\n"
+        } else {
+          st[++sp] = c
+          if (c == ")") nclose++
+        }
+      }
+    }
+  ' "$1"
+}
+
+# ---------------------------------------------------------------------------
 # amdl_check_cross_references <file> — findings for every dangling in-document
 # anchor or repo-relative link. Relative paths resolve against the file's own
 # directory. Skips content inside fenced code blocks. Pure.
@@ -255,9 +287,8 @@ amdl_check_cross_references() {
     fi
   done < <(amdl_extract_headings "$file")
 
-  local lineno=0 in_fence=0 fence_char="" fence_len=0 line trimmed target temp_line
-  local _fc _flen
-  local inline_regex='(.*)\]\(([^)]*)\)(.*)'
+  local lineno=0 in_fence=0 fence_char="" fence_len=0 line trimmed target
+  local _fc _flen _rec="" _rl _have=0
   local ref_regex='^[[:space:]]*\[[^]]+\]:[[:space:]]*(.*)'
   while IFS= read -r line || [ -n "$line" ]; do
     lineno=$((lineno + 1))
@@ -279,12 +310,17 @@ amdl_check_cross_references() {
     fi
     [ "$in_fence" -eq 0 ] || continue
 
-    # Extract inline links: [text](target)
-    temp_line="$line"
-    while [[ "$temp_line" =~ $inline_regex ]]; do
-      local _pre="${BASH_REMATCH[1]}" _tgt="${BASH_REMATCH[2]}" _post="${BASH_REMATCH[3]}"
-      amdl_classify_reference "$_tgt" "$base" "$slugs" "$lineno"
-      temp_line="${_pre}${_post}"
+    # Inline links: [text](target) — consume this line's records from the
+    # single-pass extractor on fd 9 (records for skipped fence lines are dropped).
+    while :; do
+      if [ "$_have" -eq 0 ]; then
+        IFS= read -r -u 9 _rec || break
+        _have=1
+      fi
+      _rl="${_rec%%$'\t'*}"
+      [ "$_rl" -le "$lineno" ] || break
+      _have=0
+      [ "$_rl" -ne "$lineno" ] || amdl_classify_reference "${_rec#*$'\t'}" "$base" "$slugs" "$lineno"
     done
 
     # Extract reference definitions: [label]: target
@@ -292,7 +328,7 @@ amdl_check_cross_references() {
       target="${BASH_REMATCH[1]}"
       amdl_classify_reference "$target" "$base" "$slugs" "$lineno"
     fi
-  done < "$file"
+  done < "$file" 9< <(amdl_extract_inline_targets "$file")
   return 0
 }
 
