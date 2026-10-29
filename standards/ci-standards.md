@@ -2069,7 +2069,7 @@ org-level workflows that run across all repositories:
 
 ### CodeQL Audit (`codeql-audit.yml`)
 
-- **Schedule:** Weekly, Wednesday 17:22 UTC — between the Tuesday SonarCloud
+- **Schedule:** Weekly, Wednesday 17:02 UTC — between the Tuesday SonarCloud
   audit and the Friday compliance audit, so no two audits file into the same
   repos or wake dev-lead on the same day. Minute from `cron_offset_minute`.
 - **Purpose:** Turns open **CodeQL** code-scanning alerts into work. The
@@ -2104,7 +2104,7 @@ org-level workflows that run across all repositories:
   |---|---|
   | `actions/unpinned-tag` on a `combsmith/*` ref | First-party channel-tag refs are exempt from SHA-pinning ([Exception: Internal Reusable Workflow References](#exception-internal-reusable-workflow-references)) |
   | `actions/unpinned-tag` on any other ref | Filed by the compliance audit as `Compliance: unpinned-actions-<wf>` |
-  | `actions/missing-workflow-permissions` | Filed by the compliance audit as `Compliance: missing-permissions-<wf>` |
+  | `actions/missing-workflow-permissions` in a non-reusable workflow under `.github/workflows/` | Filed by the compliance audit as `Compliance: missing-permissions-<wf>`. That check skips `*-reusable.yml`, so alerts in reusable workflows are **not** suppressed and are filed here |
 
   The SonarCloud audit reads SonarCloud, not code scanning, and uses its own
   marker label, title prefix and body key, so the two never adopt or close each

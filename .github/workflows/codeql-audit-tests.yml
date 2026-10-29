@@ -11,14 +11,18 @@ on:
   pull_request:
     paths:
       - 'scripts/codeql-audit.sh'
+      - 'scripts/lib/dev-lead-retrigger.sh'   # sourced by codeql-audit.sh
       - 'test/scripts/codeql-audit/**'
+      - '.github/workflows/codeql-audit.yml'
       - '.github/workflows/codeql-audit-tests.yml'
   push:
     branches:
       - main
     paths:
       - 'scripts/codeql-audit.sh'
+      - 'scripts/lib/dev-lead-retrigger.sh'   # sourced by codeql-audit.sh
       - 'test/scripts/codeql-audit/**'
+      - '.github/workflows/codeql-audit.yml'
       - '.github/workflows/codeql-audit-tests.yml'
 
 permissions:
@@ -49,7 +53,7 @@ jobs:
       - name: shellcheck
         run: |
           set -euo pipefail
-          shellcheck --severity=warning -x scripts/codeql-audit.sh
+          shellcheck --severity=warning -x scripts/codeql-audit.sh scripts/lib/dev-lead-retrigger.sh
 
       - name: Run bats suite
         run: bats --print-output-on-failure test/scripts/codeql-audit/

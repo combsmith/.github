@@ -16,8 +16,8 @@ name: CodeQL Audit
 
 on:
   schedule:
-    # Minute 22 = cron_offset_minute codeql-audit.yml (scripts/lib/cron-timing.sh).
-    - cron: '22 17 * * 3'   # Every Wednesday at 17:22 UTC
+    # Minute 2 = cron_offset_minute codeql-audit.yml (scripts/lib/cron-timing.sh).
+    - cron: '2 17 * * 3'    # Every Wednesday at 17:02 UTC
   workflow_dispatch:
     inputs:
       target_repo:
