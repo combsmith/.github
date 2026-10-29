@@ -23,7 +23,7 @@
 #   rc_missing_from_live — declared checks the live ruleset does not enforce.
 #   rc_drop_codified     — declared checks minus those the codified payload owns.
 #
-# All three are pure: JSON in, text out, no gh calls. This library is
+# All four are pure: JSON in, text out, no gh calls. This library is
 # `set -euo pipefail`-safe and does not call `set` itself.
 
 # The path, relative to a repo's root, of its declaration (read from the
