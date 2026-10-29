@@ -1003,7 +1003,10 @@ deploy_repo() {
       base="$(reusable_base_of "$template")"
       if [[ "$repin_source" == "$template" ]] && ! is_replace_if_present_workflow "$workflow" \
          && ! { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; } \
-         && is_pin_compliant "$existing_content" "$template" "$repo"; then
+         && is_pin_compliant "$existing_content" "$template" "$repo" \
+         && ! stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content"; then
+        # Keep the existing body only when its guarded surfaces are compliant; a
+        # stub with trigger/permission drift falls back to the canonical template.
         repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
         printf '%s\n' "$existing_content" > "$repin_source"
       fi
