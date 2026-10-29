@@ -15,12 +15,13 @@
 # The declaration is an ALLOWLIST, not "whatever is live": apply-rulesets.sh merges
 # exactly the declared entries into the code-quality payload it PUTs, so a stale or
 # hand-added live context is still converged away, and the compliance audit flags a
-# declared entry that is missing from the live ruleset. This library holds the three
+# declared entry that is missing from the live ruleset. This library holds the
 # pure functions both sides use, so they cannot disagree:
 #
 #   rc_declared_checks   — validate a declaration, emit its normalised check array.
 #   rc_merge_payload     — codified payload + declared checks → payload to PUT.
 #   rc_missing_from_live — declared checks the live ruleset does not enforce.
+#   rc_drop_codified     — declared checks minus those the codified payload owns.
 #
 # All three are pure: JSON in, text out, no gh calls. This library is
 # `set -euo pipefail`-safe and does not call `set` itself.
@@ -78,6 +79,20 @@ rc_merge_payload() {
         ([.parameters.required_status_checks[]?.context]) as $have
         | .parameters.required_status_checks += [ $d[] | select(.context as $c | $have | index($c) | not) ]
       else . end)
+  ' <<< "$payload"
+}
+
+# rc_drop_codified <payload_json> <declared_checks_json>
+#   Echo the declared checks (compact JSON) minus those whose context is already
+#   codified in the payload's `required_status_checks` rule. rc_merge_payload
+#   keeps the codified entry in that case, so the audit must not demand the
+#   declaration's app pin for it (check_ruleset_contents audits codified entries).
+rc_drop_codified() {
+  local payload="$1" declared="$2"
+  jq -c --argjson d "$declared" '
+    ([.rules[]? | select(.type == "required_status_checks")
+      | .parameters.required_status_checks[]?.context]) as $have
+    | [ $d[] | select(.context as $c | $have | index($c) | not) ]
   ' <<< "$payload"
 }
 

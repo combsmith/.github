@@ -111,3 +111,9 @@ _with_mutation() { jq -cn --argjson c "$CQ_CHECKS" '$c + [{"context":"mutation (
   [ "$status" -eq 0 ]
   [ "$(jq length <<< "$output")" -eq 0 ]
 }
+
+@test "a declared codified context (CodeQL) with a different app → no finding (applier keeps the codified entry)" {
+  run _run '{"version":1,"required_status_checks":[{"context":"CodeQL","integration_id":15368}]}' "$CQ_CHECKS"
+  [ "$status" -eq 0 ]
+  [ "$(jq length <<< "$output")" -eq 0 ]
+}

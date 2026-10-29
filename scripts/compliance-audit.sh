@@ -1099,6 +1099,9 @@ check_declared_required_checks() {
   if [ "$rc" -ne 0 ]; then
     if grep -q 'HTTP 404' "$err"; then rm -f "$err"; return 0; fi
     rm -f "$err"
+    # Keep any open declared-required-check-missing-* finding open: its check
+    # could not run, so it must not be auto-closed as passing.
+    mark_repo_inconclusive "$repo"
     add_finding "$repo" "rulesets" "declared-required-checks-unreadable" "error" \
       "Could not read \`$RC_DECLARED_PATH\` to verify the repo's declared required checks against \`code-quality\`. Treating as a finding, not a pass (fail closed)." \
       "$std_ref"
@@ -1117,6 +1120,9 @@ check_declared_required_checks() {
     return 0
   fi
   rm -f "$err"
+  # The applier keeps a codified entry over a same-context declaration, so only
+  # audit the declarations it actually merges.
+  declared=$(rc_drop_codified "$(jq -c . "$RULESETS_SRC_DIR/code-quality.json")" "$declared") || return 0
   [ "$declared" = "[]" ] && return 0
 
   local rs

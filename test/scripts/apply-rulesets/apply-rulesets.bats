@@ -406,6 +406,8 @@ _contexts() { jq -c '[.rules[] | select(.type=="required_status_checks") | .para
   RULESET_DETAIL="$(jq -c '.id = 7 | .rules |= map(if .type=="required_status_checks" then .parameters.required_status_checks += [{"context":"stale-check"}] else . end)' "$RULESETS_DIR/code-quality.json")"; export RULESET_DETAIL
   run bash "$APPLY" --repo combsmith/acme code-quality
   [ "$status" -eq 0 ]
+  grep -q 'method PUT' "$CALLS"
+  _put_body | _contexts | jq -e 'any(.[]; .context == "mutation (all)")'
   ! _put_body | _contexts | jq -e 'any(.[]; .context == "stale-check")'
 }
 

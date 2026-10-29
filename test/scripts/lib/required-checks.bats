@@ -128,3 +128,10 @@ _rc() { bash -c "set -euo pipefail; source '$LIB'; $*"; }
   [ "$status" -eq 0 ]
   [ "$output" = "2" ]
 }
+
+# ── rc_drop_codified: audit and applier agree on codified contexts ──────────
+@test "rc_drop_codified: removes a declared context already codified, keeps the rest" {
+  run _rc "rc_drop_codified \"\$(jq -c . '$CQ')\" '[{\"context\":\"CodeQL\",\"integration_id\":15368},{\"context\":\"mutation (all)\",\"integration_id\":15368}]'"
+  [ "$status" -eq 0 ]
+  [ "$output" = '[{"context":"mutation (all)","integration_id":15368}]' ]
+}
