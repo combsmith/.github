@@ -322,6 +322,12 @@ RULESETS_SRC_DIR="${RULESETS_SRC_DIR:-$SCRIPT_DIR/../standards/rulesets}"
 # shellcheck source=lib/code-scanning.sh
 . "$SCRIPT_DIR/lib/code-scanning.sh"
 
+# Repo-declared additional required checks (.github/required-checks.json, #1410):
+# rc_declared_checks validates a declaration, rc_missing_from_live finds declared
+# checks the live code-quality ruleset does not enforce. Shared with the applier.
+# shellcheck source=lib/required-checks.sh
+. "$SCRIPT_DIR/lib/required-checks.sh"
+
 # AGENTS.md structural linter — the pure, data-driven driver (amdl_lint) and its
 # default rule-set path (AMDL_DEFAULT_RULES). Sourced, not exec'd: agents-md-lint.sh
 # guards its CLI behind a BASH_SOURCE check, so sourcing only defines functions.
@@ -866,6 +872,7 @@ check_rulesets() {
   check_ruleset_bypass_actors "$repo" "$default_branch" "$rulesets_json"
   check_legacy_rulesets "$repo" "$default_branch" "$rulesets_json"
   check_ruleset_contents "$repo" "$rulesets_json"
+  check_declared_required_checks "$repo" "$rulesets_json"
   check_code_scanning_rule "$repo" "$default_branch"
 }
 
@@ -1066,6 +1073,72 @@ _ruleset_contents_one() {
 #     finding, never a pass, and the repo is marked inconclusive so an open
 #     finding is not closed on a check that did not run.
 CODE_SCANNING_STANDARD_REF="standards/github-settings.md#code-scanning-merge-protection-all-repositories"
+
+# check_declared_required_checks <repo> <rulesets_json>
+# A repo may declare extra required status checks in .github/required-checks.json
+# (standards/github-settings.md#repo-declared-required-checks, #1410), which
+# apply-rulesets.sh merges into `code-quality`. Enforce the declaration in reverse:
+# every declared check must be live in code-quality, pinned to its declared app.
+# No declaration (HTTP 404) is the common case and produces nothing. Fail closed:
+# an unreadable or invalid declaration is a finding, never a pass.
+check_declared_required_checks() {
+  local repo="$1" rulesets_json="$2"
+  local std_ref="standards/github-settings.md#repo-declared-required-checks"
+
+  # Absence of code-quality is already reported by check_rulesets.
+  local rs_id
+  rs_id=$(echo "$rulesets_json" | jq -r '.[]? | select(.name=="code-quality") | .id' 2>/dev/null || echo "")
+  [ -z "$rs_id" ] && return 0
+
+  # Read the declaration directly (not gh_api, which hides the 404 that means
+  # "declares nothing" behind the same failure as an outage).
+  local raw err rc=0
+  err=$(mktemp)
+  raw=$(gh api -H "Accept: application/vnd.github.raw+json" \
+    "repos/$ORG/$repo/contents/$RC_DECLARED_PATH" 2>"$err") && rc=0 || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    if grep -q 'HTTP 404' "$err"; then rm -f "$err"; return 0; fi
+    rm -f "$err"
+    add_finding "$repo" "rulesets" "declared-required-checks-unreadable" "error" \
+      "Could not read \`$RC_DECLARED_PATH\` to verify the repo's declared required checks against \`code-quality\`. Treating as a finding, not a pass (fail closed)." \
+      "$std_ref"
+    return 0
+  fi
+  rm -f "$err"
+
+  local declared reason
+  err=$(mktemp)
+  if ! declared=$(rc_declared_checks "$raw" 2>"$err"); then
+    reason=$(head -c 300 "$err" 2>/dev/null || echo "unparseable")
+    rm -f "$err"
+    add_finding "$repo" "rulesets" "declared-required-checks-invalid" "error" \
+      "\`$RC_DECLARED_PATH\` is not a valid declaration ($reason), so apply-rulesets.sh refuses to update \`code-quality\` on this repo. Fix the file; see the standard for its format." \
+      "$std_ref"
+    return 0
+  fi
+  rm -f "$err"
+  [ "$declared" = "[]" ] && return 0
+
+  local rs
+  rs=$(gh_api "repos/$ORG/$repo/rulesets/$rs_id" 2>/dev/null || echo "")
+  # An unfetchable code-quality ruleset is already a finding from
+  # check_ruleset_contents; do not report it twice.
+  if [ -z "$rs" ] || ! echo "$rs" | jq empty >/dev/null 2>&1; then return 0; fi
+
+  local context want have slug
+  while IFS=$'\t' read -r context want have; do
+    [ -z "$context" ] && continue
+    slug=$(printf '%s' "$context" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+    if [ "$have" = "missing" ]; then
+      have="it is not required at all"
+    else
+      have="it is pinned to app \`$have\`"
+    fi
+    add_finding "$repo" "rulesets" "declared-required-check-missing-$slug" "error" \
+      "\`$RC_DECLARED_PATH\` requires \`$context\` from app \`$want\`, but in the live \`code-quality\` ruleset $have. Run \`scripts/apply-rulesets.sh --repo $ORG/$repo\` to converge." \
+      "$std_ref"
+  done < <(rc_missing_from_live "$declared" "$rs")
+}
 
 # check_code_scanning_rule <repo> <default_branch>
 check_code_scanning_rule() {
@@ -1315,7 +1388,7 @@ check_legacy_rulesets() {
 
     local migrate_note
     if [ -n "$uncovered" ]; then
-      migrate_note="**Migrate before deleting** — these required checks are not yet required by \`pr-quality\` or \`code-quality\`, so deleting this ruleset would drop them as merge gates: ${uncovered}Add them to \`code-quality\` first, then delete this ruleset."
+      migrate_note="**Migrate before deleting** — these required checks are not yet required by \`pr-quality\` or \`code-quality\`, so deleting this ruleset would drop them as merge gates: ${uncovered}Declare them in \`$RC_DECLARED_PATH\` (each with its \`integration_id\`) so \`scripts/apply-rulesets.sh\` merges them into \`code-quality\`, then delete this ruleset."
     else
       migrate_note="Every required check it carries is already required by a sanctioned ruleset, so it is **safe to delete** (e.g. \`gh api -X DELETE repos/$ORG/$repo/rulesets/$rs_id\`)."
     fi

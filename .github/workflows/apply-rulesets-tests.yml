@@ -11,6 +11,8 @@ on:
       - 'scripts/apply-rulesets.sh'
       - 'scripts/fix-ruleset-bypass.sh'
       - 'scripts/lib/code-scanning.sh'
+      - 'scripts/lib/required-checks.sh'
+      - 'test/scripts/lib/required-checks.bats'
       - 'standards/rulesets/**'
       - 'test/scripts/apply-rulesets/**'
       - 'test/scripts/fix-ruleset-bypass/**'
@@ -21,6 +23,8 @@ on:
       - 'scripts/apply-rulesets.sh'
       - 'scripts/fix-ruleset-bypass.sh'
       - 'scripts/lib/code-scanning.sh'
+      - 'scripts/lib/required-checks.sh'
+      - 'test/scripts/lib/required-checks.bats'
       - 'standards/rulesets/**'
       - 'test/scripts/apply-rulesets/**'
       - 'test/scripts/fix-ruleset-bypass/**'
@@ -50,7 +54,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends bats shellcheck jq
 
       - name: shellcheck
-        run: shellcheck --severity=warning -x scripts/apply-rulesets.sh scripts/fix-ruleset-bypass.sh
+        run: shellcheck --severity=warning -x scripts/apply-rulesets.sh scripts/fix-ruleset-bypass.sh scripts/lib/required-checks.sh
 
       - name: bats
-        run: bats --print-output-on-failure test/scripts/apply-rulesets/ test/scripts/fix-ruleset-bypass/
+        run: bats --print-output-on-failure test/scripts/apply-rulesets/ test/scripts/fix-ruleset-bypass/ test/scripts/lib/required-checks.bats

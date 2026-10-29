@@ -173,7 +173,9 @@ floor, by `check_code_scanning_rule()` (see
 fields never produce noise. `required_status_checks` uses **subset** semantics —
 every codified context must be present, but repo-specific *additional* checks are
 allowed (see [`code-quality`](#code-quality--required-checks-ruleset-all-repositories)
-below); a *missing* codified context is drift. The check **fails closed**: a
+below); a *missing* codified context is drift. Additional checks a repo declares in
+`.github/required-checks.json` are enforced separately by
+`check_declared_required_checks` (see [Repo-declared required checks](#repo-declared-required-checks)). The check **fails closed**: a
 ruleset that cannot be fetched or parsed is a finding, never a silent pass. This
 means flipping `required_review_thread_resolution` to `false`, lowering the
 review count, dropping `require_code_owner_review`, or widening
@@ -324,7 +326,7 @@ The following are **intentionally NOT** in `code-quality.json` today:
 | **Secret Scan** | ⏳ Template / new repos; not yet fleet-wide | `Secret scan (gitleaks)` | Produced by the template [`ci.yml`](workflows/ci.yml) (see [Push Protection Standard](push-protection.md#layer-3--ci-secret-scanning-secondary-defense)). Added to the ruleset fleet-wide only once existing repos produce it |
 | **Coverage** | ⏳ Template / new repos; not yet fleet-wide | `coverage` | **Not produced by the template [`ci.yml`](workflows/ci.yml) out of the box** — the template ships a single `build-and-test` job; a separate `coverage` check must be explicitly configured when adopting the template (see [ci-standards.md](ci-standards.md)). Requiring it fleet-wide before repos produce it would brick every PR — backfill first, then add the context |
 | **Dev-Lead Agent** | ❌ Not a required context | `Dev-Lead Agent / dev-lead` | Per-PR AI review, not a merge gate: the agent's GitHub App refuses to mint a token for any PR touching workflow files, so requiring it would deadlock every workflow-modifying PR |
-| **CI Pipeline** | Repo-specific (not a fixed org context) | e.g. `build-and-test`, `TypeScript`, `Go` | Lint/format/typecheck/test; the job name is repo-defined, so it is required per-repo (via branch protection), not as a codified org-wide context |
+| **CI Pipeline** | Repo-specific (not a fixed org context) | e.g. `build-and-test`, `TypeScript`, `Go` | Lint/format/typecheck/test; the job name is repo-defined, so it is required per-repo by declaring it in the repo's `.github/required-checks.json` (see [Repo-declared required checks](#repo-declared-required-checks)), not as a codified org-wide context |
 
 **Sequencing (why Secret Scan + Coverage are staged).** Adding a required context
 to `code-quality.json` makes it a merge gate on **every** repo the ruleset targets;
@@ -342,6 +344,47 @@ that already produce them. See [combsmith/.github#575](https://github.com/combsm
 > ```bash
 > gh pr checks <PR-number> --repo combsmith/<repo>
 > ```
+
+#### Repo-declared required checks
+
+A repo that needs required checks beyond the four codified contexts — its CI
+pipeline, mutation testing, a repo-specific gate — **declares them in its own
+`.github/required-checks.json`** (read from the default branch, so a declaration
+takes effect once merged):
+
+```json
+{
+  "version": 1,
+  "required_status_checks": [
+    {"context": "mutation (all)", "integration_id": 15368}
+  ]
+}
+```
+
+- **`integration_id` is mandatory** — the GitHub App that must report the check
+  (`15368` is GitHub Actions). Pinning the app means no other app or status can
+  satisfy the gate.
+- **[`apply-rulesets.sh`](../scripts/apply-rulesets.sh) merges the declared
+  entries into `code-quality`** on every run, including the weekly
+  `apply-repo-settings` self-heal, after the codified contexts. A declared context
+  that is already codified keeps the codified entry. The merge is an **allowlist**:
+  only declared entries are added, so a hand-added live context that is not declared
+  is still converged away. Logic: [`scripts/lib/required-checks.sh`](../scripts/lib/required-checks.sh).
+- **Fail closed.** If the declaration cannot be read (anything but HTTP 404) or is
+  invalid (unknown `version`, empty `context`, missing or non-integer
+  `integration_id`, unknown key, duplicate context), the applier does **not** update
+  `code-quality` on that repo, so declared gates are never silently dropped.
+- **The compliance audit enforces it in reverse** (`check_declared_required_checks`):
+  a declared check that the live `code-quality` does not require, or requires from a
+  different app, is an error finding, as is an unreadable or invalid declaration.
+- **Do not add a separate ruleset** for extra checks. Only `pr-quality` and
+  `code-quality` are sanctioned; `check_legacy_rulesets()` flags any other
+  default-branch ruleset. A legacy ruleset's uncovered checks migrate into the
+  declaration, after which the ruleset is deleted.
+- **Only declare checks every PR produces.** Like the codified contexts, a declared
+  context that no job reports blocks every PR in that repo.
+
+Decision record: combsmith/.github#1410 (option A, solution-architect advisory).
 
 #### Ecosystem-Specific Configuration
 
