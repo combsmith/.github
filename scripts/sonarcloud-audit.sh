@@ -39,6 +39,7 @@ FINDINGS_FILE="$REPORT_DIR/findings.json"
 GROUPS_FILE="$REPORT_DIR/groups.json"
 SUMMARY_FILE="$REPORT_DIR/summary.md"
 COUNTS_FILE="$REPORT_DIR/issue-counts.json"
+SCANNED_FILE="$REPORT_DIR/scanned-repos.txt"   # repos this run selected AND scanned OK
 
 ISSUES_ADDED=0
 ISSUES_EXISTING=0
@@ -205,13 +206,16 @@ scan() {
 
   local ndjson_file="$REPORT_DIR/findings.ndjson"
   : > "$ndjson_file"
+  : > "$SCANNED_FILE"
   local project repo issues family
 
   for project in $(sonar_list_projects); do
     repo=$(sonar_project_to_repo "$project")
     [ -n "$target_name" ] && [ "$repo" != "$target_name" ] && continue
     info "Scanning $project -> $repo"
-    issues=$(sonar_project_issues "$project")
+    issues=$(sonar_project_issues "$project") || return 1
+    # Only repos recorded here are eligible for close_resolved (#1409).
+    printf '%s\n' "$repo" >> "$SCANNED_FILE"
 
     # Emit one NDJSON object per issue with its computed family.
     while IFS= read -r row; do
@@ -476,10 +480,12 @@ main() {
     while IFS= read -r group; do
       manage_group_issue "$group"
     done < <(jq -c '.[]' "$GROUPS_FILE")
-    # Close resolved issues per repo that had (or previously had) findings.
+    # Close resolved issues ONLY in repos this run selected (TARGET_REPO) and
+    # successfully scanned (#1409). A repo that was not scanned has no findings in
+    # groups.json for that reason alone — not because they were resolved.
     while IFS= read -r repo; do
       [ -n "$repo" ] && close_resolved "$repo"
-    done < <(gh repo list "$ORG" --no-archived --limit 100 --json name -q '.[].name' 2>/dev/null || jq -r '[.[].repo]|unique[]' "$GROUPS_FILE")
+    done < <(sort -u "$SCANNED_FILE")
   else
     while IFS= read -r group; do manage_group_issue "$group"; done < <(jq -c '.[]' "$GROUPS_FILE")
   fi
