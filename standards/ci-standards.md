@@ -684,6 +684,8 @@ security alerts `medium_or_higher`, alerts `errors`), so an alert below `high`
 blocks the merge instead of passing the `CodeQL` check silently. Default setup
 (or the advanced workflow below) is what feeds it; see
 [github-settings.md § Code scanning merge protection](github-settings.md#code-scanning-merge-protection-all-repositories).
+Alerts already open on the default branch are filed as issues weekly by the
+[CodeQL Audit](#codeql-audit-codeql-audityml).
 
 **Escape hatch — when advanced setup is justified:** A repo MAY revert to
 an inline `codeql.yml` workflow only when it has a concrete need that
@@ -2064,6 +2066,64 @@ org-level workflows that run across all repositories:
 - **Decision helpers:** the exemption and title logic live in
   `scripts/lib/scorecard-triage.sh` (pure, no network) and are gated by
   `test/scripts/scorecard/` via `scorecard-tests.yml` on any PR touching the workflow.
+
+### CodeQL Audit (`codeql-audit.yml`)
+
+- **Schedule:** Weekly, Wednesday 17:02 UTC — between the Tuesday SonarCloud
+  audit and the Friday compliance audit, so no two audits file into the same
+  repos or wake dev-lead on the same day. Minute from `cron_offset_minute`.
+- **Purpose:** Turns open **CodeQL** code-scanning alerts into work. The
+  `code_scanning` ruleset rule only *blocks* a merge at `medium_or_higher`;
+  alerts already on the default branch need an owner, and this gives them one.
+- **Source:** `GET repos/{owner}/{repo}/code-scanning/alerts?state=open&tool_name=CodeQL`
+  (paginated) for every non-archived org repo. `tool_name=CodeQL` keeps
+  Scorecard's SARIF uploads out — those belong to `org-scorecard.yml`.
+- **One issue per (repo × language family)**, titled `CodeQL: <family>` (e.g.
+  `CodeQL: JavaScript/TypeScript alerts`) and keyed by a hidden
+  `<!-- codeql-audit:key=<repo>/<family> -->` body marker. Labels: `codeql-audit`
+  (marker), `dev-lead`, `priority:<level>`, and `security` when any alert in the
+  group is a security alert. Re-runs refresh the body, comment, and re-trigger
+  dev-lead via `scripts/lib/dev-lead-retrigger.sh`; a group with no open alerts
+  is closed automatically.
+- **No alert locations in issues.** Issues in public repos are public, while
+  code-scanning alerts are visible only to people with write access. Issue
+  bodies therefore list rule ids, severities and counts, linking to the
+  access-gated code-scanning pages, and never list a file or line.
+- **Priority** uses the shared scale the SonarCloud audit uses, from the
+  group's worst alert (`security_severity_level`, else the rule severity):
+
+  | CodeQL severity | Label |
+  |---|---|
+  | `critical` | `priority:blocker` |
+  | `high` | `priority:critical` |
+  | `medium`, rule `error` | `priority:major` |
+  | `low`, rule `warning` | `priority:minor` |
+  | rule `note` | `priority:info` |
+
+- **Suppressed, never filed** (counted in the run summary instead), so the
+  audits never file the same problem twice and dev-lead is never sent against
+  policy:
+
+  | Rule | Why |
+  |---|---|
+  | `actions/unpinned-tag` on a `combsmith/*` ref | First-party channel-tag refs are exempt from SHA-pinning ([Exception: Internal Reusable Workflow References](#exception-internal-reusable-workflow-references)) |
+  | `actions/unpinned-tag` on any other ref in `.github/workflows/` | Filed by the compliance audit as `Compliance: unpinned-actions-<wf>`. That check reads only `.github/workflows/`, so alerts in composite `action.yml` files are **not** suppressed and are filed here |
+  | `actions/missing-workflow-permissions` in a non-reusable workflow under `.github/workflows/` | Filed by the compliance audit as `Compliance: missing-permissions-<wf>`. That check skips `*-reusable.yml`, so alerts in reusable workflows are **not** suppressed and are filed here |
+
+  The SonarCloud audit reads SonarCloud, not code scanning, and uses its own
+  marker label, title prefix and body key, so the two never adopt or close each
+  other's issues.
+- **Fail closed:** a repo whose alerts cannot be read (other than GitHub's
+  `no analysis found`, which means zero alerts) is reported as inconclusive,
+  its issues are left untouched, and the run fails after writing the summary.
+- **Dispatch inputs:** `target_repo` (one repo) and `dry_run` (scan and report,
+  no issue writes).
+- **Token (`ORG_SCORECARD_TOKEN`):** additionally needs **Code scanning alerts:
+  Read-only** on every repo. Its repository access must be **All repositories**:
+  the audit lists repos with that token (paginated, no cap), and a repo the token
+  cannot see is never listed, so it cannot be reported as skipped.
+- **Code and tests:** `scripts/codeql-audit.sh`; pure helpers gated by
+  `test/scripts/codeql-audit/` via `codeql-audit-tests.yml`.
 
 ---
 

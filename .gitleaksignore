@@ -1,0 +1,8 @@
+# One fingerprint per reviewed false positive (commit:file:rule:line).
+# Never add path or rule wildcards here; fix forward with an inline
+# `# gitleaks:allow` and list only the historical commit that still carries it.
+#
+# combsmith/.github#1411: the CodeQL audit test's idempotency-marker assertion
+# (an HTML comment holding a repo/family key) matches generic-api-key. It is
+# not a secret; line 207 now carries an inline gitleaks:allow.
+268f0713254ec3dd66e77fcc67a1428935cfddd8:test/scripts/codeql-audit/pure-helpers.bats:generic-api-key:207
