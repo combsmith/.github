@@ -465,3 +465,64 @@ node_modules/")"
   [[ "$output" == *"node_modules/"* ]]
   [[ "$output" != *"*.pem"* ]]
 }
+
+# ── #1403: the L2-loss guard is a single pass, not a pipeline per line ────────
+# The old guard spawned `printf | grep` pipelines for every existing L2 line
+# (quadratic, thousands of subprocesses); under pipefail an early-exiting
+# `grep -q` could also SIGPIPE the printf and misreport a present line as lost.
+
+@test "gitignore guard (#1403): thousands of distinct L2 lines, no loss — empty and fast" {
+  run bash -c '
+    source "$1"
+    block="$(gib_extract_baseline_block "$2")"
+    l2="$(awk "BEGIN { for (i = 0; i < 5000; i++) print \"pat-\" i }")"
+    existing="$(printf "%s\n%s\n" "$block" "$l2")"
+    start=$SECONDS
+    lost="$(_gitignore_l2_lost "$existing" "$existing" "$block")"
+    printf "lost=[%s] secs=%s\n" "$lost" "$((SECONDS - start))"
+  ' _ "$BOOTSTRAP" "$SCRIPT_DIR/.gitignore"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"lost=[]"* ]]
+  secs="${output##*secs=}"
+  [ "$secs" -le 3 ]
+}
+
+@test "gitignore guard (#1403): exact semantics — order, duplicates, metachars, whitespace, CRLF" {
+  run bash -c '
+    source "$1"
+    tab="$(printf "\t")"
+    block="$(printf "%s\n" "# BEGIN" "*.pem" ".env" "# END")"
+    # Unmarkered existing => the whole file is L2. CRLF line endings.
+    existing="$(printf "%s\r\n" "keep-me" "gone-1" "*.log" "[abc]" "-dash" "\\#esc" \
+      "*.pem  " "gone-1" ".env${tab}" "trail  " "gone-2")"
+    upserted="$(printf "%s\n" "keep-me" "*.log" "[abc]" "-dash" "\\#esc" "trail  ")"
+    _gitignore_l2_lost "$existing" "$upserted" "$block"
+    echo "rc=$?"
+  ' _ "$BOOTSTRAP"
+  [ "$status" -eq 0 ]
+  # Lost = absent from the upserted L2 and (rstripped) not a block line; input
+  # order and duplicates kept; CR stripped; "*.pem  " / ".env<TAB>" fold into
+  # block lines; "trail  " matches the upserted line exactly.
+  [ "$output" = "$(printf "%s\n" gone-1 gone-1 gone-2 rc=0)" ]
+}
+
+@test "gitignore guard (#1403): an awk failure in the comparison fails closed, not open" {
+  local real
+  real="$(command -v awk)"
+  # Fail only the comparison pass (it reads its inputs from /dev/fd/* streams).
+  cat > "$STUB_BIN/awk" <<SHIM
+#!/usr/bin/env bash
+for a in "\$@"; do case "\$a" in /dev/fd/*|/proc/*) echo "awk: simulated failure" >&2; exit 2 ;; esac; done
+exec "$real" "\$@"
+SHIM
+  chmod +x "$STUB_BIN/awk"
+  run bash -c '
+    source "$1"
+    if lost="$(_gitignore_l2_lost "$(printf "a\nb\n")" "$(printf "a\nb\n")" "# x")"; then
+      echo "PASSED-OPEN lost=[$lost]"
+    else
+      echo "FAILED-CLOSED"
+    fi
+  ' _ "$BOOTSTRAP"
+  [[ "$output" == *"FAILED-CLOSED"* ]]
+}
