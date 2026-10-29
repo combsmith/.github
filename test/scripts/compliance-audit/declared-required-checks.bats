@@ -106,10 +106,22 @@ _with_mutation() { jq -cn --argjson c "$CQ_CHECKS" '$c + [{"context":"mutation (
   [[ "$(jq -r '.[0].detail' <<< "$output")" == *"integration_id"* ]]
 }
 
-@test "no code-quality ruleset → silent here (check_rulesets reports its absence)" {
+@test "no code-quality ruleset but checks declared → no finding here, repo marked inconclusive" {
+  # check_rulesets reports missing-code-quality; the declared checks cannot be
+  # verified, so an open declared-required-check-missing-* issue must stay open.
   run _run "$MUT" "$CQ_CHECKS" '[]'
   [ "$status" -eq 0 ]
   [ "$(jq length <<< "$output")" -eq 0 ]
+  grep -qxF demo-repo "$TEST_TMP/inconclusive-repos.txt"
+}
+
+@test "no code-quality ruleset and nothing declared → silent, repo NOT marked inconclusive" {
+  # Marking every repo without code-quality inconclusive would hold back issue
+  # auto-closure fleet-wide; only a repo with declared checks has anything unverified.
+  run _run NONE "$CQ_CHECKS" '[]'
+  [ "$status" -eq 0 ]
+  [ "$(jq length <<< "$output")" -eq 0 ]
+  ! grep -qxF demo-repo "$TEST_TMP/inconclusive-repos.txt" 2>/dev/null
 }
 
 @test "a declared codified context (CodeQL) with a different app → no finding (applier keeps the codified entry)" {

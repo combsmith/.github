@@ -1085,11 +1085,6 @@ check_declared_required_checks() {
   local repo="$1" rulesets_json="$2"
   local std_ref="standards/github-settings.md#repo-declared-required-checks"
 
-  # Absence of code-quality is already reported by check_rulesets.
-  local rs_id
-  rs_id=$(echo "$rulesets_json" | jq -r '.[]? | select(.name=="code-quality") | .id' 2>/dev/null || echo "")
-  [ -z "$rs_id" ] && return 0
-
   # Read the declaration directly (not gh_api, which hides the 404 that means
   # "declares nothing" behind the same failure as an outage).
   local raw err rc=0
@@ -1134,6 +1129,18 @@ check_declared_required_checks() {
     return 0
   fi
   [ "$declared" = "[]" ] && return 0
+
+  # Absence of code-quality is reported by check_rulesets (missing-code-quality).
+  # The declared checks cannot be verified without it, so keep any open
+  # declared-required-check-missing-* issue open. Only a repo that declares
+  # checks is marked: marking every repo without code-quality would hold back
+  # issue auto-closure fleet-wide.
+  local rs_id
+  rs_id=$(echo "$rulesets_json" | jq -r '.[]? | select(.name=="code-quality") | .id' 2>/dev/null || echo "")
+  if [ -z "$rs_id" ]; then
+    mark_repo_inconclusive "$repo"
+    return 0
+  fi
 
   local rs
   rs=$(gh_api "repos/$ORG/$repo/rulesets/$rs_id" 2>/dev/null || echo "")
