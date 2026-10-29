@@ -117,3 +117,11 @@ _with_mutation() { jq -cn --argjson c "$CQ_CHECKS" '$c + [{"context":"mutation (
   [ "$status" -eq 0 ]
   [ "$(jq length <<< "$output")" -eq 0 ]
 }
+
+@test "an empty declaration → invalid finding and repo marked inconclusive" {
+  run _run ' ' "$CQ_CHECKS"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.[0].check' <<< "$output")" = "declared-required-checks-invalid" ]
+  [ -s "$TEST_TMP/inconclusive-repos.txt" ]
+  grep -qxF demo-repo "$TEST_TMP/inconclusive-repos.txt"
+}

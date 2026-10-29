@@ -62,6 +62,9 @@ rc_declared_checks() {
       | map({context, integration_id})
     end
   ' <<< "$doc" 2>&1)" || { printf '%s\n' "${out#jq: error (at <stdin>:*): }" >&2; return 1; }
+  # An empty or whitespace-only document makes jq read no input and exit 0 with
+  # no output; reject it explicitly so it can't pass as valid.
+  [ -n "$out" ] || { echo "declaration is empty" >&2; return 1; }
   printf '%s\n' "$out"
 }
 

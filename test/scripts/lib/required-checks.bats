@@ -40,6 +40,13 @@ _rc() { bash -c "set -euo pipefail; source '$LIB'; $*"; }
   [ "$status" -ne 0 ]
 }
 
+@test "rc_declared_checks: an empty or blank document is rejected" {
+  run -1 _rc "rc_declared_checks ''"
+  [[ "$output" == *"empty"* ]]
+  run -1 _rc "rc_declared_checks '   '"
+  [[ "$output" == *"empty"* ]]
+}
+
 @test "rc_declared_checks: an empty context is rejected" {
   run _rc "rc_declared_checks '{\"version\":1,\"required_status_checks\":[{\"context\":\"\",\"integration_id\":15368}]}'"
   [ "$status" -ne 0 ]

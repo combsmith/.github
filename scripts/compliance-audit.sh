@@ -1114,6 +1114,8 @@ check_declared_required_checks() {
   if ! declared=$(rc_declared_checks "$raw" 2>"$err"); then
     reason=$(head -c 300 "$err" 2>/dev/null || echo "unparseable")
     rm -f "$err"
+    # The comparison did not run; keep any open missing-check finding open.
+    mark_repo_inconclusive "$repo"
     add_finding "$repo" "rulesets" "declared-required-checks-invalid" "error" \
       "\`$RC_DECLARED_PATH\` is not a valid declaration ($reason), so apply-rulesets.sh refuses to update \`code-quality\` on this repo. Fix the file; see the standard for its format." \
       "$std_ref"
@@ -1122,14 +1124,25 @@ check_declared_required_checks() {
   rm -f "$err"
   # The applier keeps a codified entry over a same-context declaration, so only
   # audit the declarations it actually merges.
-  declared=$(rc_drop_codified "$(jq -c . "$RULESETS_SRC_DIR/code-quality.json")" "$declared") || return 0
+  local codified
+  if ! codified=$(jq -c . "$RULESETS_SRC_DIR/code-quality.json" 2>/dev/null) || [ -z "$codified" ] \
+    || ! declared=$(rc_drop_codified "$codified" "$declared" 2>/dev/null) || [ -z "$declared" ]; then
+    mark_repo_inconclusive "$repo"
+    add_finding "$repo" "rulesets" "declared-required-checks-source-invalid" "error" \
+      "Cannot compare declared required checks: the codified source \`standards/rulesets/code-quality.json\` is missing or unparseable. Fail closed." \
+      "$std_ref"
+    return 0
+  fi
   [ "$declared" = "[]" ] && return 0
 
   local rs
   rs=$(gh_api "repos/$ORG/$repo/rulesets/$rs_id" 2>/dev/null || echo "")
   # An unfetchable code-quality ruleset is already a finding from
   # check_ruleset_contents; do not report it twice.
-  if [ -z "$rs" ] || ! echo "$rs" | jq empty >/dev/null 2>&1; then return 0; fi
+  if [ -z "$rs" ] || ! echo "$rs" | jq empty >/dev/null 2>&1; then
+    mark_repo_inconclusive "$repo"
+    return 0
+  fi
 
   local context want have slug
   while IFS=$'\t' read -r context want have; do
