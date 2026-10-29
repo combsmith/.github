@@ -145,6 +145,53 @@ setup() {
   [ -n "$output" ]
 }
 
+# #1408: inline links are extracted in one pass, not by re-matching and
+# rebuilding the line per link (quadratic on a link-dense line). The extraction
+# order and edge-case behaviour of the old per-link loop are pinned exactly.
+@test "amdl_check_cross_references (#1408): extraction order and edge cases are unchanged" {
+  local tmp
+  tmp="$(mktemp -d)"
+  {
+    printf '%s\n' '# T' \
+      '[a](one.md) and [b](two.md) and [c](#t)' \
+      'a](b](c)d)' \
+      ']](x)(y)' \
+      '[x]() empty' \
+      '[t](<sp ace.md> "title")' \
+      '```' '[in](fence.md)' '```' \
+      '[r]: ref.md' \
+      '[n](a)(b)](c)' \
+      'no links ] ( ) here' \
+      '[u](http://x/y) [p](./p.md?q#f)'
+    printf '[last](nolf.md)'
+  } > "$tmp/A.md"
+  amdl_classify_reference() { printf '%s\t[%s]\n' "$4" "$1"; }
+  run amdl_check_cross_references "$tmp/A.md"
+  rm -rf "$tmp"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '%s\n' '2	[#t]' '2	[two.md]' '2	[one.md]' \
+    '3	[c]' '3	[bd]' '4	[x]' '4	[y]' '5	[]' '6	[<sp ace.md> "title"]' \
+    '10	[ref.md]' '11	[c]' '11	[a]' '13	[./p.md?q#f]' '13	[http://x/y]' \
+    '14	[nolf.md]')" ]
+}
+
+@test "amdl_check_cross_references (#1408): a link-dense line is linear — all findings, bounded time" {
+  local tmp line="" i
+  tmp="$(mktemp -d)"
+  : > "$tmp/ok.md"
+  for ((i = 0; i < 3000; i++)); do line+="[x](missing-$i.md) [y](ok.md) "; done
+  printf '# T\n%s\n' "$line" > "$tmp/AGENTS.md"
+  local start=$SECONDS
+  run amdl_check_cross_references "$tmp/AGENTS.md"
+  local secs=$((SECONDS - start))
+  rm -rf "$tmp"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c 'does not resolve')" -eq 3000 ]
+  # Right-to-left, as before: the last link on the line is reported first.
+  [[ "${output%%$'\n'*}" == *'"missing-2999.md"'* ]]
+  [ "$secs" -le 5 ]
+}
+
 # --- section presence ------------------------------------------------------
 
 @test "amdl_check_section_present finds a present section (no output)" {

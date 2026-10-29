@@ -35,8 +35,9 @@
 #
 # Environment variables:
 #   GH_TOKEN   GitHub token with administration:write scope (required to apply)
-#   OUT_DIR    Directory for dry-run payloads (default: a temp dir outside the
-#              repo, so generated payloads are never accidentally committed)
+#   OUT_DIR    Directory for dry-run payloads (default: a fresh private
+#              `mktemp -d` dir outside the repo, so generated payloads are never
+#              accidentally committed and never land in a predictable shared path)
 #
 # Requirements:
 #   - GH_TOKEN must have administration:write scope on the target repo(s)
@@ -46,7 +47,7 @@ set -euo pipefail
 
 ORG="combsmith"
 DRY_RUN=false
-OUT_DIR="${OUT_DIR:-${TMPDIR:-/tmp}/petry-ruleset-payloads}"
+OUT_DIR="${OUT_DIR:-}"
 
 # Required bypass actors (see standard).
 DEPENDABOT_APP_ACTOR_ID=3167543
@@ -182,7 +183,18 @@ fix_repo() {
     if [ "$DRY_RUN" = true ]; then
       mkdir -p "$OUT_DIR"
       local out="$OUT_DIR/${repo}__${slug}.json"
-      echo "$payload" | jq '.' > "$out"
+      # Never write through a pre-planted symlink (#1388). Remove any prior
+      # regular file, then create exclusively (noclobber => O_EXCL) so a link
+      # planted after the check is refused too.
+      if [ -L "$out" ]; then
+        err "  Refusing to write $out: it is a symlink"
+        return 1
+      fi
+      rm -f "$out"
+      if ! ( set -C; echo "$payload" | jq '.' > "$out" ); then
+        err "  Could not create $out exclusively (symlink or race?) — refusing"
+        return 1
+      fi
       skip "  DRY_RUN — would PUT $name (id=$rs_id)"
       echo "         before: $before"
       echo "         after:  $after"
@@ -219,6 +231,12 @@ for arg in "$@"; do
 done
 
 [ -z "$TARGET" ] && usage
+
+# Default dry-run payload dir: a fresh, owner-only mktemp dir — never a fixed,
+# predictable path in a shared temp dir (#1388). An explicit OUT_DIR is honored.
+if [ "$DRY_RUN" = true ] && [ -z "$OUT_DIR" ]; then
+  OUT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/petry-ruleset-payloads.XXXXXX")
+fi
 
 # ---------------------------------------------------------------------------
 # Main
