@@ -195,3 +195,16 @@ call() {
   call alerts_error_kind ''
   [ "$output" = "error" ]
 }
+
+# ── render_body (public issue must not disclose alert locations) ───────────
+@test "render_body lists rules and counts but no alert file paths or line numbers" {
+  run bash -c 'source "$1" >/dev/null 2>&1; ORG=combsmith
+    render_body "$(jq -nc "{repo:\"incubator\",family:\"js\",count:2,has_security:true,max_severity:\"high\",
+      rules:[{rule:\"js/polynomial-redos\",name:\"Polynomial regular expression\",count:2,severity:\"high\"}]}")"' _ "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'js/polynomial-redos'* ]]
+  [[ "$output" == *'| high | 2 |'* ]]
+  [[ "$output" == *'<!-- codeql-audit:key=incubator/js -->'* ]]
+  [[ "$output" != *'### Alerts'* ]]
+  [[ "$output" != *'/security/code-scanning/'[0-9]* ]]
+}

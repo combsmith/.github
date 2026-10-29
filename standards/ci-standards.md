@@ -2085,6 +2085,10 @@ org-level workflows that run across all repositories:
   group is a security alert. Re-runs refresh the body, comment, and re-trigger
   dev-lead via `scripts/lib/dev-lead-retrigger.sh`; a group with no open alerts
   is closed automatically.
+- **No alert locations in issues.** Issues in public repos are public, while
+  code-scanning alerts are visible only to people with write access. Issue
+  bodies therefore list rule ids, severities and counts, linking to the
+  access-gated code-scanning pages, and never list a file or line.
 - **Priority** uses the shared scale the SonarCloud audit uses, from the
   group's worst alert (`security_severity_level`, else the rule severity):
 

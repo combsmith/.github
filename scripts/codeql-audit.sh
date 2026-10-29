@@ -273,9 +273,7 @@ scan() {
         max_severity: (max_by(.severity | rank) | .severity),
         rules: (group_by(.rule) | map({rule: .[0].rule, name: .[0].rule_name,
                  count: length, severity: (max_by(.severity | rank) | .severity)})
-                | sort_by(-(.severity | rank), -.count)),
-        alerts: (sort_by(-(.severity | rank), .file, .line)
-                 | map({number, url, rule, file, line, severity}))
+                | sort_by(-(.severity | rank), -.count))
       })
   ' "$FINDINGS_FILE" > "$GROUPS_FILE"
 
@@ -320,11 +318,13 @@ render_body() {
   max_sev=$(jq -r '.max_severity' <<< "$group")
   title=$(family_title "$family")
 
-  local rules_tbl alerts_list more
+  # Deliberately no per-alert file:line list: these issues are public, while
+  # the alerts themselves are visible only to people with write access to the
+  # repo. The links below go to the access-gated code-scanning pages, where
+  # dev-lead and maintainers read the locations.
+  local rules_tbl
   rules_tbl=$(jq -r --arg base "https://github.com/$ORG/$repo/security/code-scanning" '
     .rules[] | "| [`\(.rule)`](\($base)?query=is%3Aopen+tool%3ACodeQL+rule%3A\(.rule | @uri)) | \(.severity) | \(.count) | \((.name // "")[0:90] | gsub("\\|";"\\\\|")) |"' <<< "$group")
-  alerts_list=$(jq -r '.alerts[0:30][] | "- [#\(.number)](\(.url)) `\(.file):\(.line)` — `\(.rule)` (\(.severity))"' <<< "$group")
-  more=$(jq -r 'if (.alerts | length) > 30 then "- …and \((.alerts | length) - 30) more" else "" end' <<< "$group")
 
   cat <<BODY
 ## CodeQL: ${title}
@@ -338,15 +338,13 @@ render_body() {
 |---|---|---:|---|
 ${rules_tbl}
 
-### Alerts
-${alerts_list}
-${more}
+Alert locations are listed only on the code-scanning pages linked above (visible to people with write access), not in this public issue.
 
 ### Priority
 Labeled \`$(severity_priority_label "$max_sev")\` — mapped from this group's worst alert severity (\`${max_sev}\`).
 
 ### Acceptance
-- [ ] Every alert above fixed in code, so CodeQL closes it on the next default-branch scan
+- [ ] Every alert in this group fixed in code, so CodeQL closes it on the next default-branch scan
 - [ ] No behavior change; CI green
 - [ ] Dismiss an alert only when it is a confirmed false positive, with the reason in the dismissal comment
 
