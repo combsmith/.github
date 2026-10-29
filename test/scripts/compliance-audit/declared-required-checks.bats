@@ -32,7 +32,7 @@ teardown() { rm -rf "$TEST_TMP"; }
 # code-quality ruleset (id 102) whose required_status_checks are <live_checks_json>,
 # then runs check_declared_required_checks and prints findings.json.
 _run() {
-  local declared="$1" live="$2" rulesets="${3:-$CQ_RULESETS}"
+  local declared="$1" live="$2" rulesets="${3:-$CQ_RULESETS}" src_dir="${4:-$REPO_ROOT/standards/rulesets}"
   printf '%s' "$declared" > "$TEST_TMP/declared"
   printf '%s' "$live" > "$TEST_TMP/live"
   cat > "$MOCK_BIN/gh" <<MOCK
@@ -48,12 +48,13 @@ case "\$path" in
     [ "\$d" = "FAIL" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
     printf '%s' "\$d" ;;
   */rulesets/102)
+    [ "\$(cat "$TEST_TMP/live")" = "FAIL" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
     printf '{"id":102,"name":"code-quality","rules":[{"type":"required_status_checks","parameters":{"required_status_checks":%s}}]}' "\$(cat "$TEST_TMP/live")" ;;
   *) echo '[]' ;;
 esac
 MOCK
   chmod +x "$MOCK_BIN/gh"
-  PATH="$MOCK_BIN:$PATH" REPORT_DIR="$TEST_TMP" RULESETS_JSON="$rulesets" bash -c '
+  PATH="$MOCK_BIN:$PATH" REPORT_DIR="$TEST_TMP" RULESETS_JSON="$rulesets" RULESETS_SRC_DIR="$src_dir" bash -c '
     set -uo pipefail
     echo "[]" > "$REPORT_DIR/findings.json"
     # shellcheck disable=SC1090
@@ -97,6 +98,25 @@ _with_mutation() { jq -cn --argjson c "$CQ_CHECKS" '$c + [{"context":"mutation (
   [ "$status" -eq 0 ]
   [ "$(jq -r '.[0].check' <<< "$output")" = "declared-required-checks-unreadable" ]
   [ "$(jq -r '.[0].severity' <<< "$output")" = "error" ]
+  grep -qxF demo-repo "$TEST_TMP/inconclusive-repos.txt"
+}
+
+@test "an unreadable codified source → source-invalid error and repo marked inconclusive" {
+  mkdir -p "$TEST_TMP/badsrc"
+  printf 'not json' > "$TEST_TMP/badsrc/code-quality.json"
+  run _run "$MUT" "$CQ_CHECKS" "$CQ_RULESETS" "$TEST_TMP/badsrc"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.[0].check' <<< "$output")" = "declared-required-checks-source-invalid" ]
+  grep -qxF demo-repo "$TEST_TMP/inconclusive-repos.txt"
+}
+
+@test "an unfetchable live code-quality ruleset → no finding here, repo marked inconclusive" {
+  # check_ruleset_contents reports the unfetchable ruleset; this check must not
+  # let an open missing-check issue close on a comparison that never ran.
+  run _run "$MUT" FAIL
+  [ "$status" -eq 0 ]
+  [ "$(jq length <<< "$output")" -eq 0 ]
+  grep -qxF demo-repo "$TEST_TMP/inconclusive-repos.txt"
 }
 
 @test "an invalid declaration → error naming the problem" {
