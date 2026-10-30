@@ -1,0 +1,57 @@
+# Quality gates for the CodeRabbit audit script and its tests.
+#
+# Gates (all must pass before merge):
+#   1. shellcheck — static analysis for the audit script
+#   2. bats       — pure helpers (severity mapping, routing, identity validation)
+#                   and full runs against stubbed gh/curl (no finding detail in
+#                   public output, fail-closed reads, issue lifecycle, no dev-lead)
+name: CodeRabbit Audit Tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/coderabbit-audit.sh'
+      - 'test/scripts/coderabbit-audit/**'
+      - '.github/workflows/coderabbit-audit.yml'
+      - '.github/workflows/coderabbit-audit-tests.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/coderabbit-audit.sh'
+      - 'test/scripts/coderabbit-audit/**'
+      - '.github/workflows/coderabbit-audit.yml'
+      - '.github/workflows/coderabbit-audit-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coderabbit-audit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and bats
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install bats, shellcheck, and jq
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bats shellcheck jq
+
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          shellcheck --severity=warning -x scripts/coderabbit-audit.sh
+
+      - name: Run bats suite
+        run: bats --print-output-on-failure test/scripts/coderabbit-audit/
