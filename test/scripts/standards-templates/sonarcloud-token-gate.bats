@@ -117,3 +117,12 @@ run_gate() {
 @test "the required-check job name is unchanged" {
   [ "$(yq '.jobs.sonarcloud.name' "$WF")" = "SonarCloud" ]
 }
+
+@test "every checkout sets persist-credentials: false (no GITHUB_TOKEN left in .git/config)" {
+  local total unset
+  total="$(yq '[.jobs[].steps[] | select((.uses // "") | test("^actions/checkout@"))] | length' "$WF")"
+  [ "$total" -gt 0 ]
+  unset="$(yq '[.jobs[].steps[] | select((.uses // "") | test("^actions/checkout@"))
+                | select(.with."persist-credentials" != false)] | length' "$WF")"
+  [ "$unset" = "0" ] || { echo "${unset} of ${total} checkout step(s) persist the token"; return 1; }
+}
