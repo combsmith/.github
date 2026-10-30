@@ -7780,6 +7780,17 @@ _wf_run_script() {
   rollback_ring_allowed v2-ring0 "v2-next,v2-ring0,v2-ring1,v2-stable"
   rollback_ring_allowed v139-ring1 "v139-stable,v139-ring0,v139-ring1,v139-next"
 }
+@test "rollback_ring_allowed: major and tier must match ONE registered entry, not two different ones (#1402)" {
+  # CodeRabbit: major 3 comes from v3-next, tier stable from v2-stable — v3-stable is NOT registered.
+  ! rollback_ring_allowed v3-stable "v2-stable,v3-next" || return 1
+  ! rollback_ring_allowed v2-next "v2-stable,v3-next" || return 1
+  rollback_ring_allowed v2-stable "v2-stable,v3-next"
+  rollback_ring_allowed v3-next "v2-stable,v3-next"
+  # a v-scoped entry never admits the bare tier, and a bare request needs a bare entry
+  ! rollback_ring_allowed stable "v2-stable,v3-next" || return 1
+  # a v-scoped entry is never treated as a bare tier for another major
+  ! rollback_ring_allowed v3-v2-stable "v2-stable,v3-next" || return 1
+}
 
 @test "movable_channel_tag_name: accepts bare and v-scoped channel tags (#1402)" {
   movable_channel_tag_name "dev-lead/stable"
@@ -7806,6 +7817,12 @@ _wf_run_script() {
   ! movable_channel_tag_name "dev-lead/stable." || return 1
   ! movable_channel_tag_name "dev-lead/v139-stable." || return 1
   ! movable_channel_tag_name "standards/next." || return 1
+  # …in ANY segment, not only the last (git check-ref-format)
+  ! movable_channel_tag_name "dev-lead.lock/stable" || return 1
+  ! movable_channel_tag_name "dev-lead./stable" || return 1
+  # a segment merely CONTAINING ".lock" or a dot is fine
+  movable_channel_tag_name "dev-lead/stable.locked"
+  movable_channel_tag_name "dev.lead/stable"
 }
 
 # A gh stub for dev-lead (cross-repo, host=.github-private): the --to release and a few channel
@@ -7864,15 +7881,34 @@ GHEOF
 }
 
 @test "orchestrator: rollback still moves a registered channel, bare or v-scoped (#1402)" {
+  # Real (non-dry-run) invocations, so the write path through _gh_move_tag is exercised: each
+  # must issue exactly the PATCH of the channel ref onto the --to release commit.
+  _rollback_guard_stub
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
+    bash "$ORCH" rollback dev-lead stable --to v139.8.0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rolled back dev-lead/stable -> v139.8.0"* ]]
+  grep -Fq -- "-X PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/stable -f sha=90dcc01ca854d7acd65044bb8defcc32789a8335 -F force=true" "$CALL_LOG"
+  : > "$CALL_LOG"
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
+    bash "$ORCH" rollback dev-lead v139-stable --to v139.8.0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rolled back dev-lead/v139-stable -> v139.8.0"* ]]
+  grep -Fq -- "-X PATCH repos/combsmith/.github-private/git/refs/tags/dev-lead/v139-stable -f sha=90dcc01ca854d7acd65044bb8defcc32789a8335 -F force=true" "$CALL_LOG"
+  [ "$(grep -c WRITE "$CALL_LOG")" -eq 1 ]
+}
+
+@test "orchestrator: rollback --dry-run of a registered channel shows the move but never writes (#1402)" {
   _rollback_guard_stub
   run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
     bash "$ORCH" rollback dev-lead stable --to v139.8.0 --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"refs/tags/dev-lead/stable"* ]]
+  [[ "$output" == *"[DRY-RUN]"*"refs/tags/dev-lead/stable"* ]]
   run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
     bash "$ORCH" rollback dev-lead v139-stable --to v139.8.0 --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"refs/tags/dev-lead/v139-stable"* ]]
+  [[ "$output" == *"[DRY-RUN]"*"refs/tags/dev-lead/v139-stable"* ]]
+  ! grep -q WRITE "$CALL_LOG"
 }
 
 @test "_gh_move_tag: refuses to move an immutable release tag or malformed ref, for any caller (#1402)" {
