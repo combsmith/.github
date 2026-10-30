@@ -235,3 +235,39 @@ STUB
   ' _ "$SCRIPT" "$t"
   [ "$status" -eq 0 ]
 }
+
+@test "deploy_repo: stale header + missing 'secrets: inherit' redeploys the template, not the incomplete body" {
+  local t="${REPO_ROOT}/standards/workflows/persona-mention.yml" swept old
+  swept="$(bash -c 'source "$1"; ring_repin_uses persona-mention persona-mention/v1-ring1 < "$2"' _ "$SCRIPT" "$t")"
+  old="$(printf '# pinned to the `persona-mention/v1-stable` channel\n%s\n' "$swept" \
+    | sed -E '/^[[:space:]]*secrets:[[:space:]]+inherit/d')"
+  ! grep -qE '^[[:space:]]*secrets:[[:space:]]+inherit' <<< "$old"
+  local bin="${TT_TMP}/bin"; mkdir -p "$bin"
+  cat > "$bin/gh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${1:-}" = "api" ]; then
+  case "$2" in
+    *matching-refs/tags/*)
+      agent="${2##*matching-refs/tags/}"; agent="${agent%%/*}"
+      for c in stable next ring0 ring1; do echo "refs/tags/${agent}/v1-${c}"; done
+      exit 0 ;;
+    *contents/.github/workflows/agent-ingress.yml) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+    *contents*) printf '{"sha":"abc123","content":"%s"}' "$GH_CONTENT_B64"; exit 0 ;;
+  esac
+fi
+exit 0
+STUB
+  chmod +x "$bin/gh"; PATH="${bin}:${PATH}"; export PATH
+  GH_CONTENT_B64="$(printf '%s\n' "$old" | base64 -w 0)"; export GH_CONTENT_B64
+  export OUT="${TT_TMP}/out"
+  run env GH_TOKEN=x bash -c '
+    source "$1"; set +e
+    ORG=combsmith; DRY_RUN=false; FORCE=false; _OVERALL_FAILED=0
+    WORKFLOWS=(persona-mention.yml)
+    sd_deploy_files_via_pr() { shift 5; mkdir -p "$OUT"; while [ "$#" -ge 2 ]; do cp "$2" "$OUT/${1##*/}"; shift 2; done; echo "OPENED #1"; }
+    deploy_repo TalkTerm
+    [ -f "$OUT/persona-mention.yml" ] || exit 3
+    grep -qE "^[[:space:]]*secrets:[[:space:]]+inherit" "$OUT/persona-mention.yml"
+  ' _ "$SCRIPT" "$t"
+  [ "$status" -eq 0 ]
+}

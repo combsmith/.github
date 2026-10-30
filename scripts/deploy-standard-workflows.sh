@@ -433,6 +433,12 @@ template_requires_s7635_marker() {
   grep -qE '^[[:space:]]*secrets:[[:space:]]+inherit([[:space:]]|$)' "$1"
 }
 
+# stub_has_inherited_secrets — 0 if the stub content on stdin carries a real
+# `secrets: inherit` YAML line.
+stub_has_inherited_secrets() {
+  grep -qE '^[[:space:]]*secrets:[[:space:]]+inherit([[:space:]]|$)'
+}
+
 # stub_has_s7635_marker — 0 if the stub content on stdin carries the
 # `# NOSONAR(githubactions:S7635)` marker on a real `secrets: inherit` line.
 stub_has_s7635_marker() {
@@ -1004,9 +1010,12 @@ deploy_repo() {
       if [[ "$repin_source" == "$template" ]] && ! is_replace_if_present_workflow "$workflow" \
          && ! { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; } \
          && is_pin_compliant "$existing_content" "$template" "$repo" \
-         && ! stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content"; then
-        # Keep the existing body only when its guarded surfaces are compliant; a
-        # stub with trigger/permission drift falls back to the canonical template.
+         && ! stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content" \
+         && { ! template_requires_s7635_marker "$template" || stub_has_inherited_secrets < <(printf '%s\n' "$existing_content"); }; then
+        # Keep the existing body only when its guarded surfaces are compliant and it
+        # still forwards `secrets: inherit` where the template does (the marker
+        # injection below cannot add a missing line); a stub with trigger/permission/
+        # secrets drift falls back to the canonical template.
         repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
         printf '%s\n' "$existing_content" > "$repin_source"
       fi
