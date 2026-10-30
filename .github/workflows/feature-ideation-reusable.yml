@@ -429,6 +429,10 @@ jobs:
                Phase-8 helper, which records it to the plan; the publish step posts it
                unless `$CALLER_DRY_RUN` is "1"). Do **NOT** create
                Discussions, run the matcher, or comment on non-candidates.
+               Enhance **at most 50** candidates per run (oldest first is fine); the rest
+               are picked up by the next run via the marker. The publish step rejects a
+               plan with more than 50 comments, or a comment on a Discussion outside the
+               Ideas category, and then publishes nothing.
 
             **If `$TARGET_DISCUSSION` is empty AND `$ENHANCE_BACKLOG` is not "1"**, ignore the
             enhancement sections above and run the normal scheduled ideation below.
@@ -724,6 +728,10 @@ jobs:
             - **Do NOT create issues or PRs.** Output goes to Discussions only.
             - **Do NOT implement code.** Research and ideation only.
             - **Max 5 new Discussions per run.** Quality over quantity.
+            - **Max 50 comments and 5 labels per run**, only on Discussions in the Ideas
+              category (or on Discussions this run creates). New Discussions go to the
+              Ideas category (General only when Ideas does not exist). The publish step
+              enforces these limits and rejects the whole plan if any is broken.
             - **Always go through the deterministic matcher** in Phase 6 — never invent
               your own fuzzy match logic.
             - **Always go through `discussion-mutations.sh`** — never call createDiscussion
@@ -857,8 +865,12 @@ jobs:
   # dry_run and target_discussion from the caller's inputs, never from the
   # analyze job, and rejects the whole plan if any entry breaks them (single-
   # idea: one comment on the target Ideas Discussion only; backlog: comments
-  # only; scheduled: at most 5 new Discussions). On dry_run it validates and
-  # writes nothing. Rules: .github/scripts/feature-ideation/lib/mutation-plan.sh.
+  # only; scheduled: at most 5 new Discussions, in this repo's Ideas category).
+  # Backlog and scheduled comments/labels: at most 50/5, only on this repo's
+  # Ideas Discussions or ones the plan creates — categories and the repo id are
+  # resolved here with the workflow token, never taken from the plan. On
+  # dry_run it validates and writes nothing. Rules:
+  # .github/scripts/feature-ideation/lib/mutation-plan.sh.
   publish:
     name: Publish Discussion Mutations
     needs: [analyze]

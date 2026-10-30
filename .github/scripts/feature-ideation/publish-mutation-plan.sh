@@ -38,6 +38,56 @@ _summary() {
   fi
 }
 
+# Make text that may carry model- or caller-supplied values safe to log:
+# no carriage returns, no `::` (a log line starting with it is a workflow
+# command), no backticks (they could close the summary's code fence).
+_neutralise() {
+  tr -d '\r' | sed -e ':a' -e 's/::/: :/' -e 'ta' -e "s/\`/'/g"
+}
+
+# Resolve what backlog and scheduled plans are checked against (#1389
+# review): this repository's node id, the ideation category (Ideas, else
+# General — the prompt's own fallback) and, for every existing Discussion the
+# plan names, its category — only for Discussions of this repository. All
+# from the workflow token; nothing here is read from the plan except the ids
+# to look up. Prints the context JSON for mp_validate_plan.
+_resolve_context() {
+  local plan="$1" query repo_json repo_id cat_id ids body nodes targets='{}'
+  read -r -d '' query <<'GRAPHQL' || true
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    id
+    discussionCategories(first: 25) { nodes { id slug name } }
+  }
+}
+GRAPHQL
+  repo_json=$(gh_safe_graphql -f query="$query" \
+    -f owner="${REPO%%/*}" -f name="${REPO##*/}" --jq '.data.repository') || return 1
+  repo_id=$(printf '%s' "$repo_json" | jq -r '.id // ""')
+  cat_id=$(mp_ideation_category "$(printf '%s' "$repo_json" | jq -c '.discussionCategories.nodes // []')")
+
+  # nodes(ids:) takes at most 100 ids; any id beyond that stays unresolved
+  # and is rejected (the comment cap rejects such a plan anyway).
+  ids=$(mp_existing_targets "$plan" | jq -c '.[0:100]')
+  if [ "$(printf '%s' "$ids" | jq 'length')" -gt 0 ]; then
+    read -r -d '' query <<'GRAPHQL' || true
+query($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on Discussion { id category { id } repository { id } }
+  }
+}
+GRAPHQL
+    body=$(jq -nc --arg q "$query" --argjson ids "$ids" '{query: $q, variables: {ids: $ids}}')
+    nodes=$(gh_safe_graphql_input "$body") || return 1
+    targets=$(printf '%s' "$nodes" | jq -c --arg repo "$repo_id" '
+      [.data.nodes[]? | objects
+       | select((.id | type) == "string" and .repository.id == $repo)
+       | {(.id): (.category.id // "")}] | add // {}')
+  fi
+  jq -nc --arg r "$repo_id" --arg c "$cat_id" --argjson t "$targets" \
+    '{repo_id: $r, category_id: $c, target_categories: $t}'
+}
+
 # Resolve the caller's target number to its node id (empty unless it is an
 # Ideas Discussion). Uses the workflow token, not anything from the plan.
 _resolve_target() {
@@ -71,7 +121,8 @@ main() {
   local target_id=""
   if [ "$mode" = "single" ]; then
     if ! [[ "$TARGET_DISCUSSION" =~ ^[1-9][0-9]{0,9}$ ]]; then
-      echo "::error::target_discussion must be a Discussion number, got: ${TARGET_DISCUSSION}"
+      printf '::error::target_discussion must be a Discussion number, got: %s\n' \
+        "$(printf '%s' "$TARGET_DISCUSSION" | tr '\n' ' ' | _neutralise)"
       return 1
     fi
     target_id=$(_resolve_target "$TARGET_DISCUSSION")
@@ -80,11 +131,19 @@ main() {
     fi
   fi
 
+  local context='{}'
+  if [ "$mode" != "single" ]; then
+    if ! context=$(_resolve_context "$plan_path"); then
+      echo "::error::Could not resolve the repository, its Ideas category or the Discussions the plan names; nothing was published."
+      return 1
+    fi
+  fi
+
   local plan errors_file
   errors_file=$(mktemp)
-  if ! plan=$(mp_validate_plan "$plan_path" "$mode" "$target_id" 2>"$errors_file"); then
+  if ! plan=$(mp_validate_plan "$plan_path" "$mode" "$target_id" "$context" 2>"$errors_file"); then
     local reasons
-    reasons=$(cat "$errors_file")
+    reasons=$(_neutralise <"$errors_file")
     rm -f "$errors_file"
     echo "::error::Discussion mutation plan rejected (${mode} mode${TARGET_DISCUSSION:+, target #${TARGET_DISCUSSION}}); nothing was published."
     printf '%s\n' "$reasons"

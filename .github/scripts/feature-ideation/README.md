@@ -30,8 +30,8 @@ caught **before UAT** instead of after.
 | `validate-signals.py` | JSON Schema 2020-12 validator for signals.json against `../schemas/signals.schema.json`. | R3 |
 | `match-discussions.sh` | Deterministic Jaccard-similarity matcher between Mary's proposals and existing Ideas Discussions. Replaces the prose "use fuzzy matching" instruction. | R5, R6 |
 | `discussion-mutations.sh` | `create_discussion`, `comment_on_discussion`, `add_label_to_discussion` wrappers with `DRY_RUN=1` audit-log mode. In the `analyze` job `DRY_RUN` is always 1, so the log is the mutation plan. | Smoke testing |
-| `lib/mutation-plan.sh` | Pure validation of the mutation plan against the caller's mode: single-idea (one comment, on the target only), backlog (comments only), scheduled (at most 5 creates). All-or-nothing. | #1389 |
-| `publish-mutation-plan.sh` | Runs in the model-free `publish` job: resolves the caller's target, validates the plan, then executes it unless the caller asked for `dry_run`. | #1389 |
+| `lib/mutation-plan.sh` | Pure validation of the mutation plan against the caller's mode: single-idea (one comment, on the target only), backlog (comments only), scheduled (at most 5 creates, in this repo's Ideas category). Backlog/scheduled: at most 50 comments and 5 labels, only on this repo's Ideas Discussions or ones the plan creates. All-or-nothing; model text in reasons is JSON-quoted. | #1389 |
+| `publish-mutation-plan.sh` | Runs in the model-free `publish` job: resolves the caller's target, this repo's id, the Ideas category (General fallback) and the category of every Discussion the plan names, validates the plan, then executes it unless the caller asked for `dry_run`. Neutralises logged reasons (no `::`, no backticks). | #1389 |
 | `lint-prompt.sh` | Scans every workflow file for unescaped `$()` / `${VAR}` inside `direct_prompt:` (v0) and `prompt:` (v1) blocks (which YAML and `claude-code-action` pass verbatim instead of expanding). | R2 |
 
 ## Running the tests
@@ -87,8 +87,9 @@ holds. The policies are therefore enforced by job boundaries, not by flags:
   the mode's rules (`lib/mutation-plan.sh`).
 
 What the plan validation does not decide: the content of a comment or
-Discussion, and, in scheduled and backlog modes, which Discussions in the
-repository receive comments (that is the model's job in those modes).
+Discussion, and, in scheduled and backlog modes, which of the repository's
+Ideas Discussions (up to 50 per run) receive comments (that is the model's
+job in those modes).
 
 ## Schema as contract
 
