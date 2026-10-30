@@ -150,10 +150,17 @@ jobs:
       report: ${{ steps.collect.outputs.report }}
       has_findings: ${{ steps.collect.outputs.has_findings }}
     steps:
+      - name: Checkout .github repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Collect runtime health telemetry
         id: collect
         run: |
           set -euo pipefail
+          # shellcheck source=scripts/lib/health-alerts.sh
+          source scripts/lib/health-alerts.sh
 
           ORG="${{ github.repository_owner }}"
           TARGET_REPO="${{ inputs.target_repo || '' }}"
@@ -172,6 +179,7 @@ jobs:
           echo '{"scan_date":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","org":"'"$ORG"'","repos":[]}' > "$REPORT_FILE"
 
           TOTAL_FINDINGS=0
+          UNKNOWN_REPOS=0
 
           for REPO in $REPOS; do
             FULL_REPO="$ORG/$REPO"
@@ -197,22 +205,15 @@ jobs:
             STALE_COUNT=$(echo "$STALE_PRS" | jq 'length')
 
             # ── Live security alerts ──
-            # gh api with --jq outputs error JSON on 403/404 before falling back,
-            # so we must check exit code first to avoid concatenated output.
-            if DEPENDABOT_RAW=$(gh api "repos/$FULL_REPO/dependabot/alerts?state=open" 2>/dev/null); then
-              DEPENDABOT_OPEN=$(echo "$DEPENDABOT_RAW" | jq 'length')
-            else
-              DEPENDABOT_OPEN=0
-            fi
-            if SECRET_RAW=$(gh api "repos/$FULL_REPO/secret-scanning/alerts?state=open" 2>/dev/null); then
-              SECRET_ALERTS=$(echo "$SECRET_RAW" | jq 'length')
-            else
-              SECRET_ALERTS=0
-            fi
-            if CODESCAN_RAW=$(gh api "repos/$FULL_REPO/code-scanning/alerts?state=open" 2>/dev/null); then
-              CODE_SCANNING=$(echo "$CODESCAN_RAW" | jq 'length')
-            else
-              CODE_SCANNING=0
+            # Every page is read. A failed read is `null` (unknown) with a
+            # `*_read_error` flag, never 0; only GitHub's "feature disabled" /
+            # "no analysis found" answers count as 0 (scripts/lib/health-alerts.sh).
+            SECURITY=$(health_security_json \
+              "$(health_alert_count "$FULL_REPO" dependabot)" \
+              "$(health_alert_count "$FULL_REPO" secret-scanning)" \
+              "$(health_alert_count "$FULL_REPO" code-scanning)")
+            if [ "$(echo "$SECURITY" | jq '.unknown_counts | length')" -gt 0 ]; then
+              UNKNOWN_REPOS=$((UNKNOWN_REPOS + 1))
             fi
 
             # ── Branch protection status ──
@@ -237,13 +238,9 @@ jobs:
             TOTAL_OPEN_ISSUES=$(gh issue list --repo "$FULL_REPO" --state open --json number -q 'length' 2>/dev/null || echo '0')
 
             # ── Finding score (weighted) ──
-            FINDINGS=0
-            [ "$FAILED_COUNT" -gt 0 ] && FINDINGS=$((FINDINGS + FAILED_COUNT))
-            [ "$DEPENDABOT_OPEN" -gt 0 ] && FINDINGS=$((FINDINGS + DEPENDABOT_OPEN))
-            [ "$SECRET_ALERTS" -gt 0 ] && FINDINGS=$((FINDINGS + SECRET_ALERTS * 5))
-            [ "$CODE_SCANNING" -gt 0 ] && FINDINGS=$((FINDINGS + CODE_SCANNING * 3))
-            [ "$STALE_COUNT" -gt 0 ] && FINDINGS=$((FINDINGS + STALE_COUNT))
-            echo "$BRANCH_PROTECTION" | jq -e '.error' >/dev/null 2>&1 && FINDINGS=$((FINDINGS + 5))
+            NO_BRANCH_PROTECTION=false
+            echo "$BRANCH_PROTECTION" | jq -e '.error' >/dev/null 2>&1 && NO_BRANCH_PROTECTION=true
+            FINDINGS=$(health_findings_score "$FAILED_COUNT" "$SECURITY" "$STALE_COUNT" "$NO_BRANCH_PROTECTION")
 
             # ── Append to report ──
             REPO_JSON=$(jq -n \
@@ -254,9 +251,7 @@ jobs:
               --argjson pr_count "$PR_COUNT" \
               --argjson stale_count "$STALE_COUNT" \
               --argjson stale_prs "$STALE_PRS" \
-              --argjson dependabot "$DEPENDABOT_OPEN" \
-              --argjson secrets "$SECRET_ALERTS" \
-              --argjson codescan "$CODE_SCANNING" \
+              --argjson security "$SECURITY" \
               --argjson protection "$(echo "$BRANCH_PROTECTION" | jq -c .)" \
               --argjson workflows "$WORKFLOWS" \
               --argjson open_issues "$TOTAL_OPEN_ISSUES" \
@@ -266,7 +261,7 @@ jobs:
                 full_name: $full_name,
                 ci: {unique_failures: $unique_failures, total_failures_7d: $failed_count},
                 prs: {open_count: $pr_count, stale_count: $stale_count, stale_prs: $stale_prs},
-                security: {dependabot_open: $dependabot, secret_scanning_open: $secrets, code_scanning_open: $codescan},
+                security: $security,
                 branch_protection: $protection,
                 workflows: $workflows,
                 issues: {total_open: $open_issues},
@@ -279,9 +274,13 @@ jobs:
             echo "::endgroup::"
           done
 
-          # Outputs
+          jq --argjson n "$UNKNOWN_REPOS" '.repos_with_unknown_alert_counts = $n' "$REPORT_FILE" > "${REPORT_FILE}.tmp"
+          mv "${REPORT_FILE}.tmp" "$REPORT_FILE"
+
+          # Outputs — an unknown alert count is not a clean result.
           HAS_FINDINGS="false"
           [ "$TOTAL_FINDINGS" -gt 0 ] && HAS_FINDINGS="true"
+          [ "$UNKNOWN_REPOS" -gt 0 ] && HAS_FINDINGS="true"
           echo "has_findings=$HAS_FINDINGS" >> "$GITHUB_OUTPUT"
 
           REPORT=$(jq -c . "$REPORT_FILE")
@@ -293,6 +292,10 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Repos scanned:** $(echo "$REPOS" | wc -w | tr -d ' ')" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Total finding score:** $TOTAL_FINDINGS" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$UNKNOWN_REPOS" -gt 0 ]; then
+            echo "- **⚠️ Repos with unreadable alert counts:** $UNKNOWN_REPOS (reported as unknown, not 0 — check ORG_SCORECARD_TOKEN scopes and rate limits)" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.repos[] | select(.security.unknown_counts | length > 0) | "  - `\(.name)`: \(.security.unknown_counts | join(", "))"' "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           rm -f "$REPORT_FILE"
 
@@ -370,6 +373,14 @@ jobs:
             ### Health Survey (runtime telemetry)
             - Report JSON: ${{ runner.temp }}/health-survey.json
             - Covers: CI run failures, security alerts (Dependabot/secret/code scanning), PR staleness, branch protection, workflow inventory
+            - Repos with unreadable alert counts: `repos_with_unknown_alert_counts` in the report
+            - **Unknown is not zero.** A security count of `null` with its `*_read_error` flag `true`
+              (listed in that repo's `security.unknown_counts`) means the alert read failed — token
+              permission, rate limit or API error. Never treat such a repo as having no alerts and
+              never file a per-repo alert issue from it. When counts are unknown, file ONE issue in
+              `${{ github.repository }}` about the health-survey telemetry gap (which counts, how
+              many repos, likely cause), deduplicated against existing open issues. That repo's
+              `finding_score` excludes the unknown counts, so it is a lower bound.
 
             ## Phase 1: Load and Understand
 
