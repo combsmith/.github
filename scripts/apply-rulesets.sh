@@ -62,6 +62,32 @@ readonly FLEET_RULESETS=(code-quality pr-quality)
 # shellcheck source=lib/code-scanning.sh
 . "${SCRIPT_DIR}/lib/code-scanning.sh"
 
+# Repo-declared additional required checks (rc_declared_checks / rc_merge_payload):
+# code-quality's codified contexts are a floor; a repo may require more by
+# declaring them in .github/required-checks.json (#1410). The full-replace PUT
+# merges exactly those declared entries, so they survive the weekly self-heal.
+# shellcheck source=lib/required-checks.sh
+. "${SCRIPT_DIR}/lib/required-checks.sh"
+
+# read_declared_checks <repo> — echo the repo's declared extra required checks
+# (compact JSON array, `[]` when the repo declares none). Fail closed: an
+# unreadable or invalid declaration is an error, never "no extra checks", because
+# applying code-quality without them would drop gates the repo relies on.
+read_declared_checks() {
+  local repo="$1" raw err rc=0
+  err="$(mktemp)"
+  raw="$(gh api -H "Accept: application/vnd.github.raw+json" \
+    "repos/${repo}/contents/${RC_DECLARED_PATH}" 2>"$err")" && rc=0 || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    if grep -q 'HTTP 404' "$err"; then rm -f "$err"; echo '[]'; return 0; fi
+    echo "::error::failed to read ${RC_DECLARED_PATH} on ${repo}: $(head -c 200 "$err")" >&2
+    rm -f "$err"
+    return 1
+  fi
+  rm -f "$err"
+  rc_declared_checks "$raw" 2> >(sed "s|^|::error::invalid ${RC_DECLARED_PATH} on ${repo}: |" >&2) || return 1
+}
+
 # ruleset_id_by_name <repo> <name> — echo the id of an existing ruleset, or empty.
 ruleset_id_by_name() {
   local repo="$1" name="$2"
@@ -86,6 +112,16 @@ apply_one() {
     return "$id_rc"
   fi
 
+  # code-quality carries the repo's declared extra checks (#1410); read them before
+  # any write so an unreadable declaration stops the update instead of dropping them.
+  local declared='[]'
+  if [ "$name" = "code-quality" ]; then
+    declared="$(read_declared_checks "$repo")" || {
+      echo "::error::not applying ruleset '${name}' on ${repo}, so its declared required checks are not dropped" >&2
+      return 1
+    }
+  fi
+
   if [ -n "$id" ]; then
     echo "  update ruleset '${name}' (id ${id}) on ${repo}"
     # A full-replace PUT of the file would lower a stricter live code_scanning
@@ -98,16 +134,20 @@ apply_one() {
       return 1
     }
     payload="$(mktemp)"
-    cs_floor_payload "$file" "$live" > "$payload" || {
+    { cs_floor_payload "$file" "$live" | { read -r p; rc_merge_payload "$p" "$declared"; }; } > "$payload" || {
       rm -f "$payload"
       echo "::error::failed to build the payload for ruleset '${name}' on ${repo}" >&2
       return 1
     }
     if [ "$DRY_RUN" = "true" ]; then
       echo "    [dry-run] PUT repos/${repo}/rulesets/${id}"
-      if ! cmp -s <(jq -cS . "$file") <(jq -cS . "$payload"); then
+      # Compare only the code_scanning rule: the payload also differs from the
+      # file by any declared checks, which _dry_run_declared reports below.
+      if ! cmp -s <(jq -cS '[.rules[] | select(.type == "code_scanning")]' "$file") \
+                  <(jq -cS '[.rules[] | select(.type == "code_scanning")]' "$payload"); then
         echo "    [dry-run] keeps the live, stricter code_scanning thresholds: $(jq -c '[.rules[] | select(.type == "code_scanning") | .parameters.code_scanning_tools[]]' "$payload")"
       fi
+      _dry_run_declared "$declared"
       rm -f "$payload"
       return 0
     fi
@@ -119,13 +159,32 @@ apply_one() {
     rm -f "$payload"
   else
     echo "  create ruleset '${name}' on ${repo}"
-    if [ "$DRY_RUN" = "true" ]; then echo "    [dry-run] POST repos/${repo}/rulesets"; return 0; fi
-    gh api --method POST "repos/${repo}/rulesets" --input "$file" >/dev/null || {
+    if [ "$DRY_RUN" = "true" ]; then
+      echo "    [dry-run] POST repos/${repo}/rulesets"
+      _dry_run_declared "$declared"
+      return 0
+    fi
+    local create_payload
+    create_payload="$(mktemp)"
+    rc_merge_payload "$(jq -c . "$file")" "$declared" > "$create_payload" || {
+      rm -f "$create_payload"
+      echo "::error::failed to build the payload for ruleset '${name}' on ${repo}" >&2
+      return 1
+    }
+    gh api --method POST "repos/${repo}/rulesets" --input "$create_payload" >/dev/null || {
+      rm -f "$create_payload"
       echo "::error::failed to create ruleset '${name}' on ${repo}" >&2
       return 1
     }
+    rm -f "$create_payload"
   fi
   return 0
+}
+
+# _dry_run_declared <declared_checks_json> — say which declared checks a dry run keeps.
+_dry_run_declared() {
+  [ "$1" = "[]" ] && return 0
+  echo "    [dry-run] adds the repo's declared required checks (${RC_DECLARED_PATH}): $(jq -r 'map("\(.context) (app \(.integration_id))") | join(", ")' <<< "$1")"
 }
 
 # apply_repo <repo> <file...> — apply each ruleset file to one repo.
