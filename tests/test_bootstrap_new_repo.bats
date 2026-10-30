@@ -63,6 +63,16 @@ case "\$args" in
       echo '[{"name":"dev-lead","type":"dir"},{"name":"README.md","type":"file"}]'
     fi
     ;;
+  *"required-checks.json"*)
+    # Declared required checks file fetch (raw). Return 404 by default (file
+    # not found) so repos without declarations get an empty checks array.
+    if [ -n "\${DECLARED+set}" ]; then
+      echo "\$DECLARED"
+    else
+      echo 'HTTP 404' >&2
+      exit 1
+    fi
+    ;;
   *)
     echo '{"full_name":"stub/repo"}'
     ;;
