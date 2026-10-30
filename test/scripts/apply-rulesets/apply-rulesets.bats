@@ -9,13 +9,16 @@ RULESETS_DIR="$SCRIPT_DIR/standards/rulesets"
 setup() {
   STUB_BIN="$(mktemp -d)"; export PATH="$STUB_BIN:$PATH"
   CALLS="$STUB_BIN/calls.log"; export CALLS
+  READS="$STUB_BIN/reads.log"; export READS
 }
 teardown() { [ -n "${STUB_BIN:-}" ] && rm -rf "$STUB_BIN"; return 0; }
 
 # gh stub: records writes (POST/PUT) to $CALLS (args line then --input body);
 # returns $RULESETS_LIST for the rulesets LIST (default [] → create path);
 # returns $RULESET_DETAIL for one ruleset by id (default {}; the literal FAIL
-# makes that read fail); returns $REPO_LIST for `repo list`.
+# makes that read fail); returns $REPO_LIST for `repo list`; serves the repo's
+# .github/required-checks.json from $DECLARED (unset → HTTP 404, i.e. the repo
+# declares nothing; the literal FAIL → HTTP 500) and logs that read to $READS.
 _stub_gh() {
   cat > "$STUB_BIN/gh" <<EOF
 #!/usr/bin/env bash
@@ -29,6 +32,11 @@ case "\$args" in
       prev="\$arg"
     done
     echo '{}' ;;
+  *"/contents/.github/required-checks.json"*)
+    echo "\$args" >> "$READS"
+    [ "\${DECLARED:-}" = "FAIL" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
+    [ -z "\${DECLARED:-}" ] && { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+    printf '%s' "\$DECLARED" ;;
   *"repo list"*) printf '%s' "\${REPO_LIST:-}" ;;
   *"/rulesets/"*)
     [ "\${RULESET_DETAIL:-}" = "FAIL" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
@@ -368,4 +376,75 @@ _live_cq() {
     | jq -c '.rules[] | select(.type==\"code_scanning\") | .parameters.code_scanning_tools'"
   [ "$status" -eq 0 ]
   [ "$output" = '[{"tool":"CodeQL","security_alerts_threshold":"medium_or_higher","alerts_threshold":"errors"}]' ]
+}
+
+# ── repo-declared required checks (combsmith/.github#1410) ──────────────────
+_mut='{"version":1,"required_status_checks":[{"context":"mutation (all)","integration_id":15368}]}'
+_contexts() { jq -c '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[]]'; }
+
+@test "apply --repo: update merges the repo's declared checks into code-quality" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]' DECLARED="$_mut"
+  RULESET_DETAIL="$(jq -c '.id = 7' "$RULESETS_DIR/code-quality.json")"; export RULESET_DETAIL
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -eq 0 ]
+  [ "$(_put_body | _contexts)" = "$(jq -c '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[]] + [{"context":"mutation (all)","integration_id":15368}]' "$RULESETS_DIR/code-quality.json")" ]
+}
+
+@test "apply --repo: create POSTs code-quality with the declared checks" {
+  _stub_gh
+  export RULESETS_LIST='[]' DECLARED="$_mut"
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -eq 0 ]
+  grep -q 'method POST' "$CALLS"
+  _put_body | _contexts | jq -e 'any(.[]; .context == "mutation (all)" and .integration_id == 15368)'
+}
+
+@test "apply --repo: a live context the repo does not declare is still converged away" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]' DECLARED="$_mut"
+  RULESET_DETAIL="$(jq -c '.id = 7 | .rules |= map(if .type=="required_status_checks" then .parameters.required_status_checks += [{"context":"stale-check"}] else . end)' "$RULESETS_DIR/code-quality.json")"; export RULESET_DETAIL
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -eq 0 ]
+  grep -q 'method PUT' "$CALLS"
+  _put_body | _contexts | jq -e 'any(.[]; .context == "mutation (all)")'
+  ! _put_body | _contexts | jq -e 'any(.[]; .context == "stale-check")'
+}
+
+@test "apply --repo: an unreadable declaration is not applied (declared checks are never dropped)" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]' DECLARED='FAIL'
+  RULESET_DETAIL="$(jq -c '.id = 7' "$RULESETS_DIR/code-quality.json")"; export RULESET_DETAIL
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"required-checks.json"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "apply --repo: an invalid declaration is not applied and names the problem" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]' DECLARED='{"version":1,"required_status_checks":[{"context":"x"}]}'
+  RULESET_DETAIL="$(jq -c '.id = 7' "$RULESETS_DIR/code-quality.json")"; export RULESET_DETAIL
+  run bash "$APPLY" --repo combsmith/acme code-quality
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"integration_id"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "apply --repo: pr-quality never reads the declaration" {
+  _stub_gh
+  export RULESETS_LIST='[]' DECLARED="$_mut"
+  run bash "$APPLY" --repo combsmith/acme pr-quality
+  [ "$status" -eq 0 ]
+  [ ! -f "$READS" ]
+}
+
+@test "apply: --dry-run names the declared checks it would keep, and writes nothing" {
+  _stub_gh
+  export RULESETS_LIST='[{"id":7,"name":"code-quality"}]' DECLARED="$_mut"
+  RULESET_DETAIL="$(jq -c '.id = 7' "$RULESETS_DIR/code-quality.json")"; export RULESET_DETAIL
+  run bash "$APPLY" --repo combsmith/acme code-quality --dry-run
+  [ "$status" -eq 0 ]
+  [ ! -f "$CALLS" ]
+  [[ "$output" == *"declared required checks"*"mutation (all)"* ]]
 }
