@@ -14,10 +14,20 @@
 #
 # Pinned tool versions (update deliberately):
 #   govulncheck v1.1.4 | cargo-audit 0.22.1 | pip-audit 2.9.0
+#   Python 3.13 for pip-audit (`python-version` input). Never a floating "3.x":
+#   a new Python release can break the hash-locked tooling for every caller at
+#   once (3.15 removed sre_constants, crashing pip-api 0.0.34's vendored
+#   pyparsing).
 name: Dependency audit (Reusable)
 
 on:
   workflow_call:
+    inputs:
+      python-version:
+        description: "Python minor the pip-audit tooling runs on (pinned; never a floating 3.x)"
+        required: false
+        type: string
+        default: "3.13"
 
 permissions:
   contents: read
@@ -222,7 +232,7 @@ jobs:
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.x"
+          python-version: ${{ inputs.python-version }}
 
       - name: Install pip-audit
         run: 'pip install --require-hashes --only-binary :all: -r .dependency-audit-tooling/scripts/pip-audit-requirements.txt'
