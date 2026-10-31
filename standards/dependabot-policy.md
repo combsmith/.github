@@ -168,6 +168,14 @@ Behavior:
 - For **app ecosystems**: approves **patch** and **minor** updates (and indirect
   dependency updates); **major** updates are left for human review
 - Uses `gh pr merge --auto --squash` so the merge only happens after CI passes
+- **Provenance gate:** Dependabot metadata describes only Dependabot's commit, so
+  before approving, every commit on the PR must be from Dependabot (or a branch
+  update the App made via `update-branch`) and the head must still be the commit
+  the event was for. The approval (`commit_id`) and the auto-merge request
+  (`--match-head-commit`) are bound to that head SHA. If any other commit lands
+  on the branch, the workflow does not approve, disables auto-merge and dismisses
+  its earlier approval — the PR then needs a human review. To hand it back to
+  automation, have Dependabot recreate it (`@dependabot recreate`).
 
 ## Update and Merge Behind PRs Workflow
 
@@ -189,7 +197,8 @@ This workflow fires on every push to `main` (and can be triggered manually via
    commit from `main` onto the PR branch. CI triggers normally because the
    APP_TOKEN is a GitHub App installation token, not `GITHUB_TOKEN`.
 2. **Merges ready PRs** — directly merges any Dependabot PR that is up-to-date,
-   has auto-merge enabled, and is `MERGEABLE` with no pending checks.
+   has auto-merge enabled, is `MERGEABLE`, and passes the merge gate (see
+   *Merge-readiness check* below). The merge is bound to the verified head SHA.
 
 Using the app token for merges ensures each merge triggers a new push to `main`,
 creating a self-sustaining chain that serializes Dependabot PR merges.
@@ -234,12 +243,24 @@ date before merge), the fallback direct merge will also fail — granting the
   identity and is **not** subject to the `GITHUB_TOKEN` recursive-trigger guard.
   Pushes via APP_TOKEN trigger CI workflow runs normally.
 
-**Merge-readiness check:** The workflow checks GitHub's native `mergeable` state
-(`MERGEABLE`) rather than inspecting every individual check conclusion. This is
-correct because `mergeable` already accounts for all *required* status checks —
-non-required checks that happen to fail (e.g. a gitleaks false positive) do not
-block the merge. An additional guard ensures no checks are still `IN_PROGRESS`
-before merging.
+**Merge-readiness check:** The App merges with ruleset bypass, so GitHub's
+`mergeable` state is not enough — bypass also skips the required-check
+requirement. Before each direct merge the workflow requires, for the PR's
+current head commit:
+
+- auto-merge requested and `mergeable` is `MERGEABLE`;
+- **every** check run concluded `success`, `neutral` or `skipped` and every
+  commit status is `success` — a failed, cancelled, timed-out, action-required,
+  stale or still-pending check (required or not) keeps the PR out of the
+  automated merge;
+- every status check the base branch's rulesets require has reported;
+- every commit on the PR is from Dependabot or is an `update-branch` merge by
+  the App (same provenance gate as the auto-merge workflow).
+
+The merge call passes the verified head SHA, so GitHub rejects it if the branch
+moved after the check. A Dependabot PR held back by a failing non-required check
+(e.g. a gitleaks false positive) needs a human to fix the check or merge it.
+Gate logic: [`.github/scripts/dependabot/`](../.github/scripts/dependabot/README.md).
 
 ### Caller Stub Format
 
