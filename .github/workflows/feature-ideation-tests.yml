@@ -80,6 +80,8 @@ jobs:
             lint-caller.sh \
             match-discussions.sh \
             discussion-mutations.sh \
+            publish-mutation-plan.sh \
+            lib/mutation-plan.sh \
             lib/gh-safe.sh \
             lib/filter-bots.sh \
             lib/compose-signals.sh \
