@@ -301,6 +301,56 @@ channel_tag() {
   else printf '%s/%s' "$agent" "$tier"; fi
 }
 
+# is_release_tag_name <tag> — return 0 iff <tag> names an IMMUTABLE release: its last path
+# component is a dotted version (v1.2.3, v2.0.0-rc.1, 1.2, …), bare or namespaced
+# (dev-lead/v139.8.0, standards/v1.2.3). A channel tag — bare <tier> or v-scoped v<M>-<tier>
+# — has no dotted version and is not a release. Deliberately broader than
+# _is_release_tag_suffix: it is the deny-list for the force-moving writer (#1402). Pure.
+is_release_tag_name() { [[ "${1##*/}" =~ ^v?[0-9]+\.[0-9]+ ]]; }
+
+# movable_channel_tag_name <tag> — return 0 iff <tag> may be handed to the force-moving channel
+# writer (_gh_move_tag): a well-formed ref path whose segments are [A-Za-z0-9._-] starting with
+# an alphanumeric (no empty, "." or ".." segment, no leading/trailing "/"), and NOT an immutable
+# release name. No segment may end in ".lock" or "." (git check-ref-format). The last-line guard
+# so no caller can rewrite a release tag (#1402). Pure.
+movable_channel_tag_name() {
+  local seg='[A-Za-z0-9][A-Za-z0-9._-]*'
+  [[ "$1" =~ ^${seg}(/${seg})*$ ]] || return 1
+  [[ "$1" != *..* ]] || return 1
+  # Append "/" so every segment, including the last, is "/"-terminated: one per-segment test.
+  [[ "$1/" != *.lock/* && "$1/" != *./* ]] || return 1
+  ! is_release_tag_name "$1"
+}
+
+# rollback_ring_allowed <ring> <channels_csv> — return 0 iff <ring> (the caller-supplied
+# rollback target ring) names one of the agent's REGISTERED channels <channels_csv> (e.g.
+# "next,ring0,ring1,stable"), either bare (<tier>) or v-scoped (v<M>-<tier>). An immutable
+# release name, an unregistered channel, a ref path, or an empty channel list (unregistered
+# agent) is rejected.
+# The requested major AND tier must match ONE registry entry, never a major from one entry and a
+# tier from another:
+#   - a registered v-scoped entry "v<M>-<tier>" admits exactly that ring and nothing else;
+#   - a registered BARE tier "<tier>" admits "<tier>" and its v-scoped form "v<M>-<tier>". This is
+#     the registry's form today (ordered_channels lists bare tiers); the agent's major is a
+#     runtime tag property (_agent_current_channel_major), not registry data.
+# Pure. (#1402)
+rollback_ring_allowed() {
+  local ring="$1" csv="$2" tier="" ch
+  local chs=()
+  [[ -n "$ring" && -n "$csv" ]] || return 1
+  [[ "$ring" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || return 1
+  is_release_tag_name "$ring" && return 1
+  if [[ "$ring" =~ ^v[0-9]+-(.+)$ ]]; then tier="${BASH_REMATCH[1]}"; fi
+  IFS=, read -r -a chs <<< "$csv"
+  for ch in "${chs[@]}"; do
+    [[ -n "$ch" ]] || continue
+    [[ "$ch" == "$ring" ]] && return 0                       # exact entry (bare or v-scoped)
+    [[ "$ch" =~ ^v[0-9]+- ]] && continue                     # a v-scoped entry admits only itself
+    [[ -n "$tier" && "$ch" == "$tier" ]] && return 0         # v<M>-<tier> of a registered bare tier
+  done
+  return 1
+}
+
 # _looks_like_oid <s> — return 0 iff <s> is a bare git object id (7–64 lowercase hex). Pure.
 _looks_like_oid() { [[ "$1" =~ ^[0-9a-f]{7,64}$ ]]; }
 
