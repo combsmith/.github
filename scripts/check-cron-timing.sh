@@ -25,7 +25,7 @@ for wf in "${WORKFLOW_DIR}"/*.yml "${WORKFLOW_DIR}"/*.yaml; do
   # Pull every quoted cron expression out of the file. A cron line looks like:
   #   - cron: '0 7 * * *'   # comment
   while IFS= read -r expr; do
-    [ -n "$expr" ] || continue
+    [[ -n "$expr" ]] || continue
     if cron_minute_is_zero "$expr"; then
       {
         printf 'FAIL: %s — cron "%s" fires at minute 0 (top of the hour).\n' \
@@ -39,7 +39,7 @@ for wf in "${WORKFLOW_DIR}"/*.yml "${WORKFLOW_DIR}"/*.yaml; do
              | sed -E "s/cron:[[:space:]]*['\"]//; s/['\"]$//")
 done
 
-if [ "$violations" -gt 0 ]; then
+if [[ "$violations" -gt 0 ]]; then
   printf '\n%d scheduled workflow(s) fire on the top of the hour. See %s.\n' \
     "$violations" "$STANDARD" >&2
   exit 1

@@ -136,6 +136,14 @@ write_log() {
   [[ "$output" == *"cannot exceed"* ]]
 }
 
+@test "validate reads leading-zero counts as decimal, not octal (fps=010 > findings=9)" {
+  local log
+  log="$(write_log '| 2026-10-01 | 9 | 010 | ten false positives | @alice | no |\n')"
+  run bash -c 'bash "$1" validate "$2" 2>&1' _ "$SCRIPT" "$log"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cannot exceed"* ]]
+}
+
 @test "validate rejects a nonzero false-positive count with empty details" {
   # A confirmed false positive with no details omits what was confirmed from the
   # committed audit record.

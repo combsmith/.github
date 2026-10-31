@@ -67,7 +67,7 @@ _assert_vform_pins() {
   # refs and third-party actions are not '<...>-reusable.yml@' and are exempt.)
   unmarked="$(grep -E '^[[:space:]]*uses:[[:space:]]*combsmith/[^[:space:]]*-reusable\.yml@' "$file" 2>/dev/null \
     | grep -vE 'S7637\) first-party channel ref' || true)"
-  if [ -n "$unmarked" ]; then
+  if [[ -n "$unmarked" ]]; then
     echo "::error::refusing to emit '${file#"${STANDARDS_DIR}"/}': first-party reusable uses: line(s) missing the '# NOSONAR(githubactions:S7637) first-party channel ref' marker — cannot validate the channel pin (fail-closed):" >&2
     printf '%s\n' "$unmarked" | sed 's/^/  /' >&2
     exit 3
@@ -75,7 +75,7 @@ _assert_vform_pins() {
   bad="$(grep -E 'S7637\) first-party channel ref' "$file" 2>/dev/null \
     | sed -E 's/.*-reusable\.yml@([^[:space:]]+).*/\1/' \
     | grep -vE '^[a-z0-9-]+/v[0-9]+-(stable|next|ring[0-9]+)$' || true)"
-  if [ -n "$bad" ]; then
+  if [[ -n "$bad" ]]; then
     echo "::error::refusing to emit '${file#"${STANDARDS_DIR}"/}': bare channel pin(s) — must be major-scoped <agent>/v<M>-<tier>:" >&2
     printf '%s\n' "$bad" | sed 's/^/  /' >&2
     exit 3
@@ -87,7 +87,7 @@ _assert_vform_pins() {
   agentref_bad="$(grep -E '^[[:space:]]*agent_ref:[[:space:]]' "$file" 2>/dev/null \
     | sed -E 's/.*agent_ref:[[:space:]]*([^[:space:]#]+).*/\1/' \
     | grep -vE '^[a-z0-9-]+/v[0-9]+-(stable|next|ring[0-9]+)$' || true)"
-  if [ -n "$agentref_bad" ]; then
+  if [[ -n "$agentref_bad" ]]; then
     echo "::error::refusing to emit '${file#"${STANDARDS_DIR}"/}': agent_ref value(s) not major-scoped <agent>/v<M>-<tier>:" >&2
     printf '%s\n' "$agentref_bad" | sed 's/^/  /' >&2
     exit 3
@@ -101,7 +101,7 @@ _emit_workflow() {
   case "$name" in
     */*|.*|"") echo "::error::invalid workflow name '${name}'" >&2; exit 2 ;;
   esac
-  if [ ! -f "$src" ]; then
+  if [[ ! -f "$src" ]]; then
     echo "::error::unknown workflow '${name}' — no template at standards/workflows/${name}" >&2
     exit 2
   fi
@@ -109,7 +109,7 @@ _emit_workflow() {
   cat "$src"
 }
 
-[ $# -ge 2 ] || _usage
+[[ $# -ge 2 ]] || _usage
 
 case "$1" in
   --emit-workflow) _emit_workflow "$2"; exit 0 ;;
