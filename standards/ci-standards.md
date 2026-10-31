@@ -2125,6 +2125,67 @@ org-level workflows that run across all repositories:
 - **Code and tests:** `scripts/codeql-audit.sh`; pure helpers gated by
   `test/scripts/codeql-audit/` via `codeql-audit-tests.yml`.
 
+### CodeRabbit Audit (`coderabbit-audit.yml`)
+
+- **Schedule:** Weekly, Thursday 17:01 UTC — between the Wednesday CodeQL audit
+  and the Friday compliance audit. Minute from `cron_offset_minute`.
+- **Purpose:** Gives CodeRabbit Deep Scan findings an owner. They reach neither
+  the SonarCloud nor the CodeQL audit otherwise.
+- **Source:** `GET https://api.coderabbit.ai/v1/security/scans/code?format=sarif&state=all`
+  ([API reference](https://docs.coderabbit.ai/api-reference/security-scans-code-list)).
+  SARIF because the paginated JSON format has no `findingFingerprint`; `state=all`
+  because closing an issue requires an explicit `fixed` or `dismissed`. The API
+  only reads results. Deep Scans run on the schedule set per repo in CodeRabbit
+  (**Security > Repositories**), are usage-billed, and should finish before Thursday.
+- **One issue per finding**, titled `CodeRabbit Deep Scan: finding <fingerprint prefix>`
+  and keyed org-wide by a hidden `<!-- coderabbit-audit:key=<findingFingerprint> -->`
+  body marker. Labels: `coderabbit-audit` (marker), `needs-verification`, `security`,
+  and `priority:<level>`. Every severity is filed by default; findings below `MIN_SEVERITY`
+  (default `low`) would be counted in the summary instead.
+- **No finding detail in public output.** Every org repo is public, so issues,
+  workflow logs, the step summary and the artifact are public, and these findings
+  can describe exploit chains. Only the fingerprint, finding id, severity, state and
+  repo names are written. Description, category, CWE, subsystem, path, line and call
+  stack stay in CodeRabbit (**Security > Findings**), and the artifact is the
+  counts-only summary.
+- **Never `dev-lead`.** Findings are unverified LLM output, and the API exposes no
+  verification result to gate on. A person confirms the finding, removes
+  `needs-verification`, and adds `dev-lead` if an agent should fix it. Re-runs
+  change neither label. Fixes must keep exploit detail out of the PR and commit
+  message too.
+- **Routing:** an issue is filed in the repo that owns the code. A finding located
+  in a caller stub (under `.github/workflows/`, no `steps:`, calling one org repo's
+  reusable workflow) goes to that repo, because a stub has no code of its own. All
+  other findings stay with the scanned repo, including a stub calling two org repos.
+  The stub is read at the scanned revision. Call-stack frames are not used:
+  CodeRabbit guarantees neither their order nor their format. An issue that already
+  exists stays where it is if the route later changes.
+- **Priority** uses the shared scale of the other audits:
+
+  | Deep Scan severity | Label |
+  |---|---|
+  | `critical` | `priority:blocker` |
+  | `high` | `priority:critical` |
+  | `medium`, or any unrecognized value | `priority:major` |
+  | `low` | `priority:minor` |
+
+- **Closing:** an issue closes only when the export reports its finding as `fixed` or
+  `dismissed`. A finding absent from the export leaves its issue open and is counted
+  in the summary, because a partial-coverage scan omits findings it did not reach. To
+  reject a finding, use **Dismiss finding** in CodeRabbit: an issue closed only on
+  GitHub is filed again on the next run.
+- **Fail closed:** a failed read, an export without the expected fingerprint, finding
+  id, state or repo id, an unreadable stub, or an unlistable repo fails the run with
+  no issue writes. API error bodies are never logged.
+- **Dispatch inputs:** `target_repo` (one repo) and `dry_run` (read and report, no
+  issue writes).
+- **Tokens:** `CODERABBIT_API_KEY` is a repository secret on `combsmith/.github`, a
+  non-agentic CodeRabbit API key with the `security:read` permission.
+  `ORG_SCORECARD_TOKEN` needs no permissions beyond those
+  [OpenSSF Scorecard](#openssf-scorecard-org-scorecardyml) already requires.
+- **Code and tests:** `scripts/coderabbit-audit.sh`; helpers and stubbed end-to-end
+  runs gated by `test/scripts/coderabbit-audit/` via `coderabbit-audit-tests.yml`.
+
 ---
 
 ## CI Auto-Fix Pattern

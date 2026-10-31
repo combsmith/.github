@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Fake `gh` for the CodeRabbit audit tests. Logs each call to $STUB_LOG as one
+# shell-quoted line and answers from the files setup() writes under $STUB_DIR.
+printf '%q ' gh "$@" >> "$STUB_LOG"; echo >> "$STUB_LOG"
+
+case "$1 $2" in
+  "api --paginate")
+    [[ -n "${STUB_FAIL_REPOS:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
+    cat "$STUB_DIR/repos.ndjson" ;;
+  api\ repos/*)
+    [[ -n "${STUB_FAIL_CONTENTS:-}" ]] && { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+    path="${2%%\?*}"
+    base64 < "$STUB_DIR/workflows/$(basename "$path")" ;;
+  "issue list")
+    [[ -n "${STUB_FAIL_ISSUE_LIST:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
+    repo="${4#*/}"
+    cat "$STUB_DIR/issues/$repo.json" 2>/dev/null || echo "[]" ;;
+  "issue create")
+    [[ -n "${STUB_FAIL_ISSUE_CREATE:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
+    echo "https://github.invalid/issues/1" ;;
+  "issue edit"|"issue close"|"label create")
+    : ;;
+  *)
+    echo "gh stub: unexpected call: $*" >&2; exit 64 ;;
+esac
