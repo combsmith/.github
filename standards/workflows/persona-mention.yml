@@ -8,7 +8,7 @@
 #     workflow above, and every per-persona decision lives in that persona's
 #     manifest — not here and not in the reusable.
 #   • You MUST NOT change: the `uses:` ref — it is pinned to the
-#     `persona-mention/v1-stable` channel, a moving tag advanced centrally.
+#     `persona-mention/<tier>` channel, a moving tag advanced centrally.
 #     Never repoint it to `@main`, a SHA, or a frozen `@vX.Y.Z` (see
 #     ci-standards.md → Reusable workflow versioning). Also do not change the
 #     trigger events or the job-level `permissions:` block — reusable workflows

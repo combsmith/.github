@@ -9,7 +9,7 @@
 #     above, including concurrency (per PR + head SHA, never cancelling an
 #     in-flight review), the check_suite-without-a-PR skip, and reading
 #     `client_payload.pr_url` from repository_dispatch.
-#   • You MUST NOT change: the `@pr-review/v1-stable` channel in the `uses:`
+#   • You MUST NOT change: the `@pr-review/<tier>` channel in the `uses:`
 #     line or the matching `agent_ref` — both are re-pinned in lockstep to this
 #     repo's canary-ring tier by the standards sweep. Nor the workflow `name:`,
 #     the job id `review` (check names depend on both), the trigger event types,

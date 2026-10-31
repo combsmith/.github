@@ -67,7 +67,8 @@ STUB
 
 # The template rendered at <channel> — only the reusable pin moves.
 rendered_at() {  # <channel>
-  sed -E "/^[[:space:]]*uses:/s#dependabot-rebase/v2-stable#$1#" "$TEMPLATE"
+  sed -E "/^[[:space:]]*uses:/s#dependabot-rebase/v2-stable#$1#" "$TEMPLATE" \
+    | bash -c 'source "$1"; ring_repin_uses dependabot-rebase "$2"' _ "$SCRIPT" "$1"
 }
 
 # The template at <channel> with a stale header comment — the #1075 shape: the

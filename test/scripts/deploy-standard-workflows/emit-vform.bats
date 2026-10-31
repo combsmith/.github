@@ -84,7 +84,8 @@ stub_pinning() {  # <ref> → base64 of the auto-rebase template re-pinned to <r
   # concurrency: surfaces match and the surface-drift check (#1236) stays clean.
   local body
   body="$(sed -E "s|(auto-rebase-reusable\.yml)@[^[:space:]]+|\1@$1|" \
-    "${REPO_ROOT}/standards/workflows/auto-rebase.yml")"
+    "${REPO_ROOT}/standards/workflows/auto-rebase.yml" \
+    | bash -c 'source "$1"; ring_repin_uses "$2" "$3"' _ "$SCRIPT" auto-rebase "$1")"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
 
@@ -112,7 +113,8 @@ devlead_stub_pinning_with_marker() {  # <ref> → base64 of the dev-lead templat
   local body
   body="$(sed -E -e "s|(dev-lead-reusable\.yml)@[^[:space:]]+|\1@$1|" \
     -e "s|^([[:space:]]*agent_ref:[[:space:]]*).*|\1$1|" \
-    "${REPO_ROOT}/standards/workflows/dev-lead.yml")"
+    "${REPO_ROOT}/standards/workflows/dev-lead.yml" \
+    | bash -c 'source "$1"; ring_repin_uses "$2" "$3"' _ "$SCRIPT" dev-lead "$1")"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
 
