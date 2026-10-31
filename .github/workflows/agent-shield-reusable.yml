@@ -32,6 +32,7 @@ on:
         type: string
         default: |
           CLAUDE.md
+          GEMINI.md
           AGENTS.md
       org-standards-ref:
         description: "String AGENTS.md must reference (regex, basic grep -E)"
@@ -48,6 +49,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Fetch the org's agent-md-xref helper for cross-repository consumers.
+      # External consumers won't have scripts/lib/agent-md-xref.sh in their repo,
+      # so we fetch it from combsmith/.github with sparse-checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          path: __org-github
+          sparse-checkout: scripts/lib/agent-md-xref.sh
+          sparse-checkout-cone-mode: false
 
       # --- Deep security scan via AgentShield CLI ---
       # Uses ecc-agentshield (https://github.com/affaan-m/agentshield)
@@ -77,17 +88,32 @@ jobs:
           done <<< "$REQUIRED_FILES"
           exit $status
 
+      # The AGENTS.md reference verdict lives in scripts/lib/agent-md-xref.sh
+      # (bats-tested; shared with the fleet compliance audit). Copy the file
+      # from either the caller's repo or the org-github checkout.
+      - name: Fetch cross-reference helper
+        run: |
+          mkdir -p "$RUNNER_TEMP/org-lib"
+          if [ -f "scripts/lib/agent-md-xref.sh" ]; then
+            cp "scripts/lib/agent-md-xref.sh" "$RUNNER_TEMP/org-lib/agent-md-xref.sh"
+          else
+            cp "__org-github/scripts/lib/agent-md-xref.sh" "$RUNNER_TEMP/org-lib/agent-md-xref.sh"
+          fi
+
       - name: Validate cross-references
         env:
           ORG_REF: ${{ inputs.org-standards-ref }}
         run: |
+          # shellcheck source=/dev/null
+          . "$RUNNER_TEMP/org-lib/agent-md-xref.sh"
           status=0
 
-          if [ -f "CLAUDE.md" ] && \
-             ! grep -qi 'AGENTS.md' CLAUDE.md; then
-            echo "::error file=CLAUDE.md::Must reference AGENTS.md"
-            status=1
-          fi
+          for f in CLAUDE.md GEMINI.md; do
+            if [ -f "$f" ] && ! agent_md_references_agents < "$f"; then
+              echo "::error file=$f::Must reference AGENTS.md"
+              status=1
+            fi
+          done
 
           if [ -f "AGENTS.md" ] && \
              ! grep -qiE "$ORG_REF" AGENTS.md; then

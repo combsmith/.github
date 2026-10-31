@@ -1,7 +1,7 @@
 # Agent Configuration Standards
 
 Standards for repositories that use AI agent configurations (CLAUDE.md,
-AGENTS.md, BMAD modules, Claude plugins, MCP server configs).
+GEMINI.md, AGENTS.md, BMAD modules, Claude plugins, MCP server configs).
 
 ---
 
@@ -12,6 +12,7 @@ Every repository MUST have:
 | File | Purpose | Compliance Check |
 |------|---------|-----------------|
 | `CLAUDE.md` | Project-level instructions for Claude Code | error if missing |
+| `GEMINI.md` | Project-level instructions for Gemini CLI / Antigravity | error if missing |
 | `AGENTS.md` | Development standards for AI agents | error if missing |
 
 ## Compliance Exemptions — Files Agents Must Not Modify
@@ -36,6 +37,13 @@ to all repos via the `@v1` tag bump.
 - MUST NOT contain secrets, API keys, or credentials
 - MUST NOT contain overly permissive tool authorization (e.g., `dangerouslySkipPermissions`)
 - SHOULD define project-specific context (tech stack, conventions, key files)
+
+### GEMINI.md Requirements
+
+- MUST reference `AGENTS.md` for development standards
+- MUST NOT contain secrets, API keys, or credentials
+- MUST NOT contain overly permissive tool authorization
+- SHOULD reference the org-level standards (`combsmith/.github/AGENTS.md`) or project-specific context
 
 ### AGENTS.md Requirements
 
@@ -82,8 +90,9 @@ generic AgentShield scanner:
 
 | Rule | Severity | Description |
 |------|----------|-------------|
-| `required-files` | error | CLAUDE.md and AGENTS.md must exist |
+| `required-files` | error | CLAUDE.md, GEMINI.md, and AGENTS.md must exist |
 | `claude-reference` | error | CLAUDE.md must reference AGENTS.md |
+| `gemini-reference` | error | GEMINI.md must reference AGENTS.md |
 | `org-reference` | error | AGENTS.md must reference `combsmith/.github/AGENTS.md` |
 | `valid-frontmatter` | error | All SKILL.md files must have YAML frontmatter with `name` and `description` |
 

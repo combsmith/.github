@@ -3,6 +3,7 @@
 #
 # Triggered on any PR that touches:
 #   - scripts/compliance-audit.sh
+#   - .github/workflows/agent-shield-reusable.yml (cross-reference helper wiring)
 #   - test/scripts/compliance-audit/**
 #   - .github/workflows/compliance-audit-and-improvement.yml
 #   - test/workflows/compliance-audit/**
@@ -22,6 +23,7 @@ on:
   pull_request:
     paths:
       - 'scripts/compliance-audit.sh'
+      - '.github/workflows/agent-shield-reusable.yml'
       - 'scripts/lib/**'
       - 'test/scripts/compliance-audit/**'
       - '.github/workflows/compliance-audit-and-improvement.yml'
@@ -33,6 +35,7 @@ on:
       - main
     paths:
       - 'scripts/compliance-audit.sh'
+      - '.github/workflows/agent-shield-reusable.yml'
       - 'scripts/lib/**'
       - 'test/scripts/compliance-audit/**'
       - '.github/workflows/compliance-audit-and-improvement.yml'
