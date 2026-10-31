@@ -60,7 +60,40 @@ jobs:
           npx --ignore-scripts "ecc-agentshield@${AS_VERSION}" scan \
             --path . \
             --min-severity "${AS_SEVERITY}" \
-            --format terminal
+            --format json > "$RUNNER_TEMP/agentshield-report.json" || scan_rc=$?
+          # Exit 2 only means the report has critical findings, which the gate
+          # below handles. Any other non-zero exit is a scanner failure.
+          case "${scan_rc:-0}" in
+            0 | 2) ;;
+            *)
+              echo "::error::AgentShield scanner failed (exit ${scan_rc})"
+              exit "$scan_rc"
+              ;;
+          esac
+
+      # The scanner's exit code ignores min-severity, so the threshold is enforced
+      # here from its JSON report (#1436). Checked out after the scan so the tooling
+      # is never part of the scan target, and sparse so later checks ignore it.
+      - name: Checkout AgentShield gate tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          # This reusable's own commit, so the gate matches the channel the caller
+          # pinned. `job.workflow_sha`, not `github.job_workflow_sha`, which is
+          # empty at step level (#839).
+          ref: ${{ job.workflow_sha }}
+          path: .agent-shield-tooling
+          sparse-checkout: .github/scripts/agent-shield
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Enforce AgentShield severity threshold
+        env:
+          AS_SEVERITY: ${{ inputs.min-severity }}
+        run: |
+          # shellcheck source=/dev/null
+          . .agent-shield-tooling/.github/scripts/agent-shield/lib/severity-gate.sh
+          agent_shield_severity_gate "$AS_SEVERITY" "$RUNNER_TEMP/agentshield-report.json"
 
       # --- Org-specific structural checks ---
       - name: Check required agent files exist
