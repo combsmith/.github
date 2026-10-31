@@ -294,3 +294,13 @@ TOML
   run da_run_step audit-gate "Require every audit to pass" "$WS"
   [ "$status" -eq 0 ]
 }
+
+@test "workflow: every setup-python step uses the pinned python-version input, defaulting to a concrete minor" {
+  default="$(yq -r '.on.workflow_call.inputs["python-version"].default' "$DA_WORKFLOW")"
+  [[ "$default" =~ ^3\.[0-9]+$ ]]
+  versions="$(yq -r '.jobs[].steps[] | select(.uses // "" | test("^actions/setup-python@")) | .with["python-version"]' "$DA_WORKFLOW")"
+  [ -n "$versions" ]
+  while IFS= read -r v; do
+    [ "$v" = '${{ inputs.python-version }}' ]
+  done <<<"$versions"
+}
