@@ -111,3 +111,57 @@ workflow_command_lines() {
   done < <(workflow_command_lines)
   [ "$fail" -eq 0 ]
 }
+
+# combsmith/.github#1405: npm loads "project" config from the .npmrc of its local
+# prefix (the cwd), so an `npx` run inside the PR checkout lets the scanned PR's
+# own .npmrc pick script-shell / registry for the scanner itself. The AgentShield
+# step must run npm from a prefix outside the checkout and pass the checkout as
+# the scan target. Executes the step's real `run:` script (extracted with yq)
+# against a stub npx that records where and how it was invoked.
+@test "agent-shield: the scanner's npx runs outside the PR checkout, so a PR .npmrc cannot configure it" {
+  local wf="$REPO_ROOT/.github/workflows/agent-shield-reusable.yml"
+  local tmp="$BATS_TEST_TMPDIR" script
+  script=$(yq '.jobs["agent-shield"].steps[] | select(.name == "AgentShield Security Scan") | .run' "$wf")
+  [ -n "$script" ] && [ "$script" != "null" ]
+
+  # A PR checkout carrying a hostile project .npmrc.
+  local checkout="$tmp/work/repo" runner_temp="$tmp/runner-temp"
+  mkdir -p "$checkout" "$runner_temp" "$tmp/bin"
+  printf 'script-shell=/hostile/shell\nregistry=https://hostile.invalid/\n' > "$checkout/.npmrc"
+
+  local real_npm; real_npm=$(command -v npm || true)
+  cat > "$tmp/bin/npx" <<'STUB'
+#!/usr/bin/env bash
+{ printf 'cwd=%s\n' "$PWD"; printf 'arg=%s\n' "$@"; } > "$NPX_LOG"
+prefix=""
+for a in "$@"; do case "$a" in --prefix=*) prefix="${a#--prefix=}" ;; esac; done
+if [ -n "$REAL_NPM" ]; then
+  # What npm itself would resolve from here, with the flags it was given.
+  printf 'script-shell=%s\n' "$("$REAL_NPM" config get script-shell ${prefix:+--prefix="$prefix"})" >> "$NPX_LOG"
+fi
+STUB
+  chmod +x "$tmp/bin/npx"
+
+  if [ -n "$real_npm" ]; then
+    # Precondition: the fixture really is hostile when npm runs in the checkout.
+    run bash -c "cd '$checkout' && '$real_npm' config get script-shell"
+    [ "$output" = "/hostile/shell" ]
+  fi
+
+  run env -i HOME="$tmp" PATH="$tmp/bin:$(dirname "${real_npm:-/usr/bin/true}"):/usr/bin:/bin" \
+    REAL_NPM="$real_npm" NPX_LOG="$tmp/npx.log" \
+    RUNNER_TEMP="$runner_temp" AS_VERSION=1.4.0 AS_SEVERITY=high \
+    bash -c "cd '$checkout' && set -e && $script"
+  [ "$status" -eq 0 ]
+
+  local log; log=$(cat "$tmp/npx.log")
+  local cwd; cwd=$(sed -n 's/^cwd=//p' "$tmp/npx.log")
+  case "$cwd/" in "$checkout"/*) echo "npx ran inside the checkout: $cwd"; return 1 ;; esac
+  [[ "$log" == *$'\narg=--ignore-scripts\n'* ]]
+  [[ "$log" == *$'\narg=--prefix='"$cwd"$'\n'* ]]
+  # The checkout is still what gets scanned.
+  [[ "$log" == *$'\narg=--path\narg='"$checkout"$'\n'* ]]
+  if [ -n "$real_npm" ]; then
+    [[ "$log" != *"script-shell=/hostile/shell"* ]]
+  fi
+}

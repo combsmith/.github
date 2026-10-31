@@ -29,6 +29,26 @@ _atp_require_env() {
   fi
 }
 
+# atp_log_safe <value> — print an untrusted value (an issue / PR / draft title)
+# so it is safe to embed in a runner log line (combsmith/.github#1384). The
+# Actions runner treats `::cmd::` at the start of a line, and the legacy
+# `##[cmd]` marker anywhere in a line, as workflow commands, so a raw title
+# could forge annotations or `stop-commands` the rest of the step. CR/LF become
+# spaces (no new line can start inside the value) and each `::` / `##[` gets a
+# zero-width space (U+200B) between its characters, which keeps the title
+# readable in the log while no longer matching either command syntax.
+atp_log_safe() {
+  local v="${1-}" zwsp=$'\xe2\x80\x8b'
+  v="${v//$'\r'/ }"
+  v="${v//$'\n'/ }"
+  v="${v//'##['/#${zwsp}#[}"
+  # Loop: one pass over ':::' leaves '::' at the tail.
+  while [[ "${v}" == *'::'* ]]; do
+    v="${v//'::'/:${zwsp}:}"
+  done
+  printf '%s' "${v}"
+}
+
 # Prefetched board-membership cache (optional; batch reconcile only).
 # reconcile-backlog.sh scans the whole fleet's open issues/PRs and would
 # otherwise hit the API once PER item on both hot paths — a redundant
@@ -241,7 +261,7 @@ add_draft_item() {
   local body="$2"
 
   if [ "${DRY_RUN:-}" = "1" ]; then
-    printf '[dry-run] would add draft: %s\n' "${title}"
+    printf '[dry-run] would add draft: %s\n' "$(atp_log_safe "${title}")"
     return 0
   fi
 

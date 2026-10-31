@@ -23,7 +23,8 @@
 
 # dl_dev_lead_active <org> <repo> <issue>
 # Returns 0 (true) if dev-lead is ALREADY working this issue — either an open PR
-# exists on a dev-lead/issue-<number>-* branch, or the issue carries the
+# exists on a dev-lead/issue-<number>-* branch of this repo (not a fork) authored
+# by the dev-lead identity (DEV_LEAD_LOGINS, default don-petry), or the issue carries the
 # `in-progress` label. In that case the caller must NOT cycle the trigger label,
 # to avoid interrupting or duplicating active work.
 dl_dev_lead_active() {
@@ -31,14 +32,24 @@ dl_dev_lead_active() {
 
   # Match the dev-lead branch exactly: "dev-lead/issue-<n>-<timestamp>".
   # Require the trailing "-" so issue 1 does not match branch "issue-12-...".
+  # The branch name alone is NOT proof (#1391): the open-PR list includes fork
+  # PRs, whose head branch name the contributor picks. Only count a PR whose head
+  # lives in this repository (not a fork, not a deleted head repo) and whose
+  # author is the dev-lead agent's runtime identity (persona-standards.md §5.1:
+  # dev-lead acts as `don-petry`; override with DEV_LEAD_LOGINS, comma-separated).
+  # The logins are JSON-encoded by jq, never spliced raw into the filter.
   # Use --paginate so repos with >100 open PRs are fully scanned.
   # Fail closed: if the API call itself fails (transient error, rate limit, token
   # scope issue), treat the issue as active so we do not cycle the label and
   # accidentally create duplicate work.
-  local pr_raw pr_count
+  local pr_raw pr_count logins_json
+  logins_json=$(printf '%s' "${DEV_LEAD_LOGINS:-don-petry}" \
+    | jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')
   if ! pr_raw=$(gh api "repos/$org/$repo/pulls?state=open&per_page=100" \
     --paginate \
-    --jq "[.[] | select(.head.ref | type == \"string\" and startswith(\"dev-lead/issue-${issue}-\"))] | length" \
+    --jq "[.[] | select(.head.ref | type == \"string\" and startswith(\"dev-lead/issue-${issue}-\"))
+                | select(.head.repo != null and .head.repo.full_name == .base.repo.full_name)
+                | select((.user.login // \"\") as \$l | ${logins_json} | any(.[]; . == \$l))] | length" \
     2>/dev/null); then
     echo "[warn]  PR lookup for $org/$repo#$issue failed — treating as active to avoid duplicate work" >&2
     return 0

@@ -52,13 +52,24 @@ jobs:
       # --- Deep security scan via AgentShield CLI ---
       # Uses ecc-agentshield (https://github.com/affaan-m/agentshield)
       # 102 rules: secrets, permissions, hooks, MCP servers, agent config
+      #
+      # npm reads "project" config from the .npmrc of its local prefix (cwd), so
+      # running npx inside the PR checkout would let the scanned PR's own .npmrc
+      # (script-shell, registry, ...) control the scanner (#1405). Run npm from
+      # an empty prefix under $RUNNER_TEMP instead and pass the checkout as the
+      # scan target.
       - name: AgentShield Security Scan
         env:
           AS_VERSION: ${{ inputs.agentshield-version }}
           AS_SEVERITY: ${{ inputs.min-severity }}
         run: |
-          npx --ignore-scripts "ecc-agentshield@${AS_VERSION}" scan \
-            --path . \
+          scan_target="$PWD"
+          npm_prefix="$RUNNER_TEMP/agentshield-npm"
+          mkdir -p "$npm_prefix"
+          printf '{"private":true}\n' > "$npm_prefix/package.json"
+          cd "$npm_prefix"
+          npx --prefix="$npm_prefix" --ignore-scripts "ecc-agentshield@${AS_VERSION}" scan \
+            --path "$scan_target" \
             --min-severity "${AS_SEVERITY}" \
             --format terminal
 
