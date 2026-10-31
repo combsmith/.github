@@ -144,9 +144,10 @@ report_with() {
   [ "$(grep -c '^[[:space:]]*::' <<<"$output")" -eq 1 ]
   [[ "${lines[0]}" == "::error::AgentShield: 1 finding(s) at or above high" ]]
   [[ "$output" != *"##["* ]]
-  [[ "$output" != *"::"*"forged"* ]]
-  [[ "$output" != *$'\033'* ]]
   [ "${#lines[@]}" -eq 3 ]
+  [[ "${lines[1]}" != *"::"* ]]
+  [[ "${lines[2]}" != *"::"* ]]
+  [[ "$output" != *$'\033'* ]]
 }
 
 # --- The reusable's real steps, against a stubbed scanner ---
