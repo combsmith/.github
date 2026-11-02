@@ -276,16 +276,20 @@ sweep_project() {
     decided=$(decide_for_signature "${sig}")
     init="${decided%%$'\t'*}"
     theme="${decided#*$'\t'}"
+    # Titles are contributor-controlled: neutralise runner command markers
+    # before any log line below embeds them (#1384).
+    local log_title
+    log_title=$(atp_log_safe "${title}")
 
     if [ -z "${init}" ]; then
       unmatched=$((unmatched + 1))
-      printf 'UNMATCHED  %-20s «%s»\n' "${repo:-draft}" "${title}"
+      printf 'UNMATCHED  %-20s «%s»\n' "${repo:-draft}" "${log_title}"
       continue
     fi
 
     optid="${CI_INIT_OPT[${init}]:-}"
     if [ -z "${optid}" ]; then
-      printf '::warning::rule matched Initiative %q which is not a live project option; skipping «%s»\n' "${init}" "${title}" >&2
+      printf '::warning::rule matched Initiative %q which is not a live project option; skipping «%s»\n' "${init}" "${log_title}" >&2
       skipped=$((skipped + 1))
       continue
     fi
@@ -296,11 +300,11 @@ sweep_project() {
     # (this is a fill-blanks-only sweep, so retries are idempotent). Mirrors
     # reconcile-backlog.sh's per-item error isolation.
     if ! set_item_single_select_value "${item_id}" "${CI_INIT_FIELD_ID}" "${optid}"; then
-      printf '::warning::failed to set Initiative %q on «%s» (transient?); will retry next sweep\n' "${init}" "${title}" >&2
+      printf '::warning::failed to set Initiative %q on «%s» (transient?); will retry next sweep\n' "${init}" "${log_title}" >&2
       failed=$((failed + 1))
       continue
     fi
-    printf 'MATCH  %-22s <- %-20s «%s»\n' "${init}" "${repo:-draft}" "${title}"
+    printf 'MATCH  %-22s <- %-20s «%s»\n' "${init}" "${repo:-draft}" "${log_title}"
     matched=$((matched + 1))
 
     # Theme is best-effort: co-assign only when the field and matching option
@@ -309,7 +313,7 @@ sweep_project() {
     if [ -n "${theme}" ] && [ -n "${CI_THEME_FIELD_ID}" ]; then
       local topt="${CI_THEME_OPT[${theme}]:-}"
       if [ -n "${topt}" ] && ! set_item_single_select_value "${item_id}" "${CI_THEME_FIELD_ID}" "${topt}"; then
-        printf '::warning::failed to set Theme %q on «%s» (transient?); retry requires RECLASSIFY=all (Initiative already set)\n' "${theme}" "${title}" >&2
+        printf '::warning::failed to set Theme %q on «%s» (transient?); retry requires RECLASSIFY=all (Initiative already set)\n' "${theme}" "${log_title}" >&2
       fi
     fi
   done < <(printf '%s' "${items}" | jq -c '.[]')
