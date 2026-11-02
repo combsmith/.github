@@ -35,6 +35,26 @@ _writes() { cat "${FIX_DIR}/writes.log" 2>/dev/null || true; }
 
 _seed() { # COMMITS_JSON
   tt_seed_pr "$(tt_pr_state "[$(tt_check_run ci COMPLETED SUCCESS)]")" "$1"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" '[]'
+}
+
+_dep_commit() { tt_commit "$HEAD_SHA" 'dependabot[bot]' web-flow true 1; }
+
+# _push_during_approval HEAD COMMITS_JSON — the head moves to HEAD once the
+# approval POST lands, so the run's post-write read sees the new revision.
+_push_during_approval() {
+  printf '%s\n' "$(tt_pr_rest "$1" "$(jq 'length' <<<"$2")")" > "${FIX_DIR}/moved_pr.json"
+  printf '%s\n' "$2" > "${FIX_DIR}/moved_commits.json"
+  cat > "${FIX_DIR}/on_write" <<'HOOK'
+#!/usr/bin/env bash
+cp "${FIX_DIR}/moved_pr.json" "${FIX_DIR}/repos_owner_repo_pulls_5.json"
+cp "${FIX_DIR}/moved_commits.json" "${FIX_DIR}/repos_owner_repo_pulls_5_commits_per_page_100.json"
+HOOK
+  chmod +x "${FIX_DIR}/on_write"
+}
+
+_app_approval_of() { # ID COMMIT_ID
+  printf '{"id":%s,"state":"APPROVED","commit_id":"%s","user":{"login":"%s"}}' "$1" "$2" "$APP_LOGIN_FIXTURE"
 }
 
 _foreign_commits() {
@@ -96,12 +116,85 @@ _foreign_commits() {
   [[ "$output" != *"reviews/13/dismissals"* ]]
 }
 
-@test "automerge: revocation is best effort (failures do not fail the step)" {
+@test "automerge: --disable-auto failing on a PR with no auto-merge is not an error" {
   _seed "$(_foreign_commits)"
   printf '1\n' > "${FIX_DIR}/pr_merge.rc"
   _run_approve_step
   [ "$status" -eq 0 ]
   [[ "$(_writes)" != *"event=APPROVE"* ]]
+}
+
+@test "automerge: revocation that leaves auto-merge enabled fails the step" {
+  _seed "$(_foreign_commits)"
+  tt_fixture "repos/owner/repo/pulls/5" "$(tt_pr_rest "$HEAD_SHA" 2 true)"
+  printf '1\n' > "${FIX_DIR}/pr_merge.rc"
+  _run_approve_step
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"auto-merge is still enabled"* ]]
+}
+
+@test "automerge: revocation that cannot list or dismiss approvals fails the step" {
+  _seed "$(_foreign_commits)"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" '{"message":"Server Error"}' 1
+  _run_approve_step
+  [ "$status" -ne 0 ]
+
+  _seed "$(_foreign_commits)"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" "[$(_app_approval_of 11 "$DEP_SHA")]"
+  tt_fixture "repos/owner/repo/pulls/5/reviews/11/dismissals" '{}' 1
+  _run_approve_step
+  [ "$status" -ne 0 ]
+}
+
+@test "automerge: a foreign push landing during approval revokes the approval and auto-merge" {
+  _seed "[$(_dep_commit)]"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" "[$(_app_approval_of 11 "$HEAD_SHA")]"
+  _push_during_approval "$OTHER_SHA" "[$(_dep_commit),$(tt_commit "$OTHER_SHA" mallory mallory true 1)]"
+  _run_approve_step
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not from Dependabot"* ]]
+  run _writes
+  [[ "$output" == *"event=APPROVE"*"commit_id=${HEAD_SHA}"* ]]
+  [[ "$output" == *"pr merge 5 --repo owner/repo --disable-auto"* ]]
+  [[ "$output" == *"PUT repos/owner/repo/pulls/5/reviews/11/dismissals"* ]]
+}
+
+@test "automerge: a verified Dependabot push during approval keeps auto-merge and drops only the stale approval" {
+  _seed "[$(_dep_commit)]"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" \
+    "[$(_app_approval_of 11 "$HEAD_SHA"),$(_app_approval_of 12 "$OTHER_SHA")]"
+  _push_during_approval "$OTHER_SHA" "[$(tt_commit "$OTHER_SHA" 'dependabot[bot]' web-flow true 1)]"
+  printf '1\n' > "${FIX_DIR}/pr_merge.rc" # --match-head-commit refuses the stale head
+  _run_approve_step
+  [ "$status" -eq 0 ]
+  run _writes
+  [[ "$output" != *"--disable-auto"* ]]
+  [[ "$output" == *"PUT repos/owner/repo/pulls/5/reviews/11/dismissals"* ]]
+  [[ "$output" != *"reviews/12/dismissals"* ]]
+}
+
+@test "automerge: an unreadable post-write state revokes and fails the step" {
+  _seed "[$(_dep_commit)]"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" "[$(_app_approval_of 11 "$HEAD_SHA")]"
+  cat > "${FIX_DIR}/on_write" <<'HOOK'
+#!/usr/bin/env bash
+printf '1
+' > "${FIX_DIR}/repos_owner_repo_pulls_5_commits_per_page_100.rc"
+HOOK
+  chmod +x "${FIX_DIR}/on_write"
+  _run_approve_step
+  [ "$status" -ne 0 ]
+  run _writes
+  [[ "$output" == *"--disable-auto"* ]]
+  [[ "$output" == *"PUT repos/owner/repo/pulls/5/reviews/11/dismissals"* ]]
+}
+
+@test "automerge: auto-merge refused at an unchanged head fails the step and keeps the approval" {
+  _seed "[$(_dep_commit)]"
+  printf '1\n' > "${FIX_DIR}/pr_merge.rc"
+  _run_approve_step
+  [ "$status" -ne 0 ]
+  [[ "$(_writes)" != *"dismissals"* ]]
 }
 
 @test "automerge: a stale event (head moved since) approves nothing and revokes nothing" {

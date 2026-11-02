@@ -172,10 +172,12 @@ Behavior:
   before approving, every commit on the PR must be from Dependabot (or a branch
   update the App made via `update-branch`) and the head must still be the commit
   the event was for. The approval (`commit_id`) and the auto-merge request
-  (`--match-head-commit`) are bound to that head SHA. If any other commit lands
-  on the branch, the workflow does not approve, disables auto-merge and dismisses
-  its earlier approval — the PR then needs a human review. To hand it back to
-  automation, have Dependabot recreate it (`@dependabot recreate`).
+  (`--match-head-commit`) are bound to that head SHA, and the workflow re-reads
+  the PR after both writes. If any other commit lands on the branch, the workflow
+  does not approve, disables auto-merge and dismisses its earlier approval — the
+  PR then needs a human review. A withdrawal that cannot be completed fails the
+  run. To hand it back to automation, have Dependabot recreate it
+  (`@dependabot recreate`).
 
 ## Update and Merge Behind PRs Workflow
 

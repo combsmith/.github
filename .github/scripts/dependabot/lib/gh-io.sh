@@ -6,8 +6,8 @@
 # decision itself — every verdict comes from the pure gates in lib/gates.sh,
 # which must be sourced alongside. Any read failure fails closed (skip).
 #
-# Tested by test/workflows/dependabot/gh-io.bats and the end-to-end suites in
-# test/workflows/dependabot/.
+# Tested end to end by test/workflows/dependabot/automerge-provenance.bats and
+# test/workflows/dependabot/rebase-merge-gate.bats.
 # Contract: see .github/scripts/dependabot/README.md
 
 # dependabot_fetch_pr_state REPO PR_NUMBER
@@ -139,34 +139,73 @@ dependabot_merge_pr() {
     -f merge_method=squash -f sha="$sha" --silent
 }
 
-# dependabot_approve_and_automerge REPO PR_NUMBER SHA
-#   Approves the PR at commit SHA (the review is bound to that commit) and
-#   enables squash auto-merge only while the head is still SHA.
+# dependabot_approve_and_automerge REPO PR_NUMBER SHA APP_LOGIN
+#   Approves the PR at commit SHA and enables squash auto-merge only while the
+#   head is still SHA, then re-reads the PR, because neither write is atomic
+#   with the head: GitHub accepts a review for an older commit, the App's
+#   approval is not subject to the stale-review rules (it is a bypass actor),
+#   and a push by a writer does not disable auto-merge that is already on.
+#
+#   The re-read closes the race with the run for a newer push. That push came
+#   either before this re-read (seen here) or after it, in which case its own
+#   run starts after these writes and revokes them. So whichever way the runs
+#   interleave, an unverified head does not keep this state.
+#
+#   Returns 0 when the state is settled: SHA is still the head and auto-merge
+#   is on, or the head moved and the state was withdrawn. Returns non-zero when
+#   auto-merge was refused at SHA, the PR could not be re-read (the state is
+#   withdrawn first), or a withdrawal could not be completed.
 dependabot_approve_and_automerge() {
-  local repo="$1" pr="$2" sha="$3"
+  local repo="$1" pr="$2" sha="$3" app_login="${4:-}" enable_rc=0 rc=0
   [[ -n "$sha" ]] || return 1
   gh api "repos/${repo}/pulls/${pr}/reviews" -X POST \
     -f event=APPROVE -f commit_id="$sha" --silent || return 1
-  gh pr merge "$pr" --repo "$repo" --auto --squash --match-head-commit "$sha"
+  gh pr merge "$pr" --repo "$repo" --auto --squash --match-head-commit "$sha" || enable_rc=$?
+
+  GH_TOKEN="${READ_TOKEN:-${GH_TOKEN:-}}" dependabot_provenance_check "$repo" "$pr" "$app_login" || rc=$?
+  case "$rc" in
+    0)
+      if [[ "$DEPENDABOT_GATE_SHA" == "$sha" ]]; then
+        return "$enable_rc"
+      fi
+      # A newer verified head: its own run owns approval and auto-merge, so
+      # withdraw only what this run approved for the older commit.
+      echo "Head moved to ${DEPENDABOT_GATE_SHA:0:7} during approval; withdrawing the approval of ${sha:0:7}"
+      dependabot_dismiss_app_approvals "$repo" "$pr" "$app_login" \
+        "the head moved past ${sha:0:7}" "$DEPENDABOT_GATE_SHA"
+      ;;
+    1)
+      echo "::warning::Withdrawing automation on PR #${pr} — ${DEPENDABOT_GATE_REASON}"
+      dependabot_revoke_automation "$repo" "$pr" "$app_login" "$DEPENDABOT_GATE_REASON"
+      ;;
+    *)
+      echo "::error::Could not re-verify PR #${pr} after approving — ${DEPENDABOT_GATE_REASON}; withdrawing"
+      dependabot_revoke_automation "$repo" "$pr" "$app_login" "$DEPENDABOT_GATE_REASON" || true
+      return 1
+      ;;
+  esac
 }
 
-# dependabot_revoke_automation REPO PR_NUMBER APP_LOGIN REASON
-#   Best effort, always returns 0: disables auto-merge and dismisses approvals
-#   APP_LOGIN gave earlier, so a revision that failed the provenance gate is not
-#   merged on the strength of an approval of an earlier revision.
-dependabot_revoke_automation() {
-  local repo="$1" pr="$2" app_login="$3" reason="$4" reviews id
+# dependabot_dismiss_app_approvals REPO PR_NUMBER APP_LOGIN REASON [KEEP_SHA]
+#   Dismisses APP_LOGIN's approvals, except those of commit KEEP_SHA. Returns 1
+#   when an approval may have survived (the login is unknown, the reviews could
+#   not be listed, or a dismissal failed).
+dependabot_dismiss_app_approvals() {
+  local repo="$1" pr="$2" app_login="$3" reason="$4" keep="${5:-}" reviews ids id failed=0
 
-  if ! gh pr merge "$pr" --repo "$repo" --disable-auto >/dev/null 2>&1; then
-    echo "  auto-merge was not enabled (or could not be disabled)"
-  else
-    echo "  Disabled auto-merge"
+  if [[ -z "$app_login" ]]; then
+    echo "::error::Cannot identify automated approvals on PR #${pr}: no App login"
+    return 1
   fi
-
-  [[ -n "$app_login" ]] || return 0
   if ! reviews=$(gh api "repos/${repo}/pulls/${pr}/reviews?per_page=100" --paginate --slurp 2>/dev/null); then
-    echo "::warning::Could not list reviews on PR #${pr} to dismiss earlier automated approvals"
-    return 0
+    echo "::error::Could not list reviews on PR #${pr} to dismiss automated approvals"
+    return 1
+  fi
+  if ! ids=$(jq -r --arg login "$app_login" --arg keep "$keep" \
+      'flatten[] | select(.user.login == $login and .state == "APPROVED" and .commit_id != $keep) | .id' \
+      <<<"$reviews" 2>/dev/null); then
+    echo "::error::Could not parse reviews on PR #${pr} to dismiss automated approvals"
+    return 1
   fi
   while IFS= read -r id; do
     [[ -n "$id" ]] || continue
@@ -174,10 +213,35 @@ dependabot_revoke_automation() {
         -f event=DISMISS -f message="Automated approval withdrawn: ${reason}" --silent; then
       echo "  Dismissed automated approval ${id}"
     else
-      echo "::warning::Could not dismiss automated approval ${id} on PR #${pr}"
+      echo "::error::Could not dismiss automated approval ${id} on PR #${pr}"
+      failed=1
     fi
-  done < <(jq -r --arg login "$app_login" \
-      'flatten[] | select(.user.login == $login and .state == "APPROVED") | .id' \
-      <<<"$reviews" 2>/dev/null)
-  return 0
+  done <<<"$ids"
+  return "$failed"
+}
+
+# dependabot_revoke_automation REPO PR_NUMBER APP_LOGIN REASON
+#   Disables auto-merge and dismisses every approval APP_LOGIN gave, so a
+#   revision that failed the provenance gate is not merged on the strength of an
+#   approval of an earlier one. Attempts both, then returns 1 unless the PR reads
+#   back with auto-merge off and no approval failed to dismiss, so a withdrawal
+#   that did not complete fails the run instead of passing silently.
+dependabot_revoke_automation() {
+  local repo="$1" pr="$2" app_login="$3" reason="$4" pr_json failed=0
+
+  # `--disable-auto` also fails when auto-merge was never on, so the result is
+  # judged from the PR below rather than from its exit status.
+  if gh pr merge "$pr" --repo "$repo" --disable-auto >/dev/null 2>&1; then
+    echo "  Disabled auto-merge"
+  fi
+  if ! pr_json=$(GH_TOKEN="${READ_TOKEN:-${GH_TOKEN:-}}" dependabot_fetch_pr "$repo" "$pr"); then
+    echo "::error::Could not confirm auto-merge is off on PR #${pr}"
+    failed=1
+  elif [[ "$(jq -r '.auto_merge != null' <<<"$pr_json" 2>/dev/null)" != "false" ]]; then
+    echo "::error::auto-merge is still enabled on PR #${pr}"
+    failed=1
+  fi
+
+  dependabot_dismiss_app_approvals "$repo" "$pr" "$app_login" "$reason" || failed=1
+  return "$failed"
 }

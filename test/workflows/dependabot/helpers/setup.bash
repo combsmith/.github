@@ -51,7 +51,9 @@ tt_fixture() {
 #   gh api ENDPOINT (GET)          → <key(ENDPOINT)>.json (404 when absent);
 #                                    `--paginate --slurp` wraps it in a page array
 #   gh api ENDPOINT -X PUT|POST    → recorded in writes.log with its fields;
-#                                    succeeds unless <key>.rc exists
+#                                    succeeds unless <key>.rc exists; runs
+#                                    on_write first when present (e.g. a push
+#                                    landing while the workflow is writing)
 #   gh pr list … --jq E            → pr_list.json through jq
 #   gh pr view N --json … [--jq E] → pr_view_N.json (through jq when given)
 #   gh pr merge / gh pr review     → recorded in writes.log; `pr_merge.rc` fails
@@ -90,6 +92,7 @@ if [ "$1" = "api" ]; then
   fi
   if [ "$method" != "GET" ]; then
     printf 'TOKEN=%s %s %s%s\n' "${GH_TOKEN:-}" "$method" "$endpoint" "$fields" >> "${FIX_DIR}/writes.log"
+    if [ -x "${FIX_DIR}/on_write" ]; then "${FIX_DIR}/on_write"; fi
     if [ -f "${FIX_DIR}/${key}.rc" ]; then exit "$(cat "${FIX_DIR}/${key}.rc")"; fi
     exit 0
   fi
@@ -167,9 +170,11 @@ tt_commit() {
      commit:{verification:{verified:($v == "true"), reason:(if $v == "true" then "valid" else "unsigned" end)}}}'
 }
 
-# tt_pr_rest [HEAD] [COMMIT_COUNT] — REST pull request object.
+# tt_pr_rest [HEAD] [COMMIT_COUNT] [AUTO_MERGE true|false] — REST pull request object.
 tt_pr_rest() {
-  jq -cn --arg head "${1:-$HEAD_SHA}" --argjson n "${2:-1}" '{number:5,head:{sha:$head},base:{ref:"main"},commits:$n}'
+  jq -cn --arg head "${1:-$HEAD_SHA}" --argjson n "${2:-1}" --arg am "${3:-false}" \
+    '{number:5,head:{sha:$head},base:{ref:"main"},commits:$n,
+      auto_merge:(if $am == "true" then {merge_method:"squash"} else null end)}'
 }
 
 # tt_seed_pr STATE_JSON COMMITS_JSON [REQUIRED_RULES_JSON]

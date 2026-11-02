@@ -19,8 +19,9 @@
 # Dependabot commit, so before approving, every commit on the PR must be from
 # Dependabot (or a branch update made by this App via update-branch) and the
 # head must still be the commit this event was for. The approval and the
-# auto-merge request are bound to that head SHA. If a later commit fails the
-# gate, auto-merge is disabled and this App's earlier approvals are dismissed.
+# auto-merge request are bound to that head SHA, and the PR is re-read after
+# both writes. If a later commit fails the gate, auto-merge is disabled and this
+# App's approvals are dismissed; a withdrawal that cannot complete fails the run.
 # Decision logic lives in .github/scripts/dependabot/lib/ (bats-tested).
 #
 # Required org/repo secrets (passed via `secrets: inherit` from caller):
@@ -134,12 +135,15 @@ jobs:
             # Commits on the PR that did not come from Dependabot: withdraw any
             # earlier automated approval / auto-merge and leave it to a human.
             echo "::warning::Not approving PR #$PR_NUMBER — $DEPENDABOT_GATE_REASON"
-            dependabot_revoke_automation "$REPO" "$PR_NUMBER" "$APP_LOGIN" "$DEPENDABOT_GATE_REASON"
+            if ! dependabot_revoke_automation "$REPO" "$PR_NUMBER" "$APP_LOGIN" "$DEPENDABOT_GATE_REASON"; then
+              echo "::error::Could not fully withdraw automation on PR #$PR_NUMBER — a human must check it"
+              exit 1
+            fi
             exit 0
           fi
 
           echo "Provenance gate passed ($DEPENDABOT_GATE_REASON) — approving $DEPENDABOT_GATE_SHA"
-          dependabot_approve_and_automerge "$REPO" "$PR_NUMBER" "$DEPENDABOT_GATE_SHA"
+          dependabot_approve_and_automerge "$REPO" "$PR_NUMBER" "$DEPENDABOT_GATE_SHA" "$APP_LOGIN"
         env:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

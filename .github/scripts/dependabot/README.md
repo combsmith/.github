@@ -32,5 +32,14 @@ failure fails closed.
 | `dependabot_merge_gate REPO PR APP_LOGIN` | Auto-merge requested + `MERGEABLE` + checks gate + provenance gate, all bound to one head SHA. Sets `DEPENDABOT_GATE_SHA` / `DEPENDABOT_GATE_REASON`. Used by the merger before every direct merge. |
 | `dependabot_provenance_check REPO PR APP_LOGIN [SHA]` | Provenance gate on the live PR. Returns `0` pass, `1` block (sets `DEPENDABOT_GATE_STALE=true` when the head moved past `SHA`), `2` state unreadable. |
 | `dependabot_merge_pr REPO PR SHA` | Squash-merges with `sha=SHA`, so GitHub rejects the merge if the head moved after the gate ran. |
-| `dependabot_approve_and_automerge REPO PR SHA` | Approves with `commit_id=SHA` and enables auto-merge with `--match-head-commit SHA`. |
-| `dependabot_revoke_automation REPO PR APP_LOGIN REASON` | Best effort: disables auto-merge and dismisses `APP_LOGIN`'s approvals. |
+| `dependabot_approve_and_automerge REPO PR SHA APP_LOGIN` | Approves with `commit_id=SHA`, enables auto-merge with `--match-head-commit SHA`, then re-reads the PR. If the head moved to a verified commit, it dismisses the approval of `SHA`; if the new head fails the gate or the PR cannot be read, it revokes everything. |
+| `dependabot_dismiss_app_approvals REPO PR APP_LOGIN REASON [KEEP_SHA]` | Dismisses `APP_LOGIN`'s approvals except those of `KEEP_SHA`. Returns `1` if one may have survived. |
+| `dependabot_revoke_automation REPO PR APP_LOGIN REASON` | Disables auto-merge and dismisses all of `APP_LOGIN`'s approvals. Returns `1` unless the PR reads back with auto-merge off and every dismissal succeeded, and the workflow then fails. |
+
+**What this cannot make atomic.** Native auto-merge has no head-bound form that
+survives a push: a writer's push does not disable it, and `--match-head-commit`
+applies only when it is enabled. The re-read and the `synchronize` run together
+withdraw that state on every interleaving, but not in the same instant, so a
+foreign push has a short window before its run revokes. The merger is not
+exposed to it: it re-runs both gates and merges with `sha=`. If the `synchronize`
+run does not run at all, the state stays until something re-evaluates the PR.
