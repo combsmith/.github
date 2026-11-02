@@ -72,6 +72,16 @@ _merge_calls() { grep -F '/pulls/5/merge' "${FIX_DIR}/writes.log" 2>/dev/null ||
   [[ "$output" == *"sha=${HEAD_SHA}"* ]]
 }
 
+@test "rebase: a cancelled agent job does not hold an otherwise green PR" {
+  nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run 'dev-lead / dispatch' COMPLETED CANCELLED)]"
+  tt_seed_pr "$(tt_pr_state "$nodes")" "$(_dependabot_only)"
+  _run_merge_step
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1 agent job(s) not counted"* ]]
+  run _merge_calls
+  [[ "$output" == *"sha=${HEAD_SHA}"* ]]
+}
+
 @test "rebase: a completed but FAILED check is not merged (regression #1399)" {
   nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run 'dependency-audit / npm audit' COMPLETED FAILURE)]"
   tt_seed_pr "$(tt_pr_state "$nodes")" "$(_dependabot_only)"

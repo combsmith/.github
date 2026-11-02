@@ -26,7 +26,7 @@ _ok_nodes() {
 @test "checks: all success / skipped / status success passes" {
   run dependabot_checks_gate "$(tt_pr_state "$(_ok_nodes)")" '[]'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"all 3 check(s) succeeded"* ]]
+  [[ "$output" == *"all 2 check(s) succeeded"*"(1 agent job(s) not counted)"* ]]
 }
 
 @test "checks: neutral conclusion passes" {
@@ -128,6 +128,75 @@ _ok_nodes() {
   [ "$status" -eq 1 ]
   run dependabot_checks_gate '' '[]'
   [ "$status" -eq 1 ]
+}
+
+# ── agent jobs: not counted, and only on an exact match from GitHub Actions ──
+
+@test "checks: a cancelled or failed agent job does not block" {
+  local job
+  for job in 'dev-lead / dispatch' 'dev-lead / ci-relay' 'pr-auto-review / check-and-dispatch' \
+             'pr-review / review' 'review / review'; do
+    nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run "$job" COMPLETED CANCELLED),$(tt_check_run 'dev-lead / resume' COMPLETED FAILURE)]"
+    run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"all 1 check(s) succeeded"*"(2 agent job(s) not counted)"* ]]
+  done
+}
+
+@test "checks: a pending agent job does not block" {
+  nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run 'dev-lead / dispatch' IN_PROGRESS '')]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 0 ]
+}
+
+@test "checks: a similarly named check from GitHub Actions still blocks" {
+  local job
+  for job in 'dev-lead' 'dev-lead / ' 'dev-leads / dispatch' 'my dev-lead / dispatch' 'dev-lead/dispatch' \
+             'pr-auto-review' 'pr-review / lint' 'review / lint' 'review' 'Dev-Lead / dispatch'; do
+    nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run "$job" COMPLETED FAILURE)]"
+    run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+    [ "$status" -eq 1 ]
+  done
+}
+
+@test "checks: an agent job name from another app still blocks" {
+  nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run 'dev-lead / dispatch' COMPLETED FAILURE some-other-app)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"dev-lead / dispatch (failure)"* ]]
+}
+
+@test "checks: an agent job with no app data still blocks" {
+  node=$(jq -cn '{__typename:"CheckRun",name:"dev-lead / dispatch",status:"COMPLETED",conclusion:"FAILURE"}')
+  nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$node]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: a commit status named like an agent job still blocks" {
+  nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_status 'dev-lead / dispatch' FAILURE)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: an agent job the rules require is counted" {
+  nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run 'dev-lead / dispatch' COMPLETED FAILURE)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["dev-lead / dispatch"]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: agent jobs alone do not count as checks reported" {
+  nodes="[$(tt_check_run 'dev-lead / dispatch' COMPLETED SUCCESS),$(tt_check_run 'pr-auto-review / check-and-dispatch' COMPLETED SKIPPED)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no checks reported"* ]]
+}
+
+@test "checks: a failing non-agent check still blocks beside an exempt agent job" {
+  nodes="[$(tt_check_run 'Secret scan (gitleaks)' COMPLETED FAILURE),$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run 'dev-lead / dispatch' COMPLETED CANCELLED)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"1 check(s) not successful"*"gitleaks"* ]]
 }
 
 # ── dependabot_provenance_gate (#1400) ──────────────────────────────────────

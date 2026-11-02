@@ -19,7 +19,8 @@
 #      which is the only token subject to GitHub's recursive-trigger guard.
 #   2. Merges any Dependabot PR that is up-to-date and whose head commit passes
 #      the merge gate (issues #1399, #1400) — auto-merge requested, MERGEABLE,
-#      EVERY check on the head commit successful (success/neutral/skipped;
+#      EVERY check on the head commit other than org agent jobs successful
+#      (success/neutral/skipped;
 #      every check the base branch's rules require must be present), and every
 #      commit on the PR from Dependabot or a branch update by this App. The
 #      merge is bound to the verified head SHA. Decision logic lives in
@@ -68,7 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read       # check out the gate scripts from combsmith/.github
-      pull-requests: write
+      pull-requests: write # list Dependabot PRs and read their state with GITHUB_TOKEN
     steps:
       - name: Checkout Dependabot gate tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -171,7 +172,7 @@ jobs:
 
             # The App merges with ruleset bypass, so GitHub's own gates do not
             # stop it — the merge gate must. It requires auto-merge requested
-            # (set by the automerge workflow), MERGEABLE, EVERY check on the
+            # (set by the automerge workflow), MERGEABLE, EVERY non-agent check on the
             # head commit successful (fail closed on failure, cancelled,
             # timed_out, action_required, stale, startup_failure, pending or a
             # missing required check), and every commit from Dependabot or a

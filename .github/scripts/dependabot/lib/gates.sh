@@ -15,25 +15,37 @@
 # GitHub-verified signature.
 DEPENDABOT_LOGIN="dependabot[bot]"
 
+# Org agent jobs that run on every PR but do not test the change. A cancelled or
+# failed agent job says nothing about a dependency update, so it does not hold
+# the merge. Exact names and prefixes only, and only from GitHub Actions, so a
+# similarly named external check still counts. A check the base branch's rules
+# require is never exempt.
+#   dev-lead / *, pr-auto-review / *  caller jobs of those reusables
+#   pr-review / review                the agent-ingress caller job
+#   review / review                   the pre-ingress caller job
+DEPENDABOT_AGENT_JOB_RE='^(dev-lead / .+|pr-auto-review / .+|pr-review / review|review / review)$'
+
 # dependabot_checks_gate PR_JSON REQUIRED_JSON [EXPECTED_SHA]
 #   PR_JSON      GraphQL `pullRequest` object (or the whole `{data:{repository:
 #                {pullRequest:…}}}` response) with headRefOid and
 #                commits(last:1){nodes{commit{oid statusCheckRollup{contexts{
-#                pageInfo{hasNextPage} nodes{CheckRun{name status conclusion}
-#                StatusContext{context state}}}}}}}.
+#                pageInfo{hasNextPage} nodes{CheckRun{name status conclusion
+#                checkSuite{app{slug}}} StatusContext{context state}}}}}}}.
 #   REQUIRED_JSON  JSON array of check names the base branch's rules require
 #                (`[]` when none).
 #   EXPECTED_SHA  optional — block unless the PR head is this commit.
 #
-#   Passes only when every check run on the head commit COMPLETED as success,
-#   neutral or skipped, every commit status is success, at least one check was
-#   reported, and every required check name is present. Anything else —
-#   failure, cancelled, timed_out, action_required, stale, startup_failure,
-#   pending, missing, or more contexts than one page — blocks.
+#   Agent jobs (DEPENDABOT_AGENT_JOB_RE) are not counted. Passes only when every
+#   other check run on the head commit COMPLETED as success, neutral or skipped,
+#   every commit status is success, at least one such check was reported, and
+#   every required check name is present. Anything else — failure, cancelled,
+#   timed_out, action_required, stale, startup_failure, pending, missing, or more
+#   contexts than one page — blocks.
 dependabot_checks_gate() {
   local pr_json="$1" required_json="${2:-[]}" expected="${3:-}" out verdict reason
 
-  out=$(jq -r --argjson required "$required_json" --arg expected "$expected" '
+  out=$(jq -r --argjson required "$required_json" --arg expected "$expected" \
+      --arg agent_re "$DEPENDABOT_AGENT_JOB_RE" '
     (if has("data") then .data.repository.pullRequest else . end) as $pr
     | ($pr.headRefOid // "") as $head
     | ($pr.commits.nodes[0].commit // {}) as $commit
@@ -51,15 +63,21 @@ dependabot_checks_gate() {
       def outcome: if .__typename == "StatusContext" then (.state // "MISSING")
                    elif ((.status // "" | ascii_upcase) != "COMPLETED") then (.status // "MISSING")
                    else (.conclusion // "MISSING") end | ascii_downcase;
+      def agent_job: .__typename == "CheckRun"
+        and (.checkSuite.app.slug? // "") == "github-actions"
+        and (name_of | test($agent_re))
+        and (name_of as $n | $required | index($n) | not);
       ([$nodes[] | name_of]) as $names
     | ([$required[] | select(. as $r | $names | index($r) | not)]) as $missing
-    | ([$nodes[] | select(ok | not) | "\(name_of) (\(outcome))"]) as $bad
+    | ([$nodes[] | select(agent_job | not)]) as $counted
+    | (($nodes | length) - ($counted | length)) as $exempt
+    | ([$counted[] | select(ok | not) | "\(name_of) (\(outcome))"]) as $bad
     | if $head == "" then "block\tPR head commit unknown"
       elif ($expected != "" and $head != $expected) then
         "block\thead moved to \($head[0:7]) (expected \($expected[0:7]))"
       elif ($commit.oid // "") != $head then
         "block\tcheck rollup is not for the head commit \($head[0:7])"
-      elif $ctx == null or ($nodes | length) == 0 then
+      elif $ctx == null or ($counted | length) == 0 then
         "block\tno checks reported on \($head[0:7])"
       elif ($ctx.pageInfo.hasNextPage // false) then
         "block\tmore checks than fit in one page on \($head[0:7]) — cannot verify them all"
@@ -68,7 +86,7 @@ dependabot_checks_gate() {
       elif ($missing | length) > 0 then
         "block\trequired check(s) not reported on \($head[0:7]): \($missing | join(", "))"
       else
-        "pass\tall \($nodes | length) check(s) succeeded on \($head[0:7])"
+        "pass\tall \($counted | length) check(s) succeeded on \($head[0:7])\(if $exempt > 0 then " (\($exempt) agent job(s) not counted)" else "" end)"
       end
   ' <<<"$pr_json" 2>/dev/null) || out=""
 

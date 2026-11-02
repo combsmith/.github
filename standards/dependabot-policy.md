@@ -266,7 +266,9 @@ current head commit:
   the App (same provenance gate as the auto-merge workflow).
 
 The merge call passes the verified head SHA, so GitHub rejects it if the branch
-moved after the check. A Dependabot PR held back by a failing non-required check
+moved after the check. Org agent jobs (`dev-lead / *`, `pr-auto-review / *`,
+`pr-review / review`, `review / review`) from GitHub Actions are not counted, since
+they do not test the change, unless the rulesets require them. A Dependabot PR held back by a failing non-required check
 (e.g. a gitleaks false positive) needs a human to fix the check or merge it.
 Gate logic: [`.github/scripts/dependabot/`](../.github/scripts/dependabot/README.md).
 

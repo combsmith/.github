@@ -143,10 +143,11 @@ STUB
 
 # ── fixture builders ─────────────────────────────────────────────────────────
 
-# tt_check_run NAME STATUS CONCLUSION — one GraphQL CheckRun node.
+# tt_check_run NAME STATUS CONCLUSION [APP_SLUG] — one GraphQL CheckRun node.
 tt_check_run() {
-  jq -cn --arg n "$1" --arg s "$2" --arg c "$3" \
-    '{__typename:"CheckRun",name:$n,status:$s,conclusion:(if $c == "" then null else $c end)}'
+  jq -cn --arg n "$1" --arg s "$2" --arg c "$3" --arg a "${4:-github-actions}" \
+    '{__typename:"CheckRun",name:$n,status:$s,conclusion:(if $c == "" then null else $c end),
+      checkSuite:{app:{slug:$a}}}'
 }
 
 # tt_status NAME STATE — one GraphQL StatusContext node.

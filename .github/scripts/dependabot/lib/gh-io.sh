@@ -16,7 +16,7 @@
 dependabot_fetch_pr_state() {
   local repo="$1" pr="$2" out
   # shellcheck disable=SC2016 # GraphQL variables, not shell expansions
-  local query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){headRefOid baseRefName mergeable autoMergeRequest{enabledAt} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{name status conclusion} ... on StatusContext{context state}}}}}}}}}}'
+  local query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){headRefOid baseRefName mergeable autoMergeRequest{enabledAt} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{name status conclusion checkSuite{app{slug}}} ... on StatusContext{context state}}}}}}}}}}'
 
   out=$(gh api graphql -f query="$query" -f owner="${repo%%/*}" \
       -f name="${repo#*/}" -F number="$pr" 2>/dev/null) || return 1
@@ -85,8 +85,8 @@ dependabot_provenance_check() {
 
 # dependabot_merge_gate REPO PR_NUMBER TRUSTED_MERGE_LOGIN
 #   Decides whether the merger may merge the PR now: auto-merge requested,
-#   MERGEABLE, every check on the head commit successful (incl. every check the
-#   base branch's rules require), and every commit from Dependabot (or a branch
+#   MERGEABLE, every check on the head commit other than agent jobs successful
+#   (incl. every check the base branch's rules require), and every commit from Dependabot (or a branch
 #   update by TRUSTED_MERGE_LOGIN) — all bound to one head SHA.
 #   Sets DEPENDABOT_GATE_REASON, and DEPENDABOT_GATE_SHA on pass.
 #   Returns 0 merge / 1 skip.
