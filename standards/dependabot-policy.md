@@ -178,6 +178,12 @@ Behavior:
   PR then needs a human review. A withdrawal that cannot be completed fails the
   run. To hand it back to automation, have Dependabot recreate it
   (`@dependabot recreate`).
+- **Accepted residual risk (2026-11-02):** native auto-merge has no form tied to
+  one commit, so a foreign head can stay eligible for it until the revocation
+  completes. The required approval of the last push should block a merge in that
+  window, but this has not been tested end to end. The maintainer accepted this
+  and kept native auto-merge. The direct merger is not exposed: it re-runs both
+  gates and merges with `sha=`.
 
 ## Update and Merge Behind PRs Workflow
 
