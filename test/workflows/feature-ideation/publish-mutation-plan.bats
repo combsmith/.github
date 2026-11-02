@@ -448,12 +448,22 @@ no_writes() {
   [ "$status" -ne 0 ]
   no_writes
   # No output line is a workflow command other than the executor's own error.
-  ! grep -E '^[[:space:]]*::' <<< "$output" | grep -v '^::error::Discussion mutation plan rejected'
-  ! grep -q 'injected' <<< "$(grep -E '^[[:space:]]*::' <<< "$output")"
+  # Explicit `if`s: errexit ignores a leading `!`, so bare negations could never
+  # fail the test.
+  local commands
+  commands="$(grep -E '^[[:space:]]*::' <<< "$output" || true)"
+  if grep -v '^::error::Discussion mutation plan rejected' <<< "$commands" | grep -q .; then
+    echo "a plan value reached the log as a workflow command:"; echo "$commands"; return 1
+  fi
+  if grep -q 'injected' <<< "$commands"; then
+    echo "plan text reached a workflow command:"; echo "$commands"; return 1
+  fi
   # The summary has exactly the executor's two fence lines and no other backticks.
   [ "$(grep -c '^```$' "$GITHUB_STEP_SUMMARY")" -eq 2 ]
   [ "$(grep -c '`' "$GITHUB_STEP_SUMMARY")" -eq 3 ]  # 2 fences + the `scheduled` mode word
-  ! grep -qE '^[[:space:]]*::' "$GITHUB_STEP_SUMMARY"
+  if grep -qE '^[[:space:]]*::' "$GITHUB_STEP_SUMMARY"; then
+    echo "a workflow command reached the step summary"; return 1
+  fi
 }
 
 @test "reasons: every model-supplied value in a reason is JSON-quoted" {

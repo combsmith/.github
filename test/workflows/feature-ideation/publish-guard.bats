@@ -62,7 +62,11 @@ model_jobs() {
   [ "$status" -eq 0 ]
   [ "$output" = "publish" ]
   run yq -r '.jobs.publish' "$WF"
-  ! grep -qE 'anthropics/claude-code-action|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY' <<< "$output"
+  # An explicit `if`: errexit ignores a leading `!`, so a bare negated grep here
+  # could never fail the test.
+  if grep -qE 'anthropics/claude-code-action|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY' <<< "$output"; then
+    echo "the publish job references the model"; return 1
+  fi
   run yq -r '.jobs.publish.permissions | to_entries[] | select(.value == "write") | .key' "$WF"
   [ "$output" = "discussions" ]
 }
@@ -84,7 +88,9 @@ model_jobs() {
   [ "$output" = "\${{ inputs.enhance_backlog && '1' || '0' }}" ]
   # Nothing the model job computes may steer the publish job.
   run yq -r '.jobs.publish' "$WF"
-  ! grep -q 'needs.analyze.outputs' <<< "$output"
+  if grep -q 'needs.analyze.outputs' <<< "$output"; then
+    echo "the publish job reads the model job's outputs"; return 1
+  fi
   run yq -r '.jobs.analyze.outputs' "$WF"
   [ "$output" = "null" ]
 }
