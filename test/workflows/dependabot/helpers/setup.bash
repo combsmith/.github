@@ -29,7 +29,7 @@ tt_setup() {
 }
 
 tt_teardown() {
-  if [ -n "${TT_TMP:-}" ] && [ -d "${TT_TMP}" ]; then
+  if [[ -n "${TT_TMP:-}" && -d "${TT_TMP}" ]]; then
     rm -rf "${TT_TMP}"
   fi
 }
@@ -42,7 +42,7 @@ tt_fixture() {
   key="$(_tt_key "$1")"
   printf '%s\n' "$2" > "${FIX_DIR}/${key}.json"
   rm -f "${FIX_DIR}/${key}.rc"
-  if [ -n "${3:-}" ]; then printf '%s\n' "$3" > "${FIX_DIR}/${key}.rc"; fi
+  if [[ -n "${3:-}" ]]; then printf '%s\n' "$3" > "${FIX_DIR}/${key}.rc"; fi
 }
 
 # ── `gh` stub ────────────────────────────────────────────────────────────────
@@ -201,7 +201,15 @@ tt_seed_pr() {
     <<<"$state" > "${FIX_DIR}/pr_view_5.json"
 }
 
-# tt_extract_run WORKFLOW JOB STEP_NAME — print a step's run block.
+# tt_extract_run WORKFLOW JOB STEP_NAME — print a step's run block. Fails when
+# the step is missing or has no run block, so a negative test can't pass just
+# because bash was handed an empty or `null` script.
 tt_extract_run() {
-  yq -r ".jobs.\"$2\".steps[] | select(.name == \"$3\") | .run" "$1"
+  local script
+  script="$(yq -r ".jobs.\"$2\".steps[] | select(.name == \"$3\") | .run" "$1")" || return 1
+  if [[ -z "$script" || "$script" == "null" ]]; then
+    echo "no run block for step '$3' in job '$2' of $1" >&2
+    return 1
+  fi
+  printf '%s\n' "$script"
 }

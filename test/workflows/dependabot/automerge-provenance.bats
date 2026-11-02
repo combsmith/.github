@@ -63,6 +63,14 @@ _foreign_commits() {
     "$(tt_commit "$HEAD_SHA" mallory mallory true 1)"
 }
 
+@test "tt_extract_run rejects a missing step and a step with no run block" {
+  run tt_extract_run "$REUSABLE" dependabot "No such step"
+  [ "$status" -ne 0 ]
+  run tt_extract_run "$REUSABLE" dependabot "Generate app token"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no run block"* ]]
+}
+
 @test "automerge: the approval step sources the gate libraries" {
   [ -s "$RUN_SCRIPT" ]
   grep -F '.dependabot-tooling/.github/scripts/dependabot/lib/gates.sh' "$RUN_SCRIPT"

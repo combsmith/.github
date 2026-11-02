@@ -19,7 +19,7 @@ No network calls. Each gate prints a one-line reason and returns `0` (pass) or
 | Function | Passes only when |
 |----------|------------------|
 | `dependabot_checks_gate PR_JSON REQUIRED_JSON [SHA]` | Every check run on the head commit `COMPLETED` as `success`, `neutral` or `skipped`; every commit status is `success`; at least one check reported; every check the base branch's rules require is present; the rollup is for the head commit (and the head is `SHA` when given). Failure, cancelled, timed_out, action_required, stale, startup_failure, pending, missing, or more than one page of checks all block (#1399). |
-| `dependabot_provenance_gate PR_JSON COMMITS_JSON [APP_LOGIN] [SHA]` | The full commit list was read, at least one commit is Dependabot's, and every commit is either authored by `dependabot[bot]` and committed by GitHub (`web-flow`) or `dependabot[bot]` with a verified signature, or a merge commit by `APP_LOGIN` committed by `web-flow` with a verified signature (the App's update-branch merges). Anything else — e.g. a commit someone else pushed to the branch — blocks (#1400). |
+| `dependabot_provenance_gate PR_JSON COMMITS_JSON [APP_LOGIN] [SHA]` | The full commit list was read, at least one commit is Dependabot's, and every commit has a verified signature and is either authored by `dependabot[bot]` and committed by `web-flow` or `dependabot[bot]`, or a merge commit by `APP_LOGIN` committed by `web-flow` (the App's update-branch merges). Anything else — e.g. a commit someone else pushed to the branch — blocks (#1400). |
 | `dependabot_required_contexts RULES_JSON` | Prints the unique required status-check names from `GET /repos/{r}/rules/branches/{b}` (returns `1` on a non-array). |
 
 ## `lib/gh-io.sh` — GitHub I/O
