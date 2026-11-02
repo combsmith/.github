@@ -100,7 +100,7 @@
           }
         ],
         "_suspect_note": "suspect_failure_classes (#668 increment 2): same shape as benign classes (`id`, `workflow` ERE, `step` ERE) plus a `guidance` discriminating question. A counted (non-benign) failure that matches a suspect class at differs=1 is triaged SUSPECT instead of REGRESSION \u2014 it still BLOCKS and still needs a human (labelled `needs-human`, NOT auto-cleared like `version_independent`), but the blocker issue renders the `guidance` so the human confirm is a 30-second check rather than a from-scratch investigation. Default-absent (this key omitted) = today's behavior, byte-identical for agents that do not opt in.",
-        "_confirm_note": "require_confirmation (#668 increment 3, Layer 3): opt-in human go/no-go at ONE ring boundary for a correctness-sensitive agent. When a transition sets `require_confirmation: true` and the reliability verdict is otherwise PROMOTE, the frontier holds in state AWAITING_CONFIRMATION \u2014 the scheduled promote-all never auto-advances it; a deliberate `promote <agent> --confirm` dispatch (Actions-audit-logged) does. The confirmation IS the dispatch (no state store). `--confirm` is NOT `--override`: it advances ONLY a reliability-clean AWAITING_CONFIRMATION state and can never bypass a BLOCKED gate. sync-issues files an evidence-carrying `canary-confirm:<agent>` issue (compare diff link + run stats; labelled `needs-human`) that auto-closes on promote or candidate change. dev-lead only initially; reliability still clears next/ring0/ring1 unattended. Default-absent (this key omitted) = fully autonomous, byte-identical for agents that do not opt in.",
+        "_confirm_note": "require_confirmation (#668 increment 3, Layer 3): opt-in human go/no-go at ONE ring boundary for a correctness-sensitive agent. When a transition sets `require_confirmation: true` and the reliability verdict is otherwise PROMOTE, the frontier holds in state AWAITING_CONFIRMATION \u2014 the scheduled promote-all never auto-advances it; a deliberate `promote <agent> --confirm` dispatch (Actions-audit-logged) does. The confirmation IS the dispatch (no state store). `--confirm` is NOT `--override`: it advances ONLY a reliability-clean AWAITING_CONFIRMATION state and can never bypass a BLOCKED gate. sync-issues files an evidence-carrying `canary-confirm:<agent>` issue (compare diff link + run stats; labelled `needs-human`) that auto-closes on promote or candidate change. dev-lead initially; agent-shield also opts in because a release can make its required check fail on findings that already exist in stable-only repos; reliability still clears next/ring0/ring1 unattended. Default-absent (this key omitted) = fully autonomous, byte-identical for agents that do not opt in.",
         "transitions": {
           "next->ring0": {
             "dwell_hours": 4,
@@ -179,7 +179,8 @@
           },
           "ring1->stable": {
             "dwell_hours": 12,
-            "sample_min": 1
+            "sample_min": 1,
+            "require_confirmation": true
           }
         }
       }
