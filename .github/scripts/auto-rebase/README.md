@@ -37,6 +37,7 @@ Source the file, then call:
 | Function | Input | Returns |
 |----------|-------|---------|
 | `auto_rebase_post_comment_best_effort PR_NUMBER REPO BODY` | PR number, `owner/repo`, comment body | always `0` — posts the comment; on failure logs a `::warning::` and swallows the error |
+| `auto_rebase_shell_quote VALUE` | any string (e.g. `origin/<base>`) | prints VALUE as one POSIX-shell word: unchanged if only `[A-Za-z0-9_./+-]`, else single-quoted (`'` → `'\''`). Used for the copy-paste `git rebase` / `git merge` commands in comments (issue #1396) |
 
 ### Why best-effort (issue #594)
 
