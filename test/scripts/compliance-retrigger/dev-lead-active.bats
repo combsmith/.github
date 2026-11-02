@@ -104,6 +104,24 @@ write_pulls() {
   [ "$status" -eq 1 ]
 }
 
+@test "logins compare case-insensitively: DEV_LEAD_LOGINS casing differs from the API's" {
+  write_pulls "$(pr_json dev-lead/issue-7-20260101 combsmith/widget don-petry)"
+  DEV_LEAD_LOGINS="Don-Petry" run dl_dev_lead_active combsmith widget 7
+  [ "$status" -eq 0 ]
+}
+
+@test "logins compare case-insensitively: the API's casing differs from the default" {
+  write_pulls "$(pr_json dev-lead/issue-7-20260101 combsmith/widget Don-Petry)"
+  run dl_dev_lead_active combsmith widget 7
+  [ "$status" -eq 0 ]
+}
+
+@test "case-insensitive compare still rejects a different login" {
+  write_pulls "$(pr_json dev-lead/issue-7-20260101 combsmith/widget Don-Petry2)"
+  run dl_dev_lead_active combsmith widget 7
+  [ "$status" -ne 0 ]
+}
+
 @test "DEV_LEAD_LOGINS values cannot inject into the jq filter" {
   write_pulls "$(pr_json dev-lead/issue-7-20261027-1200 combsmith/widget mallory)"
   DEV_LEAD_LOGINS='x"] or true or ["' run dl_dev_lead_active combsmith widget 7
