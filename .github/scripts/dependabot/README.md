@@ -35,6 +35,7 @@ failure fails closed.
 | `dependabot_approve_and_automerge REPO PR SHA APP_LOGIN` | Approves with `commit_id=SHA`, enables auto-merge with `--match-head-commit SHA`, then re-reads the PR. If the head moved to a verified commit, it dismisses the approval of `SHA`; if the new head fails the gate or the PR cannot be read, it revokes everything. |
 | `dependabot_dismiss_app_approvals REPO PR APP_LOGIN REASON [KEEP_SHA]` | Dismisses `APP_LOGIN`'s approvals except those of `KEEP_SHA`. Returns `1` if one may have survived. |
 | `dependabot_revoke_automation REPO PR APP_LOGIN REASON` | Disables auto-merge and dismisses all of `APP_LOGIN`'s approvals. Returns `1` unless the PR reads back with auto-merge off and every dismissal succeeded, and the workflow then fails. |
+| `dependabot_withdraw_app_automation REPO PR APP_LOGIN REASON` | For an update that became ineligible: dismisses `APP_LOGIN`'s approvals and disables auto-merge only if `APP_LOGIN` enabled it. |
 
 **What this cannot make atomic.** Native auto-merge has no head-bound form that
 survives a push: a writer's push does not disable it, and `--match-head-commit`

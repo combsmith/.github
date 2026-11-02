@@ -245,3 +245,23 @@ dependabot_revoke_automation() {
   dependabot_dismiss_app_approvals "$repo" "$pr" "$app_login" "$reason" || failed=1
   return "$failed"
 }
+
+# dependabot_withdraw_app_automation REPO PR_NUMBER APP_LOGIN REASON
+#   For an update that no longer qualifies for automation: dismisses APP_LOGIN's
+#   approvals and disables auto-merge only when APP_LOGIN enabled it, since a
+#   human may have enabled it deliberately after reviewing. Returns 1 when the
+#   state cannot be read or the withdrawal cannot be completed.
+dependabot_withdraw_app_automation() {
+  local repo="$1" pr="$2" app_login="$3" reason="$4" pr_json enabled_by
+
+  if ! pr_json=$(GH_TOKEN="${READ_TOKEN:-${GH_TOKEN:-}}" dependabot_fetch_pr "$repo" "$pr"); then
+    echo "::error::Could not read PR #${pr} to withdraw automation"
+    return 1
+  fi
+  enabled_by=$(jq -r '.auto_merge.enabled_by.login // empty' <<<"$pr_json" 2>/dev/null) || enabled_by=""
+  if [[ -n "$enabled_by" && "$enabled_by" == "$app_login" ]]; then
+    dependabot_revoke_automation "$repo" "$pr" "$app_login" "$reason"
+    return
+  fi
+  dependabot_dismiss_app_approvals "$repo" "$pr" "$app_login" "$reason"
+}

@@ -56,7 +56,9 @@ tt_fixture() {
 #                                    landing while the workflow is writing)
 #   gh pr list … --jq E            → pr_list.json through jq
 #   gh pr view N --json … [--jq E] → pr_view_N.json (through jq when given)
-#   gh pr merge / gh pr review     → recorded in writes.log; `pr_merge.rc` fails
+#   gh pr merge / gh pr review     → recorded in writes.log; `pr_merge.rc` fails;
+#                                    `--disable-auto` serves after_disable.json as
+#                                    the PR when present
 _tt_install_gh_stub() {
   cat > "${TT_BIN}/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -128,6 +130,9 @@ fi
 if [ "$1" = "pr" ] && { [ "$2" = "merge" ] || [ "$2" = "review" ]; }; then
   printf 'TOKEN=%s %s\n' "${GH_TOKEN:-}" "$*" >> "${FIX_DIR}/writes.log"
   if [ "$2" = "merge" ] && [ -f "${FIX_DIR}/pr_merge.rc" ]; then exit "$(cat "${FIX_DIR}/pr_merge.rc")"; fi
+  if [ -f "${FIX_DIR}/after_disable.json" ] && [[ " $* " == *" --disable-auto "* ]]; then
+    cp "${FIX_DIR}/after_disable.json" "${FIX_DIR}/repos_owner_repo_pulls_5.json"
+  fi
   exit 0
 fi
 

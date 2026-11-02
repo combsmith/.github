@@ -69,11 +69,77 @@ _foreign_commits() {
   grep -F '.dependabot-tooling/.github/scripts/dependabot/lib/gh-io.sh' "$RUN_SCRIPT"
 }
 
-@test "automerge: tooling checkout runs at the reusable's own commit, only when eligible" {
+@test "automerge: tooling checkout runs at the reusable's own commit, eligible or not" {
   run yq -r '.jobs.dependabot.steps[] | select(.name == "Checkout Dependabot gate tooling") | .with.ref' "$REUSABLE"
   [ "$output" = '${{ job.workflow_sha }}' ]
-  run yq -r '.jobs.dependabot.steps[] | select(.name == "Checkout Dependabot gate tooling") | .if' "$REUSABLE"
+  # An ineligible update still needs the libraries and the App token to withdraw
+  # earlier automation.
+  for step in "Checkout Dependabot gate tooling" "Generate app token" "Check app secrets"; do
+    run yq -r ".jobs.dependabot.steps[] | select(.name == \"$step\") | .if" "$REUSABLE"
+    [ "$output" = "null" ]
+  done
+}
+
+@test "automerge: approval runs only when eligible, withdrawal only when not" {
+  run yq -r '.jobs.dependabot.steps[] | select(.name == "Approve and enable auto-merge") | .if' "$REUSABLE"
   [ "$output" = "steps.eligible.outputs.eligible == 'true'" ]
+  run yq -r '.jobs.dependabot.steps[] | select(.name == "Withdraw automation from an ineligible update") | .if' "$REUSABLE"
+  [ "$output" = "steps.eligible.outputs.eligible == 'false'" ]
+}
+
+# _run_withdraw_step — the real withdrawal step for an ineligible update.
+_run_withdraw_step() {
+  local script="${TT_TMP}/withdraw.sh"
+  tt_extract_run "$REUSABLE" dependabot "Withdraw automation from an ineligible update" > "$script"
+  cd "$TT_WORK" || return 1
+  REPO="owner/repo" PR_NUMBER=5 APP_SLUG="$APP_SLUG_FIXTURE" READ_TOKEN="read-token" GH_TOKEN="app-token" \
+    run bash -eo pipefail "$script"
+}
+
+_pr_with_auto_merge_by() { # LOGIN
+  jq -cn --arg head "$HEAD_SHA" --arg by "$1" \
+    '{number:5,head:{sha:$head},base:{ref:"main"},commits:1,
+      auto_merge:{merge_method:"squash",enabled_by:{login:$by}}}'
+}
+
+@test "automerge: an update that became ineligible loses the App's approval and auto-merge" {
+  _seed "[$(_dep_commit)]"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" "[$(_app_approval_of 11 "$DEP_SHA")]"
+  # The withdrawal turns auto-merge off, so the read-back sees it off.
+  tt_fixture "repos/owner/repo/pulls/5" "$(_pr_with_auto_merge_by "$APP_LOGIN_FIXTURE")"
+  printf '%s\n' "$(tt_pr_rest "$HEAD_SHA" 1)" > "${FIX_DIR}/after_disable.json"
+  _run_withdraw_step
+  [ "$status" -eq 0 ]
+  run _writes
+  [[ "$output" == *"pr merge 5 --repo owner/repo --disable-auto"* ]]
+  [[ "$output" == *"PUT repos/owner/repo/pulls/5/reviews/11/dismissals"* ]]
+}
+
+@test "automerge: auto-merge a human enabled on an ineligible update is left alone" {
+  _seed "[$(_dep_commit)]"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" \
+    "[$(_app_approval_of 11 "$DEP_SHA"),{\"id\":12,\"state\":\"APPROVED\",\"commit_id\":\"${HEAD_SHA}\",\"user\":{\"login\":\"alice\"}}]"
+  tt_fixture "repos/owner/repo/pulls/5" "$(_pr_with_auto_merge_by alice)"
+  _run_withdraw_step
+  [ "$status" -eq 0 ]
+  run _writes
+  [[ "$output" != *"--disable-auto"* ]]
+  [[ "$output" == *"reviews/11/dismissals"* ]]
+  [[ "$output" != *"reviews/12/dismissals"* ]]
+}
+
+@test "automerge: an ineligible update with no automation on it writes nothing" {
+  _seed "[$(_dep_commit)]"
+  _run_withdraw_step
+  [ "$status" -eq 0 ]
+  [ -z "$(_writes)" ]
+}
+
+@test "automerge: an ineligible update whose state cannot be read fails the step" {
+  _seed "[$(_dep_commit)]"
+  tt_fixture "repos/owner/repo/pulls/5" '{"message":"Server Error"}' 1
+  _run_withdraw_step
+  [ "$status" -ne 0 ]
 }
 
 @test "automerge: Dependabot-only PR is approved at the head SHA and auto-merge is bound to it" {
