@@ -317,6 +317,11 @@ jobs:
         uses: anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1.0.264
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The caller's `redispatch` job starts single-idea runs with the job
+          # token, so their actor is github-actions[bot]. Allow that one bot and
+          # no other: the "Prepare Discussion context" step above has already
+          # checked the Discussion's author.
+          allowed_bots: github-actions
           # CRITICAL: pass the workflow's GITHUB_TOKEN explicitly so the
           # job-level `permissions: discussions: write` grant applies. Without
           # this, the action uses its own GitHub App token (claude[bot]) which
