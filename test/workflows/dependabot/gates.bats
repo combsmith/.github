@@ -388,6 +388,30 @@ _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
   [ "$status" -eq 1 ]
 }
 
+# Sandbox evidence (combsmith/software-factory-canary, 2026-11-03): commits made
+# through the Contents or Git Data API with Dependabot's noreply email are
+# attributed to dependabot[bot] by GitHub, but are unsigned. Only the
+# verified-signature requirement refuses them.
+@test "provenance: forged Dependabot author via the Contents API (committer is the pusher, unsigned) blocks" {
+  commits="[$(tt_commit "$HEAD_SHA" 'dependabot[bot]' don-petry false 1)]"
+  run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 1)" "$commits" ""
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not from Dependabot"*"unverified"* ]]
+}
+
+@test "provenance: forged Dependabot author and committer via the Git Data API (unsigned) blocks" {
+  commits="[$(tt_commit "$HEAD_SHA" 'dependabot[bot]' 'dependabot[bot]' false 1)]"
+  run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 1)" "$commits" ""
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not from Dependabot"*"unverified"* ]]
+}
+
+@test "provenance: a forged unsigned commit on top of a genuine one blocks" {
+  commits="[$(tt_commit "$DEP_SHA" 'dependabot[bot]' web-flow true 1),$(tt_commit "$HEAD_SHA" 'dependabot[bot]' 'dependabot[bot]' false 1)]"
+  run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 2)" "$commits" ""
+  [ "$status" -eq 1 ]
+}
+
 @test "provenance: a long commit list (beyond the argv size limit) is evaluated" {
   local i commits="" pad
   pad=$(printf 'x%.0s' $(seq 1 3000))
