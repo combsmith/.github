@@ -1404,14 +1404,28 @@ evolve.
 **Triggers:** the weekly `schedule`, manual `workflow_dispatch`, **and
 `discussion: created`**. `claude-code-action` aborts on `discussion` event
 contexts, so the stub does **not** call the reusable inline on that event.
-Instead a `redispatch` job — gated to new Discussions in the **Ideas** category,
-skipping the bot's own creations — re-invokes the workflow via
-`workflow_dispatch` (using `GH_PAT_WORKFLOWS`), forwarding the Discussion number
-as the `target_discussion` input. The re-dispatched run puts the reusable in
+Instead a `redispatch` job — gated to new Discussions in the **Ideas** category
+whose author is `OWNER`, `MEMBER` or `COLLABORATOR`, skipping the bot's own
+creations — re-invokes the workflow via `workflow_dispatch` with the job's
+`GITHUB_TOKEN` (`actions: write`; this needs no personal token), forwarding the
+Discussion number as the `target_discussion` input. The re-dispatched run puts the reusable in
 **single-idea enhancement mode**: it researches and refines that one new idea and
 posts a single enhancement comment, rather than running the broad scan.
 Enhancement is a comment (which does not re-fire `created`), so there is no
-trigger loop. This mirrors `initiative-planner.yml`'s redispatch bridge.
+trigger loop.
+
+**Trusted authors only.** Org repos are public, so the reusable passes the model
+only text from people with write access to the repo, and from the pipeline's own
+bot:
+
+- `collect-signals.sh` drops issues and Ideas by anyone else from `signals.json`.
+- `load-discussion-context.sh` runs before the model in single-idea and backlog
+  mode. It stops the run if the author is not trusted, and removes other people's
+  comments from the file the model reads.
+- The prompt treats all issue, Discussion and web text as data.
+
+An idea from someone without write access is therefore not enhanced automatically.
+A maintainer who wants it analysed can restate it in their own Discussion.
 
 > **#571 — never reference the `inputs` context in the reusable `with:`.** A
 > reusable-workflow call graph (`uses:` + `with:`) is validated at **workflow
