@@ -762,7 +762,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       # Token gate: outputs present=true|false; fails a fork PR that has no
-      # token unless vars.SONAR_BOOTSTRAP == 'true'. Full script:
+      # token, whatever vars.SONAR_BOOTSTRAP says. Full script:
       # standards/workflows/sonarcloud.yml (the canonical copy).
       - name: Check SonarCloud token
         id: token
@@ -821,8 +821,8 @@ gate decides whether a run that cannot analyse may still pass:
 | Situation | Result |
 |-----------|--------|
 | `SONAR_TOKEN` available | Analysis runs |
-| No token, `vars.SONAR_BOOTSTRAP == 'true'` | Passes with a notice. This is an explicit opt-in for a repo not yet onboarded to SonarCloud; delete the variable once it is |
-| No token, pull request from a fork | **Fails.** GitHub never passes secrets to fork runs, so the change cannot be analysed. A maintainer can push the branch to the repo and open a same-repo PR |
+| No token, pull request from a fork | **Fails**, even when `vars.SONAR_BOOTSTRAP == 'true'`. GitHub never passes secrets to fork runs, so the change cannot be analysed. A maintainer can push the branch to the repo and open a same-repo PR |
+| No token, same-repo run, `vars.SONAR_BOOTSTRAP == 'true'` | Passes with a notice. This is an explicit opt-in for a repo not yet onboarded to SonarCloud; delete the variable once it is |
 | No token, same-repo run (push, same-repo PR, merge queue; this includes Dependabot PRs, which do not receive Actions secrets) | Passes with a warning |
 
 Each repo needs a `sonar-project.properties` file at root with project key and org.

@@ -85,16 +85,30 @@ run_gate() {
   [ "$status" -ne 0 ]
 }
 
-@test "gate: explicit SONAR_BOOTSTRAP=true passes without analysis, even for a fork" {
+@test "gate: a fork pull request fails even with SONAR_BOOTSTRAP=true (#1390)" {
   run_gate "" "true" "pull_request" "someone/fork"
+  [ "$status" -ne 0 ]
+  grep -qx 'present=false' "$GATE_OUT"
+  [[ "$output" == *"::error"* ]]
+  run_gate "" "true" "pull_request" ""
+  [ "$status" -ne 0 ]
+}
+
+@test "gate: explicit SONAR_BOOTSTRAP=true passes a same-repo run without analysis" {
+  run_gate "" "true" "pull_request" "combsmith/example"
   [ "$status" -eq 0 ]
   grep -qx 'present=false' "$GATE_OUT"
+  [[ "$output" == *"::notice"* ]]
+  run_gate "" "true" "push" ""
+  [ "$status" -eq 0 ]
   [[ "$output" == *"::notice"* ]]
 }
 
 @test "gate: SONAR_BOOTSTRAP must be exactly 'true'" {
-  run_gate "" "yes" "pull_request" "someone/fork"
-  [ "$status" -ne 0 ]
+  run_gate "" "yes" "pull_request" "combsmith/example"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"::notice"* ]]
+  [[ "$output" == *"::warning"* ]]
 }
 
 @test "gate: same-repo run without the token passes with a warning (day-0 repo)" {

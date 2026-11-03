@@ -113,10 +113,7 @@ jobs:
             exit 0
           fi
           echo "present=false" >> "$GITHUB_OUTPUT"
-          if [ "${SONAR_BOOTSTRAP:-}" = "true" ]; then
-            echo "::notice title=SonarCloud skipped::SONAR_BOOTSTRAP is 'true' and SONAR_TOKEN is unavailable, so no analysis ran. Delete the SONAR_BOOTSTRAP variable once SonarCloud is onboarded."
-            exit 0
-          fi
+          # Forks first: SONAR_BOOTSTRAP must never let an unanalysed fork PR pass.
           if [ "${EVENT_NAME:-}" = "pull_request" ] && [ "${HEAD_REPO:-}" != "${BASE_REPO:-}" ]; then
             msg="This pull request comes from a fork. GitHub does not pass SONAR_TOKEN to fork runs,"
             msg="${msg} so SonarCloud cannot analyse it and this required check fails."
@@ -124,6 +121,10 @@ jobs:
             msg="${msg} pull request so the analysis runs (combsmith/.github standards/ci-standards.md, section 3)."
             echo "::error title=SonarCloud not run::${msg}"
             exit 1
+          fi
+          if [ "${SONAR_BOOTSTRAP:-}" = "true" ]; then
+            echo "::notice title=SonarCloud skipped::SONAR_BOOTSTRAP is 'true' and SONAR_TOKEN is unavailable, so no analysis ran. Delete the SONAR_BOOTSTRAP variable once SonarCloud is onboarded."
+            exit 0
           fi
           msg="SONAR_TOKEN is not available to this run, so no analysis ran. Add the SONAR_TOKEN secret"
           msg="${msg} (see BOOTSTRAP.md); Dependabot runs only see it if it is also a Dependabot secret."

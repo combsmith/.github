@@ -109,6 +109,18 @@ jobs_running_repo_code() {
   [[ "$output" == *"::error"* ]]
 }
 
+@test "gate: a fork pull request fails even with SONAR_BOOTSTRAP=true (#1390)" {
+  run_gate "" "true" "pull_request" "someone/.github"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::error"* ]]
+}
+
+@test "gate: SONAR_BOOTSTRAP=true still passes a same-repo run" {
+  run_gate "" "true" "pull_request" "combsmith/.github"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::notice"* ]]
+}
+
 @test "gate: same-repo run without the token passes with a warning" {
   run_gate "" "" "merge_group" ""
   [ "$status" -eq 0 ]

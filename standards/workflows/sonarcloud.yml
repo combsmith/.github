@@ -9,10 +9,11 @@
 #   3. The job name `SonarCloud` is the required status check — keep it.
 #   4. Without SONAR_TOKEN the job cannot analyse. The `Check SonarCloud token`
 #      gate decides what that means for the required check:
-#        • SONAR_BOOTSTRAP repo variable = "true" → green no-op (explicit
-#          bootstrap; delete the variable once SonarCloud is onboarded)
 #        • fork pull request (secrets are never passed to forks) → FAIL, so an
-#          unanalysed fork change can't pass the required check
+#          unanalysed fork change can't pass the required check, whatever
+#          SONAR_BOOTSTRAP says
+#        • SONAR_BOOTSTRAP repo variable = "true" → green no-op for same-repo
+#          runs (explicit bootstrap; delete the variable once onboarded)
 #        • same-repo run (push, same-repo PR) → green no-op with a warning: the
 #          repo has no token yet, so a fresh repo is not blocked on day 0
 #
@@ -61,7 +62,7 @@ jobs:
           java-version: '21'
       # The required check must not pass a fork PR just because the token is
       # unavailable to it. Outputs present=true|false; fails on a fork PR
-      # without the token unless SONAR_BOOTSTRAP is "true". Never echoes the token.
+      # without the token, whatever SONAR_BOOTSTRAP says. Never echoes the token.
       - name: Check SonarCloud token
         id: token
         env:
@@ -76,10 +77,7 @@ jobs:
             exit 0
           fi
           echo "present=false" >> "$GITHUB_OUTPUT"
-          if [ "${SONAR_BOOTSTRAP:-}" = "true" ]; then
-            echo "::notice title=SonarCloud skipped::SONAR_BOOTSTRAP is 'true' and SONAR_TOKEN is unavailable, so no analysis ran. Delete the SONAR_BOOTSTRAP variable once SonarCloud is onboarded."
-            exit 0
-          fi
+          # Forks first: SONAR_BOOTSTRAP must never let an unanalysed fork PR pass.
           if [ "${EVENT_NAME:-}" = "pull_request" ] && [ "${HEAD_REPO:-}" != "${BASE_REPO:-}" ]; then
             msg="This pull request comes from a fork. GitHub does not pass SONAR_TOKEN to fork runs,"
             msg="${msg} so SonarCloud cannot analyse it and this required check fails."
@@ -87,6 +85,10 @@ jobs:
             msg="${msg} pull request so the analysis runs (combsmith/.github standards/ci-standards.md, section 3)."
             echo "::error title=SonarCloud not run::${msg}"
             exit 1
+          fi
+          if [ "${SONAR_BOOTSTRAP:-}" = "true" ]; then
+            echo "::notice title=SonarCloud skipped::SONAR_BOOTSTRAP is 'true' and SONAR_TOKEN is unavailable, so no analysis ran. Delete the SONAR_BOOTSTRAP variable once SonarCloud is onboarded."
+            exit 0
           fi
           msg="SONAR_TOKEN is not available to this run, so no analysis ran. Add the SONAR_TOKEN secret"
           msg="${msg} (see BOOTSTRAP.md); Dependabot runs only see it if it is also a Dependabot secret."
