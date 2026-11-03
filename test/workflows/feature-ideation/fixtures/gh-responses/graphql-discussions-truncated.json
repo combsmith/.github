@@ -2,7 +2,9 @@
   "data": {
     "repository": {
       "discussions": {
-        "pageInfo": {"hasNextPage": true},
+        "pageInfo": {
+          "hasNextPage": true
+        },
         "nodes": [
           {
             "id": "D_1",
@@ -10,8 +12,15 @@
             "title": "💡 First idea",
             "createdAt": "2026-03-01T00:00:00Z",
             "updatedAt": "2026-04-01T00:00:00Z",
-            "labels": {"nodes": []},
-            "comments": {"totalCount": 0}
+            "labels": {
+              "nodes": []
+            },
+            "comments": {
+              "totalCount": 0
+            },
+            "author": {
+              "login": "alice"
+            }
           }
         ]
       }
