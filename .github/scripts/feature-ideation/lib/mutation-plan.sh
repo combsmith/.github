@@ -23,6 +23,14 @@
 #   mp_existing_targets <plan.jsonl>
 #       → JSON array of the distinct discussion_ids the plan names that are
 #         NOT planned-discussion-N references (the executor resolves these)
+#   mp_sanitise_plan <plan-json>
+#       → the validated plan with @mentions neutralised in titles and bodies,
+#         so a prompt-injected model cannot ping anyone
+#   mp_op_marker <plan-id> <entry-index>
+#       → the hidden marker the executor appends to what it publishes
+#   mp_done_ops <plan-id> <discussions-json> <comment-nodes-json>
+#       → {"created":{"<index>":"<node id>"},"commented":["<index>"]}: the plan
+#         entries an earlier attempt already published, from their markers
 #   mp_validate_plan <plan.jsonl> <mode> [target_node_id] [context-json]
 #       → stdout: the plan as one compact JSON array; rc 0
 #         stderr: one line per reason the plan is rejected; rc 1
@@ -32,6 +40,7 @@
 #       from the plan; used in backlog and scheduled modes):
 #         {"repo_id": "<this repo's node id>",
 #          "category_id": "<mp_ideation_category>",
+#          "label_id": "<this repo's enhancement label, if it has one>",
 #          "target_categories": {"<discussion node id>": "<its category id>"}}
 #       target_categories lists only Discussions of THIS repository. Missing
 #       context fails closed: nothing can match an absent id.
@@ -45,8 +54,10 @@
 #              a create must use this repo's id and the ideation category; a
 #              comment or label on an existing Discussion needs one in the
 #              ideation category of this repo; at most MP_MAX_COMMENTS
-#              comments and MP_MAX_LABELS labels per run
-#   all        known op, required fields are non-empty strings; a
+#              comments and MP_MAX_LABELS labels per run; a label must be the
+#              repository's `enhancement` label
+#   all        known op, required fields are non-empty strings, title and body
+#              within MP_MAX_TITLE and MP_MAX_BODY characters; a
 #              discussion_id of the form planned-discussion-N must name a
 #              planned_id of an EARLIER create_discussion in the same plan;
 #              planned_ids are unique and of that form.
@@ -62,6 +73,10 @@ MP_MAX_CREATES=5
 MP_MAX_COMMENTS=50
 # Labels per run: one `enhancement` label per new Discussion.
 MP_MAX_LABELS=5
+# GitHub's own title limit, and a body limit well above what the prompt's
+# templates produce and well below GitHub's 65536.
+MP_MAX_TITLE=256
+MP_MAX_BODY=20000
 
 mp_mode() {
   local target="${1:-}" backlog="${2:-}"
@@ -91,6 +106,33 @@ mp_ideation_category() {
 mp_existing_targets() {
   jq -cs '[.[] | objects | .discussion_id | strings
            | select(test("^planned-") | not)] | unique' "$1" 2>/dev/null || printf '[]'
+}
+
+mp_sanitise_plan() {
+  printf '%s' "${1:-}" | jq -c '
+    # A zero-width space after the @ stops GitHub linking or notifying. HTML
+    # entities for @ are decoded first, since they render as a plain @. A @
+    # right after a letter or digit (an email, action@v4) is never a mention.
+    def quiet:
+      gsub("&(#0*64|#[xX]0*40|commat);?"; "@")
+      | gsub("(?<![A-Za-z0-9])@(?=[A-Za-z0-9])"; "@\u200b");
+    map(if type != "object" then . else
+      (if (.title | type) == "string" then .title |= quiet else . end)
+      | (if (.body | type) == "string" then .body |= quiet else . end)
+    end)'
+}
+
+mp_op_marker() {
+  printf '<!-- feature-ideation:op=%s:%s -->' "$1" "$2"
+}
+
+mp_done_ops() {
+  jq -nc --arg pid "$1" --argjson discussions "$2" --argjson comments "$3" '
+    def indexes: [scan("feature-ideation:op=" + $pid + ":([0-9]+)")[0]];
+    {created: ([$discussions[] | objects | .id as $id
+                | (.body | strings | indexes[]) | {(.): $id}] | add // {}),
+     commented: ([$comments[] | objects | .comments.nodes[]? | objects
+                  | .body | strings | indexes[]] | unique)}'
 }
 
 mp_validate_plan() {
@@ -126,6 +168,7 @@ mp_validate_plan() {
   verdict=$(printf '%s' "$ops" | jq -c \
     --arg mode "$mode" --arg target "$target" --argjson max "$MP_MAX_CREATES" \
     --argjson max_comments "$MP_MAX_COMMENTS" --argjson max_labels "$MP_MAX_LABELS" \
+    --argjson max_title "$MP_MAX_TITLE" --argjson max_body "$MP_MAX_BODY" \
     --argjson ctx "$context" '
     def nonempty: type == "string" and length > 0;
     def fields:
@@ -149,6 +192,10 @@ mp_validate_plan() {
             .errors += ["\($at): \($o.op) needs non-empty string fields \($o.op | fields | join(", "))"]
           elif ([allowed[] | . == $o.op] | any | not) then
             .errors += ["\($at): \($o.op) is not allowed in \(if $mode == "single" then "single-idea" else $mode end) mode"]
+          elif (($o.title | strings | length) // 0) > $max_title then
+            .errors += ["\($at): title is over \($max_title) characters"]
+          elif (($o.body | strings | length) // 0) > $max_body then
+            .errors += ["\($at): body is over \($max_body) characters"]
           elif $o.op == "create_discussion" then
             .creates += 1
             | if .creates > $max then
@@ -182,6 +229,9 @@ mp_validate_plan() {
                    and (($ctx.category_id | nonempty | not)
                         or (($ctx.target_categories // {})[$o.discussion_id] != $ctx.category_id)) then
                 .errors += ["\($at): \($o.discussion_id | tojson) is not a Discussion in the Ideas category of this repository"]
+              elif $o.op == "add_label_to_discussion"
+                   and (($ctx.label_id | nonempty | not) or $o.label_id != $ctx.label_id) then
+                .errors += ["\($at): label_id \($o.label_id | tojson) is not the enhancement label of this repository"]
               else . end
           end)
     | if (.errors | length) > 0 then {ok: false, errors: .errors} else {ok: true, ops: $ops} end')

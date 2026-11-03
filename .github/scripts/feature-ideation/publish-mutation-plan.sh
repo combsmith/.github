@@ -20,7 +20,12 @@
 #   GH_TOKEN           token with discussions: write (read is enough on dry run)
 #
 # Exit: 0 published (or dry run / nothing to do); 1 plan rejected; other
-# non-zero = a GitHub call failed (mutations before it stay applied).
+# non-zero = a GitHub call failed. Publishing is not atomic, so mutations before
+# the failure stay applied, but a re-run of the job is safe: each published
+# Discussion and comment carries a hidden marker for its plan entry, and entries
+# already marked are skipped. Labels are re-applied, which GitHub treats as a
+# no-op. The check reads the 100 newest Discussions in the category and the last
+# 100 comments of each target, so an entry older than that would be repeated.
 
 set -euo pipefail
 
@@ -38,7 +43,8 @@ _summary() {
   fi
 }
 
-# Make text that may carry model- or caller-supplied values safe to log:
+# Make text that may carry model- or caller-supplied values safe to log (the
+# text being published is handled by mp_sanitise_plan, which has another job):
 # no carriage returns, no `::` (a log line starting with it is a workflow
 # command), no backticks (they could close the summary's code fence).
 _neutralise() {
@@ -58,6 +64,7 @@ query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     id
     discussionCategories(first: 25) { nodes { id slug name } }
+    label(name: "enhancement") { id }
   }
 }
 GRAPHQL
@@ -85,7 +92,61 @@ GRAPHQL
        | {(.id): (.category.id // "")}] | add // {}')
   fi
   jq -nc --arg r "$repo_id" --arg c "$cat_id" --argjson t "$targets" \
-    '{repo_id: $r, category_id: $c, target_categories: $t}'
+    --arg l "$(printf '%s' "$repo_json" | jq -r '.label.id // ""')" \
+    '{repo_id: $r, category_id: $c, label_id: $l, target_categories: $t}'
+}
+
+# A stable id for this plan, so a re-run of the job recognises its own work.
+# Hashing the plan means a model cannot write the marker into its own plan.
+_plan_id() {
+  local hash
+  hash=$({ sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | cut -c1-16)
+  [[ "$hash" =~ ^[0-9a-f]{16}$ ]] || return 1
+  printf '%s' "$hash"
+}
+
+# What an earlier attempt of this plan already published: mp_done_ops JSON.
+# Returns non-zero when that cannot be established, so nothing is repeated
+# blindly.
+_resolve_done() {
+  local plan="$1" plan_id="$2" category_id="$3" query body nodes discussions='[]' comments='[]' earlier ids
+  if [ "$(printf '%s' "$plan" | jq '[.[] | select(.op == "create_discussion")] | length')" -gt 0 ]; then
+    read -r -d '' query <<'GRAPHQL' || true
+query($owner: String!, $name: String!, $category: ID!) {
+  repository(owner: $owner, name: $name) {
+    discussions(first: 100, categoryId: $category, orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { id body }
+    }
+  }
+}
+GRAPHQL
+    body=$(jq -nc --arg q "$query" --arg o "${REPO%%/*}" --arg n "${REPO##*/}" --arg c "$category_id" \
+      '{query: $q, variables: {owner: $o, name: $n, category: $c}}')
+    nodes=$(gh_safe_graphql_input "$body") || return 1
+    discussions=$(printf '%s' "$nodes" | jq -ce '.data.repository.discussions.nodes | arrays') || return 1
+  fi
+
+  # Comment targets, with Discussions the earlier attempt created mapped to
+  # their real ids. A planned Discussion that does not exist yet has no comments.
+  earlier=$(mp_done_ops "$plan_id" "$discussions" '[]') || return 1
+  ids=$(printf '%s' "$plan" | jq -c --argjson created "$(printf '%s' "$earlier" | jq -c '.created')" '
+    (to_entries | map(select(.value.planned_id != null and $created[.key | tostring] != null)
+                      | {(.value.planned_id): $created[.key | tostring]}) | add // {}) as $map
+    | [.[] | select(.op == "comment_on_discussion") | .discussion_id
+       | if startswith("planned-") then $map[.] else . end | strings] | unique')
+  if [ "$(printf '%s' "$ids" | jq 'length')" -gt 0 ]; then
+    read -r -d '' query <<'GRAPHQL' || true
+query($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on Discussion { comments(last: 100) { nodes { body } } }
+  }
+}
+GRAPHQL
+    body=$(jq -nc --arg q "$query" --argjson ids "$ids" '{query: $q, variables: {ids: $ids}}')
+    nodes=$(gh_safe_graphql_input "$body") || return 1
+    comments=$(printf '%s' "$nodes" | jq -ce '.data.nodes | arrays') || return 1
+  fi
+  mp_done_ops "$plan_id" "$discussions" "$comments"
 }
 
 # Resolve the caller's target number to its node id (empty unless it is an
@@ -153,6 +214,7 @@ main() {
     return 1
   fi
   rm -f "$errors_file"
+  plan=$(mp_sanitise_plan "$plan")
 
   local count
   count=$(printf '%s' "$plan" | jq 'length')
@@ -163,28 +225,44 @@ main() {
     return 0
   fi
 
+  local plan_id done_ops
+  if ! plan_id=$(_plan_id "$plan_path") \
+    || ! done_ops=$(_resolve_done "$plan" "$plan_id" "$(printf '%s' "$context" | jq -r '.category_id // ""')"); then
+    echo "::error::Could not check what an earlier attempt already published; nothing was published on this attempt."
+    return 1
+  fi
+
   # Live: the helpers must execute. DRY_RUN here is set by this script, not
   # inherited — the caller's preview flag was handled above.
   export DRY_RUN=0
-  local planned='{}' op kind resp id
-  while IFS= read -r op; do
+  local planned='{}' skipped=0 entry index marker op kind resp id
+  while IFS= read -r entry; do
+    index=$(printf '%s' "$entry" | jq -r '.key')
+    op=$(printf '%s' "$entry" | jq -c '.value')
+    marker=$(mp_op_marker "$plan_id" "$index")
     kind=$(printf '%s' "$op" | jq -r '.op')
     case "$kind" in
       create_discussion)
-        resp=$(create_discussion \
-          "$(printf '%s' "$op" | jq -r '.repo_id')" \
-          "$(printf '%s' "$op" | jq -r '.category_id')" \
-          "$(printf '%s' "$op" | jq -r '.title')" \
-          "$(printf '%s' "$op" | jq -r '.body')")
-        id=$(printf '%s' "$resp" | jq -r '.data.createDiscussion.discussion.id // empty')
-        if [ -z "$id" ]; then
-          echo "::error::createDiscussion returned no id"
-          return 1
+        id=$(printf '%s' "$done_ops" | jq -r --arg i "$index" '.created[$i] // empty')
+        if [ -n "$id" ]; then
+          echo "already created ${id} on an earlier attempt"
+          skipped=$((skipped + 1))
+        else
+          resp=$(create_discussion \
+            "$(printf '%s' "$op" | jq -r '.repo_id')" \
+            "$(printf '%s' "$op" | jq -r '.category_id')" \
+            "$(printf '%s' "$op" | jq -r '.title')" \
+            "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker")
+          id=$(printf '%s' "$resp" | jq -r '.data.createDiscussion.discussion.id // empty')
+          if [ -z "$id" ]; then
+            echo "::error::createDiscussion returned no id"
+            return 1
+          fi
+          echo "created Discussion ${id}"
         fi
         planned=$(printf '%s' "$planned" | jq -c \
           --arg k "$(printf '%s' "$op" | jq -r '.planned_id // empty')" --arg v "$id" \
           'if $k == "" then . else . + {($k): $v} end')
-        echo "created Discussion ${id}"
         ;;
       comment_on_discussion | add_label_to_discussion)
         id=$(printf '%s' "$op" | jq -r '.discussion_id')
@@ -192,17 +270,23 @@ main() {
           id=$(printf '%s' "$planned" | jq -r --arg k "$id" '.[$k] // empty')
         fi
         if [ "$kind" = "comment_on_discussion" ]; then
-          comment_on_discussion "$id" "$(printf '%s' "$op" | jq -r '.body')" >/dev/null
-          echo "commented on ${id}"
+          if [ "$(printf '%s' "$done_ops" | jq --arg i "$index" '.commented | index($i) != null')" = "true" ]; then
+            echo "already commented on ${id} on an earlier attempt"
+            skipped=$((skipped + 1))
+          else
+            comment_on_discussion "$id" "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker" >/dev/null
+            echo "commented on ${id}"
+          fi
         else
           add_label_to_discussion "$id" "$(printf '%s' "$op" | jq -r '.label_id')" >/dev/null
           echo "labelled ${id}"
         fi
         ;;
     esac
-  done < <(printf '%s' "$plan" | jq -c '.[]')
+  done < <(printf '%s' "$plan" | jq -c 'to_entries[]')
 
-  _summary "## Discussion mutations" "" "Published ${count} mutation(s) in \`${mode}\` mode."
+  _summary "## Discussion mutations" "" \
+    "Published ${count} mutation(s) in \`${mode}\` mode (${skipped} already done by an earlier attempt)."
 }
 
 main "$@"

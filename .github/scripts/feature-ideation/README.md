@@ -87,9 +87,18 @@ holds. The policies are therefore enforced by job boundaries, not by flags:
   the mode's rules (`lib/mutation-plan.sh`).
 
 What the plan validation does not decide: the content of a comment or
-Discussion, and, in scheduled and backlog modes, which of the repository's
-Ideas Discussions (up to 50 per run) receive comments (that is the model's
-job in those modes).
+Discussion, beyond a title limit of 256 characters and a body limit of 20000,
+and, in scheduled and backlog modes, which of the repository's Ideas
+Discussions (up to 50 per run) receive comments (that is the model's job in
+those modes). `publish` neutralises @mentions in what it posts, so a
+prompt-injected model cannot ping anyone, and the only label it applies is the
+repository's `enhancement` label.
+
+Publishing is not atomic: if a GitHub call fails, what was already published
+stays. Re-running the failed `publish` job is safe. Each published Discussion
+and comment carries a hidden marker for its plan entry (a hash of the plan plus
+the entry's index), and entries already marked are skipped. The check reads the
+100 newest Discussions in the category and the last 100 comments of each target.
 
 ## Schema as contract
 

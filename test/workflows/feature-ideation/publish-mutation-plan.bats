@@ -25,6 +25,7 @@ NODES='[{"id":"D_target","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},
 response() {
   jq -nc --argjson cats "$1" --argjson nodes "$NODES" '{data: {
     repository: {id: "R_1", discussionCategories: {nodes: $cats},
+                 label: {id: "L_enh"}, discussions: {nodes: []},
                  discussion: {id: "D_target", category: {slug: "ideas"}}},
     nodes: $nodes,
     createDiscussion: {discussion: {id: "D_new", number: 7, url: "https://x"}},
@@ -40,9 +41,12 @@ setup() {
   export GH_STDIN_LOG="${TT_TMP}/stdin.log"
   local stub_dir="${TT_TMP}/bin"
   mv "$stub_dir/gh" "$stub_dir/gh-real"
+  # GH_FAIL_MATCH fails only the calls whose request carries that text.
   cat >"$stub_dir/gh" <<EOF
 #!/usr/bin/env bash
-if [ "\${!#}" = "-" ]; then cat >>"$GH_STDIN_LOG"; printf '\n' >>"$GH_STDIN_LOG"; fi
+request="\$*"
+if [ "\${!#}" = "-" ]; then request="\$(cat)"; printf '%s\n' "\$request" >>"$GH_STDIN_LOG"; fi
+if [ -n "\${GH_FAIL_MATCH:-}" ] && printf '%s' "\$request" | grep -qF -- "\$GH_FAIL_MATCH"; then exit 1; fi
 exec "$stub_dir/gh-real" "\$@"
 EOF
   chmod +x "$stub_dir/gh"
@@ -431,7 +435,216 @@ no_writes() {
   run "$EXEC"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   # One node lookup carrying exactly the plan's existing ids.
-  jq -se '[.[] | select(.query | contains("nodes(ids"))] | length == 1 and .[0].variables.ids == ["D_existing"]' "$GH_STDIN_LOG" >/dev/null
+  jq -se '[.[] | select(.query | contains("category { id }"))] | length == 1 and .[0].variables.ids == ["D_existing"]' "$GH_STDIN_LOG" >/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Review follow-up: the label is pinned to `enhancement` (#1389)
+# ---------------------------------------------------------------------------
+
+@test "scheduled: a label other than the repository's enhancement label is rejected" {
+  plan_add "$(create planned-discussion-1)"
+  plan_add "$(jq -nc '{op:"add_label_to_discussion",discussion_id:"planned-discussion-1",label_id:"L_other"}')"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"L_other"*"enhancement"* ]]
+  no_writes
+}
+
+@test "scheduled: with no enhancement label a label entry is rejected, and a plan without one still publishes" {
+  export GH_STUB_STDOUT
+  GH_STUB_STDOUT="$(jq -c '.data.repository.label = null' <<<"$OK_RESPONSE")"
+  plan_add "$(create planned-discussion-1)"
+  plan_add "$(label planned-discussion-1)"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  no_writes
+
+  : >"$PLAN_PATH"
+  plan_add "$(create planned-discussion-1)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(mutations createDiscussion)" -eq 1 ]
+}
+
+@test "scheduled: the label id is looked up by the executor, by name" {
+  plan_add "$(comment D_existing)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -qE 'label\\?\(name: \\?"?enhancement' "$GH_STUB_LOG"
+}
+
+# ---------------------------------------------------------------------------
+# Review follow-up: model text is length-capped and cannot ping people (#1389)
+# ---------------------------------------------------------------------------
+
+# text_of_length <n> — n ASCII characters.
+text_of_length() { head -c "$1" /dev/zero | tr '\0' 'x'; }
+
+@test "caps: a comment body over the limit rejects the plan, in every mode" {
+  local long
+  long="$(text_of_length 20001)"
+  jq -nc --arg b "$long" '{op:"comment_on_discussion",discussion_id:"D_existing",body:$b}' >"$PLAN_PATH"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"20000"* ]]
+  no_writes
+
+  export TARGET_DISCUSSION=42
+  jq -nc --arg b "$long" '{op:"comment_on_discussion",discussion_id:"D_target",body:$b}' >"$PLAN_PATH"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  no_writes
+}
+
+@test "caps: a body at the limit is accepted" {
+  jq -nc --arg b "$(text_of_length 20000)" '{op:"comment_on_discussion",discussion_id:"D_existing",body:$b}' >"$PLAN_PATH"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "${output:0:400}"; return 1; }
+}
+
+@test "caps: a Discussion title or body over the limit rejects the plan" {
+  jq -nc --arg t "$(text_of_length 257)" '{op:"create_discussion",repo_id:"R_1",category_id:"C_ideas",title:$t,body:"b"}' >"$PLAN_PATH"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"256"* ]]
+  no_writes
+
+  jq -nc --arg b "$(text_of_length 20001)" '{op:"create_discussion",repo_id:"R_1",category_id:"C_ideas",title:"t",body:$b}' >"$PLAN_PATH"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  no_writes
+}
+
+# quiet <text> — the text as mp_sanitise_plan leaves a comment body.
+quiet() {
+  # shellcheck source=/dev/null
+  . "${TT_SCRIPTS_DIR}/lib/mutation-plan.sh"
+  mp_sanitise_plan "$(jq -nc --arg b "$1" '[{op:"comment_on_discussion",discussion_id:"D",body:$b}]')" | jq -r '.[0].body'
+}
+
+@test "mentions: users, teams and encoded forms are neutralised" {
+  local zwsp out text
+  zwsp="$(printf '\342\200\213')"
+  for text in '@alice' 'hi @alice!' '(@alice)' '_@alice' '\@alice' '@org/team' '**@alice**'; do
+    out="$(quiet "$text")"
+    if [[ "$out" != *"@${zwsp}"* ]]; then echo "not neutralised: $text -> $out"; return 1; fi
+  done
+  for text in '&#64;alice' '&#064;alice' '&#x40;alice' '&#X40;alice' '&commat;alice' '&#64alice'; do
+    out="$(quiet "$text")"
+    if [[ "$out" != "@${zwsp}alice" ]]; then echo "not neutralised: $text -> $out"; return 1; fi
+  done
+}
+
+@test "mentions: text that GitHub never treats as a mention is unchanged" {
+  local text
+  for text in 'mail me at dev@example.com' 'uses: actions/checkout@v4' 'pkg@1.2.3' 'a lone @ sign' 'no at sign'; do
+    [ "$(quiet "$text")" = "$text" ] || { echo "changed: $text"; return 1; }
+  done
+}
+
+@test "mentions: neutralised in what is published: title, Discussion body and comment" {
+  jq -nc '{op:"create_discussion",repo_id:"R_1",category_id:"C_ideas",title:"ping @alice",body:"cc @bob",planned_id:"planned-discussion-1"}' >"$PLAN_PATH"
+  plan_add "$(jq -nc '{op:"comment_on_discussion",discussion_id:"D_existing",body:"thanks @carol"}')"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(mutations createDiscussion)" -eq 1 ]
+  [ "$(mutations addDiscussionComment)" -eq 1 ]
+  if grep -E '@(alice|bob|carol)' "$GH_STUB_LOG"; then
+    echo "a mention reached GitHub"; return 1
+  fi
+}
+
+@test "mp_sanitise_plan: only title and body change" {
+  # shellcheck source=/dev/null
+  . "${TT_SCRIPTS_DIR}/lib/mutation-plan.sh"
+  local in out
+  in='[{"op":"add_label_to_discussion","discussion_id":"@D","label_id":"@L"},{"op":"create_discussion","repo_id":"R","category_id":"C","title":"t","body":"b","planned_id":"planned-discussion-1"}]'
+  out="$(mp_sanitise_plan "$in")"
+  [ "$(jq -c . <<<"$out")" = "$(jq -c . <<<"$in")" ]
+}
+
+# ---------------------------------------------------------------------------
+# Review follow-up: re-running a failed publish job is safe (#1389)
+# ---------------------------------------------------------------------------
+
+# marker_of <entry index> — the hidden marker the executor sent for that entry.
+marker_of() { grep -ohE "feature-ideation:op=[0-9a-f]+:$1([^0-9]|\$)" "$GH_STUB_LOG" | grep -oE "feature-ideation:op=[0-9a-f]+:$1" | head -1; }
+reset_logs() { : >"$GH_STUB_LOG"; : >"$GH_STDIN_LOG"; }
+
+@test "re-run: every created Discussion and comment carries a hidden marker for its plan entry" {
+  plan_add "$(create planned-discussion-1)"
+  plan_add "$(comment D_existing)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -n "$(marker_of 0)" ]
+  [ -n "$(marker_of 1)" ]
+}
+
+@test "re-run: what an earlier attempt published is skipped, and the rest is published" {
+  plan_add "$(create planned-discussion-1)"
+  plan_add "$(comment D_existing)"
+  plan_add "$(comment planned-discussion-1)"
+  plan_add "$(label planned-discussion-1)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  local m0 m1
+  m0="$(marker_of 0)"; m1="$(marker_of 1)"
+  [ -n "$m0" ] && [ -n "$m1" ]
+  # The earlier attempt created the Discussion (as D_earlier) and the first
+  # comment, then failed before the second comment.
+  export GH_STUB_STDOUT
+  GH_STUB_STDOUT="$(jq -c --arg m0 "<!-- $m0 -->" --arg m1 "<!-- $m1 -->" '
+    .data.repository.discussions.nodes = [{id: "D_earlier", body: ("idea\n\n" + $m0)}]
+    | .data.nodes |= map(if .id == "D_existing" then . + {comments: {nodes: [{body: ("note\n\n" + $m1)}]}} else . end)' <<<"$OK_RESPONSE")"
+  reset_logs
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(mutations createDiscussion)" -eq 0 ]
+  [ "$(mutations addDiscussionComment)" -eq 1 ]
+  # The one comment went to the Discussion the earlier attempt created.
+  grep -E 'addDiscussionComment' "$GH_STUB_LOG" | grep -qF 'D_earlier'
+  if grep -E 'addDiscussionComment' "$GH_STUB_LOG" | grep -qF 'D_existing'; then
+    echo "the comment already posted was posted again"; return 1
+  fi
+  [ "$(mutations addLabelsToLabelable)" -eq 1 ]
+  jq -se '[.[] | select(.query | contains("addLabelsToLabelable"))] | .[0].variables.labelableId == "D_earlier"' "$GH_STDIN_LOG" >/dev/null
+}
+
+@test "re-run: a marker from a different plan does not count" {
+  plan_add "$(comment D_existing)"
+  export GH_STUB_STDOUT
+  GH_STUB_STDOUT="$(jq -c '.data.nodes |= map(. + {comments: {nodes: [{body: "<!-- feature-ideation:op=0000000000000000:0 -->"}]}})' <<<"$OK_RESPONSE")"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(mutations addDiscussionComment)" -eq 1 ]
+}
+
+@test "re-run: if the check for earlier work fails, nothing is published" {
+  plan_add "$(create planned-discussion-1)"
+  export GH_FAIL_MATCH='discussions(first'
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"earlier attempt"* ]]
+  no_writes
+
+  : >"$PLAN_PATH"
+  plan_add "$(comment D_existing)"
+  export GH_FAIL_MATCH='comments(last'
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"earlier attempt"* ]]
+  no_writes
+}
+
+@test "re-run: a dry run does not look for earlier work" {
+  export CALLER_DRY_RUN=1
+  plan_add "$(comment D_existing)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  if grep -qF 'comments(last' "$GH_STDIN_LOG"; then
+    echo "dry run looked for earlier work"; return 1
+  fi
 }
 
 # ---------------------------------------------------------------------------

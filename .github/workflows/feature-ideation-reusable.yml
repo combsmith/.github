@@ -730,8 +730,12 @@ jobs:
             - **Max 5 new Discussions per run.** Quality over quantity.
             - **Max 50 comments and 5 labels per run**, only on Discussions in the Ideas
               category (or on Discussions this run creates). New Discussions go to the
-              Ideas category (General only when Ideas does not exist). The publish step
-              enforces these limits and rejects the whole plan if any is broken.
+              Ideas category (General only when Ideas does not exist). Labels must be the
+              repository's `enhancement` label. Titles are at most 256 characters and bodies
+              at most 20000. The publish step enforces these limits and rejects the whole
+              plan if any is broken.
+            - **@mentions do not notify.** The publish step neutralises them in what it
+              posts, so don't rely on one to reach someone.
             - **Always go through the deterministic matcher** in Phase 6 — never invent
               your own fuzzy match logic.
             - **Always go through `discussion-mutations.sh`** — never call createDiscussion
