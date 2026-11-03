@@ -143,6 +143,13 @@ STUB
 
 # ── fixture builders ─────────────────────────────────────────────────────────
 
+# tt_app_run NAME APP_SLUG APP_ID — a successful CheckRun from a given app.
+tt_app_run() {
+  jq -cn --arg n "$1" --arg a "$2" --argjson id "$3" \
+    '{__typename:"CheckRun",name:$n,status:"COMPLETED",conclusion:"SUCCESS",
+      checkSuite:{app:{slug:$a,databaseId:$id}}}'
+}
+
 # tt_check_run NAME STATUS CONCLUSION [APP_SLUG] — one GraphQL CheckRun node.
 tt_check_run() {
   jq -cn --arg n "$1" --arg s "$2" --arg c "$3" --arg a "${4:-github-actions}" \

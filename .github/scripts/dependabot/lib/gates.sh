@@ -32,8 +32,9 @@ DEPENDABOT_AGENT_JOB_RE='^(dev-lead / .+|pr-auto-review / .+|pr-review / review|
 #                pageInfo{hasNextPage} nodes{CheckRun{databaseId name status
 #                conclusion checkSuite{app{slug} workflowRun{event workflow{
 #                databaseId}}}} StatusContext{context state}}}}}}}.
-#   REQUIRED_JSON  JSON array of check names the base branch's rules require
-#                (`[]` when none).
+#   REQUIRED_JSON  JSON array of the checks the base branch's rules require:
+#                {context, integration_id} objects as dependabot_required_contexts
+#                prints them, or plain names (no integration_id). `[]` when none.
 #   EXPECTED_SHA  optional — block unless the PR head is this commit.
 #
 #   A check run superseded on the same commit — an earlier run of the same check
@@ -43,8 +44,10 @@ DEPENDABOT_AGENT_JOB_RE='^(dev-lead / .+|pr-auto-review / .+|pr-review / review|
 #   Agent jobs (DEPENDABOT_AGENT_JOB_RE) are not counted. Passes only when every
 #   other check run on the head commit COMPLETED as success, neutral or skipped,
 #   every commit status is success, at least one such check was reported, and
-#   every required check name is present as a GitHub Actions check run (a
-#   commit status or another app's check of that name does not count). Anything else — failure, cancelled,
+#   every required check is present as a check run from the required app: the
+#   app the rule's integration_id names, or GitHub Actions when it names none.
+#   A commit status, or a run from any other app or with an unreadable app,
+#   does not count. Anything else — failure, cancelled,
 #   timed_out, action_required, stale, startup_failure, pending, missing, or more
 #   contexts than one page — blocks.
 dependabot_checks_gate() {
@@ -80,13 +83,18 @@ dependabot_checks_gate() {
       def agent_job: .__typename == "CheckRun"
         and (.checkSuite.app.slug? // "") == "github-actions"
         and (name_of | test($agent_re))
-        and (name_of as $n | $required | index($n) | not);
-      # A required check counts only as a CheckRun from GitHub Actions: a commit
-      # status, or a check from another app, with the same name must not
-      # satisfy it. A run whose app cannot be read does not count either.
-      ([$nodes[] | select(.__typename == "CheckRun" and (.checkSuite.app.slug? // "") == "github-actions")
-        | name_of]) as $names
-    | ([$required[] | select(. as $r | $names | index($r) | not)]) as $missing
+        and (name_of as $n | [$required[] | if type == "object" then .context else . end] | index($n) | not);
+      # A required check counts only as a CheckRun from the app the rule names
+      # (integration_id), or from GitHub Actions when it names none. A commit
+      # status, or a run from any other app or with an unreadable app, with the
+      # same name does not satisfy it.
+      def satisfies($r):
+        .__typename == "CheckRun" and name_of == $r.context
+        and (if ($r.integration_id | type) == "number"
+             then (.checkSuite.app.databaseId? // null) == $r.integration_id
+             else (.checkSuite.app.slug? // "") == "github-actions" end);
+      ([$required[] | if type == "object" then . else {context: ., integration_id: null} end]) as $req
+    | ([$req[] | . as $r | select([$nodes[] | satisfies($r)] | any | not) | .context]) as $missing
     | ([$nodes[] | select(agent_job | not)]) as $counted
     | (($nodes | length) - ($counted | length)) as $exempt
     | ([$counted[] | select(ok | not) | "\(name_of) (\(outcome))"]) as $bad
@@ -102,7 +110,7 @@ dependabot_checks_gate() {
       elif ($bad | length) > 0 then
         "block\t\($bad | length) check(s) not successful on \($head[0:7]): \($bad | join(", "))"
       elif ($missing | length) > 0 then
-        "block\trequired check(s) not reported by GitHub Actions on \($head[0:7]): \($missing | join(", "))"
+        "block\trequired check(s) not reported by the required app on \($head[0:7]): \($missing | join(", "))"
       else
         "pass\tall \($counted | length) check(s) succeeded on \($head[0:7])\(if $exempt > 0 then " (\($exempt) agent job(s) not counted)" else "" end)"
       end
@@ -205,15 +213,18 @@ dependabot_provenance_gate() {
 # dependabot_required_contexts RULES_JSON
 #   RULES_JSON  REST `GET /repos/{r}/rules/branches/{b}` — a flat array of
 #               rules or the array of pages `--paginate --slurp` produces.
-#   Prints a JSON array of the unique required status-check names. Returns 1
-#   (printing nothing) when the input is not an array.
+#   Prints a JSON array of the unique required checks as {context,
+#   integration_id} (null when the rule names no app). Returns 1 (printing
+#   nothing) when the input is not an array.
 dependabot_required_contexts() {
   local rules_json="$1" out
   out=$(jq -c '
     if type != "array" then error("not an array") else . end
     | [flatten[] | select(type == "object" and .type == "required_status_checks")
-       | (.parameters.required_status_checks // [])[] | .context
-       | select(type == "string" and . != "")] | unique
+       | (.parameters.required_status_checks // [])[]
+       | select((.context | type) == "string" and .context != "")
+       | {context, integration_id: (if (.integration_id | type) == "number" then .integration_id else null end)}]
+      | unique
   ' <<<"$rules_json" 2>/dev/null) || return 1
   [[ -n "$out" ]] || return 1
   echo "$out"

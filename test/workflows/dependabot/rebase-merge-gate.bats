@@ -44,6 +44,20 @@ _rules_requiring() { # NAME...
   printf '[{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":false,"required_status_checks":%s}}]' "$ctx"
 }
 
+@test "rebase: GITHUB_TOKEN can read checks and statuses, and writes nothing" {
+  [ "$(yq -r '.jobs."update-and-merge".permissions.checks' "$REUSABLE")" = "read" ]
+  [ "$(yq -r '.jobs."update-and-merge".permissions.statuses' "$REUSABLE")" = "read" ]
+  [ "$(yq -r '.jobs."update-and-merge".permissions."pull-requests"' "$REUSABLE")" = "read" ]
+}
+
+@test "rebase: the App token asks only for what update-branch and merge need" {
+  local step='.jobs."update-and-merge".steps[] | select(.id == "app-token") | .with'
+  [ "$(yq -r "$step | .\"permission-contents\"" "$REUSABLE")" = "write" ]
+  [ "$(yq -r "$step | .\"permission-pull-requests\"" "$REUSABLE")" = "write" ]
+  [ "$(yq -r "$step | .\"permission-workflows\"" "$REUSABLE")" = "write" ]
+  [ "$(yq -r "$step | keys | map(select(test(\"^permission-\"))) | length" "$REUSABLE")" = "3" ]
+}
+
 _merge_calls() { grep -F '/pulls/5/merge' "${FIX_DIR}/writes.log" 2>/dev/null || true; }
 
 @test "rebase: run-block exists and sources the gate libraries" {

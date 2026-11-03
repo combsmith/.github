@@ -155,6 +155,13 @@ _run_metadata_failure_step() {
   [[ "$(_writes)" == *"reviews/11/dismissals"* ]]
 }
 
+@test "automerge: the App token asks only for what approve, auto-merge and dismiss need" {
+  local step='.jobs.dependabot.steps[] | select(.id == "app-token") | .with'
+  [ "$(yq -r "$step | .\"permission-pull-requests\"" "$REUSABLE")" = "write" ]
+  [ "$(yq -r "$step | .\"permission-contents\"" "$REUSABLE")" = "write" ]
+  [ "$(yq -r "$step | keys | map(select(test(\"^permission-\"))) | length" "$REUSABLE")" = "2" ]
+}
+
 @test "automerge: tooling checkout runs at the reusable's own commit, eligible or not" {
   run yq -r '.jobs.dependabot.steps[] | select(.name == "Checkout Dependabot gate tooling") | .with.ref' "$REUSABLE"
   [ "$output" = '${{ job.workflow_sha }}' ]

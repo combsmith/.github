@@ -127,7 +127,7 @@ _ok_nodes() {
   nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_status CodeQL SUCCESS)]"
   run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
   [ "$status" -eq 1 ]
-  [[ "$output" == *"required check(s) not reported by GitHub Actions"*"CodeQL"* ]]
+  [[ "$output" == *"required check(s) not reported by the required app"*"CodeQL"* ]]
 }
 
 @test "checks: a same-name check from another app does not satisfy a required check" {
@@ -140,6 +140,37 @@ _ok_nodes() {
   node=$(jq -cn '{__typename:"CheckRun",name:"CodeQL",status:"COMPLETED",conclusion:"SUCCESS"}')
   nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$node]"
   run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
+  [ "$status" -eq 1 ]
+}
+
+# A rule that names an app (integration_id) is satisfied only by that app's run;
+# a rule that names none falls back to GitHub Actions only (#1399 review).
+@test "checks: a required check with an integration_id is satisfied by that app's run" {
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_app_run CodeQL github-advanced-security 57789)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"CodeQL","integration_id":57789}]'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "checks: a required check with an integration_id is not satisfied by another app, Actions included" {
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_app_run CodeQL github-actions 15368)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"CodeQL","integration_id":57789}]'
+  [ "$status" -eq 1 ]
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_status CodeQL SUCCESS)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"CodeQL","integration_id":57789}]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: a required check with an integration_id is not satisfied when the app id cannot be read" {
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_check_run CodeQL COMPLETED SUCCESS github-advanced-security)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"CodeQL","integration_id":57789}]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: a required check with no integration_id falls back to GitHub Actions only" {
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_app_run CodeQL github-advanced-security 57789)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"CodeQL","integration_id":null}]'
+  [ "$status" -eq 1 ]
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"CodeQL"}]'
   [ "$status" -eq 1 ]
 }
 
@@ -429,7 +460,7 @@ _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
   rules='[[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CodeQL"},{"context":"SonarCloud"}]}},{"type":"pull_request","parameters":{}}],[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CodeQL","integration_id":1}]}}]]'
   run dependabot_required_contexts "$rules"
   [ "$status" -eq 0 ]
-  [ "$output" = '["CodeQL","SonarCloud"]' ]
+  [ "$output" = '[{"context":"CodeQL","integration_id":null},{"context":"CodeQL","integration_id":1},{"context":"SonarCloud","integration_id":null}]' ]
 }
 
 @test "required: no rules yields an empty list" {

@@ -99,6 +99,10 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Only what approving, dismissing approvals and turning auto-merge on
+          # or off need (auto-merge requires the right to merge: contents).
+          permission-pull-requests: write
+          permission-contents: write
 
       - name: Checkout Dependabot gate tooling
         if: ${{ !cancelled() }}

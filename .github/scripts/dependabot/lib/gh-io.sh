@@ -16,7 +16,7 @@
 dependabot_fetch_pr_state() {
   local repo="$1" pr="$2" out
   # shellcheck disable=SC2016 # GraphQL variables, not shell expansions
-  local query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){headRefOid baseRefName mergeable autoMergeRequest{enabledAt} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{databaseId name status conclusion checkSuite{app{slug} workflowRun{event workflow{databaseId}}}} ... on StatusContext{context state}}}}}}}}}}'
+  local query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){headRefOid baseRefName mergeable autoMergeRequest{enabledAt} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{databaseId name status conclusion checkSuite{app{slug databaseId} workflowRun{event workflow{databaseId}}}} ... on StatusContext{context state}}}}}}}}}}'
 
   out=$(gh api graphql -f query="$query" -f owner="${repo%%/*}" \
       -f name="${repo#*/}" -F number="$pr" 2>/dev/null) || return 1

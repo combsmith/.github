@@ -69,7 +69,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read       # check out the gate scripts from combsmith/.github
-      pull-requests: write # list Dependabot PRs and read their state with GITHUB_TOKEN
+      pull-requests: read # list Dependabot PRs and read their state with GITHUB_TOKEN
+      checks: read # the merge gate reads every check run on the head commit
+      statuses: read # ...and every commit status
     steps:
       - name: Checkout Dependabot gate tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,6 +99,11 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Only what update-branch and the merge need. workflows: write lets
+          # a Dependabot bump of a workflow file be merged or updated.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
 
       - name: Update and merge Dependabot PRs
         env:

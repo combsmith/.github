@@ -194,9 +194,11 @@ Behavior:
   `synchronize` run can revoke. Confirm neither head can merge, natively or
   through the merger. Record the result here; if either merges, stop the
   promotion.
-- **Required checks are bound to GitHub Actions:** a check the base branch's
-  rules require counts only as a check run from GitHub Actions. A commit status,
-  or a check from another app, with the same name does not satisfy it.
+- **Required checks are bound to their app:** a check the base branch's rules
+  require counts only as a check run from the app the rule names
+  (`integration_id`), or from GitHub Actions when the rule names none, which is
+  the case for every rule in the org rulesets today. A commit status, or a run
+  from any other app, with the same name does not satisfy it.
 
 ## Update and Merge Behind PRs Workflow
 
