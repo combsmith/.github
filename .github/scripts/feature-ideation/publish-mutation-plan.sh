@@ -134,6 +134,18 @@ _pace() {
   sleep "${PUBLISH_WRITE_DELAY_SECONDS:-1}"
 }
 
+# The re-run markers trust only items GitHub reports this token wrote
+# (viewerDidAuthor). If that flag were wrong for the token, every marker would
+# be ignored and a re-run would post duplicates without a word. So check it on
+# what was just published, and stop loudly the first time it is not true.
+_require_authored() {
+  local resp="$1" path="$2" what="$3"
+  if [[ "$(printf '%s' "$resp" | jq -r "${path}.viewerDidAuthor // \"missing\"")" != "true" ]]; then
+    echo "::error::GitHub did not report viewerDidAuthor=true for the ${what} this job just published, so re-runs could not recognise it and would post it again. Stopping; check the token identity before re-running."
+    return 1
+  fi
+}
+
 # A stable id for this plan, so a re-run of the job recognises its own work.
 # Hashing the plan means a model cannot write the marker into its own plan.
 _plan_id() {
@@ -304,6 +316,7 @@ main() {
             echo "::error::createDiscussion returned no id"
             return 1
           fi
+          _require_authored "$resp" '.data.createDiscussion.discussion' "Discussion ${id}" || return 1
           echo "created Discussion ${id}"
         fi
         planned=$(printf '%s' "$planned" | jq -c \
@@ -320,8 +333,9 @@ main() {
             echo "already commented on ${id} on an earlier attempt"
             skipped=$((skipped + 1))
           else
-            comment_on_discussion "$id" "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker" >/dev/null
+            resp=$(comment_on_discussion "$id" "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker")
             _pace
+            _require_authored "$resp" '.data.addDiscussionComment.comment' "comment on ${id}" || return 1
             echo "commented on ${id}"
           fi
         else

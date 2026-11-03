@@ -28,8 +28,8 @@ response() {
                  label: {id: "L_enh"}, discussions: {nodes: []},
                  discussion: {id: "D_target", category: {slug: "ideas"}}},
     nodes: $nodes,
-    createDiscussion: {discussion: {id: "D_new", number: 7, url: "https://x"}},
-    addDiscussionComment: {comment: {id: "C_1"}}}}'
+    createDiscussion: {discussion: {id: "D_new", number: 7, url: "https://x", viewerDidAuthor: true}},
+    addDiscussionComment: {comment: {id: "C_1", viewerDidAuthor: true}}}}'
 }
 OK_RESPONSE="$(response "$CATS_IDEAS")"
 
@@ -668,6 +668,54 @@ reset_logs() { : >"$GH_STUB_LOG"; : >"$GH_STDIN_LOG"; }
     "[{\"id\":\"D_mine\",\"body\":\"$m\",\"viewerDidAuthor\":true},{\"id\":\"D_theirs\",\"body\":\"$m\",\"viewerDidAuthor\":false},{\"id\":\"D_unknown\",\"body\":\"$m\"}]" \
     "[{\"comments\":{\"nodes\":[{\"body\":\"<!-- feature-ideation:op=abcdef0123456789:1 -->\",\"viewerDidAuthor\":false},{\"body\":\"<!-- feature-ideation:op=abcdef0123456789:2 -->\"}]}}]")"
   [ "$(jq -c . <<<"$out")" = '{"created":{"0":"D_mine"},"commented":[]}' ]
+}
+
+# with_authored <create-flag> <comment-flag> — the stub response with
+# viewerDidAuthor set on the create and comment results ("absent" drops it).
+with_authored() {
+  jq -c --arg c "$1" --arg m "$2" '
+    def flag($v): if $v == "absent" then del(.viewerDidAuthor) else .viewerDidAuthor = ($v == "true") end;
+    .data.createDiscussion.discussion |= flag($c)
+    | .data.addDiscussionComment.comment |= flag($m)' <<<"$OK_RESPONSE"
+}
+
+@test "authorship: content the token reports writing publishes normally" {
+  export GH_STUB_STDOUT
+  GH_STUB_STDOUT="$(with_authored true true)"
+  plan_add "$(create planned-discussion-1)"
+  plan_add "$(comment D_existing)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "authorship: a created Discussion not reported as the token's own fails the job loudly" {
+  local flag
+  for flag in false absent; do
+    export GH_STUB_STDOUT
+    GH_STUB_STDOUT="$(with_authored "$flag" true)"
+    : >"$PLAN_PATH"
+    plan_add "$(create planned-discussion-1)"
+    plan_add "$(comment D_existing)"
+    reset_logs
+    run "$EXEC"
+    [ "$status" -ne 0 ] || { echo "passed with viewerDidAuthor=$flag"; return 1; }
+    [[ "$output" == *"::error::"*"viewerDidAuthor"* ]]
+    # It stops at once: the comment after it is not posted.
+    [ "$(mutations addDiscussionComment)" -eq 0 ]
+  done
+}
+
+@test "authorship: a posted comment not reported as the token's own fails the job loudly" {
+  local flag
+  for flag in false absent; do
+    export GH_STUB_STDOUT
+    GH_STUB_STDOUT="$(with_authored true "$flag")"
+    : >"$PLAN_PATH"
+    plan_add "$(comment D_existing)"
+    run "$EXEC"
+    [ "$status" -ne 0 ] || { echo "passed with viewerDidAuthor=$flag"; return 1; }
+    [[ "$output" == *"::error::"*"viewerDidAuthor"* ]]
+  done
 }
 
 @test "re-run: if the check for earlier work fails, nothing is published" {
