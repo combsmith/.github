@@ -18,6 +18,7 @@
 #
 # Exit codes:
 #   0    signals.json written successfully
+#   2    permission lookup failed
 #   64   bad usage / missing env
 #   65   data validation error
 #   66   GraphQL refused our request (errors / null data)
@@ -38,10 +39,16 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/lib/gh-safe.sh"
 # shellcheck source=lib/filter-bots.sh
 . "${SCRIPT_DIR}/lib/filter-bots.sh"
+# shellcheck source=lib/trusted-authors.sh
+. "${SCRIPT_DIR}/lib/trusted-authors.sh"
 # shellcheck source=lib/compose-signals.sh
 . "${SCRIPT_DIR}/lib/compose-signals.sh"
 # shellcheck source=lib/date-utils.sh
 . "${SCRIPT_DIR}/lib/date-utils.sh"
+
+_keep_allowed() {
+  jq -c --argjson allowed "$1" '[.[] | select((.author.login // "") as $a | $allowed | index($a))]'
+}
 
 main() {
   if [ -z "${REPO:-}" ]; then
@@ -116,7 +123,7 @@ main() {
   printf '[collect-signals] fetching closed issues (since %s)\n' "$thirty_days_ago" >&2
   local closed_issues_raw
   closed_issues_raw=$(gh_safe_rest issue list --repo "$REPO" --state closed --limit "$issue_limit" \
-    --json number,title,labels,closedAt)
+    --json number,title,labels,closedAt,author)
   local closed_issues
   closed_issues=$(printf '%s' "$closed_issues_raw" \
     | jq --arg cutoff "$thirty_days_ago" '[.[] | select(.closedAt >= $cutoff)]')
@@ -158,6 +165,7 @@ query($repo: String!, $owner: String!, $categoryId: ID!, $limit: Int!) {
         title
         createdAt
         updatedAt
+        author { login }
         labels(first: 10) { nodes { name } }
         comments(first: 1) { totalCount }
       }
@@ -200,6 +208,21 @@ GRAPHQL
   local merged_prs
   merged_prs=$(printf '%s' "$merged_prs_raw" \
     | jq --arg cutoff "$thirty_days_ago" '[.[] | select(.mergedAt >= $cutoff)]')
+
+  # --- Keep only text from trusted authors -----------------------------------
+  # Titles reach the analyst, and anyone can open an issue or a Discussion on a
+  # public repository. Truncation warnings above still reflect the raw counts.
+  local all_items allowed
+  all_items=$(jq -cn --argjson a "$open_issues" --argjson b "$closed_issues" --argjson c "$ideas_discussions" '$a + $b + $c')
+  allowed=$(printf '%s' "$all_items" \
+    | jq -r '[.[] | .author.login // empty] | unique | .[]' \
+    | trusted_authors_allowlist "$REPO") || return 2
+  open_issues=$(printf '%s' "$open_issues" | _keep_allowed "$allowed")
+  closed_issues=$(printf '%s' "$closed_issues" | _keep_allowed "$allowed")
+  ideas_discussions=$(printf '%s' "$ideas_discussions" | _keep_allowed "$allowed")
+  printf '[collect-signals] kept %s of %s issues and Discussions from trusted authors\n' \
+    "$(($(printf '%s' "$open_issues" | jq 'length') + $(printf '%s' "$closed_issues" | jq 'length') + $(printf '%s' "$ideas_discussions" | jq 'length')))" \
+    "$(printf '%s' "$all_items" | jq 'length')" >&2
 
   # --- Derived: feature requests + bug reports -------------------------------
   local feature_requests
