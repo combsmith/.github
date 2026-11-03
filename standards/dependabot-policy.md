@@ -184,6 +184,19 @@ Behavior:
   window, but this has not been tested end to end. The maintainer accepted this
   and kept native auto-merge. The direct merger is not exposed: it re-runs both
   gates and merges with `sha=`.
+- **Required before `stable` (decided 2026-11-03):** the backstop above must be
+  tested live before `dependabot-automerge/v2-stable` or
+  `dependabot-rebase/v2-stable` moves to a release containing these gates. On a
+  sandbox repo with the org rulesets and the Dependabot App, take a Dependabot
+  PR the App has approved with auto-merge on, then push a non-Dependabot commit
+  to its branch twice: once with a normal token, and once with a token whose
+  pushes do not trigger workflows (the workflow `GITHUB_TOKEN`), so no
+  `synchronize` run can revoke. Confirm neither head can merge, natively or
+  through the merger. Record the result here; if either merges, stop the
+  promotion.
+- **Required checks are bound to GitHub Actions:** a check the base branch's
+  rules require counts only as a check run from GitHub Actions. A commit status,
+  or a check from another app, with the same name does not satisfy it.
 
 ## Update and Merge Behind PRs Workflow
 

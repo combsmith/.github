@@ -116,8 +116,36 @@ _ok_nodes() {
   [[ "$output" == *"required check(s) not reported"*"SonarCloud"* ]]
 }
 
-@test "checks: required checks satisfied by check runs and statuses pass" {
-  run dependabot_checks_gate "$(tt_pr_state "$(_ok_nodes)")" '["CodeQL","CodeRabbit"]'
+@test "checks: a required check is satisfied by a GitHub Actions check run" {
+  run dependabot_checks_gate "$(tt_pr_state "$(_ok_nodes)")" '["CodeQL"]'
+  [ "$status" -eq 0 ]
+}
+
+# A required check counts only as a CheckRun from GitHub Actions: a commit status
+# or another app's check with the same name must not satisfy it (#1399 review).
+@test "checks: a same-name commit status does not satisfy a required check" {
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_status CodeQL SUCCESS)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"required check(s) not reported by GitHub Actions"*"CodeQL"* ]]
+}
+
+@test "checks: a same-name check from another app does not satisfy a required check" {
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_check_run CodeQL COMPLETED SUCCESS some-other-app)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: a required check run whose app cannot be read does not satisfy it" {
+  node=$(jq -cn '{__typename:"CheckRun",name:"CodeQL",status:"COMPLETED",conclusion:"SUCCESS"}')
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$node]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: the Actions run satisfies a required check beside a same-name run from another app" {
+  nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run CodeQL COMPLETED SUCCESS github-advanced-security)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
   [ "$status" -eq 0 ]
 }
 

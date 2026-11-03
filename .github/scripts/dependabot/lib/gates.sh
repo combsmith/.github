@@ -43,7 +43,8 @@ DEPENDABOT_AGENT_JOB_RE='^(dev-lead / .+|pr-auto-review / .+|pr-review / review|
 #   Agent jobs (DEPENDABOT_AGENT_JOB_RE) are not counted. Passes only when every
 #   other check run on the head commit COMPLETED as success, neutral or skipped,
 #   every commit status is success, at least one such check was reported, and
-#   every required check name is present. Anything else — failure, cancelled,
+#   every required check name is present as a GitHub Actions check run (a
+#   commit status or another app's check of that name does not count). Anything else — failure, cancelled,
 #   timed_out, action_required, stale, startup_failure, pending, missing, or more
 #   contexts than one page — blocks.
 dependabot_checks_gate() {
@@ -80,7 +81,11 @@ dependabot_checks_gate() {
         and (.checkSuite.app.slug? // "") == "github-actions"
         and (name_of | test($agent_re))
         and (name_of as $n | $required | index($n) | not);
-      ([$nodes[] | name_of]) as $names
+      # A required check counts only as a CheckRun from GitHub Actions: a commit
+      # status, or a check from another app, with the same name must not
+      # satisfy it. A run whose app cannot be read does not count either.
+      ([$nodes[] | select(.__typename == "CheckRun" and (.checkSuite.app.slug? // "") == "github-actions")
+        | name_of]) as $names
     | ([$required[] | select(. as $r | $names | index($r) | not)]) as $missing
     | ([$nodes[] | select(agent_job | not)]) as $counted
     | (($nodes | length) - ($counted | length)) as $exempt
@@ -97,7 +102,7 @@ dependabot_checks_gate() {
       elif ($bad | length) > 0 then
         "block\t\($bad | length) check(s) not successful on \($head[0:7]): \($bad | join(", "))"
       elif ($missing | length) > 0 then
-        "block\trequired check(s) not reported on \($head[0:7]): \($missing | join(", "))"
+        "block\trequired check(s) not reported by GitHub Actions on \($head[0:7]): \($missing | join(", "))"
       else
         "pass\tall \($counted | length) check(s) succeeded on \($head[0:7])\(if $exempt > 0 then " (\($exempt) agent job(s) not counted)" else "" end)"
       end
