@@ -26,6 +26,8 @@ caught **before UAT** instead of after.
 | `lib/compose-signals.sh` | Validates JSON inputs before `jq --argjson` and assembles the canonical signals.json document. | R3, R4 |
 | `lib/filter-bots.sh` | Configurable bot blocklist via `FEATURE_IDEATION_BOT_AUTHORS` (extends the default list of bot logins to remove from results). | R10 |
 | `lib/date-utils.sh` | Cross-platform date arithmetic helpers. | R9 |
+| `lib/trusted-authors.sh` | Decides whose text may reach the analyst, from the repository permission API. An API failure is an error, never "untrusted". | — |
+| `load-discussion-context.sh` | Runs before the model in single-idea and backlog mode. Decides whether the run proceeds and writes the Discussion text it may read, without comments from people lacking write access. | — |
 | `collect-signals.sh` | Orchestrator: drives all `gh` calls, composes signals.json, emits truncation warnings. | R1, R3, R4, R11 |
 | `validate-signals.py` | JSON Schema 2020-12 validator for signals.json against `../schemas/signals.schema.json`. | R3 |
 | `match-discussions.sh` | Deterministic Jaccard-similarity matcher between Mary's proposals and existing Ideas Discussions. Replaces the prose "use fuzzy matching" instruction. | R5, R6 |
