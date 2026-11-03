@@ -153,6 +153,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      AGENTSHIELD_MIN_SEVERITY: high
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -173,7 +175,27 @@ jobs:
           npm_config_fetch_retry_maxtimeout: '30000'
           npm_config_fetch_timeout: '60000'
         run: |
-          npx --ignore-scripts ecc-agentshield@1.4.0 scan --path . --format json --min-severity high
+          npx --ignore-scripts ecc-agentshield@1.4.0 scan --path . --format json \
+            --min-severity "$AGENTSHIELD_MIN_SEVERITY" \
+            > "$RUNNER_TEMP/agentshield-report.json" || scan_rc=$?
+          # Exit 2 only means the report has critical findings, which the gate
+          # below handles. Any other non-zero exit is a scanner failure.
+          case "${scan_rc:-0}" in
+            0 | 2) ;;
+            *)
+              echo "::error::AgentShield scanner failed (exit ${scan_rc})"
+              exit "$scan_rc"
+              ;;
+          esac
+
+      # The scanner's exit code ignores --min-severity, so the threshold is enforced
+      # here from its JSON report with the gate the AgentShield reusable uses (#1436).
+      # See test/workflows/ci/agent-security-gate.bats.
+      - name: Enforce AgentShield severity threshold
+        run: |
+          # shellcheck source=/dev/null
+          . .github/scripts/agent-shield/lib/severity-gate.sh
+          agent_shield_severity_gate "$AGENTSHIELD_MIN_SEVERITY" "$RUNNER_TEMP/agentshield-report.json"
 
   secret-scan:
     name: Secret scan (gitleaks)
