@@ -79,7 +79,11 @@ jobs:
           echo "eligible=true" >> "$GITHUB_OUTPUT"
           echo "Auto-merge eligible: ecosystem=$ECOSYSTEM update=$UPDATE_TYPE"
 
+      # These three run even when Dependabot metadata cannot be read: a force-push
+      # of someone else's commit makes fetch-metadata fail, and the withdrawal
+      # below still needs the token and the gate scripts.
       - name: Check app secrets
+        if: ${{ !cancelled() }}
         env:
           APP_ID: ${{ secrets.APP_ID }}
         run: |
@@ -89,6 +93,7 @@ jobs:
           fi
 
       - name: Generate app token
+        if: ${{ !cancelled() }}
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
@@ -96,6 +101,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Checkout Dependabot gate tooling
+        if: ${{ !cancelled() }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: combsmith/.github
@@ -105,6 +111,44 @@ jobs:
           path: .dependabot-tooling
           fetch-depth: 1
           persist-credentials: false
+
+      # fetch-metadata fails when the PR's first commit is not Dependabot's, e.g.
+      # after someone force-pushes over the branch. Every later step would then be
+      # skipped and an earlier approval and auto-merge would survive, so withdraw
+      # here: everything when the commits are not Dependabot's, otherwise the
+      # App's own approvals and auto-merge (no eligibility verdict is possible).
+      # The job still fails, so the run shows the PR needs a human.
+      - name: Withdraw automation when Dependabot metadata cannot be read
+        if: ${{ !cancelled() && steps.metadata.outcome == 'failure' }}
+        run: |
+          # shellcheck source=/dev/null
+          . .dependabot-tooling/.github/scripts/dependabot/lib/gates.sh
+          # shellcheck source=/dev/null
+          . .dependabot-tooling/.github/scripts/dependabot/lib/gh-io.sh
+
+          APP_LOGIN="${APP_SLUG:+${APP_SLUG}[bot]}"
+          rc=0
+          GH_TOKEN="$READ_TOKEN" dependabot_provenance_check "$REPO" "$PR_NUMBER" "$APP_LOGIN" || rc=$?
+          if [[ "$rc" -eq 1 ]]; then
+            echo "::warning::Withdrawing automation on PR #$PR_NUMBER — $DEPENDABOT_GATE_REASON"
+            withdrawn=0
+            dependabot_revoke_automation "$REPO" "$PR_NUMBER" "$APP_LOGIN" "$DEPENDABOT_GATE_REASON" || withdrawn=1
+          else
+            echo "::warning::Withdrawing this App's automation on PR #$PR_NUMBER — its Dependabot metadata could not be read"
+            withdrawn=0
+            dependabot_withdraw_app_automation "$REPO" "$PR_NUMBER" "$APP_LOGIN" "its Dependabot metadata could not be read" || withdrawn=1
+          fi
+          if [[ "$withdrawn" -ne 0 ]]; then
+            echo "::error::Could not fully withdraw automation on PR #$PR_NUMBER — a human must check it"
+          fi
+          echo "::error::Dependabot metadata could not be read for PR #$PR_NUMBER; it needs a human review."
+          exit 1
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       # Eligibility can change with a new head. The merger trusts the auto-merge
       # request, so an update that now needs human review must not keep the

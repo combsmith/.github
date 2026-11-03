@@ -16,7 +16,7 @@
 dependabot_fetch_pr_state() {
   local repo="$1" pr="$2" out
   # shellcheck disable=SC2016 # GraphQL variables, not shell expansions
-  local query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){headRefOid baseRefName mergeable autoMergeRequest{enabledAt} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{name status conclusion checkSuite{app{slug}}} ... on StatusContext{context state}}}}}}}}}}'
+  local query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){headRefOid baseRefName mergeable autoMergeRequest{enabledAt} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{databaseId name status conclusion checkSuite{app{slug} workflowRun{event workflow{databaseId}}}} ... on StatusContext{context state}}}}}}}}}}'
 
   out=$(gh api graphql -f query="$query" -f owner="${repo%%/*}" \
       -f name="${repo#*/}" -F number="$pr" 2>/dev/null) || return 1
@@ -76,8 +76,19 @@ dependabot_provenance_check() {
     DEPENDABOT_GATE_REASON="could not read the pull request's commits"
     return 2
   fi
-  if ! DEPENDABOT_GATE_REASON=$(dependabot_provenance_gate "$pr_json" "$commits_json" "$trusted" "$expected"); then
-    return 1
+  local rc=0
+  DEPENDABOT_GATE_REASON=$(dependabot_provenance_gate "$pr_json" "$commits_json" "$trusted" "$expected") || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    return "$rc"
+  fi
+  # The two reads are not one snapshot: a push between them can pair one head
+  # with another commit list. Read the head again; if it moved, the verdict
+  # describes nothing that exists, so report the state as unreadable.
+  local again
+  if ! again=$(dependabot_fetch_pr "$repo" "$pr") \
+      || [[ "$(jq -r '.head.sha // empty' <<<"$again" 2>/dev/null)" != "$head" ]]; then
+    DEPENDABOT_GATE_REASON="the head changed while it was being read"
+    return 2
   fi
   DEPENDABOT_GATE_SHA="$head"
   [[ -n "$DEPENDABOT_GATE_SHA" ]]

@@ -23,6 +23,7 @@ on:
       - '.github/scripts/dependabot/**'
       - 'test/workflows/dependabot/**'
       - 'standards/workflows/dependabot-*.yml'
+      - 'standards/canary-rings.json'
   push:
     branches:
       - main
@@ -31,6 +32,7 @@ on:
       - '.github/scripts/dependabot/**'
       - 'test/workflows/dependabot/**'
       - 'standards/workflows/dependabot-*.yml'
+      - 'standards/canary-rings.json'
 
 permissions:
   contents: read

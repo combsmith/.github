@@ -77,6 +77,84 @@ _foreign_commits() {
   grep -F '.dependabot-tooling/.github/scripts/dependabot/lib/gh-io.sh' "$RUN_SCRIPT"
 }
 
+# ── review round 3 ───────────────────────────────────────────────────────────
+
+@test "automerge: a push between the two reads is not taken as a foreign commit" {
+  # The PR read says one commit; the commit list (read after a valid push)
+  # has two. Before the fix this revoked the newer head's automation.
+  _seed "[$(_dep_commit)]"
+  tt_fixture "repos/owner/repo/pulls/5/commits?per_page=100" "[$(tt_commit "$DEP_SHA" 'dependabot[bot]' web-flow true 1),$(_dep_commit)]"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" "[$(_app_approval_of 11 "$DEP_SHA")]"
+  _run_approve_step
+  [ "$status" -ne 0 ]
+  run _writes
+  [[ "$output" != *"dismissals"* ]]
+  [[ "$output" != *"--disable-auto"* ]]
+  [[ "$output" != *"event=APPROVE"* ]]
+}
+
+@test "automerge: a head that moves between the reads is unreadable, and nothing is approved" {
+  _seed "[$(_dep_commit)]"
+  # The commit list read moves the head (a push lands during the reads).
+  printf '%s\n' "$(tt_pr_rest "$OTHER_SHA" 1)" > "${FIX_DIR}/moved_pr.json"
+  mv "${TT_BIN}/gh" "${TT_BIN}/gh-inner"
+  cat > "${TT_BIN}/gh" <<WRAP
+#!/usr/bin/env bash
+"${TT_BIN}/gh-inner" "\$@"; rc=\$?
+case "\$*" in *"pulls/5/commits"*) cp "${FIX_DIR}/moved_pr.json" "${FIX_DIR}/repos_owner_repo_pulls_5.json" ;; esac
+exit \$rc
+WRAP
+  chmod +x "${TT_BIN}/gh"
+  _run_approve_step
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"head changed while it was being read"* ]]
+  [[ "$(_writes)" != *"event=APPROVE"* ]]
+}
+
+# ── fetch-metadata failure (force-push over the branch) ──────────────────────
+
+_run_metadata_failure_step() {
+  local script="${TT_TMP}/metafail.sh"
+  tt_extract_run "$REUSABLE" dependabot "Withdraw automation when Dependabot metadata cannot be read" > "$script"
+  cd "$TT_WORK" || return 1
+  REPO="owner/repo" PR_NUMBER=5 APP_SLUG="$APP_SLUG_FIXTURE" READ_TOKEN="read-token" GH_TOKEN="app-token" \
+    run bash -eo pipefail "$script"
+}
+
+@test "metadata failure: the token, tooling and withdrawal steps still run" {
+  local step
+  for step in "Check app secrets" "Generate app token" "Checkout Dependabot gate tooling"; do
+    run yq -r ".jobs.dependabot.steps[] | select(.name == \"$step\") | .if" "$REUSABLE"
+    [ "$output" = '${{ !cancelled() }}' ] || { echo "$step: $output"; return 1; }
+  done
+  run yq -r '.jobs.dependabot.steps[] | select(.name == "Withdraw automation when Dependabot metadata cannot be read") | .if' "$REUSABLE"
+  [ "$output" = "\${{ !cancelled() && steps.metadata.outcome == 'failure' }}" ]
+  # It comes after the steps it needs.
+  local w c
+  w="$(yq -r '.jobs.dependabot.steps | to_entries[] | select(.value.name == "Withdraw automation when Dependabot metadata cannot be read") | .key' "$REUSABLE")"
+  c="$(yq -r '.jobs.dependabot.steps | to_entries[] | select(.value.name == "Checkout Dependabot gate tooling") | .key' "$REUSABLE")"
+  [ -n "$w" ] && [ -n "$c" ] && [ "$w" -gt "$c" ]
+}
+
+@test "metadata failure: a force-pushed foreign commit revokes approval and auto-merge, and the job fails" {
+  _seed "[$(tt_commit "$HEAD_SHA" mallory mallory true 1)]"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" "[$(_app_approval_of 11 "$DEP_SHA")]"
+  _run_metadata_failure_step
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"needs a human review"* ]]
+  run _writes
+  [[ "$output" == *"pr merge 5 --repo owner/repo --disable-auto"* ]]
+  [[ "$output" == *"PUT repos/owner/repo/pulls/5/reviews/11/dismissals"* ]]
+}
+
+@test "metadata failure: on Dependabot-only commits the App's own automation is withdrawn" {
+  _seed "[$(_dep_commit)]"
+  tt_fixture "repos/owner/repo/pulls/5/reviews?per_page=100" "[$(_app_approval_of 11 "$HEAD_SHA")]"
+  _run_metadata_failure_step
+  [ "$status" -ne 0 ]
+  [[ "$(_writes)" == *"reviews/11/dismissals"* ]]
+}
+
 @test "automerge: tooling checkout runs at the reusable's own commit, eligible or not" {
   run yq -r '.jobs.dependabot.steps[] | select(.name == "Checkout Dependabot gate tooling") | .with.ref' "$REUSABLE"
   [ "$output" = '${{ job.workflow_sha }}' ]
@@ -84,7 +162,7 @@ _foreign_commits() {
   # earlier automation.
   for step in "Checkout Dependabot gate tooling" "Generate app token" "Check app secrets"; do
     run yq -r ".jobs.dependabot.steps[] | select(.name == \"$step\") | .if" "$REUSABLE"
-    [ "$output" = "null" ]
+    [ "$output" = '${{ !cancelled() }}' ]
   done
 }
 

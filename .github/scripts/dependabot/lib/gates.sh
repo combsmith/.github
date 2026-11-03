@@ -29,12 +29,17 @@ DEPENDABOT_AGENT_JOB_RE='^(dev-lead / .+|pr-auto-review / .+|pr-review / review|
 #   PR_JSON      GraphQL `pullRequest` object (or the whole `{data:{repository:
 #                {pullRequest:…}}}` response) with headRefOid and
 #                commits(last:1){nodes{commit{oid statusCheckRollup{contexts{
-#                pageInfo{hasNextPage} nodes{CheckRun{name status conclusion
-#                checkSuite{app{slug}}} StatusContext{context state}}}}}}}.
+#                pageInfo{hasNextPage} nodes{CheckRun{databaseId name status
+#                conclusion checkSuite{app{slug} workflowRun{event workflow{
+#                databaseId}}}} StatusContext{context state}}}}}}}.
 #   REQUIRED_JSON  JSON array of check names the base branch's rules require
 #                (`[]` when none).
 #   EXPECTED_SHA  optional — block unless the PR head is this commit.
 #
+#   A check run superseded on the same commit — an earlier run of the same check
+#   from the same app, workflow and event, e.g. one cancelled by a concurrency
+#   group or replaced by a re-run — is not counted; only the newest (highest
+#   databaseId) is. Runs without a databaseId are never collapsed.
 #   Agent jobs (DEPENDABOT_AGENT_JOB_RE) are not counted. Passes only when every
 #   other check run on the head commit COMPLETED as success, neutral or skipped,
 #   every commit status is success, at least one such check was reported, and
@@ -50,7 +55,15 @@ dependabot_checks_gate() {
     | ($pr.headRefOid // "") as $head
     | ($pr.commits.nodes[0].commit // {}) as $commit
     | ($commit.statusCheckRollup.contexts // null) as $ctx
-    | ($ctx.nodes // []) as $nodes
+    | def latest_runs:
+        # Newest run per (app, workflow, event, name); anything that cannot be
+        # keyed or ordered is kept as is, so nothing is dropped by accident.
+        ([.[] | select(.__typename == "CheckRun" and ((.databaseId | type) == "number"))]
+         | group_by([(.checkSuite.app.slug? // ""), (.checkSuite.workflowRun.workflow.databaseId? // ""),
+                     (.checkSuite.workflowRun.event? // ""), (.name // "")])
+         | map(max_by(.databaseId))) as $newest
+        | [.[] | select(.__typename != "CheckRun" or ((.databaseId | type) != "number"))] + $newest;
+      ($ctx.nodes // [] | latest_runs) as $nodes
     | def name_of: if .__typename == "StatusContext" then (.context // "")
                    else (.name // "") end;
       def ok: if .__typename == "CheckRun" then
@@ -121,6 +134,11 @@ dependabot_checks_gate() {
 #     - a merge commit (2+ parents) authored by TRUSTED_MERGE_LOGIN, committed
 #       by web-flow, with a GitHub-verified signature (update-branch).
 #   Any other commit — e.g. one pushed to the branch by someone else — blocks.
+#
+#   Returns 0 pass, 1 block (a verdict about the commits), 2 block (the reads
+#   cannot be trusted: no head, no commits, a commit list that does not match
+#   the PR — a push between the two reads — or malformed input). Callers must
+#   not treat 2 as evidence of a foreign commit.
 dependabot_provenance_gate() {
   local pr_json="$1" commits_json="$2" trusted="${3:-}" expected="${4:-}" out verdict reason
 
@@ -144,14 +162,14 @@ dependabot_provenance_gate() {
         and ((.parents // []) | length) >= 2 and verified;
       ([$commits[] | select((from_dependabot or trusted_merge) | not)
         | "\(.sha // "?" | .[0:7]) (author \(author | if . == "" then "unknown" else . end), committer \(committer | if . == "" then "unknown" else . end)\(if verified then "" else ", unverified" end))"]) as $foreign
-    | if $head == "" then "block\tPR head commit unknown"
+    | if $head == "" then "unreadable\tPR head commit unknown"
       elif ($expected != "" and $head != $expected) then
         "block\thead moved to \($head[0:7]) (expected \($expected[0:7]))"
-      elif ($commits | length) == 0 then "block\tno commits read"
+      elif ($commits | length) == 0 then "unreadable\tno commits read"
       elif ($commits | length) != $count then
-        "block\tread \($commits | length) of \($count) commits — cannot verify them all"
+        "unreadable\tread \($commits | length) of \($count) commits — cannot verify them all"
       elif ([$commits[] | .sha] | index($head)) == null then
-        "block\thead \($head[0:7]) not in the commit list"
+        "unreadable\thead \($head[0:7]) not in the commit list"
       elif ($foreign | length) > 0 then
         "block\t\($foreign | length) commit(s) not from Dependabot: \($foreign | join(", "))"
       elif ([$commits[] | select(from_dependabot)] | length) == 0 then
@@ -169,10 +187,14 @@ dependabot_provenance_gate() {
   fi
   if [[ "$verdict" == "block" ]]; then
     echo "$reason"
+    return 1
+  fi
+  if [[ "$verdict" == "unreadable" ]]; then
+    echo "$reason"
   else
     echo "could not evaluate commit provenance (malformed input)"
   fi
-  return 1
+  return 2
 }
 
 # dependabot_required_contexts RULES_JSON

@@ -199,6 +199,47 @@ _ok_nodes() {
   [[ "$output" == *"1 check(s) not successful"*"gitleaks"* ]]
 }
 
+# ── superseded check runs (#1399 review) ─────────────────────────────────────
+
+@test "checks: a cancelled run superseded by a later successful run of the same check passes" {
+  nodes="[$(tt_run 101 guard COMPLETED CANCELLED),$(tt_run 102 guard COMPLETED SUCCESS),$(tt_run 103 CodeQL COMPLETED SUCCESS)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "checks: a later failing run of the same check still blocks" {
+  nodes="[$(tt_run 101 guard COMPLETED SUCCESS),$(tt_run 102 guard COMPLETED FAILURE)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: a later pending run of the same check still blocks" {
+  nodes="[$(tt_run 101 guard COMPLETED SUCCESS),$(tt_run 102 guard IN_PROGRESS '')]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: the newest run wins by databaseId, not by order in the response" {
+  nodes="[$(tt_run 102 guard COMPLETED SUCCESS),$(tt_run 101 guard COMPLETED CANCELLED)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 0 ]
+  nodes="[$(tt_run 102 guard COMPLETED FAILURE),$(tt_run 101 guard COMPLETED SUCCESS)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: the same job name in two workflows is two checks" {
+  nodes="[$(tt_run 101 'Lint and bats' COMPLETED FAILURE 1),$(tt_run 102 'Lint and bats' COMPLETED SUCCESS 2)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: runs without a databaseId are never collapsed" {
+  nodes="[$(tt_check_run guard COMPLETED CANCELLED),$(tt_check_run guard COMPLETED SUCCESS)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
 # ── dependabot_provenance_gate (#1400) ──────────────────────────────────────
 
 _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
@@ -284,17 +325,17 @@ _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
   [[ "$output" == *"no Dependabot commit"* ]]
 }
 
-@test "provenance: an incomplete commit list (fewer than the PR's count) blocks" {
+@test "provenance: an incomplete commit list (fewer than the PR's count) is unreadable, not a verdict" {
   commits="[$(_dep_commit "$HEAD_SHA")]"
   run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 251)" "$commits" ""
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
   [[ "$output" == *"cannot verify them all"* ]]
 }
 
-@test "provenance: head not in the commit list blocks" {
+@test "provenance: head not in the commit list is unreadable, not a verdict" {
   commits="[$(_dep_commit "$DEP_SHA")]"
   run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 1)" "$commits" ""
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
 }
 
 @test "provenance: head differing from the expected SHA blocks" {
@@ -304,12 +345,18 @@ _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
   [[ "$output" == *"head moved"* ]]
 }
 
-@test "provenance: empty or malformed input blocks" {
+@test "provenance: empty or malformed input is unreadable, not a verdict" {
   run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 0)" '[]' ""
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
   run dependabot_provenance_gate 'nope' '[]' ""
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
   run dependabot_provenance_gate "$(tt_pr_rest)" 'nope' ""
+  [ "$status" -eq 2 ]
+}
+
+@test "provenance: a foreign commit is still a verdict (1)" {
+  commits="[$(_dep_commit "$DEP_SHA"),$(tt_commit "$HEAD_SHA" mallory mallory true 1)]"
+  run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 2)" "$commits" ""
   [ "$status" -eq 1 ]
 }
 

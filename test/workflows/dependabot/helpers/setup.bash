@@ -150,6 +150,14 @@ tt_check_run() {
       checkSuite:{app:{slug:$a}}}'
 }
 
+# tt_run ID NAME STATUS CONCLUSION [WORKFLOW_ID] [EVENT] — a CheckRun node with
+# the fields used to spot superseded runs.
+tt_run() {
+  jq -cn --argjson id "$1" --arg n "$2" --arg s "$3" --arg c "$4" --argjson w "${5:-1}" --arg e "${6:-pull_request}" \
+    '{__typename:"CheckRun",databaseId:$id,name:$n,status:$s,conclusion:(if $c == "" then null else $c end),
+      checkSuite:{app:{slug:"github-actions"},workflowRun:{event:$e,workflow:{databaseId:$w}}}}'
+}
+
 # tt_status NAME STATE — one GraphQL StatusContext node.
 tt_status() {
   jq -cn --arg n "$1" --arg s "$2" '{__typename:"StatusContext",context:$n,state:$s}'

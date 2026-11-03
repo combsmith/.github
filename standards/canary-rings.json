@@ -322,6 +322,14 @@
       "host": "combsmith/.github",
       "reusable": ".github/workflows/dependabot-automerge-reusable.yml",
       "run_workflow": "Dependabot auto-merge",
+      "agent_ref_paths": [
+        ".github/scripts/dependabot/"
+      ],
+      "autocut": {
+        "watched_paths": [
+          ".github/scripts/dependabot/"
+        ]
+      },
       "rings": [
         {
           "channel": "next",
@@ -449,6 +457,14 @@
       "host": "combsmith/.github",
       "reusable": ".github/workflows/dependabot-rebase-reusable.yml",
       "run_workflow": "Dependabot update and merge",
+      "agent_ref_paths": [
+        ".github/scripts/dependabot/"
+      ],
+      "autocut": {
+        "watched_paths": [
+          ".github/scripts/dependabot/"
+        ]
+      },
       "rings": [
         {
           "channel": "next",
