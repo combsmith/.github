@@ -601,8 +601,8 @@ reset_logs() { : >"$GH_STUB_LOG"; : >"$GH_STDIN_LOG"; }
   # comment, then failed before the second comment.
   export GH_STUB_STDOUT
   GH_STUB_STDOUT="$(jq -c --arg m0 "<!-- $m0 -->" --arg m1 "<!-- $m1 -->" '
-    .data.repository.discussions.nodes = [{id: "D_earlier", body: ("idea\n\n" + $m0)}]
-    | .data.nodes |= map(if .id == "D_existing" then . + {comments: {nodes: [{body: ("note\n\n" + $m1)}]}} else . end)' <<<"$OK_RESPONSE")"
+    .data.repository.discussions.nodes = [{id: "D_earlier", body: ("idea\n\n" + $m0), viewerDidAuthor: true}]
+    | .data.nodes |= map(if .id == "D_existing" then . + {comments: {nodes: [{body: ("note\n\n" + $m1), viewerDidAuthor: true}]}} else . end)' <<<"$OK_RESPONSE")"
   reset_logs
   run "$EXEC"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -620,10 +620,54 @@ reset_logs() { : >"$GH_STUB_LOG"; : >"$GH_STDIN_LOG"; }
 @test "re-run: a marker from a different plan does not count" {
   plan_add "$(comment D_existing)"
   export GH_STUB_STDOUT
-  GH_STUB_STDOUT="$(jq -c '.data.nodes |= map(. + {comments: {nodes: [{body: "<!-- feature-ideation:op=0000000000000000:0 -->"}]}})' <<<"$OK_RESPONSE")"
+  GH_STUB_STDOUT="$(jq -c '.data.nodes |= map(. + {comments: {nodes: [{body: "<!-- feature-ideation:op=0000000000000000:0 -->", viewerDidAuthor: true}]}})' <<<"$OK_RESPONSE")"
   run "$EXEC"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ "$(mutations addDiscussionComment)" -eq 1 ]
+}
+
+@test "re-run: a marker on content someone else wrote is ignored" {
+  plan_add "$(create planned-discussion-1)"
+  plan_add "$(comment D_existing)"
+  plan_add "$(comment planned-discussion-1)"
+  plan_add "$(label planned-discussion-1)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  local m0 m1
+  m0="$(marker_of 0)"; m1="$(marker_of 1)"
+  # Someone who learnt the plan hash planted both markers: a Discussion of
+  # their own (to capture the follow-up comment and label) and a comment (to
+  # suppress the planned one). Neither was written by the publish token.
+  export GH_STUB_STDOUT
+  GH_STUB_STDOUT="$(jq -c --arg m0 "<!-- $m0 -->" --arg m1 "<!-- $m1 -->" '
+    .data.repository.discussions.nodes = [{id: "D_attacker", body: ("bait\n\n" + $m0), viewerDidAuthor: false}]
+    | .data.nodes |= map(if .id == "D_existing" then . + {comments: {nodes: [{body: ("x\n\n" + $m1), viewerDidAuthor: false}]}} else . end)' <<<"$OK_RESPONSE")"
+  reset_logs
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(mutations createDiscussion)" -eq 1 ]
+  [ "$(mutations addDiscussionComment)" -eq 2 ]
+  if grep -qF 'D_attacker' "$GH_STUB_LOG" "$GH_STDIN_LOG"; then
+    echo "a write went to the planted Discussion"; return 1
+  fi
+}
+
+@test "re-run: the lookup asks GitHub whether the publish token wrote each item" {
+  plan_add "$(create planned-discussion-1)"
+  plan_add "$(comment D_existing)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(jq -s '[.[] | select(.query | contains("viewerDidAuthor"))] | length' "$GH_STDIN_LOG")" -eq 2 ]
+}
+
+@test "mp_done_ops: only items the viewer authored count" {
+  # shellcheck source=/dev/null
+  . "${TT_SCRIPTS_DIR}/lib/mutation-plan.sh"
+  local m='<!-- feature-ideation:op=abcdef0123456789:0 -->' out
+  out="$(mp_done_ops abcdef0123456789 \
+    "[{\"id\":\"D_mine\",\"body\":\"$m\",\"viewerDidAuthor\":true},{\"id\":\"D_theirs\",\"body\":\"$m\",\"viewerDidAuthor\":false},{\"id\":\"D_unknown\",\"body\":\"$m\"}]" \
+    "[{\"comments\":{\"nodes\":[{\"body\":\"<!-- feature-ideation:op=abcdef0123456789:1 -->\",\"viewerDidAuthor\":false},{\"body\":\"<!-- feature-ideation:op=abcdef0123456789:2 -->\"}]}}]")"
+  [ "$(jq -c . <<<"$out")" = '{"created":{"0":"D_mine"},"commented":[]}' ]
 }
 
 @test "re-run: if the check for earlier work fails, nothing is published" {

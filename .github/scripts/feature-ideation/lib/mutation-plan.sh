@@ -32,7 +32,10 @@
 #       → the hidden marker the executor appends to what it publishes
 #   mp_done_ops <plan-id> <discussions-json> <comment-nodes-json>
 #       → {"created":{"<index>":"<node id>"},"commented":["<index>"]}: the plan
-#         entries an earlier attempt already published, from their markers
+#         entries an earlier attempt already published, from their markers.
+#         Only items with viewerDidAuthor == true count: a marker anyone else
+#         planted (say, after reading the plan hash in a log) is ignored, so it
+#         can neither suppress a planned write nor redirect one to their item.
 #   mp_validate_plan <plan.jsonl> <mode> [target_node_id] [context-json]
 #       → stdout: the plan as one compact JSON array; rc 0
 #         stderr: one line per reason the plan is rejected; rc 1
@@ -138,10 +141,10 @@ mp_op_marker() {
 mp_done_ops() {
   jq -nc --arg pid "$1" --argjson discussions "$2" --argjson comments "$3" '
     def indexes: [scan("feature-ideation:op=" + $pid + ":([0-9]+)")[0]];
-    {created: ([$discussions[] | objects | .id as $id
+    {created: ([$discussions[] | objects | select(.viewerDidAuthor == true) | .id as $id
                 | (.body | strings | indexes[]) | {(.): $id}] | add // {}),
      commented: ([$comments[] | objects | .comments.nodes[]? | objects
-                  | .body | strings | indexes[]] | unique)}'
+                  | select(.viewerDidAuthor == true) | .body | strings | indexes[]] | unique)}'
 }
 
 mp_validate_plan() {

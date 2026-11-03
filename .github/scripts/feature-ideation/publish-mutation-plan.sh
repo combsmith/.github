@@ -144,6 +144,8 @@ _plan_id() {
 }
 
 # What an earlier attempt of this plan already published: mp_done_ops JSON.
+# A marker counts only on an item GitHub says this token's identity wrote
+# (viewerDidAuthor), so nobody else can plant one.
 # Returns non-zero when that cannot be established, so nothing is repeated
 # blindly.
 _resolve_done() {
@@ -153,7 +155,7 @@ _resolve_done() {
 query($owner: String!, $name: String!, $category: ID!) {
   repository(owner: $owner, name: $name) {
     discussions(first: 100, categoryId: $category, orderBy: {field: CREATED_AT, direction: DESC}) {
-      nodes { id body }
+      nodes { id body viewerDidAuthor }
     }
   }
 }
@@ -176,7 +178,7 @@ GRAPHQL
     read -r -d '' query <<'GRAPHQL' || true
 query($ids: [ID!]!) {
   nodes(ids: $ids) {
-    ... on Discussion { comments(last: 100) { nodes { body } } }
+    ... on Discussion { comments(last: 100) { nodes { body viewerDidAuthor } } }
   }
 }
 GRAPHQL
