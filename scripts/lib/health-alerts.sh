@@ -65,7 +65,7 @@ health_alert_count() {
   local repo="$1" kind="$2" out err rc=0 count
   err=$(mktemp)
   out=$(gh api --paginate "repos/$repo/$kind/alerts?state=open&per_page=100" 2>"$err") || rc=$?
-  if [ "$rc" -eq 0 ]; then
+  if [[ "$rc" -eq 0 ]]; then
     rm -f "$err"
     if count=$(health_alert_page_count "$out"); then
       echo "$count"
@@ -78,7 +78,7 @@ health_alert_count() {
   local msg
   msg="$(cat "$err") $out"
   rm -f "$err"
-  if [ "$(health_alert_error_kind "$kind" "$msg")" = "none" ]; then
+  if [[ "$(health_alert_error_kind "$kind" "$msg")" = "none" ]]; then
     echo "0"
     return 0
   fi

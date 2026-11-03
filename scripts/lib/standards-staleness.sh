@@ -14,7 +14,7 @@
 #
 # shellcheck shell=bash
 
-if [ -n "${_STANDARDS_STALENESS_SOURCED:-}" ]; then
+if [[ -n "${_STANDARDS_STALENESS_SOURCED:-}" ]]; then
   return 0 2>/dev/null || true
 fi
 _STANDARDS_STALENESS_SOURCED=1
@@ -34,7 +34,7 @@ ss_workflow_files() { grep -E '^standards/workflows/' || true; }
 # Equal blob SHAs mean byte-identical files, so nothing is reported for them.
 ss_tree_diff() {
   local base="${1:-}" head="${2:-}"
-  [ -r "$base" ] && [ -r "$head" ] || return 1
+  [[ -r "$base" ]] && [[ -r "$head" ]] || return 1
   awk -F'\t' '
     FILENAME == ARGV[1] { if ($1 != "") b[$1] = $2; next }
     $1 != "" { h[$1] = $2 }
@@ -50,7 +50,7 @@ ss_tree_diff() {
 ss_age_days() {
   local now="${1:-}" then="${2:-}"
   [[ "$now" =~ ^[0-9]+$ && "$then" =~ ^[0-9]+$ ]] || return 1
-  if [ "$then" -ge "$now" ]; then echo 0; return 0; fi
+  if [[ "$then" -ge "$now" ]]; then echo 0; return 0; fi
   echo $(( (now - then) / 86400 ))
 }
 
@@ -66,10 +66,10 @@ ss_age_days() {
 ss_decision() {
   local n="${1:-}" wf="${2:-}" age="${3:-}" max="${4:-}"
   [[ "$n" =~ ^[0-9]+$ && "$wf" =~ ^[0-9]+$ && "$max" =~ ^[0-9]+$ ]] || { echo "UNKNOWN"; return 0; }
-  if [ "$n" -eq 0 ]; then echo "FRESH"; return 0; fi
-  if [ "$wf" -gt 0 ]; then echo "STALE workflows"; return 0; fi
+  if [[ "$n" -eq 0 ]]; then echo "FRESH"; return 0; fi
+  if [[ "$wf" -gt 0 ]]; then echo "STALE workflows"; return 0; fi
   [[ "$age" =~ ^[0-9]+$ ]] || { echo "UNKNOWN"; return 0; }
-  if [ "$age" -gt "$max" ]; then echo "STALE age"; return 0; fi
+  if [[ "$age" -gt "$max" ]]; then echo "STALE age"; return 0; fi
   echo "PENDING"
 }
 
@@ -85,7 +85,7 @@ ss_issue_title() { printf 'Standards channel %s is behind %s — promote it' "${
 # One sentence saying why the alarm fired.
 ss_reason_text() {
   local decision="${1:-}" age="${2:-}" max="${3:-}" bound="${4:-0}" at=""
-  [ "$bound" = "1" ] && at="at most "
+  [[ "$bound" = "1" ]] && at="at most "
   case "$decision" in
     "STALE workflows")
       printf 'A workflow template under `standards/workflows/` differs. Templates reach every seeded repo, so this alarms at once.' ;;
@@ -104,7 +104,7 @@ ss_issue_body() {
   local decision="${6:-}" age="${7:-}" max="${8:-}" bound="${9:-0}"
   local status path n=0 rows=""
   while IFS=$'\t' read -r status path; do
-    [ -n "$path" ] || continue
+    [[ -n "$path" ]] || continue
     rows="${rows}| \`${path}\` | ${status} |"$'\n'
     n=$((n + 1))
   done

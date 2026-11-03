@@ -54,11 +54,11 @@ match_discussions_main() {
     return 64
   fi
 
-  if [ ! -f "$signals_path" ]; then
+  if [[ ! -f "$signals_path" ]]; then
     printf '[match-discussions] signals not found: %s\n' "$signals_path" >&2
     return 64
   fi
-  if [ ! -f "$proposals_path" ]; then
+  if [[ ! -f "$proposals_path" ]]; then
     printf '[match-discussions] proposals not found: %s\n' "$proposals_path" >&2
     return 64
   fi
@@ -192,8 +192,8 @@ print(json.dumps(result, indent=2))
 PY
 }
 
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  if [ "$#" -ne 2 ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
+  if [[ "$#" -ne 2 ]]; then
     printf 'usage: %s <signals.json> <proposals.json>\n' "$0" >&2
     exit 64
   fi
