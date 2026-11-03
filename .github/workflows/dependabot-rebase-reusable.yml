@@ -99,11 +99,10 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Only what update-branch and the merge need. workflows: write lets
-          # a Dependabot bump of a workflow file be merged or updated.
+          # Only what update-branch and the merge need. The App has no
+          # workflows permission, and requesting one it lacks fails the token.
           permission-contents: write
           permission-pull-requests: write
-          permission-workflows: write
 
       - name: Update and merge Dependabot PRs
         env:

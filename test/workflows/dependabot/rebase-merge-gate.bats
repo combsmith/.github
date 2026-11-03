@@ -54,8 +54,7 @@ _rules_requiring() { # NAME...
   local step='.jobs."update-and-merge".steps[] | select(.id == "app-token") | .with'
   [ "$(yq -r "$step | .\"permission-contents\"" "$REUSABLE")" = "write" ]
   [ "$(yq -r "$step | .\"permission-pull-requests\"" "$REUSABLE")" = "write" ]
-  [ "$(yq -r "$step | .\"permission-workflows\"" "$REUSABLE")" = "write" ]
-  [ "$(yq -r "$step | keys | map(select(test(\"^permission-\"))) | length" "$REUSABLE")" = "3" ]
+  [ "$(yq -r "$step | keys | map(select(test(\"^permission-\"))) | length" "$REUSABLE")" = "2" ]
 }
 
 _merge_calls() { grep -F '/pulls/5/merge' "${FIX_DIR}/writes.log" 2>/dev/null || true; }
