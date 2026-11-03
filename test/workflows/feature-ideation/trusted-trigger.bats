@@ -189,6 +189,12 @@ claude_field() {
   ! grep -nE 'secrets\.(GH_PAT|DON_PETRY)' "$REUSABLE"
 }
 
+@test "reusable: the action admits only the job-token bot, never every bot" {
+  # The redispatch run's actor is github-actions[bot]; the action refuses bot
+  # actors unless listed. '*' would admit any App's run.
+  [ "$(claude_field '.with.allowed_bots')" = "github-actions" ]
+}
+
 @test "reusable prompt: marks issue, Discussion and web text as data" {
   prompt=$(claude_field '.with.prompt')
   [[ "$prompt" == *"## Untrusted content"* ]]
