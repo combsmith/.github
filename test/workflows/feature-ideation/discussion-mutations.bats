@@ -32,6 +32,16 @@ teardown() {
   [ "$(wc -l <"$DRY_RUN_LOG")" -eq 1 ]
 }
 
+@test "dry-run: create_discussion assigns a planned_id later entries can reference (#1389)" {
+  DRY_RUN=1 run create_discussion "R_1" "C_ideas" "first" "b"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | jq -r .planned_id)" = "planned-discussion-1" ]
+  DRY_RUN=1 run create_discussion "R_1" "C_ideas" "second" "b"
+  [ "$(printf '%s' "$output" | jq -r .planned_id)" = "planned-discussion-2" ]
+  # The logged entry carries the same id the caller saw.
+  [ "$(jq -r 'select(.title == "second") | .planned_id' "$DRY_RUN_LOG")" = "planned-discussion-2" ]
+}
+
 @test "dry-run: comment_on_discussion logs entry" {
   DRY_RUN=1 run comment_on_discussion "D_1" "Update text"
   [ "$status" -eq 0 ]
