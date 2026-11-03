@@ -3894,13 +3894,14 @@ _sync_gap_stub() {
 # evidence-carrying `canary-confirm` issue (compare diff link; needs-human). Default-absent
 # (transition without the key) = fully autonomous, byte-identical for opted-out agents.
 
-@test "canary-rings.json: dev-lead and agent-shield ring1->stable opt into require_confirmation; opted-out agents default-off" {
-  run jq -e '.agents["dev-lead"].gate.transitions["ring1->stable"].require_confirmation == true' "$RINGS"
-  [ "$status" -eq 0 ]
-  run jq -e '.agents["agent-shield"].gate.transitions["ring1->stable"].require_confirmation == true' "$RINGS"
-  [ "$status" -eq 0 ]
+@test "canary-rings.json: only the opted-in agents' ring1->stable require confirmation; the rest default-off" {
+  local a
+  for a in dev-lead agent-shield dependabot-rebase dependabot-automerge; do
+    run jq -e --arg a "$a" '.agents[$a].gate.transitions["ring1->stable"].require_confirmation == true' "$RINGS"
+    [ "$status" -eq 0 ]
+  done
   # Every OTHER agent's ring1->stable must NOT carry the key (absent → today's autonomous behaviour).
-  run jq -e '[.agents | to_entries[] | select(.key != "dev-lead" and .key != "agent-shield")
+  run jq -e '[.agents | to_entries[] | select(.key | IN("dev-lead", "agent-shield", "dependabot-rebase", "dependabot-automerge") | not)
              | .value.gate.transitions["ring1->stable"].require_confirmation] | all(. == null)' "$RINGS"
   [ "$status" -eq 0 ]
 }
