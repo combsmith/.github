@@ -304,6 +304,13 @@ _gh_write() {
 _gh_move_tag() {
   [ $# -lt 3 ] && return 1
   local repo="$1" tag="$2" sha="$3" out rc
+  # #1402: this writer force-moves with the release-manager App's ruleset bypass, so it moves
+  # mutable CHANNEL tags only — never an immutable release tag (<name>/vX.Y.Z) or a malformed
+  # ref path, whichever caller (and whatever input) produced the name.
+  if ! movable_channel_tag_name "$tag"; then
+    echo "::error::_gh_move_tag: refusing to force-move refs/tags/${tag//[^A-Za-z0-9._\/-]/?} on $repo — not a mutable channel tag (release tags are immutable, #1402)" >&2
+    return 2
+  fi
   out="$(_gh_write api -X PATCH "repos/$repo/git/refs/tags/$tag" \
       -f sha="$sha" -F force=true 2>&1)" && return 0
   rc=$?
@@ -2511,6 +2518,12 @@ cmd_rollback() {
     esac; shift
   done
   [ -z "$to" ] && { echo "::error::rollback requires --to <vX.Y.Z>" >&2; return 2; }
+  # #1402: <ring> is caller-supplied (workflow_dispatch) and names the tag the App force-moves —
+  # accept ONLY a channel registered for this agent (bare <tier> or v-scoped v<M>-<tier>).
+  if ! rollback_ring_allowed "$ring" "$(ordered_channels "$agent" 2>/dev/null || true)"; then
+    echo "::error::rollback: ring '${ring//[^A-Za-z0-9._-]/?}' is not a registered channel of agent '${agent//[^A-Za-z0-9._-]/?}' — refusing to move it (release tags are immutable)" >&2
+    return 2
+  fi
   # Consistent path (#1076), mirroring cmd_promote: the target lookup AND the move both go
   # through gh api on the agent's HOST repo for every agent — never local git. host defaults
   # to THIS_REPO for an agent whose registry entry omits it.
