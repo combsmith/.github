@@ -27,6 +27,12 @@ teardown() {
 #   4. gh api graphql (discussions)
 #   5. gh release list
 #   6. gh pr list --state merged
+#   7. gh api .../permission for each author, sorted (alice, then bob)
+append_write_permissions() {
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/permission-write.txt" >>"$1"
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/permission-write.txt" >>"$1"
+}
+
 build_happy_script() {
   local script="${TT_TMP}/gh-script.tsv"
   : >"$script"
@@ -36,6 +42,7 @@ build_happy_script() {
   printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/graphql-discussions.json" >>"$script"
   printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/release-list.json" >>"$script"
   printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/pr-list-merged.json" >>"$script"
+  append_write_permissions "$script"
   export GH_STUB_SCRIPT="$script"
   rm -f "${TT_TMP}/.gh-stub-counter"
 }
@@ -105,6 +112,54 @@ build_happy_script() {
   bash "${TT_SCRIPTS_DIR}/collect-signals.sh"
   d=$(jq -r '.scan_date' "$SIGNALS_OUTPUT")
   [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+}
+
+# ---------------------------------------------------------------------------
+# Trusted authors
+# ---------------------------------------------------------------------------
+
+# Happy path up to the merged PRs; the caller appends the permission responses.
+build_script_without_permissions() {
+  local script="${TT_TMP}/gh-script.tsv"
+  : >"$script"
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/issue-list-open.json" >>"$script"
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/issue-list-closed.json" >>"$script"
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/graphql-categories.json" >>"$script"
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/graphql-discussions.json" >>"$script"
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/release-list.json" >>"$script"
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/pr-list-merged.json" >>"$script"
+  export GH_STUB_SCRIPT="$script"
+  rm -f "${TT_TMP}/.gh-stub-counter"
+}
+
+@test "collect-signals: an issue by an author without write access never reaches signals.json" {
+  build_script_without_permissions
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/permission-write.txt" >>"$GH_STUB_SCRIPT" # alice
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/permission-read.txt" >>"$GH_STUB_SCRIPT"  # bob
+  bash "${TT_SCRIPTS_DIR}/collect-signals.sh"
+  [ "$(jq '.open_issues.count' "$SIGNALS_OUTPUT")" = "1" ]
+  [ "$(jq '.bug_reports.count' "$SIGNALS_OUTPUT")" = "0" ]
+  ! grep -q 'Crash on startup' "$SIGNALS_OUTPUT"
+}
+
+@test "collect-signals: Discussions and closed issues by an author without write access are dropped too" {
+  build_script_without_permissions
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/permission-read.txt" >>"$GH_STUB_SCRIPT"  # alice
+  printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/permission-write.txt" >>"$GH_STUB_SCRIPT" # bob
+  bash "${TT_SCRIPTS_DIR}/collect-signals.sh"
+  [ "$(jq '.ideas_discussions.count' "$SIGNALS_OUTPUT")" = "0" ]
+  [ "$(jq '.closed_issues_30d.count' "$SIGNALS_OUTPUT")" = "0" ]
+  ! grep -q 'Streaming voice' "$SIGNALS_OUTPUT"
+}
+
+@test "collect-signals: FAILS LOUD when a permission lookup is refused, instead of emptying the signals" {
+  build_script_without_permissions
+  err_file="${TT_TMP}/perm-err.txt"
+  printf 'HTTP 403: Resource not accessible by integration\n' >"$err_file"
+  printf '1\t-\t%s\n' "$err_file" >>"$GH_STUB_SCRIPT"
+  run bash "${TT_SCRIPTS_DIR}/collect-signals.sh"
+  [ "$status" -eq 2 ]
+  [ ! -f "$SIGNALS_OUTPUT" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -208,6 +263,7 @@ JSON
   printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/graphql-discussions-truncated.json" >>"$script"
   printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/release-list.json" >>"$script"
   printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/pr-list-merged.json" >>"$script"
+  append_write_permissions "$script"
   export GH_STUB_SCRIPT="$script"
   rm -f "${TT_TMP}/.gh-stub-counter"
 
@@ -230,6 +286,7 @@ JSON
   printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/graphql-no-ideas-category.json" >>"$script"
   printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/release-list.json" >>"$script"
   printf '0\t%s\t-\n' "${TT_FIXTURES_DIR}/gh-responses/pr-list-merged.json" >>"$script"
+  append_write_permissions "$script"
   export GH_STUB_SCRIPT="$script"
   rm -f "${TT_TMP}/.gh-stub-counter"
 
