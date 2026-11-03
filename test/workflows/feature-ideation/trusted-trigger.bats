@@ -9,9 +9,10 @@
 #     stub's `if:` with a small model of the terms it knows, refusing any other
 #     term, so a rewritten gate fails here until the test is taught.
 #   - It EXECUTES the re-dispatch script against the gh stub.
-#   - It does NOT prove that GitHub sends `author_association` for a Discussion,
-#     that the job token starts the dispatched run, or that the permission API
-#     accepts that token. Only a live run can.
+#   - It does NOT prove that the job token starts the dispatched run. Only a live
+#     run can. The permission API under the job token was proven live (run
+#     41572199423). A live maintainer Discussion was skipped while the gate used
+#     `author_association`, which is why the stub no longer uses it.
 
 load 'helpers/setup'
 
@@ -28,52 +29,105 @@ teardown() {
   tt_cleanup_tmpdir
 }
 
-# gate <stub> <association|-> <author type> <category slug>: prints run or skip.
+# gate <stub> <author type> <category slug>: prints run or skip.
 gate() {
-  python3 - "$@" <<'PY'
-import re, sys, yaml
+  python3 - "$@" <<'PYEOF'
+import sys, yaml
 
-path, association, author_type, slug = sys.argv[1:5]
+path, author_type, slug = sys.argv[1:4]
 expr = yaml.safe_load(open(path))["jobs"]["redispatch"]["if"]
 facts = {
     "github.event_name == 'discussion'": True,
     "github.event.discussion.category.slug == 'ideas'": slug.lower() == "ideas",
     "github.event.discussion.user.type != 'Bot'": author_type.lower() != "bot",
 }
-contains = re.compile(
-    r"""contains\(fromJSON\('(\[.*\])'\), github\.event\.discussion\.author_association\)"""
-)
 result = True
 for term in (t.strip() for t in expr.split("&&")):
-    match = contains.fullmatch(term)
-    if match:
-        allowed = [a.upper() for a in yaml.safe_load(match.group(1))]
-        result = result and association.upper() in allowed
-    elif term in facts:
-        result = result and facts[term]
-    else:
+    if term not in facts:
         sys.stderr.write(f"gate model does not know: {term}\n")
         sys.exit(3)
+    result = result and facts[term]
 print("run" if result else "skip")
-PY
+PYEOF
 }
 
-@test "stub gate: only OWNER, MEMBER and COLLABORATOR authors start a run" {
+# step <stub>: writes the re-dispatch script to $TT_TMP/step.sh.
+step() {
+  yq -r '.jobs.redispatch.steps[0].run' "$1" >"${TT_TMP}/step.sh"
+}
+
+# script_gh <line>...: one `EXIT<TAB>STDOUT<TAB>STDERR` line per expected gh call.
+script_gh() {
+  local script="${TT_TMP}/gh-script.tsv" line
+  : >"$script"
+  for line in "$@"; do printf '%s\n' "$line" >>"$script"; done
+  export GH_STUB_SCRIPT="$script"
+  rm -f "${TT_TMP}/.gh-stub-counter"
+}
+
+@test "stub gate: Ideas by users reach the permission check; bots and other categories never do" {
   for stub in "$TEMPLATE" "$SELF_STUB"; do
-    for association in OWNER MEMBER COLLABORATOR; do
-      [ "$(gate "$stub" "$association" User ideas)" = "run" ]
-    done
-    for association in NONE CONTRIBUTOR FIRST_TIME_CONTRIBUTOR FIRST_TIMER MANNEQUIN -; do
-      [ "$(gate "$stub" "$association" User ideas)" = "skip" ]
-    done
+    [ "$(gate "$stub" User ideas)" = "run" ]
+    [ "$(gate "$stub" Bot ideas)" = "skip" ]
+    [ "$(gate "$stub" User general)" = "skip" ]
   done
 }
 
-@test "stub gate: bots and other categories never start a run, even for a member" {
+@test "stub gate: does not rely on author_association, which misses private org members" {
   for stub in "$TEMPLATE" "$SELF_STUB"; do
-    [ "$(gate "$stub" MEMBER Bot ideas)" = "skip" ]
-    [ "$(gate "$stub" MEMBER User general)" = "skip" ]
+    ! yq -r '.jobs.redispatch.if, .jobs.redispatch.steps[].run' "$stub" | grep -q 'author_association'
   done
+}
+
+@test "stub: an author with write or admin access is re-dispatched" {
+  export GH_STUB_LOG="${TT_TMP}/gh.log" GH_TOKEN=fake REPO=o/r AUTHOR=alice DISCUSSION_NUMBER=42
+  step "$TEMPLATE"
+  for perm in write admin; do
+    : >"$GH_STUB_LOG"
+    script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-${perm}.txt	-" "0	-	-"
+    run bash -eo pipefail "${TT_TMP}/step.sh"
+    [ "$status" -eq 0 ]
+    grep -q 'collaborators/alice/permission' "$GH_STUB_LOG"
+    grep -q 'workflow run feature-ideation.yml --repo o/r -f target_discussion=42' "$GH_STUB_LOG"
+  done
+}
+
+@test "stub: an author without write access is not re-dispatched, and the step stays green" {
+  export GH_STUB_LOG="${TT_TMP}/gh.log" GH_TOKEN=fake REPO=o/r AUTHOR=mallory DISCUSSION_NUMBER=42
+  step "$TEMPLATE"
+  for perm in read none; do
+    : >"$GH_STUB_LOG"
+    printf '%s\n' "$perm" >"${TT_TMP}/perm.txt"
+    script_gh "0	${TT_TMP}/perm.txt	-"
+    run bash -eo pipefail "${TT_TMP}/step.sh"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"author does not have write access"* ]]
+    ! grep -q 'workflow run' "$GH_STUB_LOG"
+  done
+}
+
+@test "stub: a malformed login is refused without any API call" {
+  export GH_STUB_LOG="${TT_TMP}/gh.log" GH_TOKEN=fake REPO=o/r DISCUSSION_NUMBER=42
+  step "$TEMPLATE"
+  for login in '../x' 'a b' '-x' 'dependabot[bot]' ''; do
+    AUTHOR="$login" run bash -eo pipefail "${TT_TMP}/step.sh"
+    [ "$status" -eq 0 ]
+  done
+  [ ! -s "$GH_STUB_LOG" ]
+}
+
+@test "stub: a failed permission lookup fails the step and dispatches nothing" {
+  export GH_STUB_LOG="${TT_TMP}/gh.log" GH_TOKEN=fake REPO=o/r AUTHOR=alice DISCUSSION_NUMBER=42
+  printf 'HTTP 403\n' >"${TT_TMP}/err.txt"
+  script_gh "1	-	${TT_TMP}/err.txt"
+  step "$TEMPLATE"
+  run bash -eo pipefail "${TT_TMP}/step.sh"
+  [ "$status" -ne 0 ]
+  ! grep -q 'workflow run' "$GH_STUB_LOG"
+}
+
+@test "stub: both stubs carry the same redispatch job" {
+  [ "$(yq -o=json -I=0 '.jobs.redispatch' "$TEMPLATE")" = "$(yq -o=json -I=0 '.jobs.redispatch' "$SELF_STUB")" ]
 }
 
 @test "stub: redispatch holds no personal token and only actions: write" {
@@ -98,17 +152,7 @@ PY
   done
 }
 
-@test "stub: the re-dispatch step fires exactly one dispatch for the number" {
-  export GH_STUB_LOG="${TT_TMP}/gh.log"
-  export GH_TOKEN=fake REPO=o/r DISCUSSION_NUMBER=42
-  yq -r '.jobs.redispatch.steps[0].run' "$TEMPLATE" >"${TT_TMP}/step.sh"
-  run bash -euo pipefail "${TT_TMP}/step.sh"
-  [ "$status" -eq 0 ]
-  [ "$(wc -l <"$GH_STUB_LOG" | tr -d ' ')" = "1" ]
-  grep -q 'workflow run feature-ideation.yml --repo o/r -f target_discussion=42' "$GH_STUB_LOG"
-}
-
-@test "stub: the discussion number reaches the script only through env" {
+@test "stub: event values reach the script only through env" {
   for stub in "$TEMPLATE" "$SELF_STUB"; do
     ! yq -r '.jobs.redispatch.steps[].run' "$stub" | grep -q '\${{'
   done
