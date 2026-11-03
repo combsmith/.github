@@ -1440,11 +1440,12 @@ evolve.
 **Triggers:** the weekly `schedule`, manual `workflow_dispatch`, **and
 `discussion: created`**. `claude-code-action` aborts on `discussion` event
 contexts, so the stub does **not** call the reusable inline on that event.
-Instead a `redispatch` job — gated to new Discussions in the **Ideas** category
-whose author is `OWNER`, `MEMBER` or `COLLABORATOR`, skipping the bot's own
-creations — re-invokes the workflow via `workflow_dispatch` with the job's
-`GITHUB_TOKEN` (`actions: write`; this needs no personal token), forwarding the
-Discussion number as the `target_discussion` input. The re-dispatched run puts the reusable in
+Instead a `redispatch` job — gated to new Discussions in the **Ideas** category,
+skipping the bot's own creations, and run only when the author has write access
+(read from the repository permission API; the event's `author_association` does
+not mark private org members as maintainers) — re-invokes the workflow via
+`workflow_dispatch` with the job's `GITHUB_TOKEN` (`actions: write`; this needs no
+personal token), forwarding the Discussion number as the `target_discussion` input. The re-dispatched run puts the reusable in
 **single-idea enhancement mode**: it researches and refines that one new idea and
 posts a single enhancement comment, rather than running the broad scan.
 Enhancement is a comment (which does not re-fire `created`), so there is no
