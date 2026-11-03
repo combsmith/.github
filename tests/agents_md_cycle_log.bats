@@ -358,3 +358,11 @@ split_row() {
   [ "$status" -eq 0 ]
   [[ "$output" == *clean-cycles-met=false* ]]
 }
+
+@test "zero-padded counts are compared as decimal, not invalid octal" {
+  local f="$BATS_TEST_TMPDIR/pad.md"
+  printf '| 2026-01-01 | 9 | 08 | | @alice | no |\n' > "$f"
+  run bash "$SCRIPT" validate "$f"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cannot be empty"* || "$output" == *"is empty"* ]]
+}

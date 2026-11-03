@@ -145,6 +145,9 @@ amcl_validate_log() {
       printf 'cycle %s: "Determined by" must contain a valid GitHub @handle (got "%s")\n' "$cycle" "$maintainer" >&2
       rc=1; continue
     fi
+    # Normalise to base 10: amcl_is_uint accepts leading zeros ("08"), which bash
+    # arithmetic would otherwise reject as an invalid octal operand.
+    findings=$((10#$findings)); fps=$((10#$fps))
     # Confirmed false positives are SELECTED FROM the structural findings, so the
     # count can never exceed the finding count; a row that claims otherwise is
     # malformed (both are validated as non-negative integers above).
@@ -219,7 +222,7 @@ amcl_clean_cycles_met() {
   while IFS="$AMCL_FS" read -r cycle findings fps details maintainer cln; do
     [[ -n "$cycle" ]] || continue
     : "${findings:-}" "${details:-}" "${cln:-}"
-    if amcl_is_uint "$fps" && [[ "$fps" -eq 0 ]] && [[ -n "$maintainer" ]] \
+    if amcl_is_uint "$fps" && [[ "$((10#$fps))" -eq 0 ]] && [[ -n "$maintainer" ]] \
        && [[ "$maintainer" != "—" ]] && [[ "$maintainer" != "-" ]]; then
       clean=$((clean + 1))
     fi
@@ -281,10 +284,11 @@ amcl_main() {
         printf 'agents-md-cycle-log: log file not found: %s\n' "$log" >&2
         return 2
       fi
-      if ! amcl_is_uint "$required" || [[ "$required" -lt 1 ]]; then
+      if ! amcl_is_uint "$required" || [[ "$((10#$required))" -lt 1 ]]; then
         printf 'agents-md-cycle-log: required-clean-cycles must be a positive integer, got "%s"\n' "$required" >&2
         return 2
       fi
+      required=$((10#$required))
       local met
       met="$(amcl_clean_cycles_met "$log" "$required")"
       # The report is deliberately explicit that meeting the clean-cycle
