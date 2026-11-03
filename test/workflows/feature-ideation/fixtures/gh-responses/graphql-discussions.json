@@ -2,7 +2,9 @@
   "data": {
     "repository": {
       "discussions": {
-        "pageInfo": {"hasNextPage": false},
+        "pageInfo": {
+          "hasNextPage": false
+        },
         "nodes": [
           {
             "id": "D_1",
@@ -10,8 +12,19 @@
             "title": "💡 Streaming voice responses",
             "createdAt": "2026-03-01T00:00:00Z",
             "updatedAt": "2026-04-01T00:00:00Z",
-            "labels": {"nodes": [{"name": "enhancement"}]},
-            "comments": {"totalCount": 3}
+            "labels": {
+              "nodes": [
+                {
+                  "name": "enhancement"
+                }
+              ]
+            },
+            "comments": {
+              "totalCount": 3
+            },
+            "author": {
+              "login": "alice"
+            }
           }
         ]
       }
