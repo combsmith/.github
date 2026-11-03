@@ -54,13 +54,20 @@ jobs_running_repo_code() {
 }
 
 @test "only the token gate and the scan steps reference secrets.SONAR_TOKEN (#1392)" {
-  local total bad
+  local total allowed bad
   total="$(grep -c 'secrets\.SONAR_TOKEN' "$WF")"
+  allowed="$(yq '[.jobs[].steps[]
+                  | select((.env.SONAR_TOKEN // "") | test("secrets\.SONAR_TOKEN"))
+                  | select(.id == "token" or ((.uses // "") | test("^SonarSource/sonarqube-scan-action@")))]
+                 | length' "$WF")"
   bad="$(yq '[.jobs[].steps[]
               | select([.. | select(tag == "!!str") | test("secrets\.SONAR_TOKEN")] | any)
               | select((.id == "token" or ((.uses // "") | test("^SonarSource/sonarqube-scan-action@"))) | not)
               | (.name // .id // .uses)] | join(", ")' "$WF")"
   [ -z "$bad" ] || { echo "steps outside the allow-list read SONAR_TOKEN: $bad"; return 1; }
+  # gate + scan + retry, each in its own step env, and no other textual
+  # reference anywhere in the file.
+  [ "$allowed" = "3" ] || { echo "expected 3 allowed references, found $allowed"; return 1; }
   [ "$total" = "3" ] || { echo "expected 3 secrets.SONAR_TOKEN references, found $total"; return 1; }
 }
 

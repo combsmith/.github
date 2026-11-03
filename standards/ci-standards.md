@@ -760,6 +760,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       # Token gate: outputs present=true|false; fails a fork PR that has no
       # token unless vars.SONAR_BOOTSTRAP == 'true'. Full script:
       # standards/workflows/sonarcloud.yml (the canonical copy).
