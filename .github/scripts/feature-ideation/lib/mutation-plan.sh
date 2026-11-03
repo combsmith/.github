@@ -21,8 +21,10 @@
 #         (or name `Ideas`), else `general` — the same fallback the prompt
 #         gives the model (Phase 7). Empty when neither exists.
 #   mp_existing_targets <plan.jsonl>
-#       → JSON array of the distinct discussion_ids the plan names that are
-#         NOT planned-discussion-N references (the executor resolves these)
+#       → JSON array of the distinct discussion_ids of comment and label
+#         entries that are NOT planned-discussion-N references and look like a
+#         GraphQL node id (the executor resolves these; anything else is never
+#         sent to GitHub and is rejected by mp_validate_plan)
 #   mp_sanitise_plan <plan-json>
 #       → the validated plan with @mentions neutralised in titles and bodies,
 #         so a prompt-injected model cannot ping anyone
@@ -56,8 +58,9 @@
 #              ideation category of this repo; at most MP_MAX_COMMENTS
 #              comments and MP_MAX_LABELS labels per run; a label must be the
 #              repository's `enhancement` label
-#   all        known op, required fields are non-empty strings, title and body
-#              within MP_MAX_TITLE and MP_MAX_BODY characters; a
+#   all        known op, required fields are strings with a non-space
+#              character, title and body within MP_MAX_TITLE and MP_MAX_BODY
+#              characters as they will be published (after mp_sanitise_plan); a
 #              discussion_id of the form planned-discussion-N must name a
 #              planned_id of an EARLIER create_discussion in the same plan;
 #              planned_ids are unique and of that form.
@@ -78,11 +81,20 @@ MP_MAX_LABELS=5
 MP_MAX_TITLE=256
 MP_MAX_BODY=20000
 
+# jq: neutralise @mentions. Shared by mp_sanitise_plan and the length check in
+# mp_validate_plan, so a length is measured on what will be published. A
+# zero-width space after the @ stops GitHub linking or notifying. HTML entities
+# for @ are decoded first, since they render as a plain @. A @ right after a
+# letter or digit (an email, action@v4) is never a mention.
+MP_JQ_QUIET='def quiet:
+  gsub("&(#0*64|#[xX]0*40|commat);?"; "@")
+  | gsub("(?<![A-Za-z0-9])@(?=[A-Za-z0-9])"; "@\u200b");'
+
 mp_mode() {
   local target="${1:-}" backlog="${2:-}"
-  if [ -n "$target" ]; then
+  if [[ -n "$target" ]]; then
     printf 'single'
-  elif [ "$backlog" = "1" ] || [ "$backlog" = "true" ]; then
+  elif [[ "$backlog" = "1" ]] || [[ "$backlog" = "true" ]]; then
     printf 'backlog'
   else
     printf 'scheduled'
@@ -104,18 +116,15 @@ mp_ideation_category() {
 }
 
 mp_existing_targets() {
-  jq -cs '[.[] | objects | .discussion_id | strings
-           | select(test("^planned-") | not)] | unique' "$1" 2>/dev/null || printf '[]'
+  jq -cs '[.[] | objects
+           | select(.op == "comment_on_discussion" or .op == "add_label_to_discussion")
+           | .discussion_id | strings
+           | select((startswith("planned-") | not) and test("\\A[A-Za-z0-9_=+-]+\\z"))]
+          | unique' "$1" 2>/dev/null || printf '[]'
 }
 
 mp_sanitise_plan() {
-  printf '%s' "${1:-}" | jq -c '
-    # A zero-width space after the @ stops GitHub linking or notifying. HTML
-    # entities for @ are decoded first, since they render as a plain @. A @
-    # right after a letter or digit (an email, action@v4) is never a mention.
-    def quiet:
-      gsub("&(#0*64|#[xX]0*40|commat);?"; "@")
-      | gsub("(?<![A-Za-z0-9])@(?=[A-Za-z0-9])"; "@\u200b");
+  printf '%s' "${1:-}" | jq -c "${MP_JQ_QUIET}"'
     map(if type != "object" then . else
       (if (.title | type) == "string" then .title |= quiet else . end)
       | (if (.body | type) == "string" then .body |= quiet else . end)
@@ -136,12 +145,12 @@ mp_done_ops() {
 }
 
 mp_validate_plan() {
-  if [ "$#" -lt 2 ] || [ "$#" -gt 4 ]; then
+  if [[ "$#" -lt 2 ]] || [[ "$#" -gt 4 ]]; then
     printf '[mutation-plan] usage: mp_validate_plan <plan.jsonl> <mode> [target_node_id] [context-json]\n' >&2
     return 64
   fi
   local plan="$1" mode="$2" target="${3:-}" context="${4:-}"
-  [ -n "$context" ] || context='{}'
+  [[ -n "$context" ]] || context='{}'
   if ! printf '%s' "$context" | jq -e 'type == "object"' >/dev/null 2>&1; then
     printf '[mutation-plan] context must be a JSON object\n' >&2
     return 64
@@ -153,7 +162,7 @@ mp_validate_plan() {
       return 64
       ;;
   esac
-  if [ ! -f "$plan" ]; then
+  if [[ ! -f "$plan" ]]; then
     printf '[mutation-plan] plan file not found: %s\n' "$plan" >&2
     return 64
   fi
@@ -169,8 +178,10 @@ mp_validate_plan() {
     --arg mode "$mode" --arg target "$target" --argjson max "$MP_MAX_CREATES" \
     --argjson max_comments "$MP_MAX_COMMENTS" --argjson max_labels "$MP_MAX_LABELS" \
     --argjson max_title "$MP_MAX_TITLE" --argjson max_body "$MP_MAX_BODY" \
-    --argjson ctx "$context" '
-    def nonempty: type == "string" and length > 0;
+    --argjson ctx "$context" "${MP_JQ_QUIET}"'
+    # At least one non-space character: bash strips trailing newlines when the
+    # executor reads a field, so "\n" would reach GitHub as an empty string.
+    def nonempty: type == "string" and test("\\S");
     def fields:
       {create_discussion: ["repo_id", "category_id", "title", "body"],
        comment_on_discussion: ["discussion_id", "body"],
@@ -179,7 +190,8 @@ mp_validate_plan() {
       {single: ["comment_on_discussion"],
        backlog: ["comment_on_discussion"],
        scheduled: ["create_discussion", "comment_on_discussion", "add_label_to_discussion"]}[$mode];
-    def planned_ref: type == "string" and test("^planned-discussion-[0-9]+$");
+    # \A and \z: in jq, $ also matches before a trailing newline.
+    def planned_ref: type == "string" and test("\\Aplanned-discussion-[0-9]+\\z");
     . as $ops
     | reduce range(0; $ops | length) as $i (
         {errors: [], planned: [], creates: 0, comments: 0, labels: 0};
@@ -192,9 +204,9 @@ mp_validate_plan() {
             .errors += ["\($at): \($o.op) needs non-empty string fields \($o.op | fields | join(", "))"]
           elif ([allowed[] | . == $o.op] | any | not) then
             .errors += ["\($at): \($o.op) is not allowed in \(if $mode == "single" then "single-idea" else $mode end) mode"]
-          elif (($o.title | strings | length) // 0) > $max_title then
+          elif (($o.title | strings | quiet | length) // 0) > $max_title then
             .errors += ["\($at): title is over \($max_title) characters"]
-          elif (($o.body | strings | length) // 0) > $max_body then
+          elif (($o.body | strings | quiet | length) // 0) > $max_body then
             .errors += ["\($at): body is over \($max_body) characters"]
           elif $o.op == "create_discussion" then
             .creates += 1
@@ -236,7 +248,7 @@ mp_validate_plan() {
           end)
     | if (.errors | length) > 0 then {ok: false, errors: .errors} else {ok: true, ops: $ops} end')
 
-  if [ "$(printf '%s' "$verdict" | jq -r '.ok')" = "true" ]; then
+  if [[ "$(printf '%s' "$verdict" | jq -r '.ok')" = "true" ]]; then
     printf '%s' "$verdict" | jq -c '.ops'
     return 0
   fi

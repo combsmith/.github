@@ -18,6 +18,8 @@
 #   ENHANCE_BACKLOG    "1"/"true" = backlog mode (ignored when a target is set)
 #   REPO               owner/name of the calling repository
 #   GH_TOKEN           token with discussions: write (read is enough on dry run)
+#   PUBLISH_WRITE_DELAY_SECONDS  pause after each write (default 1), to stay
+#                      under GitHub's secondary rate limit for mutations
 #
 # Exit: 0 published (or dry run / nothing to do); 1 plan rejected; other
 # non-zero = a GitHub call failed. Publishing is not atomic, so mutations before
@@ -38,7 +40,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/discussion-mutations.sh"
 
 _summary() {
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     printf '%s\n' "$@" >>"$GITHUB_STEP_SUMMARY"
   fi
 }
@@ -49,6 +51,36 @@ _summary() {
 # command), no backticks (they could close the summary's code fence).
 _neutralise() {
   tr -d '\r' | sed -e ':a' -e 's/::/: :/' -e 'ta' -e "s/\`/'/g"
+}
+
+# Run a lookup with its stderr neutralised: GitHub's error text can echo ids
+# and other values that came from the plan.
+_quiet_stderr() {
+  local err rc=0
+  err=$(mktemp)
+  "$@" 2>"$err" || rc=$?
+  _neutralise <"$err" >&2
+  rm -f "$err"
+  return "$rc"
+}
+
+# nodes(ids:) lookup. An id GitHub cannot resolve (deleted, private, never
+# existed) comes back as a NOT_FOUND error with a null node, and gh exits
+# non-zero; that is an answer, not a failure: the node stays unresolved and the
+# validator rejects the entry with a reason. Any other error fails.
+_lookup_nodes() {
+  local body="$1" raw rc=0
+  raw=$(printf '%s' "$body" | gh api graphql --input - 2>/dev/null) || rc=$?
+  if ! printf '%s' "$raw" | jq -e '.data.nodes | arrays' >/dev/null 2>&1; then
+    echo "node lookup failed (exit ${rc})" >&2
+    return 1
+  fi
+  if [[ "$rc" -ne 0 ]] && ! printf '%s' "$raw" | jq -e \
+      '(.errors | arrays | length > 0) and all(.errors[]; .type == "NOT_FOUND")' >/dev/null 2>&1; then
+    echo "node lookup returned errors (exit ${rc})" >&2
+    return 1
+  fi
+  printf '%s' "$raw"
 }
 
 # Resolve what backlog and scheduled plans are checked against (#1389
@@ -76,7 +108,7 @@ GRAPHQL
   # nodes(ids:) takes at most 100 ids; any id beyond that stays unresolved
   # and is rejected (the comment cap rejects such a plan anyway).
   ids=$(mp_existing_targets "$plan" | jq -c '.[0:100]')
-  if [ "$(printf '%s' "$ids" | jq 'length')" -gt 0 ]; then
+  if [[ "$(printf '%s' "$ids" | jq 'length')" -gt 0 ]]; then
     read -r -d '' query <<'GRAPHQL' || true
 query($ids: [ID!]!) {
   nodes(ids: $ids) {
@@ -85,7 +117,7 @@ query($ids: [ID!]!) {
 }
 GRAPHQL
     body=$(jq -nc --arg q "$query" --argjson ids "$ids" '{query: $q, variables: {ids: $ids}}')
-    nodes=$(gh_safe_graphql_input "$body") || return 1
+    nodes=$(_lookup_nodes "$body") || return 1
     targets=$(printf '%s' "$nodes" | jq -c --arg repo "$repo_id" '
       [.data.nodes[]? | objects
        | select((.id | type) == "string" and .repository.id == $repo)
@@ -94,6 +126,12 @@ GRAPHQL
   jq -nc --arg r "$repo_id" --arg c "$cat_id" --argjson t "$targets" \
     --arg l "$(printf '%s' "$repo_json" | jq -r '.label.id // ""')" \
     '{repo_id: $r, category_id: $c, label_id: $l, target_categories: $t}'
+}
+
+# GitHub asks for at least a second between mutating requests; without it a
+# backlog run's 50 comments can hit the secondary rate limit part-way.
+_pace() {
+  sleep "${PUBLISH_WRITE_DELAY_SECONDS:-1}"
 }
 
 # A stable id for this plan, so a re-run of the job recognises its own work.
@@ -110,7 +148,7 @@ _plan_id() {
 # blindly.
 _resolve_done() {
   local plan="$1" plan_id="$2" category_id="$3" query body nodes discussions='[]' comments='[]' earlier ids
-  if [ "$(printf '%s' "$plan" | jq '[.[] | select(.op == "create_discussion")] | length')" -gt 0 ]; then
+  if [[ "$(printf '%s' "$plan" | jq '[.[] | select(.op == "create_discussion")] | length')" -gt 0 ]]; then
     read -r -d '' query <<'GRAPHQL' || true
 query($owner: String!, $name: String!, $category: ID!) {
   repository(owner: $owner, name: $name) {
@@ -134,7 +172,7 @@ GRAPHQL
                       | {(.value.planned_id): $created[.key | tostring]}) | add // {}) as $map
     | [.[] | select(.op == "comment_on_discussion") | .discussion_id
        | if startswith("planned-") then $map[.] else . end | strings] | unique')
-  if [ "$(printf '%s' "$ids" | jq 'length')" -gt 0 ]; then
+  if [[ "$(printf '%s' "$ids" | jq 'length')" -gt 0 ]]; then
     read -r -d '' query <<'GRAPHQL' || true
 query($ids: [ID!]!) {
   nodes(ids: $ids) {
@@ -143,7 +181,7 @@ query($ids: [ID!]!) {
 }
 GRAPHQL
     body=$(jq -nc --arg q "$query" --argjson ids "$ids" '{query: $q, variables: {ids: $ids}}')
-    nodes=$(gh_safe_graphql_input "$body") || return 1
+    nodes=$(_lookup_nodes "$body") || return 1
     comments=$(printf '%s' "$nodes" | jq -ce '.data.nodes | arrays') || return 1
   fi
   mp_done_ops "$plan_id" "$discussions" "$comments"
@@ -162,39 +200,44 @@ query($owner: String!, $name: String!, $number: Int!) {
 GRAPHQL
   result=$(gh_safe_graphql -f query="$query" \
     -f owner="${REPO%%/*}" -f name="${REPO##*/}" -F number="$number" \
-    --jq '.data.repository.discussion')
+    --jq '.data.repository.discussion') || return 1
   mp_target_id "$result"
 }
 
 main() {
   local plan_path="${PLAN_PATH:?PLAN_PATH is required}"
+  : "${REPO:?REPO is required}"
   local dry_run=0
   case "${CALLER_DRY_RUN:-0}" in 1 | true) dry_run=1 ;; esac
   local mode
   mode=$(mp_mode "${TARGET_DISCUSSION:-}" "${ENHANCE_BACKLOG:-}")
 
-  if [ ! -s "$plan_path" ]; then
+  if [[ ! -s "$plan_path" ]]; then
     echo "No Discussion mutations planned — nothing to publish."
     _summary "## Discussion mutations" "" "No mutations planned."
     return 0
   fi
 
   local target_id=""
-  if [ "$mode" = "single" ]; then
-    if ! [[ "$TARGET_DISCUSSION" =~ ^[1-9][0-9]{0,9}$ ]]; then
+  if [[ "$mode" = "single" ]]; then
+    # GraphQL's Int is 32-bit signed.
+    if ! [[ "$TARGET_DISCUSSION" =~ ^[1-9][0-9]{0,9}$ ]] || (( 10#$TARGET_DISCUSSION > 2147483647 )); then
       printf '::error::target_discussion must be a Discussion number, got: %s\n' \
         "$(printf '%s' "$TARGET_DISCUSSION" | tr '\n' ' ' | _neutralise)"
       return 1
     fi
-    target_id=$(_resolve_target "$TARGET_DISCUSSION")
-    if [ -z "$target_id" ]; then
+    if ! target_id=$(_quiet_stderr _resolve_target "$TARGET_DISCUSSION"); then
+      echo "::error::Could not look up Discussion #${TARGET_DISCUSSION}; nothing was published."
+      return 1
+    fi
+    if [[ -z "$target_id" ]]; then
       echo "Discussion #${TARGET_DISCUSSION} is not in the ideas category — no comment may be posted."
     fi
   fi
 
   local context='{}'
-  if [ "$mode" != "single" ]; then
-    if ! context=$(_resolve_context "$plan_path"); then
+  if [[ "$mode" != "single" ]]; then
+    if ! context=$(_quiet_stderr _resolve_context "$plan_path"); then
       echo "::error::Could not resolve the repository, its Ideas category or the Discussions the plan names; nothing was published."
       return 1
     fi
@@ -218,7 +261,7 @@ main() {
 
   local count
   count=$(printf '%s' "$plan" | jq 'length')
-  if [ "$dry_run" -eq 1 ]; then
+  if [[ "$dry_run" -eq 1 ]]; then
     echo "dry run: ${count} planned mutation(s) validated (${mode} mode); nothing was written."
     _summary "## Discussion mutations (dry run)" "" \
       "${count} planned mutation(s) passed validation in \`${mode}\` mode. Nothing was written."
@@ -227,7 +270,7 @@ main() {
 
   local plan_id done_ops
   if ! plan_id=$(_plan_id "$plan_path") \
-    || ! done_ops=$(_resolve_done "$plan" "$plan_id" "$(printf '%s' "$context" | jq -r '.category_id // ""')"); then
+    || ! done_ops=$(_quiet_stderr _resolve_done "$plan" "$plan_id" "$(printf '%s' "$context" | jq -r '.category_id // ""')"); then
     echo "::error::Could not check what an earlier attempt already published; nothing was published on this attempt."
     return 1
   fi
@@ -244,7 +287,7 @@ main() {
     case "$kind" in
       create_discussion)
         id=$(printf '%s' "$done_ops" | jq -r --arg i "$index" '.created[$i] // empty')
-        if [ -n "$id" ]; then
+        if [[ -n "$id" ]]; then
           echo "already created ${id} on an earlier attempt"
           skipped=$((skipped + 1))
         else
@@ -253,8 +296,9 @@ main() {
             "$(printf '%s' "$op" | jq -r '.category_id')" \
             "$(printf '%s' "$op" | jq -r '.title')" \
             "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker")
+          _pace
           id=$(printf '%s' "$resp" | jq -r '.data.createDiscussion.discussion.id // empty')
-          if [ -z "$id" ]; then
+          if [[ -z "$id" ]]; then
             echo "::error::createDiscussion returned no id"
             return 1
           fi
@@ -269,16 +313,18 @@ main() {
         if [[ "$id" == planned-* ]]; then
           id=$(printf '%s' "$planned" | jq -r --arg k "$id" '.[$k] // empty')
         fi
-        if [ "$kind" = "comment_on_discussion" ]; then
-          if [ "$(printf '%s' "$done_ops" | jq --arg i "$index" '.commented | index($i) != null')" = "true" ]; then
+        if [[ "$kind" = "comment_on_discussion" ]]; then
+          if [[ "$(printf '%s' "$done_ops" | jq --arg i "$index" '.commented | index($i) != null')" = "true" ]]; then
             echo "already commented on ${id} on an earlier attempt"
             skipped=$((skipped + 1))
           else
             comment_on_discussion "$id" "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker" >/dev/null
+            _pace
             echo "commented on ${id}"
           fi
         else
           add_label_to_discussion "$id" "$(printf '%s' "$op" | jq -r '.label_id')" >/dev/null
+          _pace
           echo "labelled ${id}"
         fi
         ;;

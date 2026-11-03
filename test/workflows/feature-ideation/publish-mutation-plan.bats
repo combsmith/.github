@@ -46,7 +46,12 @@ setup() {
 #!/usr/bin/env bash
 request="\$*"
 if [ "\${!#}" = "-" ]; then request="\$(cat)"; printf '%s\n' "\$request" >>"$GH_STDIN_LOG"; fi
-if [ -n "\${GH_FAIL_MATCH:-}" ] && printf '%s' "\$request" | grep -qF -- "\$GH_FAIL_MATCH"; then exit 1; fi
+if [ -n "\${GH_FAIL_MATCH:-}" ] && printf '%s' "\$request" | grep -qF -- "\$GH_FAIL_MATCH"; then printf '%s' "\${GH_FAIL_STDERR:-}" >&2; exit 1; fi
+if [ -n "\${GH_NOTFOUND_MATCH:-}" ] && printf '%s' "\$request" | grep -qF -- "\$GH_NOTFOUND_MATCH"; then
+  printf '%s' '{"data":{"nodes":[null]},"errors":[{"type":"NOT_FOUND","path":["nodes",0],"message":"Could not resolve to a node"}]}'
+  echo "gh: Could not resolve to a node" >&2
+  exit 1
+fi
 exec "$stub_dir/gh-real" "\$@"
 EOF
   chmod +x "$stub_dir/gh"
@@ -58,6 +63,7 @@ EOF
   export CALLER_DRY_RUN=0
   export TARGET_DISCUSSION=""
   export ENHANCE_BACKLOG=0
+  export PUBLISH_WRITE_DELAY_SECONDS=0
   unset DRY_RUN GITHUB_STEP_SUMMARY
 }
 
@@ -645,6 +651,134 @@ reset_logs() { : >"$GH_STUB_LOG"; : >"$GH_STDIN_LOG"; }
   if grep -qF 'comments(last' "$GH_STDIN_LOG"; then
     echo "dry run looked for earlier work"; return 1
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Review follow-up round 3 (#1389)
+# ---------------------------------------------------------------------------
+
+# Lines of output that are workflow commands, other than the executor's own.
+foreign_commands() {
+  grep -E '^[[:space:]]*::' <<<"$output" | grep -vE '^::error::(Discussion mutation plan rejected|Could not)' || true
+}
+
+@test "ids: a malformed discussion_id is never sent to GitHub and cannot inject a workflow command" {
+  plan_add "$(jq -nc --arg d $'x\n::error::injected' '{op:"comment_on_discussion",discussion_id:$d,body:"b"}')"
+  plan_add "$(jq -nc --arg d $'y\n::warning::also' '{op:"create_discussion",repo_id:"R_1",category_id:"C_ideas",title:"t",body:"b",discussion_id:$d}')"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  no_writes
+  if grep -qE 'injected|also' "$GH_STDIN_LOG"; then echo "a malformed id reached GitHub"; return 1; fi
+  [ -z "$(foreign_commands)" ] || { foreign_commands; return 1; }
+  [[ "$output" == *"Discussion mutation plan rejected"* ]]
+}
+
+@test "ids: only comment and label targets are looked up" {
+  plan_add "$(jq -nc '{op:"create_discussion",repo_id:"R_1",category_id:"C_ideas",title:"t",body:"b",discussion_id:"D_stray"}')"
+  plan_add "$(comment D_existing)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  jq -se '[.[] | select(.query | contains("category { id }"))] | .[0].variables.ids == ["D_existing"]' "$GH_STDIN_LOG" >/dev/null
+}
+
+@test "ids: an id GitHub cannot resolve rejects the plan with a reason, not a lookup failure" {
+  export GH_STEP_SUMMARY_FILE="${TT_TMP}/summary.md"
+  export GITHUB_STEP_SUMMARY="$GH_STEP_SUMMARY_FILE"
+  export GH_NOTFOUND_MATCH='category { id }'
+  plan_add "$(comment D_nowhere)"
+  run "$EXEC"
+  [ "$status" -eq 1 ]
+  no_writes
+  [[ "$output" == *"Discussion mutation plan rejected"* ]]
+  grep -qF 'D_nowhere' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "lookups: GitHub error text is neutralised before it reaches the log" {
+  export TARGET_DISCUSSION=42
+  export GH_FAIL_MATCH='discussion(number'
+  export GH_FAIL_STDERR=$'boom\n::warning::injected\n'
+  plan_add "$(comment D_target)"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  [ -z "$(foreign_commands)" ] || { foreign_commands; return 1; }
+}
+
+@test "target: a failed lookup is reported as a lookup failure, not as an off-category target" {
+  export TARGET_DISCUSSION=42
+  export GH_FAIL_MATCH='discussion(number'
+  plan_add "$(comment D_target)"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  no_writes
+  [[ "$output" == *"Could not look up Discussion #42"* ]]
+  [[ "$output" != *"not in the ideas category"* ]]
+}
+
+@test "target: a number beyond GraphQL's Int range is refused before any API call" {
+  export TARGET_DISCUSSION=2147483648
+  plan_add "$(comment D_target)"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  [ ! -s "$GH_STUB_LOG" ]
+  export TARGET_DISCUSSION=2147483647
+  run "$EXEC"
+  [ -s "$GH_STUB_LOG" ]
+}
+
+@test "fields: a planned_id with a trailing newline is rejected" {
+  plan_add "$(jq -nc '{op:"create_discussion",repo_id:"R_1",category_id:"C_ideas",title:"t",body:"b",planned_id:"planned-discussion-1\n"}')"
+  plan_add "$(create planned-discussion-1)"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  no_writes
+}
+
+@test "fields: whitespace-only titles and bodies are rejected" {
+  local f
+  for f in '{"op":"create_discussion","repo_id":"R_1","category_id":"C_ideas","title":"\n","body":"b"}' \
+           '{"op":"create_discussion","repo_id":"R_1","category_id":"C_ideas","title":"t","body":"   "}' \
+           '{"op":"comment_on_discussion","discussion_id":"D_existing","body":"\n\n"}'; do
+    printf '%s\n' "$f" >"$PLAN_PATH"
+    run "$EXEC"
+    [ "$status" -ne 0 ] || { echo "accepted: $f"; return 1; }
+    no_writes
+  done
+}
+
+@test "caps: length is measured after mentions are neutralised" {
+  local t
+  t="$(text_of_length 253) @a"   # 256 characters, 257 once the @ is neutralised
+  jq -nc --arg t "$t" '{op:"create_discussion",repo_id:"R_1",category_id:"C_ideas",title:$t,body:"b"}' >"$PLAN_PATH"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  no_writes
+  t="$(text_of_length 252) @a"
+  jq -nc --arg t "$t" '{op:"create_discussion",repo_id:"R_1",category_id:"C_ideas",title:$t,body:"b"}' >"$PLAN_PATH"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "pacing: every write is followed by a pause, skipped entries and reads are not" {
+  unset PUBLISH_WRITE_DELAY_SECONDS
+  local log="${TT_TMP}/sleep.log"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s"\n' "$log" >"${TT_TMP}/bin/sleep"
+  chmod +x "${TT_TMP}/bin/sleep"
+  plan_add "$(create planned-discussion-1)"
+  plan_add "$(label planned-discussion-1)"
+  plan_add "$(comment D_existing)"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(wc -l <"$log" | tr -d ' ')" -eq 3 ]
+  [ "$(sort -u "$log")" = "1" ]
+}
+
+@test "publish: a missing REPO fails before any API call" {
+  unset REPO
+  plan_add "$(comment D_existing)"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REPO is required"* ]]
+  [ ! -s "$GH_STUB_LOG" ]
 }
 
 # ---------------------------------------------------------------------------
