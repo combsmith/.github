@@ -172,7 +172,7 @@ fetch_sarif() {
   [[ -n "$repo_id" ]] && url="$url&repo_id=$repo_id"
   # Key on stdin, not argv, so it stays out of the process list.
   if ! status=$(printf 'header = "x-coderabbitai-api-key: %s"\n' "$CODERABBIT_API_KEY" \
-      | curl --silent --show-error --location --max-time 180 --retry 3 \
+      | curl --silent --show-error --max-time 180 --retry 3 \
           --config - --output "$out" --write-out '%{http_code}' "$url"); then
     warn "CodeRabbit API request failed"
     return 1
@@ -247,8 +247,10 @@ read_workflow() {
 
 # Create labels only when missing: priority:* and security are shared with the
 # other audits and the standard label set (no --force).
+declare -A LABELS_READY=()
 ensure_labels() {
   local repo="$1"
+  [[ -n "${LABELS_READY[$repo]:-}" ]] && return 0
   local specs=(
     "$CODERABBIT_AUDIT_LABEL|5c3bd6|CodeRabbit Deep Scan audit finding (idempotent marker)"
     "$VERIFY_LABEL|fbca04|LLM finding not yet confirmed by a person"
@@ -264,6 +266,7 @@ ensure_labels() {
     gh label create "$name" --repo "$ORG/$repo" --color "$color" \
       --description "$desc" 2>/dev/null || true
   done
+  LABELS_READY[$repo]=1
 }
 
 # Open audit issues across the org, as NDJSON {fingerprint,repo,number}. Keyed
@@ -279,6 +282,13 @@ build_issue_index() {
     if ! list=$(gh issue list --repo "$ORG/$repo" --label "$CODERABBIT_AUDIT_LABEL" --state open \
         --json number,body --limit 1000); then
       warn "$repo: could not list audit issues"
+      failed=1
+      continue
+    fi
+    # At the limit the listing may be truncated; an incomplete index would file
+    # duplicates and leave closed findings open, so fail closed.
+    if [[ "$(jq 'length' <<< "$list")" -ge 1000 ]]; then
+      warn "$repo: 1000 or more open audit issues, the index may be incomplete"
       failed=1
       continue
     fi
@@ -330,7 +340,11 @@ resolve_findings() {
       '{fingerprint, finding_id, state, severity: $sev, scanned_repo: $scanned, owner_repo: $owner}' \
       <<< "$row" >> "$tmp"
   done < "$parsed"
-  jq -s 'sort_by(.owner_repo, .fingerprint)' "$tmp" > "$FINDINGS_FILE"
+  # One row per fingerprint, preferring an open row so a conflicting fixed or
+  # dismissed row cannot close an open finding or file a duplicate issue.
+  jq -s 'group_by(.fingerprint)
+         | map((map(select(.state == "open")) | first) // .[0])
+         | sort_by(.owner_repo, .fingerprint)' "$tmp" > "$FINDINGS_FILE"
   rm -f "$tmp"
   return "$failed"
 }
@@ -402,10 +416,10 @@ reconcile_open() {
   if [[ -n "$existing" ]]; then
     local repo number other
     read -r repo number <<< "$existing"
-    body=$(render_body "$fp" "$id" "$sev" "$scanned" "$repo")
-    # Only the body and priority change: needs-verification and dev-lead are a
-    # person's decisions, so a re-run never restores or adds them.
-    if ! gh issue edit "$number" --repo "$ORG/$repo" --body "$body" --add-label "$prio" >/dev/null; then
+    # Only the priority label changes: the body holds the human-maintained
+    # Acceptance checklist, and needs-verification and dev-lead are a person's
+    # decisions, so a re-run never rewrites the body or restores/adds them.
+    if ! gh issue edit "$number" --repo "$ORG/$repo" --add-label "$prio" >/dev/null; then
       warn "$repo: could not update #$number"
       return 1
     fi
