@@ -28,7 +28,7 @@ EXPECTED_REF='${{ inputs.tooling_ref || job.workflow_sha }}'
 }
 
 @test "reusable: every tooling checkout falls back to the reusable's own commit" {
-  for job in gather-signals analyze; do
+  for job in gather-signals analyze publish; do
     run yq -r ".jobs.\"${job}\".steps[] | select(.with.path == \".feature-ideation-tooling\") | .with.ref" "$REUSABLE"
     [ "$status" -eq 0 ]
     [ -n "$output" ] || { echo "$job: no tooling checkout step"; return 1; }
