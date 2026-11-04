@@ -299,6 +299,51 @@ _ok_nodes() {
   [ "$status" -eq 1 ]
 }
 
+# A run is collapsed only when its whole key can be read: two runs whose app,
+# workflow or event is missing could be different checks, so both count
+# (#1421 review: the collapse must fail closed).
+_run_with() { # ID NAME CONCLUSION JQ_EDIT
+  tt_run "$1" "$2" COMPLETED "$3" | jq -c "$4"
+}
+
+@test "checks: runs whose workflow cannot be read are never collapsed" {
+  nodes="[$(_run_with 101 build FAILURE '.checkSuite.workflowRun.workflow = null'),$(_run_with 102 build SUCCESS '.checkSuite.workflowRun.workflow = null')]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"build (failure)"* ]]
+}
+
+@test "checks: runs with no workflow run (another app's checks) are never collapsed" {
+  nodes="[$(_run_with 101 scan FAILURE '.checkSuite = {app:{slug:"other-ci"}}'),$(_run_with 102 scan SUCCESS '.checkSuite = {app:{slug:"other-ci"}}')]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: runs whose event or app cannot be read are never collapsed" {
+  nodes="[$(_run_with 101 build FAILURE '.checkSuite.workflowRun.event = null'),$(_run_with 102 build SUCCESS '.checkSuite.workflowRun.event = null')]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+  nodes="[$(_run_with 101 build FAILURE '.checkSuite.app = null'),$(_run_with 102 build SUCCESS '.checkSuite.app = null')]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: a newer run that was skipped does not hide an older failure" {
+  nodes="[$(tt_run 101 build COMPLETED FAILURE),$(tt_run 102 build COMPLETED SKIPPED)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"build (failure)"* ]]
+  nodes="[$(tt_run 101 build COMPLETED FAILURE),$(tt_run 102 build COMPLETED NEUTRAL)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: two runs sharing the newest databaseId both count" {
+  nodes="[$(tt_run 102 build COMPLETED FAILURE),$(tt_run 102 build COMPLETED SUCCESS)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[]'
+  [ "$status" -eq 1 ]
+}
+
 # ── dependabot_provenance_gate (#1400) ──────────────────────────────────────
 
 _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }

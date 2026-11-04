@@ -39,8 +39,11 @@ DEPENDABOT_AGENT_JOB_RE='^(dev-lead / .+|pr-auto-review / .+|pr-review / review|
 #
 #   A check run superseded on the same commit — an earlier run of the same check
 #   from the same app, workflow and event, e.g. one cancelled by a concurrency
-#   group or replaced by a re-run — is not counted; only the newest (highest
-#   databaseId) is. Runs without a databaseId are never collapsed.
+#   group or replaced by a re-run — is not counted when the newest (highest
+#   databaseId) run is unique and succeeded. Otherwise every run of the check
+#   counts: runs without a databaseId, or whose app, workflow or event cannot
+#   be read, are never collapsed, nor are runs whose newest was skipped,
+#   neutral, failing or pending, or shares its databaseId.
 #   Agent jobs (DEPENDABOT_AGENT_JOB_RE) are not counted. Passes only when every
 #   other check run on the head commit COMPLETED as success, neutral or skipped,
 #   every commit status is success, at least one such check was reported, and
@@ -59,14 +62,29 @@ dependabot_checks_gate() {
     | ($pr.headRefOid // "") as $head
     | ($pr.commits.nodes[0].commit // {}) as $commit
     | ($commit.statusCheckRollup.contexts // null) as $ctx
-    | def latest_runs:
-        # Newest run per (app, workflow, event, name); anything that cannot be
-        # keyed or ordered is kept as is, so nothing is dropped by accident.
-        ([.[] | select(.__typename == "CheckRun" and ((.databaseId | type) == "number"))]
-         | group_by([(.checkSuite.app.slug? // ""), (.checkSuite.workflowRun.workflow.databaseId? // ""),
-                     (.checkSuite.workflowRun.event? // ""), (.name // "")])
-         | map(max_by(.databaseId))) as $newest
-        | [.[] | select(.__typename != "CheckRun" or ((.databaseId | type) != "number"))] + $newest;
+    | def run_key:
+        [(.checkSuite.app.slug? // null), (.checkSuite.workflowRun.workflow.databaseId? // null),
+         (.checkSuite.workflowRun.event? // null), (.name // null)];
+      def collapsible: .__typename == "CheckRun" and ((.databaseId | type) == "number")
+        and (run_key | (.[0] | type) == "string" and .[0] != ""
+             and (.[1] | type) == "number"
+             and (.[2] | type) == "string" and .[2] != ""
+             and (.[3] | type) == "string" and .[3] != "");
+      def latest_runs:
+        # Older runs of a check are dropped only when the newest run of the
+        # same (app, workflow, event, name) is unambiguous and succeeded. A run
+        # whose key cannot be read fully, a newest run that was skipped,
+        # neutral, failing or pending, or a tie on the newest databaseId keeps
+        # every run of the group, so any failure among them still holds.
+        ([.[] | select(collapsible)] | group_by(run_key)
+         | map((map(.databaseId) | max) as $top
+               | [.[] | select(.databaseId == $top)] as $newest
+               | if ($newest | length) == 1
+                    and (($newest[0].status // "" | ascii_upcase) == "COMPLETED")
+                    and (($newest[0].conclusion // "" | ascii_upcase) == "SUCCESS")
+                 then $newest else . end)
+         | add // []) as $kept
+        | [.[] | select(collapsible | not)] + $kept;
       ($ctx.nodes // [] | latest_runs) as $nodes
     | def name_of: if .__typename == "StatusContext" then (.context // "")
                    else (.name // "") end;
