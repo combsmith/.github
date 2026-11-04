@@ -467,7 +467,9 @@ _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
 # Sandbox evidence (combsmith/software-factory-canary, 2026-11-03): commits made
 # through the Contents or Git Data API with Dependabot's noreply email are
 # attributed to dependabot[bot] by GitHub, but are unsigned. Only the
-# verified-signature requirement refuses them.
+# verified-signature requirement refuses them. The same holds for a workflow
+# GITHUB_TOKEN (run 41754805617): GitHub signs its commits only when the author
+# is not overridden, and then attributes them to github-actions[bot].
 @test "provenance: forged Dependabot author via the Contents API (committer is the pusher, unsigned) blocks" {
   commits="[$(tt_commit "$HEAD_SHA" 'dependabot[bot]' don-petry false 1)]"
   run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 1)" "$commits" ""
@@ -480,6 +482,20 @@ _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
   run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 1)" "$commits" ""
   [ "$status" -eq 1 ]
   [[ "$output" == *"not from Dependabot"*"unverified"* ]]
+}
+
+@test "provenance: forged Dependabot author via the Contents API with GITHUB_TOKEN (committer github-actions[bot], unsigned) blocks" {
+  commits="[$(tt_commit "$HEAD_SHA" 'dependabot[bot]' 'github-actions[bot]' false 1)]"
+  run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 1)" "$commits" ""
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not from Dependabot"*"unverified"* ]]
+}
+
+@test "provenance: a signed GITHUB_TOKEN commit (author github-actions[bot], committer web-flow) blocks" {
+  commits="[$(tt_commit "$HEAD_SHA" 'github-actions[bot]' web-flow true 1)]"
+  run dependabot_provenance_gate "$(tt_pr_rest "$HEAD_SHA" 1)" "$commits" ""
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not from Dependabot"* ]]
 }
 
 @test "provenance: a forged unsigned commit on top of a genuine one blocks" {
