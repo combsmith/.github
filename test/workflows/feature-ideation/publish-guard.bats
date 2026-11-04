@@ -72,7 +72,10 @@ model_jobs() {
 }
 
 @test "publish job: runs after analyze and downloads its plan" {
-  run yq -r '.jobs.publish.needs | (if type == "!!seq" then .[] else . end)' "$WF"
+  # `needs` may be a scalar or a list. Spelled with select/tag rather than
+  # `if … then … else … end`, which older yq releases cannot parse — a suite
+  # run against a pinned yq v4.44.3 failed on it (#1467).
+  run yq -r '.jobs.publish.needs | ((select(tag == "!!seq") | .[]), select(tag != "!!seq"))' "$WF"
   [ "$output" = "analyze" ]
   run yq -r '.jobs.publish.steps[] | select(.with.name == "mutation-plan") | .uses' "$WF"
   [[ "$output" == actions/download-artifact@* ]]
