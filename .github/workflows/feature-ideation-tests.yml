@@ -84,6 +84,25 @@ jobs:
           echo "${YQ_SHA256}  /tmp/yq_linux_amd64" | sha256sum -c -
           sudo install -m 755 /tmp/yq_linux_amd64 /usr/local/bin/yq
 
+      - name: Install pinned yq (v4.44.3)
+        # The static bats guards parse workflows with yq; pin the oldest
+        # supported release so a yq-syntax regression (#1467) cannot hide
+        # behind the runner-provided version.
+        env:
+          YQ_VERSION: v4.44.3
+          YQ_SHA256: a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          # --proto '=https' --proto-redir '=https' enforces HTTPS on both the
+          # initial request and any redirect -L follows (SonarCloud S6506, #1360).
+          curl -sL --proto '=https' --proto-redir '=https' -o "${tmp}/yq" \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  ${tmp}/yq" | sha256sum -c -
+          sudo install -m 0755 "${tmp}/yq" /usr/local/bin/yq
+          hash -r
+          yq --version | grep -F "${YQ_VERSION}"
+
       - name: Install Python jsonschema and PyYAML
         run: 'pip install --quiet --require-hashes --only-binary :all: -r scripts/feature-ideation-tests-requirements.txt'
 
