@@ -112,7 +112,11 @@ jobs:
       - name: Explain a failed app token
         if: ${{ failure() && steps.app-token.outcome == 'failure' }}
         run: |
-          echo "::error::Could not mint the App token with contents:write, pull-requests:write, checks:read and statuses:read. If the App lacks checks:read or statuses:read, grant both (App settings → Permissions → Repository) and accept the installation update; the merge gate cannot read check runs or commit statuses without them. See standards/dependabot-policy.md"
+          msg="Could not mint the App token with contents:write, pull-requests:write, checks:read and statuses:read."
+          msg+=" If the App lacks checks:read or statuses:read, grant both (App settings → Permissions → Repository)"
+          msg+=" and accept the installation update; the merge gate cannot read check runs or commit statuses without them."
+          msg+=" See standards/dependabot-policy.md"
+          echo "::error::${msg}"
           exit 1
 
       - name: Update and merge Dependabot PRs
