@@ -14,12 +14,15 @@
 #       See test/workflows/required-checks/merge-group.bats. Also: a failed
 #       SonarCloud quality gate fails the required `SonarCloud` check, in the
 #       repo workflow and the template (sonarcloud-quality-gate.bats).
+#       sonarcloud-token-scope.bats: SONAR_TOKEN never shares a job with the
+#       code under test, and a fork PR it can't analyse fails SonarCloud (#1390, #1392).
 name: Required Checks Tests
 
 on:
   pull_request:
     paths:
       - '.github/workflows/sonarcloud.yml'
+      # sonarcloud-token-scope.bats keeps this repo's token gate identical to the template's.
       - 'standards/workflows/sonarcloud.yml'
       - '.github/workflows/codeql.yml'
       - '.github/workflows/agent-shield.yml'
@@ -34,6 +37,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/sonarcloud.yml'
+      # sonarcloud-token-scope.bats keeps this repo's token gate identical to the template's.
       - 'standards/workflows/sonarcloud.yml'
       - '.github/workflows/codeql.yml'
       - '.github/workflows/agent-shield.yml'
