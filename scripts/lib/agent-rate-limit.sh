@@ -299,6 +299,10 @@ arl_breaker_decision() {
   local threshold backoff
   threshold="$(arl_breaker_threshold "$agent_type" consecutive_failure_threshold)"
   backoff="$(arl_breaker_threshold "$agent_type" backoff_minutes)"
+  # Leading-zero digit strings (e.g. "08") are valid config; force base 10 so bash
+  # arithmetic does not reject them as octal.
+  [[ "$threshold" =~ ^[0-9]+$ ]] && threshold=$((10#$threshold))
+  [[ "$backoff" =~ ^[0-9]+$ ]] && backoff=$((10#$backoff))
 
   # Malformed / missing breaker config -> cannot evaluate -> allow (never block).
   if [[ -z "$threshold" ]] || [[ "$threshold" -le 0 ]]; then
@@ -888,6 +892,7 @@ arl_token_budget_decision() {
     printf 'decision=allow\n'
     return 0
   fi
+  if [[ "$threshold" =~ ^[0-9]+$ ]]; then threshold=$((10#$threshold)); fi
   if ! [[ "$threshold" =~ ^[0-9]+$ ]] || [[ "$threshold" -le 0 ]]; then
     arl_log "token-budget: no usable pause_threshold_pct — allowing (degraded)"
     printf 'decision=allow\n'
