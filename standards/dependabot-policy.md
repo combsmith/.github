@@ -199,6 +199,12 @@ Behavior:
   (`integration_id`), or from GitHub Actions when the rule names none, which is
   the case for every rule in the org rulesets today. A commit status, or a run
   from any other app, with the same name does not satisfy it.
+- **Required before `dependabot-rebase` is promoted:** the Dependabot App must
+  have `checks: read` and `statuses: read`. The merger reads every check run and
+  commit status with the App token, so caller stubs keep granting only
+  `contents: write` and `pull-requests: write`. Without them the token cannot be
+  minted and the job stops with an error naming the missing permissions; no PR
+  is merged.
 
 ## Update and Merge Behind PRs Workflow
 
@@ -374,12 +380,15 @@ The workflow fails if any known vulnerability is found, blocking the PR from mer
    > [CODEOWNERS Standard](codeowners-standard.md). The earlier approach of
    > using `gh api .../merge` as a bypass was fragile and has been superseded.
 4. Add `workflows/dependency-audit.yml` to `.github/workflows/`.
-5. **GitHub App permissions** — the `dependabot-automerge-petry` GitHub App requires
-   the `workflows` permission in addition to `contents: write` and `pull_requests: write`.
-   Without it, the rebase workflow cannot call `update-branch` when `main` contains
-   workflow file changes. Grant: GitHub App settings → Permissions → Repository →
-   Workflows → Read & Write, then accept the updated permission in each repo's
-   installed-app settings.
+5. **GitHub App permissions** — the Dependabot GitHub App requires
+   `contents: write`, `pull_requests: write`, `checks: read` and `statuses: read`.
+   The rebase workflow's merge gate reads check runs and commit statuses with the
+   App token; without `checks: read` and `statuses: read` it stops with an error.
+   Grant: GitHub App settings → Permissions → Repository, then accept the updated
+   permissions in the org's installed-app settings. The rebase workflow does not
+   request `workflows`, so `update-branch` cannot bring in workflow file changes
+   from `main`; it falls back to a direct merge when strict up-to-date checks
+   are off.
 
 6. **GitHub App secrets** — `APP_ID` and `APP_PRIVATE_KEY` are managed at the
    **organization level** (`gh secret set <name> --org combsmith --visibility all`),

@@ -44,17 +44,36 @@ _rules_requiring() { # NAME...
   printf '[{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":false,"required_status_checks":%s}}]' "$ctx"
 }
 
-@test "rebase: GITHUB_TOKEN can read checks and statuses, and writes nothing" {
-  [ "$(yq -r '.jobs."update-and-merge".permissions.checks' "$REUSABLE")" = "read" ]
-  [ "$(yq -r '.jobs."update-and-merge".permissions.statuses' "$REUSABLE")" = "read" ]
+@test "rebase: GITHUB_TOKEN asks for no checks or statuses scope, and writes nothing" {
+  [ "$(yq -r '.jobs."update-and-merge".permissions | keys | sort | join(",")' "$REUSABLE")" = "contents,pull-requests" ]
+  [ "$(yq -r '.jobs."update-and-merge".permissions.contents' "$REUSABLE")" = "read" ]
   [ "$(yq -r '.jobs."update-and-merge".permissions."pull-requests"' "$REUSABLE")" = "read" ]
 }
 
-@test "rebase: the App token asks only for what update-branch and merge need" {
+@test "rebase: the App token asks only for what update-branch, merge and the gate need" {
   local step='.jobs."update-and-merge".steps[] | select(.id == "app-token") | .with'
   [ "$(yq -r "$step | .\"permission-contents\"" "$REUSABLE")" = "write" ]
   [ "$(yq -r "$step | .\"permission-pull-requests\"" "$REUSABLE")" = "write" ]
-  [ "$(yq -r "$step | keys | map(select(test(\"^permission-\"))) | length" "$REUSABLE")" = "2" ]
+  [ "$(yq -r "$step | .\"permission-checks\"" "$REUSABLE")" = "read" ]
+  [ "$(yq -r "$step | .\"permission-statuses\"" "$REUSABLE")" = "read" ]
+  [ "$(yq -r "$step | keys | map(select(test(\"^permission-\"))) | length" "$REUSABLE")" = "4" ]
+}
+
+@test "rebase: a token that cannot be minted stops the job with the missing App permissions named" {
+  local step='.jobs."update-and-merge".steps[] | select(.name == "Explain a failed app token")'
+  [ "$(yq -r "$step | .if" "$REUSABLE")" = "\${{ failure() && steps.app-token.outcome == 'failure' }}" ]
+  run yq -r "$step | .run" "$REUSABLE"
+  [[ "$output" == *"checks:read and statuses:read"* ]]
+  [[ "$output" == *"exit 1"* ]]
+}
+
+@test "rebase: no App token stops the run before any read" {
+  cd "$TT_WORK" || return 1
+  GH_TOKEN="read-token" APP_TOKEN="" APP_SLUG="$APP_SLUG_FIXTURE" \
+    REPO="owner/repo" run bash -eo pipefail "$RUN_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"No App token"* ]]
+  [ ! -s "${FIX_DIR}/calls.log" ]
 }
 
 _merge_calls() { grep -F '/pulls/5/merge' "${FIX_DIR}/writes.log" 2>/dev/null || true; }
@@ -187,11 +206,13 @@ _merge_calls() { grep -F '/pulls/5/merge' "${FIX_DIR}/writes.log" 2>/dev/null ||
   [[ "$output" == *"Warning: failed to merge PR #5"* ]]
 }
 
-@test "rebase: gate reads use the job token, only the merge uses the App token" {
+@test "rebase: the merge gate reads with the App token (checks, statuses, rules, commits)" {
   tt_seed_pr "$(tt_pr_state "$(_green_nodes)")" "$(_dependabot_only)"
   _run_merge_step
   [ "$status" -eq 0 ]
   run grep -E 'graphql|/rules/|/commits' "${FIX_DIR}/calls.log"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -v '^TOKEN=read-token '
+  ! printf '%s\n' "$output" | grep -v '^TOKEN=app-token '
+  # Listing the PRs and comparing branches stay on GITHUB_TOKEN.
+  grep -E '^TOKEN=read-token .*pr list' "${FIX_DIR}/calls.log"
 }
