@@ -239,10 +239,11 @@ list_org_repos() {
     --jq '.[] | {id: (.id | tostring), name, archived}'
 }
 
-# Text of a workflow file at the scanned revision.
+# Text of a workflow file at the scanned revision. gh's stderr is discarded: a
+# transport error echoes the request URL (the finding's path) into public logs.
 # args: <repo> <path> <revision>
 read_workflow() {
-  gh api "repos/$ORG/$1/contents/$2?ref=$3" --jq '.content' | base64 -d
+  gh api "repos/$ORG/$1/contents/$2?ref=$3" --jq '.content' 2>/dev/null | base64 -d
 }
 
 # Create labels only when missing: priority:* and security are shared with the

@@ -255,6 +255,11 @@ assert_no_writes_and_red() {
   STUB_FAIL_CONTENTS=1 run bash "$SCRIPT"
   assert_no_writes_and_red
 }
+@test "a workflow-fetch error never leaks the finding path into the log" {
+  STUB_FAIL_CONTENTS=1 run bash "$SCRIPT"
+  [[ "$output" != *CANARYSECRET* ]]
+  [[ "$output" != *".github/workflows/"* ]]
+}
 @test "an unlistable repo fails and writes nothing rather than risk duplicates" {
   STUB_FAIL_ISSUE_LIST=1 run bash "$SCRIPT"
   assert_no_writes_and_red
