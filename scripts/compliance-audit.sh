@@ -2472,7 +2472,7 @@ check_centralized_check_names() {
   # never recommends a name that creates a new deadlock.
   local renames=(
     "AgentShield:agent-shield / AgentShield"
-    "Detect ecosystems:dependency-audit / Detect ecosystems"
+    "Detect ecosystems:dependency-audit / Audit gate"
   )
 
   # Patterns for required checks that are structurally broken and

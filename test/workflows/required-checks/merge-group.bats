@@ -34,7 +34,7 @@ PROVIDERS=(
   "SonarCloud|sonarcloud.yml|    name: SonarCloud"
   "CodeQL|codeql.yml|    name: CodeQL"
   "agent-shield / AgentShield|agent-shield.yml|  agent-shield:"
-  "dependency-audit / Detect ecosystems|dependency-audit.yml|  dependency-audit:"
+  "dependency-audit / Audit gate|dependency-audit.yml|  dependency-audit:"
   "duplicate-decl-gate|duplicate-decl-gate.yml|  duplicate-decl-gate:"
 )
 
@@ -43,7 +43,7 @@ PROVIDERS=(
 # required-check context | reusable workflow | job-level name line
 REUSABLE_JOB_NAMES=(
   "agent-shield / AgentShield|agent-shield-reusable.yml|    name: AgentShield"
-  "dependency-audit / Detect ecosystems|dependency-audit-reusable.yml|    name: Detect ecosystems"
+  "dependency-audit / Audit gate|dependency-audit-reusable.yml|    name: Audit gate"
 )
 
 # Print the `merge_group:` trigger line ONLY when it is a direct child of the

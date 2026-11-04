@@ -253,7 +253,7 @@ TOML
   [ "$(yq -r '.jobs["audit-gate"].name' "$DA_WORKFLOW")" = 'Audit gate' ]
 }
 
-@test "workflow: the required 'Detect ecosystems' job keeps its name" {
+@test "workflow: the 'Detect ecosystems' job keeps its name" {
   [ "$(yq -r '.jobs.detect.name' "$DA_WORKFLOW")" = 'Detect ecosystems' ]
 }
 
