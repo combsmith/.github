@@ -168,6 +168,43 @@ Behavior:
 - For **app ecosystems**: approves **patch** and **minor** updates (and indirect
   dependency updates); **major** updates are left for human review
 - Uses `gh pr merge --auto --squash` so the merge only happens after CI passes
+- **Provenance gate:** Dependabot metadata describes only Dependabot's commit, so
+  before approving, every commit on the PR must be from Dependabot (or a branch
+  update the App made via `update-branch`) and the head must still be the commit
+  the event was for. The approval (`commit_id`) and the auto-merge request
+  (`--match-head-commit`) are bound to that head SHA, and the workflow re-reads
+  the PR after both writes. If any other commit lands on the branch, the workflow
+  does not approve, disables auto-merge and dismisses its earlier approval — the
+  PR then needs a human review. A withdrawal that cannot be completed fails the
+  run. To hand it back to automation, have Dependabot recreate it
+  (`@dependabot recreate`).
+- **Accepted residual risk (2026-11-02):** native auto-merge has no form tied to
+  one commit, so a foreign head can stay eligible for it until the revocation
+  completes. The required approval of the last push should block a merge in that
+  window, but this has not been tested end to end. The maintainer accepted this
+  and kept native auto-merge. The direct merger is not exposed: it re-runs both
+  gates and merges with `sha=`.
+- **Required before `stable` (decided 2026-11-03):** the backstop above must be
+  tested live before `dependabot-automerge/v2-stable` or
+  `dependabot-rebase/v2-stable` moves to a release containing these gates. On a
+  sandbox repo with the org rulesets and the Dependabot App, take a Dependabot
+  PR the App has approved with auto-merge on, then push a non-Dependabot commit
+  to its branch twice: once with a normal token, and once with a token whose
+  pushes do not trigger workflows (the workflow `GITHUB_TOKEN`), so no
+  `synchronize` run can revoke. Confirm neither head can merge, natively or
+  through the merger. Record the result here; if either merges, stop the
+  promotion.
+- **Required checks are bound to their app:** a check the base branch's rules
+  require counts only as a check run from the app the rule names
+  (`integration_id`), or from GitHub Actions when the rule names none, which is
+  the case for every rule in the org rulesets today. A commit status, or a run
+  from any other app, with the same name does not satisfy it.
+- **Required before `dependabot-rebase` is promoted:** the Dependabot App must
+  have `checks: read` and `statuses: read`. The merger reads every check run and
+  commit status with the App token, so caller stubs keep granting only
+  `contents: write` and `pull-requests: write`. Without them the token cannot be
+  minted and the job stops with an error naming the missing permissions; no PR
+  is merged.
 
 ## Update and Merge Behind PRs Workflow
 
@@ -189,7 +226,8 @@ This workflow fires on every push to `main` (and can be triggered manually via
    commit from `main` onto the PR branch. CI triggers normally because the
    APP_TOKEN is a GitHub App installation token, not `GITHUB_TOKEN`.
 2. **Merges ready PRs** — directly merges any Dependabot PR that is up-to-date,
-   has auto-merge enabled, and is `MERGEABLE` with no pending checks.
+   has auto-merge enabled, is `MERGEABLE`, and passes the merge gate (see
+   *Merge-readiness check* below). The merge is bound to the verified head SHA.
 
 Using the app token for merges ensures each merge triggers a new push to `main`,
 creating a self-sustaining chain that serializes Dependabot PR merges.
@@ -234,24 +272,41 @@ date before merge), the fallback direct merge will also fail — granting the
   identity and is **not** subject to the `GITHUB_TOKEN` recursive-trigger guard.
   Pushes via APP_TOKEN trigger CI workflow runs normally.
 
-**Merge-readiness check:** The workflow checks GitHub's native `mergeable` state
-(`MERGEABLE`) rather than inspecting every individual check conclusion. This is
-correct because `mergeable` already accounts for all *required* status checks —
-non-required checks that happen to fail (e.g. a gitleaks false positive) do not
-block the merge. An additional guard ensures no checks are still `IN_PROGRESS`
-before merging.
+**Merge-readiness check:** The App merges with ruleset bypass, so GitHub's
+`mergeable` state is not enough — bypass also skips the required-check
+requirement. Before each direct merge the workflow requires, for the PR's
+current head commit:
+
+- auto-merge requested and `mergeable` is `MERGEABLE`;
+- **every** check run concluded `success`, `neutral` or `skipped` and every
+  commit status is `success` — a failed, cancelled, timed-out, action-required,
+  stale or still-pending check (required or not) keeps the PR out of the
+  automated merge;
+- every status check the base branch's rulesets require has reported;
+- every commit on the PR is from Dependabot or is an `update-branch` merge by
+  the App (same provenance gate as the auto-merge workflow).
+
+The merge call passes the verified head SHA, so GitHub rejects it if the branch
+moved after the check. Org agent jobs (`dev-lead / *`, `pr-auto-review / *`,
+`pr-review / review`, `review / review`) from GitHub Actions are not counted, since
+they do not test the change, unless the rulesets require them. A Dependabot PR held back by a failing non-required check
+(e.g. a gitleaks false positive) needs a human to fix the check or merge it.
+Gate logic: [`.github/scripts/dependabot/`](../.github/scripts/dependabot/README.md).
 
 ### Caller Stub Format
 
 The repo-level `dependabot-rebase.yml` is a thin caller stub. It must use
-**explicit secrets** (not `secrets: inherit`) and **write permissions**:
+**explicit secrets** (not `secrets: inherit`) and **write permissions**. Copy
+[`workflows/dependabot-rebase.yml`](workflows/dependabot-rebase.yml) verbatim;
+its job is:
 
 ```yaml
 jobs:
   dependabot-rebase:
     permissions:
-      pull-requests: write # call update-branch API on behind PRs and merge when ready
-    uses: combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml@b51e2edf830ea085be0277bcf3174c7b3ec8f958 # v1
+      contents: write      # the reusable checks out its gate tooling (contents: read)
+      pull-requests: write # the reusable lists Dependabot PRs (pull-requests: read)
+    uses: combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml@dependabot-rebase/v2-stable
     secrets:
       APP_ID: ${{ secrets.APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
@@ -328,12 +383,15 @@ The workflow fails if any known vulnerability is found, blocking the PR from mer
    > [CODEOWNERS Standard](codeowners-standard.md). The earlier approach of
    > using `gh api .../merge` as a bypass was fragile and has been superseded.
 4. Add `workflows/dependency-audit.yml` to `.github/workflows/`.
-5. **GitHub App permissions** — the `dependabot-automerge-petry` GitHub App requires
-   the `workflows` permission in addition to `contents: write` and `pull_requests: write`.
-   Without it, the rebase workflow cannot call `update-branch` when `main` contains
-   workflow file changes. Grant: GitHub App settings → Permissions → Repository →
-   Workflows → Read & Write, then accept the updated permission in each repo's
-   installed-app settings.
+5. **GitHub App permissions** — the Dependabot GitHub App requires
+   `contents: write`, `pull_requests: write`, `checks: read` and `statuses: read`.
+   The rebase workflow's merge gate reads check runs and commit statuses with the
+   App token; without `checks: read` and `statuses: read` it stops with an error.
+   Grant: GitHub App settings → Permissions → Repository, then accept the updated
+   permissions in the org's installed-app settings. The rebase workflow does not
+   request `workflows`, so `update-branch` cannot bring in workflow file changes
+   from `main`; it falls back to a direct merge when strict up-to-date checks
+   are off.
 
 6. **GitHub App secrets** — `APP_ID` and `APP_PRIVATE_KEY` are managed at the
    **organization level** (`gh secret set <name> --org combsmith --visibility all`),
