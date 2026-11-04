@@ -43,7 +43,10 @@ applies only when it is enabled. The re-read and the `synchronize` run together
 withdraw that state on every interleaving, but not in the same instant, so a
 foreign push has a short window before its run revokes. The merger is not
 exposed to it: it re-runs both gates and merges with `sha=`. If the `synchronize`
-run does not run at all, the state stays until something re-evaluates the PR. The
+run does not run at all, or fails because the provenance read returned `2`
+(the PR state could not be read, so there is no verdict to act on), the state
+stays until something re-evaluates the PR; a failed read fails the run, so it
+shows up as a red check. The
 required approval of the last push should block a merge in that window, but this
 has not been tested end to end. The maintainer accepted this risk on 2026-11-02
 (see `standards/dependabot-policy.md`).

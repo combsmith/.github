@@ -296,14 +296,17 @@ Gate logic: [`.github/scripts/dependabot/`](../.github/scripts/dependabot/README
 ### Caller Stub Format
 
 The repo-level `dependabot-rebase.yml` is a thin caller stub. It must use
-**explicit secrets** (not `secrets: inherit`) and **write permissions**:
+**explicit secrets** (not `secrets: inherit`) and **write permissions**. Copy
+[`workflows/dependabot-rebase.yml`](workflows/dependabot-rebase.yml) verbatim;
+its job is:
 
 ```yaml
 jobs:
   dependabot-rebase:
     permissions:
-      pull-requests: write # call update-branch API on behind PRs and merge when ready
-    uses: combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml@b51e2edf830ea085be0277bcf3174c7b3ec8f958 # v1
+      contents: write      # the reusable checks out its gate tooling (contents: read)
+      pull-requests: write # the reusable lists Dependabot PRs (pull-requests: read)
+    uses: combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml@dependabot-rebase/v2-stable
     secrets:
       APP_ID: ${{ secrets.APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
