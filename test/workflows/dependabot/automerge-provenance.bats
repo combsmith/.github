@@ -379,5 +379,5 @@ HOOK
   [ "$status" -eq 0 ]
   run grep -E 'api repos/owner/repo/pulls/5($| |/commits)' "${FIX_DIR}/calls.log"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -v '^TOKEN=read-token '
+  [ -z "$(printf '%s\n' "$output" | grep -v '^TOKEN=read-token ')" ]
 }

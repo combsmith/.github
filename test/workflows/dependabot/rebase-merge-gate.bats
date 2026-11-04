@@ -212,7 +212,7 @@ _merge_calls() { grep -F '/pulls/5/merge' "${FIX_DIR}/writes.log" 2>/dev/null ||
   [ "$status" -eq 0 ]
   run grep -E 'graphql|/rules/|/commits' "${FIX_DIR}/calls.log"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -v '^TOKEN=app-token '
+  [ -z "$(printf '%s\n' "$output" | grep -v '^TOKEN=app-token ')" ]
   # Listing the PRs and comparing branches stay on GITHUB_TOKEN.
   grep -E '^TOKEN=read-token .*pr list' "${FIX_DIR}/calls.log"
 }
