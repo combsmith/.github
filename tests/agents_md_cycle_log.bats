@@ -366,3 +366,14 @@ split_row() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"cannot be empty"* || "$output" == *"is empty"* ]]
 }
+
+@test "amcl_clean_cycles_met: zero-padded required is decimal, not octal" {
+  source "$SCRIPT"
+  local f="$BATS_TEST_TMPDIR/eight.md" i
+  : > "$f"
+  for i in 01 02 03 04 05 06 07 08; do
+    printf '| 2026-01-%s | 0 | 0 | — | @alice | yes |\n' "$i" >> "$f"
+  done
+  [ "$(amcl_clean_cycles_met "$f" 010)" = "false" ]
+  [ "$(amcl_clean_cycles_met "$f" 08)" = "true" ]
+}

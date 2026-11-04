@@ -184,6 +184,13 @@ amcl_validate_log() {
 # ---------------------------------------------------------------------------
 amcl_clean_cycles_met() {
   local log="$1" required="$2"
+  # Validate and normalise to base 10 so a zero-padded value ("010") is not read
+  # as octal by the arithmetic comparisons below.
+  if ! amcl_is_uint "$required"; then
+    printf 'false'
+    return 0
+  fi
+  required=$((10#$required))
   # A promotion precondition must never be computed over an unvalidated log. If
   # the log is malformed (bad field count, a Clean?/fps disagreement, an
   # unattributed determination), the invariants amcl_validate_log enforces are

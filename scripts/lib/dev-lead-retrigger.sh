@@ -71,6 +71,13 @@ dl_dev_lead_active() {
 
   if [[ -n "$in_progress" ]]; then
     local in_progress_max_hours="${IN_PROGRESS_MAX_HOURS:-4}"
+    # Normalise to base 10 so "010" means ten, not octal eight; fall back to the
+    # default when the value is not a plain non-negative integer.
+    if [[ "$in_progress_max_hours" =~ ^[0-9]+$ ]]; then
+      in_progress_max_hours=$((10#$in_progress_max_hours))
+    else
+      in_progress_max_hours=4
+    fi
     local labeled_at
     labeled_at=$(gh api "repos/$org/$repo/issues/$issue/events?per_page=100" \
       --paginate \

@@ -55,6 +55,8 @@ if ! [[ "${DISPATCH_RETRIES}" =~ ^[1-9][0-9]*$ ]]; then
   echo "::error::DISPATCH_RETRIES must be a positive integer, got: '${DISPATCH_RETRIES}'" >&2
   exit 1
 fi
+# Force base 10 so a zero-padded value like "08" is not read as invalid octal.
+DISPATCH_RETRIES=$((10#${DISPATCH_RETRIES}))
 if ! [[ "${DISPATCH_RETRY_SLEEP}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
   echo "::error::DISPATCH_RETRY_SLEEP must be a non-negative number, got: '${DISPATCH_RETRY_SLEEP}'" >&2
   exit 1

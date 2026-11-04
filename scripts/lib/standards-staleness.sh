@@ -66,10 +66,12 @@ ss_age_days() {
 ss_decision() {
   local n="${1:-}" wf="${2:-}" age="${3:-}" max="${4:-}"
   [[ "$n" =~ ^[0-9]+$ && "$wf" =~ ^[0-9]+$ && "$max" =~ ^[0-9]+$ ]] || { echo "UNKNOWN"; return 0; }
+  # Force base 10 so zero-padded values ("08", "010") are not read as octal.
+  n=$((10#$n)); wf=$((10#$wf)); max=$((10#$max))
   if [[ "$n" -eq 0 ]]; then echo "FRESH"; return 0; fi
   if [[ "$wf" -gt 0 ]]; then echo "STALE workflows"; return 0; fi
   [[ "$age" =~ ^[0-9]+$ ]] || { echo "UNKNOWN"; return 0; }
-  if [[ "$age" -gt "$max" ]]; then echo "STALE age"; return 0; fi
+  if [[ "$((10#$age))" -gt "$max" ]]; then echo "STALE age"; return 0; fi
   echo "PENDING"
 }
 

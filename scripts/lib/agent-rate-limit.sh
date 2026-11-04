@@ -177,7 +177,8 @@ arl_agent_threshold() {
   value="$(jq -er --arg t "$agent_type" --arg k "$key" \
     '(.agent_types[$t][$k])? // empty' "$config" 2>/dev/null || printf '')"
   if [[ "$value" =~ ^[0-9]+$ ]]; then
-    printf '%s' "$value"
+    # Force base 10 so zero-padded config values are not read as octal.
+    printf '%s' "$((10#$value))"
   fi
 }
 
