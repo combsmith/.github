@@ -263,7 +263,10 @@ TOML
 @test "workflow: govulncheck is pinned at v1.9.0 or later, matching the header" {
   local install pin header
   install="$(yq -r '.jobs["audit-go"].steps[] | select(.name == "Install govulncheck") | .run' "$DA_WORKFLOW")"
-  pin="$(grep -oE 'govulncheck@v[0-9]+\.[0-9]+\.[0-9]+' <<<"$install" | cut -d@ -f2)"
+  # The whole step, comment stripped, must be the one pinned install: a version
+  # in a trailing comment or a pre-release suffix must not satisfy the check.
+  pin="$(sed -E 's/[[:space:]]+#.*$//' <<<"$install" \
+    | sed -nE 's|^go install golang\.org/x/vuln/cmd/govulncheck@(v[0-9]+\.[0-9]+\.[0-9]+)$|\1|p')"
   header="$(grep -oE '^#   govulncheck v[0-9]+\.[0-9]+\.[0-9]+' "$DA_WORKFLOW" | awk '{print $3}')"
   [ -n "$pin" ]
   [ "$pin" = "$header" ]
