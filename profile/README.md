@@ -1,7 +1,7 @@
 # CombSmith
 
-A collection of open-source tools and experiments spanning terminal UX, market data, AI content tooling,
-beekeeping tech, personal finance, and agent orchestration.
+A collection of open-source tools and experiments spanning AI agent interfaces, local-market coordination,
+AI content tooling, beekeeping tech, personal finance, consumer apps, and agent orchestration.
 
 ---
 
@@ -9,19 +9,20 @@ beekeeping tech, personal finance, and agent orchestration.
 
 | Repository | Description | Language |
 | --- | --- | --- |
-| [TalkTerm](https://github.com/combsmith/TalkTerm) | Terminal-based communication tool | Shell |
-| [markets](https://github.com/combsmith/markets) | Market data and analysis tooling (dual-licensed AGPL / Commercial) | HTML |
-| [broodly](https://github.com/combsmith/broodly) | A test implementation of the BMAD method | HTML |
+| [TalkTerm](https://github.com/combsmith/TalkTerm) | Desktop AI agent interface with voice-enabled animated avatars | TypeScript |
+| [markets](https://github.com/combsmith/markets) | Market-day coordination for local farmer and art markets — vendors post updates, managers publish, customers see what's there today (dual-licensed AGPL / Commercial) | HTML |
+| [broodly](https://github.com/combsmith/broodly) | Field-first beekeeping decision-support app — Expo/React Native mobile + Go GraphQL API on GCP | HTML |
 | [broodminder-data](https://github.com/combsmith/broodminder-data) | Unified Python client, CLI, bulk export, periodic delta sync, OpenAPI 3.1 spec, and MCP server for BroodMinder beehive data | Python |
 | [empower-personal-dashboard](https://github.com/combsmith/empower-personal-dashboard) | Modern Python client and CLI for the Empower Personal Dashboard (formerly Personal Capital) API with 2FA, session persistence, balances, holdings, and transactions. | Python |
 | [ContentTwin](https://github.com/combsmith/ContentTwin) | AI-powered Social Media Agent for small organizations — enterprise-quality social presence at non-profit pricing | Shell |
 | [bmad-bgreat-suite](https://github.com/combsmith/bmad-bgreat-suite) | BMad Operations Suite — SRE and DevOps agents and workflows for the BMad Method ecosystem | Shell |
 | [google-app-scripts](https://github.com/combsmith/google-app-scripts) | A place to share Google AppScripts for personal productivity | JavaScript |
 | [incubator](https://github.com/combsmith/incubator) | Product incubator: pre-product idea Discussions, decision briefs/PRD-lite, and disposable POCs. Ideas graduate to their own product repo once a POC proves out. Front-of-funnel for the `.github-private` ideation pipeline. | Python |
-| [software-factory](https://github.com/combsmith/software-factory) | — | Python |
-| [software-factory-canary](https://github.com/combsmith/software-factory-canary) | Throwaway repo for the Factory's platform trials. Nothing here is depended on. | — |
+| [worldchest](https://github.com/combsmith/worldchest) | Automatic backup, sync, restore and versioning for Minecraft Bedrock worlds on kids' devices (not an official Minecraft product) | — |
+| [software-factory](https://github.com/combsmith/software-factory) | The Factory's decision core: a pure, checkable Kernel over GitHub facts, with schemas, lifecycles and a simulator | Python |
+| [software-factory-canary](https://github.com/combsmith/software-factory-canary) | Throwaway repo for the Factory's platform trials. Nothing here is depended on. | Shell |
 | [repo-template](https://github.com/combsmith/repo-template) | Org template repository: one-click scaffold for new combsmith repos. Files via 'Use this template'; non-file standards via bootstrap. | Shell |
-| [.github-private](https://github.com/combsmith/.github-private) | Org-wide Copilot custom agents, automated workflows, prompts, and scripts | Shell |
+| [.github-private](https://github.com/combsmith/.github-private) | Org-wide custom agents, skills, and agentic workflow infrastructure | Shell |
 | [.github](https://github.com/combsmith/.github) | Organization-wide GitHub configuration, CI templates, and engineering standards | Shell |
 
 ---
