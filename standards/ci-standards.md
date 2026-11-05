@@ -49,7 +49,7 @@ trigger, permission, or concurrency surface.
 **Required-check stubs must support `merge_group`.** Any org-standard stub that
 provides a **required status check** (e.g. `agent-shield.yml` →
 `agent-shield / AgentShield`, `dependency-audit.yml` →
-`dependency-audit / Detect ecosystems`) MUST include the **`merge_group`** event
+`dependency-audit / Audit gate`) MUST include the **`merge_group`** event
 in its `on:` trigger set, alongside `push`/`pull_request`:
 
 ```yaml

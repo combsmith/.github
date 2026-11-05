@@ -10,7 +10,7 @@
 #   • You MUST NOT change: trigger events, the `uses:` line, or job name
 #     (used as a required status check). NOTE: `merge_group` is part of the
 #     standard trigger set — it is required so this stub's `dependency-audit /
-#     Detect ecosystems` check reports on a merge queue's `gh-readonly-queue/*`
+#     Audit gate` check reports on a merge queue's `gh-readonly-queue/*`
 #     ref (see standards/ci-standards.md). Do not drop it on sync and do not
 #     flag it as drift.
 #   • If you need different behaviour (new ecosystem, tool version bump),
@@ -19,8 +19,8 @@
 #
 # Dependency vulnerability audit — thin caller for the org-level reusable.
 # To adopt: copy this file to .github/workflows/dependency-audit.yml in your repo.
-# Add "dependency-audit / Detect ecosystems" as a required status check
-# in branch protection.
+# The required status check "dependency-audit / Audit gate" is set by the
+# code-quality ruleset (standards/rulesets/code-quality.json).
 name: Dependency audit
 
 on:
