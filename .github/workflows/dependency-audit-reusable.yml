@@ -13,11 +13,16 @@
 # reusable's own commit and source it.
 #
 # Pinned tool versions (update deliberately):
-#   govulncheck v1.1.4 | cargo-audit 0.22.1 | pip-audit 2.9.0
+#   govulncheck v1.9.0 | cargo-audit 0.22.1 | pip-audit 2.9.0
 #   Python 3.13 for pip-audit (`python-version` input). Never a floating "3.x":
 #   a new Python release can break the hash-locked tooling for every caller at
 #   once (3.15 removed sre_constants, crashing pip-api 0.0.34's vendored
 #   pyparsing).
+#   Go `stable` for govulncheck, on purpose: setup-go sets GOTOOLCHAIN=local, so
+#   the toolchain must be at least every audited go.mod's `go` line, and a fixed
+#   pin would break the job the day a caller bumps it. The cost is that a new Go
+#   release can outrun an old govulncheck's x/tools parser (v1.1.4 panicked with
+#   `unexpected expr: *ast.KeyValueExpr` on Go 1.27), so keep govulncheck current.
 name: Dependency audit (Reusable)
 
 on:
@@ -149,7 +154,7 @@ jobs:
           go-version: "stable"
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4  # NOSONAR(githubactions:S8545) pinned @vX.Y.Z is reproducible (verified via Go checksum DB); no --locked equivalent
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0  # NOSONAR(githubactions:S8545) pinned @vX.Y.Z is reproducible (verified via Go checksum DB); no --locked equivalent
 
       - name: Audit Go dependencies
         run: |
