@@ -52,7 +52,16 @@ EOF
 @test "code-quality.json: requires exactly the 4 codified contexts" {
   run jq -r '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | sort | join(",")' "$RULESETS_DIR/code-quality.json"
   [ "$status" -eq 0 ]
-  [ "$output" = "CodeQL,SonarCloud,agent-shield / AgentShield,dependency-audit / Detect ecosystems" ]
+  [ "$output" = "CodeQL,SonarCloud,agent-shield / AgentShield,dependency-audit / Audit gate" ]
+}
+
+# The dependency gate is the aggregate `Audit gate` job, not `Detect ecosystems`,
+# which passes whatever the scanners find (#1406). It is bound to the GitHub
+# Actions app so a status from any other app or token cannot satisfy it.
+@test "code-quality.json: requires 'dependency-audit / Audit gate' from GitHub Actions (#1406)" {
+  run jq -c '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[] | select(.context | startswith("dependency-audit /"))]' "$RULESETS_DIR/code-quality.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = '[{"context":"dependency-audit / Audit gate","integration_id":15368}]' ]
 }
 
 @test "code-quality.json: does NOT require 'Dev-Lead Agent' (the retired divergence)" {
@@ -133,11 +142,11 @@ EOF
 }
 
 # ── repo self-host guard: dependency-audit.yml publishes the codified context ─
-# code-quality.json requires `dependency-audit / Detect ecosystems` (asserted
+# code-quality.json requires `dependency-audit / Audit gate` (asserted
 # above). GitHub composes that context as `<caller-job-id> / <reusable-job
 # displayName>`, so this repo's OWN dependency-audit.yml must be the thin caller
-# stub (job id `dependency-audit` → dependency-audit-reusable.yml, whose detect
-# job is displayName "Detect ecosystems"), matching agent-shield.yml's self-host
+# stub (job id `dependency-audit` → dependency-audit-reusable.yml, whose
+# audit-gate job is displayName "Audit gate"), matching agent-shield.yml's self-host
 # pattern. The pre-centralization inline workflow ran a top-level `detect` job
 # directly, publishing the bare `Detect ecosystems` context and drifting the
 # live ruleset off the codified name (#772).
