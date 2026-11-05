@@ -8,7 +8,7 @@
 # required-check stubs are owned here as thin caller stubs:
 #
 #   - agent-shield.yml       → required check `agent-shield / AgentShield`
-#   - dependency-audit.yml   → required check `dependency-audit / Detect ecosystems`
+#   - dependency-audit.yml   → required check `dependency-audit / Audit gate`
 #
 # Consumer repos may NOT add `merge_group` themselves (the stubs forbid editing
 # trigger events), so the trigger belongs in the template. This guard fails in CI
