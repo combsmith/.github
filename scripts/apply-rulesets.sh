@@ -17,7 +17,7 @@ set -euo pipefail
 # truth; there is no in-code generation.
 #
 # Detection items → codified mapping (nothing org-wide is lost by the retirement):
-#   SonarCloud, CodeQL, agent-shield/AgentShield, dependency-audit/Detect ecosystems
+#   SonarCloud, CodeQL, agent-shield/AgentShield, dependency-audit/Audit gate
 #     → carried statically in standards/rulesets/code-quality.json.
 #   Dev-Lead Agent → intentionally NOT required (the divergence this retires).
 #   CI Pipeline (build-and-test) → repo-specific job name → required per-repo via

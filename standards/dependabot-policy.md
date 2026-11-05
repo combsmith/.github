@@ -419,8 +419,11 @@ The workflow fails if any known vulnerability is found, blocking the PR from mer
    `Secret APP_ID is required`.
 7. Create the `security` and `dependencies` labels in the repository if they
    don't already exist.
-8. Add `dependency-audit / Detect ecosystems` as a required status check in
-   branch protection rules. Do **not** require the per-ecosystem audit jobs
+8. Require `dependency-audit / Audit gate` (set by the codified `code-quality`
+   ruleset — `scripts/apply-rulesets.sh`). It fails when any per-ecosystem
+   audit fails. Do **not** require the per-ecosystem audit jobs
    (`npm audit`, `govulncheck`, `cargo audit`, `pip-audit`, `pnpm audit`) —
-   they're conditional on lockfile presence and report `SKIPPED` when absent,
-   and a required-but-skipped check fails the merge gate.
+   each runs only when its ecosystem is detected (npm/pnpm by lockfile;
+   Go, Cargo and Python by manifest), and GitHub treats a job skipped by its
+   `if:` as passing, so a required scanner that never ran would still satisfy
+   its check.
