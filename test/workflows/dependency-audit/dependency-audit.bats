@@ -257,6 +257,22 @@ TOML
   [ "$(yq -r '.jobs.detect.name' "$DA_WORKFLOW")" = 'Detect ecosystems' ]
 }
 
+# govulncheck runs on Go `stable`; v1.1.4's x/tools parser panicked on Go 1.27
+# (`unexpected expr: *ast.KeyValueExpr`), failing every Go audit. The pin must
+# not fall back below v1.9.0 and must match the header's pinned-versions line.
+@test "workflow: govulncheck is pinned at v1.9.0 or later, matching the header" {
+  local install pin header
+  install="$(yq -r '.jobs["audit-go"].steps[] | select(.name == "Install govulncheck") | .run' "$DA_WORKFLOW")"
+  # The whole step, comment stripped, must be the one pinned install: a version
+  # in a trailing comment or a pre-release suffix must not satisfy the check.
+  pin="$(sed -E 's/[[:space:]]+#.*$//' <<<"$install" \
+    | sed -nE 's|^go install golang\.org/x/vuln/cmd/govulncheck@(v[0-9]+\.[0-9]+\.[0-9]+)$|\1|p')"
+  header="$(grep -oE '^#   govulncheck v[0-9]+\.[0-9]+\.[0-9]+' "$DA_WORKFLOW" | awk '{print $3}')"
+  [ -n "$pin" ]
+  [ "$pin" = "$header" ]
+  [ "$(printf '%s\n' v1.9.0 "$pin" | sort -V | head -1)" = 'v1.9.0' ]
+}
+
 @test "workflow: tooling is checked out from the reusable's own commit, outside the scanned tree" {
   local job
   for job in audit-cargo audit-pip audit-gate; do
