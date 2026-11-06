@@ -16,7 +16,8 @@ teardown() { [ -n "${STUB_BIN:-}" ] && rm -rf "$STUB_BIN"; return 0; }
 # gh stub: records writes (POST/PUT) to $CALLS (args line then --input body);
 # returns $RULESETS_LIST for the rulesets LIST (default [] → create path);
 # returns $RULESET_DETAIL for one ruleset by id (default {}; the literal FAIL
-# makes that read fail); returns $REPO_LIST for `repo list`; serves the repo's
+# makes that read fail); fails every rulesets call whose args contain
+# $RULESETS_FAIL (unset → none fail); returns $REPO_LIST for `repo list`; serves the repo's
 # .github/required-checks.json from $DECLARED (unset → HTTP 404, i.e. the repo
 # declares nothing; the literal FAIL → HTTP 500) and logs that read to $READS.
 _stub_gh() {
@@ -38,6 +39,8 @@ case "\$args" in
     [ -z "\${DECLARED:-}" ] && { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
     printf '%s' "\$DECLARED" ;;
   *"repo list"*) printf '%s' "\${REPO_LIST:-}" ;;
+  *"\${RULESETS_FAIL:-//none//}"*"rulesets"*)
+    echo "failed to fetch rulesets: failed to resolve ruleset ID (HTTP 404)" >&2; exit 1 ;;
   *"/rulesets/"*)
     [ "\${RULESET_DETAIL:-}" = "FAIL" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
     empty='{}'; printf '%s' "\${RULESET_DETAIL:-\$empty}" ;;
@@ -254,14 +257,95 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 }
 
 # ── fleet mode ────────────────────────────────────────────────────────────────
+# _repo <name> <isPrivate> <hasIssuesEnabled> — one `gh repo list --json` entry.
+_repo() { jq -cn --arg n "$1" --argjson p "$2" --argjson i "$3" '{name: $n, isPrivate: $p, hasIssuesEnabled: $i}'; }
+_repo_list() { jq -cs . <<< "$(printf '%s\n' "$@")"; }
+
 @test "apply --all: iterates every non-archived org repo" {
   _stub_gh
-  export RULESETS_LIST='[]' REPO_LIST=$'alpha\nbeta'
+  export RULESETS_LIST='[]'
+  REPO_LIST="$(_repo_list "$(_repo alpha false true)" "$(_repo beta true true)")"; export REPO_LIST
   run bash "$APPLY" --all --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"repo=combsmith/alpha"* ]]
   [[ "$output" == *"repo=combsmith/beta"* ]]
   [[ "$output" == *"across the fleet"* ]]
+}
+
+# GHSA temporary private forks (<repo>-ghsa-<id>) answer "failed to resolve
+# ruleset ID" on every rulesets read, so applying to them made --all exit 1
+# ("N repo(s) failed") even when every real repo succeeded.
+@test "apply --all: skips GHSA temporary private forks with a log line and exits 0" {
+  _stub_gh
+  export RULESETS_LIST='[]' RULESETS_FAIL='-ghsa-'
+  REPO_LIST="$(_repo_list \
+    "$(_repo TalkTerm false true)" \
+    "$(_repo TalkTerm-ghsa-pc5f-cw67-7cmm true false)" \
+    "$(_repo .github false true)" \
+    "$(_repo .github-ghsa-qpjq-vrh6-8wcg true false)")"; export REPO_LIST
+  run bash "$APPLY" --all --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skip combsmith/TalkTerm-ghsa-pc5f-cw67-7cmm: GHSA temporary private fork"* ]]
+  [[ "$output" == *"skip combsmith/.github-ghsa-qpjq-vrh6-8wcg: GHSA temporary private fork"* ]]
+  [[ "$output" == *"repo=combsmith/TalkTerm "* ]]
+  [[ "$output" == *"repo=combsmith/.github "* ]]
+  [[ "$output" != *"repo=combsmith/TalkTerm-ghsa"* ]]
+  [[ "$output" != *"repo=combsmith/.github-ghsa"* ]]
+  [[ "$output" != *"failed"* ]]
+}
+
+@test "apply --all: a GHSA-shaped name alone never skips a repo" {
+  _stub_gh
+  export RULESETS_LIST='[]'
+  # public; issues on; no parent repo in the org; 'a'/'b' are not in the GHSA id alphabet
+  REPO_LIST="$(_repo_list \
+    "$(_repo app false true)" \
+    "$(_repo app-ghsa-pc5f-cw67-7cmm false false)" \
+    "$(_repo app-ghsa-rw84-v39h-45cp true true)" \
+    "$(_repo gone-ghsa-fx78-wx9r-525p true false)" \
+    "$(_repo app-ghsa-aaaa-bbbb-aaaa true false)")"; export REPO_LIST
+  run bash "$APPLY" --all --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"skip "* ]]
+  local r
+  for r in app-ghsa-pc5f-cw67-7cmm app-ghsa-rw84-v39h-45cp gone-ghsa-fx78-wx9r-525p app-ghsa-aaaa-bbbb-aaaa; do
+    [[ "$output" == *"repo=combsmith/${r} "* ]]
+  done
+}
+
+@test "apply --all: a real repo failing still fails the run" {
+  _stub_gh
+  export RULESETS_LIST='[]' RULESETS_FAIL='combsmith/beta/'
+  REPO_LIST="$(_repo_list "$(_repo alpha false true)" "$(_repo beta false true)")"; export REPO_LIST
+  run bash "$APPLY" --all --dry-run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"1 repo(s) failed"* ]]
+}
+
+# software-factory and software-factory-canary have no dependency-audit workflow;
+# the code-quality ruleset would block every merge there.
+@test "apply --all: skips FLEET_EXCLUDE repos with a log line, makes no calls for them" {
+  _stub_gh
+  export RULESETS_LIST='[]' RULESETS_FAIL='software-factory'
+  REPO_LIST="$(_repo_list \
+    "$(_repo alpha false true)" \
+    "$(_repo software-factory false true)" \
+    "$(_repo software-factory-canary false true)")"; export REPO_LIST
+  run bash "$APPLY" --all
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skip combsmith/software-factory: in FLEET_EXCLUDE"* ]]
+  [[ "$output" == *"skip combsmith/software-factory-canary: in FLEET_EXCLUDE"* ]]
+  [[ "$output" != *"repo=combsmith/software-factory"* ]]
+  run grep -c 'repos/combsmith/software-factory' "$CALLS"
+  [ "$output" = "0" ]
+}
+
+@test "apply --repo: an explicit --repo still applies to a FLEET_EXCLUDE repo" {
+  _stub_gh
+  export RULESETS_LIST='[]'
+  run bash "$APPLY" --repo combsmith/software-factory --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"repo=combsmith/software-factory "* ]]
 }
 
 @test "apply: --all and --repo are mutually exclusive" {
@@ -273,7 +357,7 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 
 @test "apply: a bare token after --all is a ruleset-name filter (unknown → errors)" {
   _stub_gh
-  export REPO_LIST=$'alpha'
+  REPO_LIST="$(_repo_list "$(_repo alpha false true)")"; export REPO_LIST
   run bash "$APPLY" --all not-a-ruleset --dry-run
   [ "$status" -ne 0 ]
   [[ "$output" == *"no ruleset file not-a-ruleset.json"* ]]
