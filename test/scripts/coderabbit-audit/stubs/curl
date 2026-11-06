@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Fake `curl` for the CodeRabbit audit tests. Logs argv and stdin separately so
+# tests can show the API key travels on stdin only.
+printf '%q ' curl "$@" >> "$STUB_LOG"; echo >> "$STUB_LOG"
+cat > "$STUB_DIR/curl-stdin"
+
+[[ -n "${STUB_CURL_FAIL:-}" ]] && { echo "curl: (7) connection failed" >&2; exit 7; }
+out=""
+while [[ $# -gt 0 ]]; do
+  [[ "$1" = "--output" ]] && out="$2"
+  shift
+done
+cp "${STUB_SARIF:-$STUB_DIR/export.sarif}" "$out"
+printf '%s' "${STUB_HTTP_STATUS:-200}"
