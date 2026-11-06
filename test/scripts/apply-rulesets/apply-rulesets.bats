@@ -18,7 +18,8 @@ teardown() { [ -n "${STUB_BIN:-}" ] && rm -rf "$STUB_BIN"; return 0; }
 # returns $RULESETS_LIST for the rulesets LIST (default [] → create path);
 # returns $RULESET_DETAIL for one ruleset by id (default {}; the literal FAIL
 # makes that read fail); fails every rulesets call whose args contain
-# $RULESETS_FAIL (unset → none fail); returns $REPO_LIST for `repo list`; serves the repo's
+# $RULESETS_FAIL (unset → none fail); returns $REPO_LIST for `repo list`
+# (minus isArchived entries under --no-archived); serves the repo's
 # .github/required-checks.json from $DECLARED (unset → HTTP 404, i.e. the repo
 # declares nothing; the literal FAIL → HTTP 500) and logs that read to $READS.
 _stub_gh() {
@@ -40,6 +41,7 @@ case "\$args" in
     [ "\${DECLARED:-}" = "FAIL" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
     [ -z "\${DECLARED:-}" ] && { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
     printf '%s' "\$DECLARED" ;;
+  *"repo list"*"--no-archived"*) jq -c 'map(select(.isArchived != true))' <<< "\${REPO_LIST:-[]}" ;;
   *"repo list"*) printf '%s' "\${REPO_LIST:-}" ;;
   *"\${RULESETS_FAIL:-//none//}"*"rulesets"*)
     echo "failed to fetch rulesets: failed to resolve ruleset ID (HTTP 404)" >&2; exit 1 ;;
@@ -259,8 +261,8 @@ DEP_AUDIT_WF="$SCRIPT_DIR/.github/workflows/dependency-audit.yml"
 }
 
 # ── fleet mode ────────────────────────────────────────────────────────────────
-# _repo <name> <isPrivate> <hasIssuesEnabled> — one `gh repo list --json` entry.
-_repo() { jq -cn --arg n "$1" --argjson p "$2" --argjson i "$3" '{name: $n, isPrivate: $p, hasIssuesEnabled: $i}'; }
+# _repo <name> <isPrivate> <hasIssuesEnabled> [<isArchived>] — one `gh repo list --json` entry.
+_repo() { jq -cn --arg n "$1" --argjson p "$2" --argjson i "$3" --argjson a "${4:-false}" '{name: $n, isArchived: $a, isPrivate: $p, hasIssuesEnabled: $i}'; }
 _repo_list() { jq -cs . <<< "$(printf '%s\n' "$@")"; }
 
 @test "apply --all: iterates every non-archived org repo" {
@@ -294,6 +296,22 @@ _repo_list() { jq -cs . <<< "$(printf '%s\n' "$@")"; }
   [[ "$output" != *"repo=combsmith/TalkTerm-ghsa"* ]]
   [[ "$output" != *"repo=combsmith/.github-ghsa"* ]]
   [[ "$output" != *"failed"* ]]
+}
+
+# The listing includes archived repos so the parent lookup still finds a parent
+# that was archived after the advisory's fork was created.
+@test "apply --all: skips a GHSA fork whose parent is archived; never applies to archived repos" {
+  _stub_gh
+  export RULESETS_LIST='[]' RULESETS_FAIL='-ghsa-'
+  REPO_LIST="$(_repo_list \
+    "$(_repo alpha false true)" \
+    "$(_repo oldapp false true true)" \
+    "$(_repo oldapp-ghsa-pc5f-cw67-7cmm true false)")"; export REPO_LIST
+  run bash "$APPLY" --all --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skip combsmith/oldapp-ghsa-pc5f-cw67-7cmm: GHSA temporary private fork"* ]]
+  [[ "$output" == *"repo=combsmith/alpha "* ]]
+  [[ "$output" != *"repo=combsmith/oldapp"* ]]
 }
 
 @test "apply --all: a GHSA-shaped name alone never skips a repo" {

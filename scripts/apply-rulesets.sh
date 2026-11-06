@@ -205,9 +205,11 @@ apply_repo() {
   return "$rc"
 }
 
-# classify_fleet_repos — read `gh repo list --json name,isPrivate,hasIssuesEnabled`
-# on stdin and print one `<action>\t<name>` line per repo, action being apply,
-# ghsa (a GHSA temporary private fork) or excluded (in FLEET_EXCLUDE).
+# classify_fleet_repos — read `gh repo list --json name,isArchived,isPrivate,hasIssuesEnabled`
+# (archived repos included) on stdin and print one `<action>\t<name>` line per
+# repo, action being apply, archived, ghsa (a GHSA temporary private fork) or
+# excluded (in FLEET_EXCLUDE). Archived repos are listed only so that a fork
+# whose parent was archived after the advisory opened is still recognised.
 # GitHub creates a private fork named <repo>-ghsa-<id> for each security advisory,
 # without the fork flag and with issues disabled; its rulesets can't be read, so
 # applying to it always fails. A GHSA-shaped name alone is not enough: the repo
@@ -218,7 +220,8 @@ classify_fleet_repos() {
     | $ARGS.positional as $exclude
     | [.[].name] as $names
     | .[]
-    | (if (.isPrivate == true and .hasIssuesEnabled == false
+    | (if .isArchived == true then "archived"
+       elif (.isPrivate == true and .hasIssuesEnabled == false
            and (.name | test($ghsa))
            and ((.name | sub($ghsa; "")) as $p | any($names[]; . == $p)))
        then "ghsa"
@@ -270,7 +273,7 @@ main() {
     echo "[apply-rulesets] fetching non-archived repos in ${ORG} ..."
     local repos_json classified action repo failed=0 repos_rc=0
     local repos=()
-    repos_json="$(gh repo list "$ORG" --no-archived --json name,isPrivate,hasIssuesEnabled --limit 500)" && repos_rc=0 || repos_rc=$?
+    repos_json="$(gh repo list "$ORG" --json name,isArchived,isPrivate,hasIssuesEnabled --limit 1000)" && repos_rc=0 || repos_rc=$?
     if [ "$repos_rc" -ne 0 ]; then
       echo "::error::failed to list repositories for organization ${ORG} (exit code ${repos_rc})" >&2
       return "$repos_rc"
@@ -280,6 +283,7 @@ main() {
     while IFS=$'\t' read -r action repo; do
       case "$action" in
         apply)    repos+=("$repo") ;;
+        archived) ;;
         ghsa)     echo "[apply-rulesets] skip ${ORG}/${repo}: GHSA temporary private fork" ;;
         excluded) echo "[apply-rulesets] skip ${ORG}/${repo}: in FLEET_EXCLUDE (no dependency-audit workflow)" ;;
       esac
