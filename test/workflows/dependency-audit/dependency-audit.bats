@@ -11,6 +11,8 @@
 #          newline is audited, and an unprocessable project fails the job.
 #   #1406  the aggregate `Audit gate` job fails when any audit failed or was
 #          cancelled, and depends on every audit job.
+#   broodly#637  a Go module with no packages (a go.work root) is skipped with
+#          a notice, not scanned into a "no packages matched" failure.
 
 load 'helpers/setup'
 
@@ -41,12 +43,72 @@ TOML
   da_ws_member "$REPO" "$REPO"
 }
 
+# A go.work layout like broodly's: a package-less root module plus apps/api,
+# and a vendored module that must never be scanned on its own.
+make_go_fixture() {
+  mkdir -p "$REPO/apps/api/internal/x" "$REPO/apps/api/vendor/dep"
+  printf 'module example.com/root\n\ngo 1.24\n' >"$REPO/go.mod"
+  printf 'go 1.24\n\nuse (\n\t.\n\t./apps/api\n)\n' >"$REPO/go.work"
+  printf 'module example.com/api\n\ngo 1.24\n' >"$REPO/apps/api/go.mod"
+  printf 'package main\n' >"$REPO/apps/api/main.go"
+  printf 'package x\n' >"$REPO/apps/api/internal/x/x.go"
+  printf 'module example.com/dep\n' >"$REPO/apps/api/vendor/dep/go.mod"
+  printf 'package dep // VULN\n' >"$REPO/apps/api/vendor/dep/dep.go"
+}
+
 # ── display ──────────────────────────────────────────────────────────────────
 
 @test "display: escapes CR and LF so a path cannot start a new log line" {
   run dep_audit_display $'a\nb\rc'
   [ "$status" -eq 0 ]
   [ "$output" = 'a\nb\rc' ]
+}
+
+# ── Go (broodly#637) ─────────────────────────────────────────────────────────
+
+@test "go: a module with no packages is skipped with a notice; the others are scanned" {
+  make_go_fixture
+  cd "$REPO"
+  run dep_audit_go_run .
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::notice::Go module . has no packages; nothing for govulncheck to scan"* ]]
+  [ "$(da_calls | grep -c '^govulncheck ')" -eq 1 ]
+  da_calls | grep -qxF "govulncheck ./... @ $(cd "$REPO/apps/api" && pwd -P)"
+}
+
+@test "go: vendored modules are not discovered" {
+  make_go_fixture
+  cd "$REPO"
+  run bash -c '. "$DA_LIB"; dep_audit_go_module_dirs . | tr "\0" "\n"'
+  [ "$status" -eq 0 ]
+  [ "$output" = $'.\n./apps/api' ]
+}
+
+@test "go: a vulnerable module fails the run" {
+  make_go_fixture
+  printf 'package x // VULN\n' >"$REPO/apps/api/internal/x/x.go"
+  cd "$REPO"
+  run dep_audit_go_run .
+  [ "$status" -ne 0 ]
+}
+
+@test "go: when go list fails the module is still scanned, never skipped" {
+  make_go_fixture
+  (cd "$REPO" && pwd -P) >>"$GO_LIST_FAIL"
+  cd "$REPO"
+  run dep_audit_go_run .
+  [ "$status" -ne 0 ]
+  da_calls | grep -qxF "govulncheck ./... @ $(cd "$REPO" && pwd -P)"
+}
+
+@test "go: a single module at the root with packages is scanned once" {
+  printf 'module example.com/one\n' >"$REPO/go.mod"
+  printf 'package one\n' >"$REPO/one.go"
+  cd "$REPO"
+  run dep_audit_go_run .
+  [ "$status" -eq 0 ]
+  [ "$(da_calls | grep -c '^govulncheck ')" -eq 1 ]
+  [[ "$output" != *"::notice::"* ]]
 }
 
 # ── Python discovery (#1404) ────────────────────────────────────────────────
@@ -275,12 +337,12 @@ TOML
 
 @test "workflow: tooling is checked out from the reusable's own commit, outside the scanned tree" {
   local job
-  for job in audit-cargo audit-pip audit-gate; do
+  for job in audit-go audit-cargo audit-pip audit-gate; do
     # shellcheck disable=SC2016 # the literal expression text is what is pinned
     [ "$(JOB=$job yq -r '.jobs[strenv(JOB)].steps[] | select(.with.repository == "combsmith/.github") | .with.ref' "$DA_WORKFLOW")" = '${{ job.workflow_sha }}' ]
     [ "$(JOB=$job yq -r '.jobs[strenv(JOB)].steps[] | select(.with.repository == "combsmith/.github") | .with.path' "$DA_WORKFLOW")" = '.dependency-audit-tooling' ]
   done
-  for job in audit-cargo audit-pip; do
+  for job in audit-go audit-cargo audit-pip; do
     [ "$(JOB=$job yq -r '.jobs[strenv(JOB)].steps[0].with.path' "$DA_WORKFLOW")" = 'repo' ]
   done
 }
@@ -292,6 +354,13 @@ TOML
   [ "$(da_calls | grep -c generate-lockfile)" -eq 0 ]
   da_calls | grep -qxF "cargo audit @ $(cd "$REPO/tools/excluded" && pwd -P)"
   [ "$(cat "$REPO/tools/excluded/Cargo.lock")" = '# excluded lock: VULN pinned' ]
+}
+
+@test "workflow step: Audit Go dependencies passes a go.work root with no packages" {
+  make_go_fixture
+  run da_run_step audit-go "Audit Go dependencies" "$WS"
+  [ "$status" -eq 0 ]
+  da_calls | grep -qxF "govulncheck ./... @ $(cd "$REPO/apps/api" && pwd -P)"
 }
 
 @test "workflow step: Audit Python dependencies fails on a vulnerable newline-named project" {
