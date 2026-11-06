@@ -1205,6 +1205,92 @@ GITEOF
   ! grep -Ev '^[[:space:]]*#' "$ORCH" | grep -Eq '\bgit[[:space:]]+(tag|push)\b'
 }
 
+# ── orchestrator: rollback resolves the ring tag v-scope-aware, like promote (#1103) ──
+# cmd_rollback used to move the BARE <agent>/<ring> tag regardless of the agent's major
+# line. On a v-scoped fleet (all stubs pin <agent>/v<M>-<ring>) that moved a tag nobody
+# reads and still exited 0 — a silent no-op on the emergency lever. It must resolve the
+# ring tag the SAME way cmd_promote/_resolved_channel do: prefer <agent>/v<M>-<ring>.
+
+@test "orchestrator: rollback targets the v-scoped ring tag on a v-scoped agent, not the bare tier (#1103)" {
+  # The real shape from the issue: dev-lead on major 139, the v139-* family present.
+  # `rollback dev-lead stable --to v139.8.0` MUST target dev-lead/v139-stable — the tag the
+  # fleet stubs actually pin — never the bare dev-lead/stable that nobody reads.
+  _make_stub_bin
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"matching-refs/tags/dev-lead/v"*)     printf 'refs/tags/dev-lead/v139-next\nrefs/tags/dev-lead/v139.8.0\n' ;;  # channel anchor + latest release
+  *"git/ref/tags/dev-lead/v139-next"*)   echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # channel anchor exists → major=139
+  *"git/ref/tags/dev-lead/v139-stable"*) echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # the pinned channel tag
+  *"git/ref/tags/dev-lead/v139.8.0"*)    echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # the release --to target
+  *"git/ref/tags/dev-lead/stable"*)      echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef commit" ;;  # bare tier — must NOT be targeted
+  *) echo "" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+
+  # GITHUB_REPOSITORY=.github forces THIS_REPO=.github → dev-lead (host=.github-private) is cross-repo.
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
+    bash "$ORCH" rollback dev-lead stable --to v139.8.0 --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rolling back dev-lead/v139-stable"* ]]
+  [[ "$output" == *"refs/tags/dev-lead/v139-stable"* ]]
+  # The exact defect: the bare ring tag must never be the PATCH target.
+  [[ "$output" != *"refs/tags/dev-lead/stable"* ]]
+}
+
+@test "orchestrator: rollback fails loudly when the resolved ring tag does not exist (no silent no-op) (#1103)" {
+  # dev-lead on major 139, release v139.8.0 present, but NEITHER the v-scoped channel tag
+  # v139-stable NOR the bare stable exists. Rollback must NOT create-and-move a tag nobody
+  # pins and exit 0 — it must fail with a clear error.
+  _make_stub_bin
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"matching-refs/tags/dev-lead/v"*)  printf 'refs/tags/dev-lead/v139-next\nrefs/tags/dev-lead/v139.8.0\n' ;;  # channel anchor + release
+  *"git/ref/tags/dev-lead/v139-next"*) echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # channel anchor exists → major=139
+  *"git/ref/tags/dev-lead/v139.8.0"*) echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # release --to resolves
+  *) echo "" ;;                                                                        # every channel tag is absent
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
+    bash "$ORCH" rollback dev-lead stable --to v139.8.0 --dry-run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::"* ]]
+  # The resolution falls back to the bare tier (v-scoped absent), so the loud error names the
+  # resolved-but-absent tag and refuses — never a "[DRY-RUN] would … (force)" success line.
+  [[ "$output" == *"dev-lead/stable does not exist"* ]]
+  [[ "$output" != *"DRY-RUN"* ]]
+}
+
+@test "orchestrator: rollback falls back to the bare ring tag when no v-scoped channel tag exists (#1103)" {
+  # Pre-F4 shape: releases exist (so a current major is derived) but the CHANNEL tags are
+  # still bare — v139-stable is absent, dev-lead/stable is what the fleet pins. Rollback must
+  # then move the bare tag, byte-identical to _resolved_channel's fall-back (matches promote).
+  _make_stub_bin
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"matching-refs/tags/dev-lead/v"*)     printf 'refs/tags/dev-lead/v139-next\nrefs/tags/dev-lead/v139.8.0\n' ;;  # channel anchor + release
+  *"git/ref/tags/dev-lead/v139-next"*)   echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # channel anchor exists → major=139
+  *"git/ref/tags/dev-lead/v139.8.0"*)    echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # release --to target
+  *"git/ref/tags/dev-lead/v139-stable"*) echo "" ;;                                    # v-scoped channel tag ABSENT
+  *"git/ref/tags/dev-lead/stable"*)      echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef commit" ;;  # bare channel tag present
+  *) echo "" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
+    bash "$ORCH" rollback dev-lead stable --to v139.8.0 --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rolling back dev-lead/stable"* ]]
+  [[ "$output" == *"refs/tags/dev-lead/stable"* ]]
+  [[ "$output" != *"v139-stable"* ]]
+}
+
 # ── orchestrator: full graduated verdicts (cut date + gh run data → gate state) ─
 # Lay out next = candidate (cccc); ring0/ring1/stable = prior (bbbb): frontier = ring0,
 # transition next->ring0, source = next. The release tag cccc is dated `cut_days` ago,
