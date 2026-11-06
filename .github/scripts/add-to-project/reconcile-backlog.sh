@@ -38,12 +38,12 @@ pr_required="${REQUIRED_LABEL-dev-lead}"
 
 # Resolve target repos: explicit RECON_REPOS, else the App installation's repos.
 declare -a repos
-if [ -n "${RECON_REPOS:-}" ]; then
+if [[ -n "${RECON_REPOS:-}" ]]; then
   read -r -a repos <<< "${RECON_REPOS}"
 else
   mapfile -t repos < <(gh api --paginate /installation/repositories --jq '.repositories[].full_name')
 fi
-if [ "${#repos[@]}" -eq 0 ]; then
+if [[ "${#repos[@]}" -eq 0 ]]; then
   echo "::error::no repos to reconcile (set RECON_REPOS or check the App installation)" >&2
   exit 64
 fi
@@ -60,7 +60,7 @@ prefetch_board_membership() {
   local cursor="" json count=0
   while true; do
     # shellcheck disable=SC2016  # $projectId/$pageSize/$cursor are GraphQL variables
-    if [ -n "${cursor}" ]; then
+    if [[ -n "${cursor}" ]]; then
       json=$(gh api graphql \
         -F projectId="${PROJECT_ID}" -F pageSize="${PAGE_SIZE:-100}" -F cursor="${cursor}" \
         -f query='query($projectId:ID!,$pageSize:Int!,$cursor:String!){
@@ -80,20 +80,20 @@ prefetch_board_membership() {
               nodes{ content{ ... on Issue{ id } ... on PullRequest{ id } } }
             } } } }')
     fi
-    if [ "$(printf '%s' "${json}" | jq -r '.data?.node?.items? // "null"')" = "null" ]; then
+    if [[ "$(printf '%s' "${json}" | jq -r '.data?.node?.items? // "null"')" = "null" ]]; then
       echo "::error::[reconcile] membership prefetch got no items for PROJECT_ID=${PROJECT_ID} — token access, PROJECT_ID drift, or non-ProjectV2 node" >&2
       return 75
     fi
     local id
-    while IFS= read -r id || [ -n "${id}" ]; do
+    while IFS= read -r id || [[ -n "${id}" ]]; do
       id="${id%$'\r'}"
-      [ -n "$id" ] || continue
+      [[ -n "$id" ]] || continue
       _ATP_ON_BOARD["$id"]=1
       count=$((count + 1))
     done < <(printf '%s' "${json}" | jq -r '.data.node?.items?.nodes?[]?.content?.id? // empty')
-    [ "$(printf '%s' "${json}" | jq -r '.data.node?.items?.pageInfo?.hasNextPage?')" = "true" ] || break
+    [[ "$(printf '%s' "${json}" | jq -r '.data.node?.items?.pageInfo?.hasNextPage?')" = "true" ]] || break
     cursor=$(printf '%s' "${json}" | jq -r '.data.node?.items?.pageInfo?.endCursor? // ""')
-    if [ -z "${cursor}" ]; then
+    if [[ -z "${cursor}" ]]; then
       echo "::error::[reconcile] membership prefetch got hasNextPage=true with empty endCursor — API inconsistency, aborting" >&2
       return 75
     fi
@@ -107,7 +107,7 @@ _ATP_MEMBERSHIP_READY=1
 scanned=0
 echo "Reconciling ${#repos[@]} repo(s) into ${PROJECT_URL:-the project}${DRY_RUN:+ (DRY RUN)}"
 for repo in "${repos[@]}"; do
-  [ -z "$repo" ] && continue
+  [[ -z "$repo" ]] && continue
   echo "::group::${repo}"
 
   # Open issues AND PRs (the issues endpoint returns both). A PR carries a
@@ -122,12 +122,12 @@ for repo in "${repos[@]}"; do
     echo "::endgroup::"
     continue
   }
-  while IFS=$'\t' read -r nid url labels kind || [ -n "$kind" ]; do
+  while IFS=$'\t' read -r nid url labels kind || [[ -n "$kind" ]]; do
     kind="${kind%$'\r'}"
-    [ -z "$nid" ] && continue
+    [[ -z "$nid" ]] && continue
     scanned=$((scanned + 1))
     # Un-gate issues (empty required label); PRs keep the gate.
-    if [ "$kind" = "pr" ]; then REQUIRED_LABEL="$pr_required"; else REQUIRED_LABEL=""; fi
+    if [[ "$kind" = "pr" ]]; then REQUIRED_LABEL="$pr_required"; else REQUIRED_LABEL=""; fi
     export REQUIRED_LABEL
     reconcile_content_with_project "$nid" "$url" "$labels"
   done <<< "$issues_tsv"

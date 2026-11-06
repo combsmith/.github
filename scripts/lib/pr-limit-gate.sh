@@ -83,7 +83,7 @@ plg_effective_org_cap() {
 # ---------------------------------------------------------------------------
 plg_is_dry_run() {
   local dry="${DRY_RUN:-${DEV_LEAD_DRY_RUN:-false}}"
-  if [ "$dry" = "true" ]; then
+  if [[ "$dry" = "true" ]]; then
     return 0
   fi
   return 1
@@ -128,7 +128,7 @@ plg_count_open_automation_prs() {
     --json author,labels \
     2>/dev/null || true)"
 
-  if [ -z "$prs" ]; then
+  if [[ -z "$prs" ]]; then
     plg_log "warning: PR enumeration returned no data (treating count as 0)"
     printf '0'
     return 0
@@ -167,7 +167,7 @@ plg_count_source_prs() {
     --json author \
     2>/dev/null || true)"
 
-  if [ -z "$prs" ]; then
+  if [[ -z "$prs" ]]; then
     printf '0'
     return 0
   fi
@@ -197,14 +197,14 @@ plg_count_source_prs() {
 # ---------------------------------------------------------------------------
 plg_admission_gate() {
   local source="${1:-}"
-  if [ -z "$source" ]; then
+  if [[ -z "$source" ]]; then
     plg_log "error: plg_admission_gate requires a <source> argument"
     return 2
   fi
 
   local config
   config="$(plg_config_path)"
-  if [ ! -f "$config" ]; then
+  if [[ ! -f "$config" ]]; then
     plg_log "error: pr-limits config not found at $config"
     return 2
   fi
@@ -232,7 +232,7 @@ plg_admission_gate() {
   local decision="allow" reason
   reason="org queue ${org_count}/${org_cap}"
 
-  if [ "$org_count" -ge "$org_cap" ]; then
+  if [[ "$org_count" -ge "$org_cap" ]]; then
     decision="defer"
     reason="org queue ${org_count}/${org_cap} at or over the org-wide cap"
   else
@@ -247,7 +247,7 @@ plg_admission_gate() {
         return 2
       fi
       reason="org queue ${org_count}/${org_cap}, source '${source}' queue ${src_count}/${sub_cap}"
-      if [ "$src_count" -ge "$sub_cap" ]; then
+      if [[ "$src_count" -ge "$sub_cap" ]]; then
         decision="defer"
         reason="source '${source}' queue ${src_count}/${sub_cap} at or over its sub-cap (org queue ${org_count}/${org_cap})"
       fi
@@ -275,7 +275,7 @@ plg_finish() {
   plg_log "decision=${decision} for '${source}' (${reason})"
   printf 'decision=%s\n' "$decision"
 
-  if [ "$decision" = "allow" ]; then
+  if [[ "$decision" = "allow" ]]; then
     return 0
   fi
   return 1

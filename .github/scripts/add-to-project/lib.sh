@@ -19,11 +19,11 @@
 set -euo pipefail
 
 _atp_require_env() {
-  if [ -z "${PROJECT_ID:-}" ]; then
+  if [[ -z "${PROJECT_ID:-}" ]]; then
     printf '[%s] PROJECT_ID env var is required\n' "$1" >&2
     return 64
   fi
-  if [ -z "${GH_TOKEN:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
     printf '::error::[%s] GH_TOKEN is empty. INITIATIVES_APP_ID / INITIATIVES_APP_PRIVATE_KEY are likely unset or stale. See combsmith/.github#387.\n' "$1" >&2
     return 64
   fi
@@ -60,13 +60,13 @@ atp_log_safe() {
 # "is it already on the board?" from memory and skip the API call unless a
 # genuine change is needed. The event path leaves both unset, so it always
 # falls through to the network and its behavior is unchanged.
-_atp_membership_ready() { [ "${_ATP_MEMBERSHIP_READY:-}" = "1" ]; }
+_atp_membership_ready() { [[ "${_ATP_MEMBERSHIP_READY:-}" = "1" ]]; }
 
 # _atp_on_board <content_node_id>
 #   Returns 0 if the cache says the content IS on the board, 1 if the cache
 #   says it is NOT. MUST be gated by `_atp_membership_ready` — when no cache
 #   has been populated the result is meaningless (there is nothing to consult).
-_atp_on_board() { [ -n "${_ATP_ON_BOARD[$1]:-}" ]; }
+_atp_on_board() { [[ -n "${_ATP_ON_BOARD[$1]:-}" ]]; }
 
 # find_project_item <kind> <value>
 #   kind=title-prefix  → match items whose content.title startswith <value>
@@ -79,7 +79,7 @@ _atp_on_board() { [ -n "${_ATP_ON_BOARD[$1]:-}" ]; }
 # caller add duplicates. Lookup is paginated so the project can grow past
 # the first page without silently missing matches.
 find_project_item() {
-  if [ "$#" -ne 2 ]; then
+  if [[ "$#" -ne 2 ]]; then
     printf '[find_project_item] expected 2 args (kind value), got %d\n' "$#" >&2
     return 64
   fi
@@ -109,7 +109,7 @@ find_project_item() {
   while true; do
     local json
     # shellcheck disable=SC2016  # $projectId/$pageSize/$cursor are GraphQL variables
-    if [ -n "${cursor}" ]; then
+    if [[ -n "${cursor}" ]]; then
       json=$(gh api graphql \
         -F projectId="${PROJECT_ID}" \
         -F pageSize="${page_size}" \
@@ -155,7 +155,7 @@ find_project_item() {
         }')
     fi
 
-    if [ "$(printf '%s' "${json}" | jq -r '.data.node')" = "null" ]; then
+    if [[ "$(printf '%s' "${json}" | jq -r '.data.node')" = "null" ]]; then
       printf '[find_project_item] GraphQL returned data.node:null. PROJECT_ID=%s — token may lack access, or the project was deleted.\n' "${PROJECT_ID}" >&2
       return 75
     fi
@@ -198,8 +198,8 @@ find_project_item() {
       esac
     done <<< "${parsed}"
 
-    if [ -n "${match}" ]; then
-      if [ "${match_count}" != "1" ]; then
+    if [[ -n "${match}" ]]; then
+      if [[ "${match_count}" != "1" ]]; then
         # Multi-match on a single page indicates inconsistent state (manual
         # drafts shadowing automation). Warn so an operator can clean up,
         # but proceed with the first match so the state machine progresses.
@@ -210,7 +210,7 @@ find_project_item() {
       return 0
     fi
 
-    if [ "${has_next}" != "true" ]; then
+    if [[ "${has_next}" != "true" ]]; then
       return 0
     fi
     cursor="${end_cursor}"
@@ -218,7 +218,7 @@ find_project_item() {
 }
 
 add_content_to_project() {
-  if [ "$#" -ne 1 ]; then
+  if [[ "$#" -ne 1 ]]; then
     printf '[add_content_to_project] expected 1 arg (content_node_id), got %d\n' "$#" >&2
     return 64
   fi
@@ -234,7 +234,7 @@ add_content_to_project() {
     return 0
   fi
 
-  if [ "${DRY_RUN:-}" = "1" ]; then
+  if [[ "${DRY_RUN:-}" = "1" ]]; then
     printf '[dry-run] would add content %s to project\n' "${content_node_id}"
     return 0
   fi
@@ -253,14 +253,14 @@ add_content_to_project() {
 }
 
 add_draft_item() {
-  if [ "$#" -ne 2 ]; then
+  if [[ "$#" -ne 2 ]]; then
     printf '[add_draft_item] expected 2 args (title body), got %d\n' "$#" >&2
     return 64
   fi
   local title="$1"
   local body="$2"
 
-  if [ "${DRY_RUN:-}" = "1" ]; then
+  if [[ "${DRY_RUN:-}" = "1" ]]; then
     printf '[dry-run] would add draft: %s\n' "$(atp_log_safe "${title}")"
     return 0
   fi
@@ -278,13 +278,13 @@ add_draft_item() {
 }
 
 delete_project_item() {
-  if [ "$#" -ne 1 ]; then
+  if [[ "$#" -ne 1 ]]; then
     printf '[delete_project_item] expected 1 arg (item_id), got %d\n' "$#" >&2
     return 64
   fi
   local item_id="$1"
 
-  if [ "${DRY_RUN:-}" = "1" ]; then
+  if [[ "${DRY_RUN:-}" = "1" ]]; then
     printf '[dry-run] would delete item %s from project\n' "${item_id}"
     return 0
   fi
@@ -323,7 +323,7 @@ delete_project_item() {
 # Exit 0 on success; 64 on bad args. DRY_RUN=1 logs the intended write and
 # mutates nothing.
 set_item_single_select_value() {
-  if [ "$#" -ne 3 ]; then
+  if [[ "$#" -ne 3 ]]; then
     printf '[set_item_single_select_value] expected 3 args (item_id field_id option_id), got %d\n' "$#" >&2
     return 64
   fi
@@ -331,7 +331,7 @@ set_item_single_select_value() {
   local field_id="$2"
   local option_id="$3"
 
-  if [ "${DRY_RUN:-}" = "1" ]; then
+  if [[ "${DRY_RUN:-}" = "1" ]]; then
     printf '[dry-run] would set item %s field %s = option %s\n' "${item_id}" "${field_id}" "${option_id}"
     return 0
   fi
