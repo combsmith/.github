@@ -37,7 +37,8 @@ set -euo pipefail
 # Usage:
 #   GH_TOKEN=<admin> ./scripts/apply-rulesets.sh --repo owner/repo [--dry-run] [<name>...]
 #   GH_TOKEN=<admin> ./scripts/apply-rulesets.sh <repo-name>       [--dry-run]   # bare name → $ORG/<name>
-#   GH_TOKEN=<admin> ./scripts/apply-rulesets.sh --all             [--dry-run]   # every non-archived org repo
+#   GH_TOKEN=<admin> ./scripts/apply-rulesets.sh --all             [--dry-run]   # every non-archived org repo,
+#                                                                                 # minus GHSA forks and FLEET_EXCLUDE
 #
 # Env:
 #   GH_TOKEN       token with administration:write on the target repo(s) (required for writes)
@@ -56,6 +57,12 @@ DRY_RUN="${DRY_RUN:-false}"
 # tag ruleset for the reusable-hosting meta-repos only and must NOT be swept fleet-
 # wide — it is applied only when named explicitly (e.g. `--repo <meta> release-channel-tags`).
 readonly FLEET_RULESETS=(code-quality pr-quality)
+
+# Repos --all leaves alone. They have no dependency-audit workflow, so the
+# code-quality ruleset's required `dependency-audit / Audit gate` check would
+# never report and would block every merge; they keep their existing rulesets.
+# An explicit --repo still applies to them.
+readonly FLEET_EXCLUDE=(software-factory software-factory-canary)
 
 # The code-scanning threshold floor (cs_floor_payload): code-quality.json's
 # code_scanning rule is a minimum, so an update keeps any stricter live threshold.
@@ -198,6 +205,30 @@ apply_repo() {
   return "$rc"
 }
 
+# classify_fleet_repos — read `gh repo list --json name,isArchived,isPrivate,hasIssuesEnabled`
+# (archived repos included) on stdin and print one `<action>\t<name>` line per
+# repo, action being apply, archived, ghsa (a GHSA temporary private fork) or
+# excluded (in FLEET_EXCLUDE). Archived repos are listed only so that a fork
+# whose parent was archived after the advisory opened is still recognised.
+# GitHub creates a private fork named <repo>-ghsa-<id> for each security advisory,
+# without the fork flag and with issues disabled; its rulesets can't be read, so
+# applying to it always fails. A GHSA-shaped name alone is not enough: the repo
+# must also be private, have issues off, and have its parent repo in the org
+# (same check as dev-lead-retry.sh in combsmith/.github-private#2462).
+classify_fleet_repos() {
+  jq -r --args '"-ghsa(-[23456789cfghjmpqrvwx]{4}){3}$" as $ghsa
+    | $ARGS.positional as $exclude
+    | [.[].name] as $names
+    | .[]
+    | (if .isArchived == true then "archived"
+       elif (.isPrivate == true and .hasIssuesEnabled == false
+           and (.name | test($ghsa))
+           and ((.name | sub($ghsa; "")) as $p | any($names[]; . == $p)))
+       then "ghsa"
+       elif (.name as $n | any($exclude[]; . == $n)) then "excluded"
+       else "apply" end) + "\t" + .name' "${FLEET_EXCLUDE[@]}"
+}
+
 # resolve_repo <arg> — echo owner/repo: pass through an owner/repo, else prefix $ORG.
 resolve_repo() {
   case "$1" in */*) printf '%s' "$1" ;; *) printf '%s/%s' "$ORG" "$1" ;; esac
@@ -240,14 +271,25 @@ main() {
   if [ "$all" = true ]; then
     [ -z "$target" ] || { echo "::error::--all and a repo argument are mutually exclusive" >&2; return 2; }
     echo "[apply-rulesets] fetching non-archived repos in ${ORG} ..."
-    local repos repo failed=0 repos_rc=0
-    repos="$(gh repo list "$ORG" --no-archived --json name -q '.[].name' --limit 500)" && repos_rc=0 || repos_rc=$?
+    local repos_json classified action repo failed=0 repos_rc=0
+    local repos=()
+    repos_json="$(gh repo list "$ORG" --json name,isArchived,isPrivate,hasIssuesEnabled --limit 1000)" && repos_rc=0 || repos_rc=$?
     if [ "$repos_rc" -ne 0 ]; then
       echo "::error::failed to list repositories for organization ${ORG} (exit code ${repos_rc})" >&2
       return "$repos_rc"
     fi
-    [ -n "$repos" ] || { echo "::error::no repositories found in ${ORG} — check GH_TOKEN" >&2; return 1; }
-    for repo in $repos; do
+    classified="$(classify_fleet_repos <<< "$repos_json")" \
+      || { echo "::error::failed to parse the repository list for ${ORG}" >&2; return 1; }
+    while IFS=$'\t' read -r action repo; do
+      case "$action" in
+        apply)    repos+=("$repo") ;;
+        archived) ;;
+        ghsa)     echo "[apply-rulesets] skip ${ORG}/${repo}: GHSA temporary private fork" ;;
+        excluded) echo "[apply-rulesets] skip ${ORG}/${repo}: in FLEET_EXCLUDE (no dependency-audit workflow)" ;;
+      esac
+    done <<< "$classified"
+    [ "${#repos[@]}" -gt 0 ] || { echo "::error::no repositories found in ${ORG} — check GH_TOKEN" >&2; return 1; }
+    for repo in "${repos[@]}"; do
       apply_repo "${ORG}/${repo}" "${files[@]}" || { failed=$((failed + 1)); echo "::warning::failed on ${ORG}/${repo}"; }
     done
     [ "$failed" -eq 0 ] || { echo "::error::${failed} repo(s) failed" >&2; return 1; }
