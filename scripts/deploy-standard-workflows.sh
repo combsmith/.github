@@ -78,20 +78,12 @@ readonly ENGINE_HOST_REPO=".github-private"
 # A repo here may still opt into a *specific* workflow via SKIP_OVERRIDES below.
 SKIP_REPOS=(".github" "$ENGINE_HOST_REPO")
 
-# Repos the standard-workflow sweep does not serve at all. This is a different
-# thing from SKIP_REPOS. A SKIP_REPO is inside the standard and self-manages it,
-# so every required workflow on it must be reconciled (SKIP_OVERRIDES or
-# SKIP_SELF_MANAGED, see reconcile_skip_repo_required_workflows). A repo here is
-# outside the standard by a recorded decision of the Maintainer: it receives no
-# stub, takes no opt-in, and is not part of that reconciliation.
-#   software-factory        — where the replacement for this fleet is built. Its
-#                             design keeps the two apart (no owner-account token,
-#                             none of the fleet's workflows), and its own workflow
-#                             rules refuse every stub. A sync PR opened there on
-#                             2026-10-12 was closed unmerged.
-#   software-factory-canary — throwaway repo for that project's platform trials.
-# The audits (compliance, Scorecard, SonarCloud) do not read this list yet.
-NOT_SERVED_REPOS=("software-factory" "software-factory-canary")
+# Repos the standard-workflow sweep does not serve at all (NOT_SERVED_REPOS,
+# is_not_served_repo) — distinct from SKIP_REPOS above, and shared with
+# compliance-audit.sh so the audit files nothing where the sweep deploys nothing
+# (#1334, #1343).
+# shellcheck source=scripts/lib/not-served-repos.sh
+source "$SCRIPT_DIR/lib/not-served-repos.sh"
 
 # Per-workflow opt-ins for otherwise-skipped repos. Keyed by workflow filename;
 # value is a space-separated list of SKIP_REPOS that should still receive it.
@@ -290,17 +282,6 @@ is_skipped_repo() {
   local repo="$1" s
   for s in "${SKIP_REPOS[@]}"; do
     [[ "$repo" == "$s" ]] && return 0
-  done
-  return 1
-}
-
-# True if <repo> is in NOT_SERVED_REPOS (the sweep never touches it).
-is_not_served_repo() {
-  local repo s
-  # GitHub repo names are case-insensitive; compare lowercased.
-  repo=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
-  for s in "${NOT_SERVED_REPOS[@]}"; do
-    [[ "$repo" == "$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]')" ]] && return 0
   done
   return 1
 }

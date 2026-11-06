@@ -298,6 +298,12 @@ RULESETS_SRC_DIR="${RULESETS_SRC_DIR:-$SCRIPT_DIR/../standards/rulesets}"
 # shellcheck source=lib/ring-pins.sh
 . "$SCRIPT_DIR/lib/ring-pins.sh"
 
+# Repos outside the org standard by the Maintainer's decision — NOT_SERVED_REPOS
+# and is_not_served_repo(). Shared with deploy-standard-workflows.sh: the audit
+# files no findings or issues where the sweep deploys nothing (#1343, #1352).
+# shellcheck source=lib/not-served-repos.sh
+. "$SCRIPT_DIR/lib/not-served-repos.sh"
+
 # ADR-0007 agent-ingress identity helpers: a required per-role workflow whose role
 # an agent-ingress.yml job serves is present, not missing (#1226) — the same rule
 # deploy-standard-workflows.sh uses to never re-seed a collapsed stub.
@@ -3723,6 +3729,18 @@ main() {
   # Get all non-archived repos in the org
   local repos
   repos=$(gh repo list "$ORG" --no-archived --json name -q '.[].name' --limit 500)
+
+  # Drop repos outside the standard (NOT_SERVED_REPOS) before both the audit loop
+  # and the issue-management loop, so no finding, issue or label lands there.
+  local listed served=""
+  for listed in $repos; do
+    if is_not_served_repo "$listed"; then
+      info "Skipping $ORG/$listed (not served — NOT_SERVED_REPOS)"
+      continue
+    fi
+    served+="$listed"$'\n'
+  done
+  repos="$served"
 
   if [ -z "$repos" ]; then
     warn "No repositories found in $ORG — check GH_TOKEN permissions"
