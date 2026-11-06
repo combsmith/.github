@@ -94,18 +94,47 @@ def _allowed_roots() -> list[str]:
     return [r for r in roots if os.path.dirname(r) != r]
 
 
+def _rebuild_from_root(root: str, rel: str) -> Path:
+    """Re-derive ``root``/``rel`` from directory listings, starting at ``root``.
+
+    Each component of ``rel`` is matched by name against the real entries of
+    the directory reached so far, and the result is built only from those
+    entries — never from the CLI string itself. A confined argument therefore
+    cannot carry anything onto the file-read sink that the trusted root does
+    not actually contain (SonarCloud pythonsecurity:S8707 traced the argv taint
+    straight through a plain ``commonpath`` guard). ``rel`` comes from a
+    ``realpath``, so it holds no ``..`` or symlink components.
+
+    Raises ``FileNotFoundError`` when a component does not exist.
+    """
+    current = Path(root)
+    if rel == os.curdir:
+        return current
+    for part in Path(rel).parts:
+        wanted = os.path.normcase(part)
+        with os.scandir(current) as entries:
+            match = next(
+                (e for e in entries if os.path.normcase(e.name) == wanted), None
+            )
+        if match is None:
+            raise FileNotFoundError(os.path.join(root, rel))
+        current = Path(match.path)
+    return current
+
+
 def _confine_path(raw: str | os.PathLike[str]) -> Path | None:
     """Resolve ``raw`` and return it only if it lies inside an allowed root.
 
     Guards against path traversal (``../``, absolute paths, symlinks) via the
     CLI arguments — SonarCloud pythonsecurity:S8707. Returns ``None`` when the
-    resolved path escapes every allowed root.
+    resolved path escapes every allowed root, and raises ``FileNotFoundError``
+    when it is inside one but does not exist.
     """
     candidate = os.path.realpath(raw)
     for root in _allowed_roots():
         try:
             if os.path.commonpath([root, candidate]) == root:
-                return Path(candidate)
+                return _rebuild_from_root(root, os.path.relpath(candidate, root))
         except ValueError:
             # On Windows, os.path.commonpath raises ValueError when paths are
             # on different drives (e.g., C:\ and D:\). Treat this as outside.
@@ -123,24 +152,31 @@ def main(argv: list[str]) -> int:
     raw_schema = argv[2] if len(argv) == 3 else os.path.join(
         _REPO_ROOT, ".github", "schemas", "signals.schema.json"
     )
-    signals_path = _confine_path(argv[1])
+    try:
+        signals_path = _confine_path(argv[1])
+    except FileNotFoundError as exc:
+        sys.stderr.write(f"[validate-signals] not found: {exc}\n")
+        return 2
+    except OSError as exc:
+        sys.stderr.write(f"[validate-signals] cannot read {argv[1]}: {exc}\n")
+        return 2
     if signals_path is None:
         sys.stderr.write(
             f"[validate-signals] path is outside the allowed directories: {argv[1]}\n"
         )
         return 2
-    schema_path = _confine_path(raw_schema)
+    try:
+        schema_path = _confine_path(raw_schema)
+    except FileNotFoundError as exc:
+        sys.stderr.write(f"[validate-signals] schema not found: {exc}\n")
+        return 2
+    except OSError as exc:
+        sys.stderr.write(f"[validate-signals] cannot read schema {raw_schema}: {exc}\n")
+        return 2
     if schema_path is None:
         sys.stderr.write(
             f"[validate-signals] schema path is outside the allowed directories: {raw_schema}\n"
         )
-        return 2
-
-    if not signals_path.exists():
-        sys.stderr.write(f"[validate-signals] not found: {signals_path}\n")
-        return 2
-    if not schema_path.exists():
-        sys.stderr.write(f"[validate-signals] schema not found: {schema_path}\n")
         return 2
 
     try:
