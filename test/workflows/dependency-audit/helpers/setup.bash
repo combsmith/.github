@@ -11,6 +11,13 @@
 #              audit     -> fails when ./Cargo.lock contains "VULN"
 #   pip-audit  fails when the audited pyproject.toml / requirements file
 #              contains "VULN"
+#   go         list ./... -> prints one line per directory under the cwd that
+#                            holds a *.go file and whose nearest go.mod is the
+#                            cwd's (nested modules are not packages of this
+#                            one). Fails for a dir listed in $GO_LIST_FAIL.
+#   govulncheck  fails when a *.go file of this module contains "VULN", or
+#              when the module has no packages ("no packages matched"), as the
+#              real scanner does
 # Calls are appended to $CALLS, one record per call, NUL-terminated, as
 #   "<tool> <args...> @ <cwd>".
 
@@ -24,11 +31,13 @@ da_setup_stubs() {
   CALLS="${BATS_TEST_TMPDIR}/calls"
   CARGO_WS_MAP="${BATS_TEST_TMPDIR}/ws-map"
   CARGO_METADATA_FAIL="${BATS_TEST_TMPDIR}/metadata-fail"
+  GO_LIST_FAIL="${BATS_TEST_TMPDIR}/go-list-fail"
   mkdir -p "$STUB_BIN"
   : >"$CALLS"
   : >"$CARGO_WS_MAP"
   : >"$CARGO_METADATA_FAIL"
-  export STUB_BIN CALLS CARGO_WS_MAP CARGO_METADATA_FAIL
+  : >"$GO_LIST_FAIL"
+  export STUB_BIN CALLS CARGO_WS_MAP CARGO_METADATA_FAIL GO_LIST_FAIL
 
   cat >"$STUB_BIN/cargo" <<'STUB'
 #!/usr/bin/env bash
@@ -73,7 +82,43 @@ fi
 [ -f "$target" ] || exit 2
 ! grep -q VULN "$target"
 STUB
-  chmod +x "$STUB_BIN/cargo" "$STUB_BIN/pip-audit"
+  # Shared by the go and govulncheck stubs: prints the module-relative package
+  # dirs of the module rooted at the cwd.
+  cat >"$STUB_BIN/go-stub-packages" <<'STUB'
+#!/usr/bin/env bash
+find . -name '*.go' -type f | while IFS= read -r f; do
+  d="${f%/*}"
+  m="$d"
+  while [ "$m" != "." ] && [ ! -e "$m/go.mod" ]; do m="${m%/*}"; done
+  [ "$m" = "." ] && printf '%s\n' "$d"
+done | LC_ALL=C sort -u
+STUB
+
+  cat >"$STUB_BIN/go" <<'STUB'
+#!/usr/bin/env bash
+printf 'go %s @ %s\0' "$*" "$(pwd -P)" >>"$CALLS"
+[ "$1 $2" = "list ./..." ] || exit 2
+if grep -qxF -- "$(pwd -P)" "$GO_LIST_FAIL"; then
+  echo "go: errors parsing go.mod" >&2
+  exit 1
+fi
+pkgs="$(go-stub-packages)"
+[ -n "$pkgs" ] || { echo 'go: warning: "./..." matched no packages' >&2; exit 0; }
+printf '%s\n' "$pkgs" | sed 's|^\.|example.com/m|'
+STUB
+
+  cat >"$STUB_BIN/govulncheck" <<'STUB'
+#!/usr/bin/env bash
+printf 'govulncheck %s @ %s\0' "$*" "$(pwd -P)" >>"$CALLS"
+pkgs="$(go-stub-packages)"
+[ -n "$pkgs" ] || { echo "govulncheck: no packages matched the provided patterns" >&2; exit 1; }
+while IFS= read -r d; do
+  if grep -q VULN "$d"/*.go; then echo "Vulnerability #1: GO-0000-0000"; exit 3; fi
+done <<<"$pkgs"
+echo "No vulnerabilities found."
+STUB
+  chmod +x "$STUB_BIN/cargo" "$STUB_BIN/pip-audit" "$STUB_BIN/go-stub-packages" \
+    "$STUB_BIN/go" "$STUB_BIN/govulncheck"
   PATH="${STUB_BIN}:${PATH}"
   export PATH
 }
