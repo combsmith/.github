@@ -7,7 +7,7 @@
 # audit tool. Fails the build if any dependency has a known security advisory.
 # The `Audit gate` job is the aggregate result of detection plus every audit.
 #
-# Cargo/Python discovery and the gate verdict live in
+# Go/Cargo/Python discovery and the gate verdict live in
 # .github/scripts/dependency-audit/lib/dependency-audit.sh (bats-tested in
 # test/workflows/dependency-audit/); the jobs check this repo out at the
 # reusable's own commit and source it.
@@ -147,7 +147,22 @@ jobs:
     if: needs.detect.outputs.gomod == 'true'
     runs-on: ubuntu-latest
     steps:
+      # The audited repo goes in `repo/` so the tooling checkout below is never
+      # part of the tree being scanned.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          persist-credentials: false
+
+      # Same tooling source as audit-cargo.
+      - name: Check out dependency-audit tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          ref: ${{ job.workflow_sha }}
+          path: .dependency-audit-tooling
+          fetch-depth: 1
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v5
         with:
@@ -157,16 +172,13 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0  # NOSONAR(githubactions:S8545) pinned @vX.Y.Z is reproducible (verified via Go checksum DB); no --locked equivalent
 
       - name: Audit Go dependencies
+        working-directory: repo
         run: |
-          status=0
-          while IFS= read -r dir; do
-            echo "::group::govulncheck $dir"
-            if ! (cd "$dir" && govulncheck ./...); then
-              status=1
-            fi
-            echo "::endgroup::"
-          done < <(find . -name 'go.mod' -not -path '*/vendor/*' -exec dirname {} \;)
-          exit $status
+          # One scan per go.mod. A module with no packages (e.g. a go.work
+          # root) is skipped with a notice instead of failing the job.
+          # shellcheck source=/dev/null
+          . ../.dependency-audit-tooling/.github/scripts/dependency-audit/lib/dependency-audit.sh
+          dep_audit_go_run .
 
   audit-cargo:
     name: cargo audit
