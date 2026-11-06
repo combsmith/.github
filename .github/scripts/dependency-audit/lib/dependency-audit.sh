@@ -9,8 +9,8 @@
 # as a whole passed, lives here so it is covered by bats
 # (test/workflows/dependency-audit/) instead of being trapped inline in YAML.
 #
-# External commands are resolved through PATH (`cargo`, `pip-audit`, `jq`,
-# `find`, `sort`), so tests substitute stubs for the scanners.
+# External commands are resolved through PATH (`cargo`, `pip-audit`, `go`,
+# `govulncheck`, `jq`, `find`, `sort`), so tests substitute stubs for the scanners.
 #
 # Paths are handled NUL-delimited end to end: a directory name may legally
 # contain a newline, and a newline-split record would point the guards at a
@@ -19,7 +19,7 @@
 # Compatible with bash 3.2+ (no associative arrays, no `mapfile -d`).
 #
 # Issues: #1393 (Cargo coverage), #1394 (committed Cargo.lock), #1404 (Python
-# discovery), #1406 (aggregate gate).
+# discovery), #1406 (aggregate gate); Go modules with no packages (broodly#637).
 
 # dep_audit_display PATH
 #   Prints PATH with CR and LF escaped as \r and \n, for log lines and workflow
@@ -200,6 +200,49 @@ dep_audit_cargo_run() {
   while IFS= read -r -d '' -u 3 dir; do
     echo "::group::cargo audit $(dep_audit_display "$dir")"
     dep_audit_cargo_audit_dir "$dir" || status=1
+    echo "::endgroup::"
+  done 3<"$list"
+  rm -f "$list"
+  return "$status"
+}
+
+# dep_audit_go_module_dirs ROOT
+#   Prints, NUL-delimited and sorted, every directory under ROOT that holds a
+#   go.mod, skipping vendored code (*/vendor/*). Non-zero if the walk fails.
+dep_audit_go_module_dirs() {
+  local root="$1"
+  (
+    set -o pipefail
+    find "$root" -name 'go.mod' \( -type f -o -type l \) \
+      -not -path '*/vendor/*' -print0 |
+      dep_audit_dirs_of_files
+  )
+}
+
+# dep_audit_go_run ROOT
+#   Runs `govulncheck ./...` in every Go module under ROOT. A module whose
+#   `go list ./...` succeeds and lists no packages (a workspace-root or
+#   tooling-only go.mod) is skipped with a notice: govulncheck has no code to
+#   scan there and exits non-zero with "no packages matched". If `go list`
+#   itself fails, govulncheck still runs, so a broken module is reported by the
+#   scanner instead of being skipped. Non-zero if discovery fails or any scan
+#   fails.
+dep_audit_go_run() {
+  local root="$1" list dir shown pkgs status=0
+  list="$(mktemp)" || return 1
+  if ! dep_audit_go_module_dirs "$root" >"$list"; then
+    echo "::error::Go module discovery failed under $(dep_audit_display "$root")"
+    rm -f "$list"
+    return 1
+  fi
+  while IFS= read -r -d '' -u 3 dir; do
+    shown="$(dep_audit_display "$dir")"
+    echo "::group::govulncheck ${shown}"
+    if pkgs="$(cd -- "$dir" && go list ./... </dev/null)" && [ -z "$pkgs" ]; then
+      echo "::notice::Go module ${shown} has no packages; nothing for govulncheck to scan"
+    else
+      (cd -- "$dir" && govulncheck ./... </dev/null) || status=1
+    fi
     echo "::endgroup::"
   done 3<"$list"
   rm -f "$list"
