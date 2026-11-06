@@ -10,10 +10,11 @@ setup() {
   STUB_BIN="$(mktemp -d)"; export PATH="$STUB_BIN:$PATH"
   CALLS="$STUB_BIN/calls.log"; export CALLS
   READS="$STUB_BIN/reads.log"; export READS
+  GH_LOG="$STUB_BIN/gh.log"; export GH_LOG
 }
 teardown() { [ -n "${STUB_BIN:-}" ] && rm -rf "$STUB_BIN"; return 0; }
 
-# gh stub: records writes (POST/PUT) to $CALLS (args line then --input body);
+# gh stub: logs every call's args to $GH_LOG; records writes (POST/PUT) to $CALLS (args line then --input body);
 # returns $RULESETS_LIST for the rulesets LIST (default [] → create path);
 # returns $RULESET_DETAIL for one ruleset by id (default {}; the literal FAIL
 # makes that read fail); fails every rulesets call whose args contain
@@ -24,6 +25,7 @@ _stub_gh() {
   cat > "$STUB_BIN/gh" <<EOF
 #!/usr/bin/env bash
 args="\$*"
+echo "\$args" >> "$GH_LOG"
 case "\$args" in
   *"--method POST"*|*"--method PUT"*)
     echo "\$args" >> "$CALLS"
@@ -324,7 +326,7 @@ _repo_list() { jq -cs . <<< "$(printf '%s\n' "$@")"; }
 
 # software-factory and software-factory-canary have no dependency-audit workflow;
 # the code-quality ruleset would block every merge there.
-@test "apply --all: skips FLEET_EXCLUDE repos with a log line, makes no calls for them" {
+@test "apply --all: skips FLEET_EXCLUDE repos with a log line, makes no gh calls for them" {
   _stub_gh
   export RULESETS_LIST='[]' RULESETS_FAIL='software-factory'
   REPO_LIST="$(_repo_list \
@@ -336,7 +338,10 @@ _repo_list() { jq -cs . <<< "$(printf '%s\n' "$@")"; }
   [[ "$output" == *"skip combsmith/software-factory: in FLEET_EXCLUDE"* ]]
   [[ "$output" == *"skip combsmith/software-factory-canary: in FLEET_EXCLUDE"* ]]
   [[ "$output" != *"repo=combsmith/software-factory"* ]]
-  run grep -c 'repos/combsmith/software-factory' "$CALLS"
+  # Every gh call, reads included (a handled 404 on required-checks.json would
+  # not fail the run), so none may target an excluded repo.
+  grep -q 'repos/combsmith/alpha/' "$GH_LOG"
+  run grep -c 'combsmith/software-factory' "$GH_LOG"
   [ "$output" = "0" ]
 }
 
