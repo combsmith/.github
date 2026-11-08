@@ -4207,7 +4207,7 @@ main() {
     fi
   fi
   _CANARY_OWN_CACHE="$_own_cache"
-  trap '_timing_report; rm -f "${_TIMING_LOG:-}" "${_TIMING_CALLS:-}"; [ "${_CANARY_OWN_CACHE:-0}" = 1 ] && rm -rf "${_RUNS_CACHE_DIR:-}"' EXIT
+  trap '_timing_report; rm -f "${_TIMING_LOG:-}" "${_TIMING_CALLS:-}"; [[ "${_CANARY_OWN_CACHE:-0}" = 1 ]] && rm -rf "${_RUNS_CACHE_DIR:-}"' EXIT
   # Load the registry lookups ONCE, here in the parent shell, so the fan-out's subshells inherit them
   # instead of re-parsing the registry per call (#1259). Failure just leaves the jq fallback in place.
   _registry_preload || true
