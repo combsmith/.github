@@ -271,3 +271,44 @@ STUB
   ' _ "$SCRIPT" "$t"
   [ "$status" -eq 0 ]
 }
+
+@test "deploy_repo: stale header on a compliant stub keeps the repo-specific body and renders a tier-neutral header" {
+  local t="${REPO_ROOT}/standards/workflows/pr-auto-review.yml" swept old
+  swept="$(bash -c 'source "$1"; ring_repin_uses pr-auto-review pr-auto-review/v1-ring1 < "$2"' _ "$SCRIPT" "$t")"
+  # stale stable-channel header + repo-specific workflow_run.workflows edit
+  old="$(printf '# pinned to the `pr-auto-review/v1-stable` channel\n%s\n' "$swept" \
+    | sed 's/workflows: \["CI"\]/workflows: ["Custom CI Marker"]/')"
+  grep -qF 'Custom CI Marker' <<< "$old"
+  local bin="${TT_TMP}/bin"; mkdir -p "$bin"
+  cat > "$bin/gh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${1:-}" = "api" ]; then
+  case "$2" in
+    *matching-refs/tags/*)
+      agent="${2##*matching-refs/tags/}"; agent="${agent%%/*}"
+      for c in stable next ring0 ring1; do echo "refs/tags/${agent}/v1-${c}"; done
+      exit 0 ;;
+    *contents/.github/workflows/agent-ingress.yml) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+    *contents*) printf '{"sha":"abc123","content":"%s"}' "$GH_CONTENT_B64"; exit 0 ;;
+  esac
+fi
+exit 0
+STUB
+  chmod +x "$bin/gh"; PATH="${bin}:${PATH}"; export PATH
+  GH_CONTENT_B64="$(printf '%s\n' "$old" | base64 -w 0)"; export GH_CONTENT_B64
+  export OUT="${TT_TMP}/out"
+  run env GH_TOKEN=x bash -c '
+    source "$1"; set +e
+    ORG=combsmith; DRY_RUN=false; FORCE=false; _OVERALL_FAILED=0
+    WORKFLOWS=(pr-auto-review.yml)
+    sd_deploy_files_via_pr() { shift 5; mkdir -p "$OUT"; while [ "$#" -ge 2 ]; do cp "$2" "$OUT/${1##*/}"; shift 2; done; echo "OPENED #1"; }
+    deploy_repo TalkTerm
+    [ -f "$OUT/pr-auto-review.yml" ] || exit 3
+  ' _ "$SCRIPT" "$t"
+  [ "$status" -eq 0 ]
+  # The customized body survived (no fallback to the template) ...
+  grep -qF 'Custom CI Marker' "$OUT/pr-auto-review.yml"
+  # ... and the stale stable-channel header is gone.
+  run grep -E '^[[:space:]]*#.*(pr-auto-review/(v[0-9]+-)?stable|pr-auto-review stable channel)' "$OUT/pr-auto-review.yml"
+  [ "$status" -eq 1 ]
+}
