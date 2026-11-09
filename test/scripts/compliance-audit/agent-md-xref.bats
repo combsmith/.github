@@ -38,3 +38,9 @@ setup() { source "$LIB"; }
   run bash -c 'set -o pipefail; . "$0"; { echo "See AGENTS.md"; head -c 131072 /dev/zero | tr "\0" x; } | agent_md_references_agents' "$LIB"
   [ "$status" -eq 0 ]
 }
+
+@test "reusable workflow never sources a caller-supplied helper and pins the org checkout" {
+  ! grep -q 'if \[ -f "scripts/lib/agent-md-xref.sh" \]' "$WORKFLOW"
+  grep -q 'cp "__org-github/scripts/lib/agent-md-xref.sh"' "$WORKFLOW"
+  grep -B6 'path: __org-github' "$WORKFLOW" | grep -q 'ref: ${{ job.workflow_sha }}'
+}
