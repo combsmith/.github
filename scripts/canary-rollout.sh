@@ -2533,35 +2533,33 @@ cmd_rollback() {
   local target
   target="$(_gh_tag_commit "$host" "$agent/$to")"
   [ -z "$target" ] && { echo "::error::release tag $agent/$to not found on $host" >&2; return 1; }
-  # Resolve the RING tag with fallback (major-scoped-channels epic #657 F4): PREFER the
-  # v-scoped `<agent>/v<M>-<ring>` within the agent's current major line when it exists,
-  # else the legacy bare `<agent>/<ring>`. Moving the bare tag on a v-scoped fleet relocated
-  # a tag no caller pins and still exited 0 — a silent no-op on the emergency lever (#1103).
-  # First check if the v-scoped tier exists; if not, fall back to bare.
+  # Resolve the RING tag through the SAME resolver as cmd_promote (major-scoped-channels epic
+  # #657 F4, #1103): an agent with an established channel major resolves to the authoritative
+  # v-scoped `<agent>/v<M>-<ring>` (never the bare tier, which no stub pins); a legacy bare-only
+  # agent resolves to `<agent>/<ring>`. There is deliberately NO rollback-local bare fallback —
+  # it would move a tag nobody pins and exit 0 (a silent no-op on the emergency lever).
   # (The `--to` release tag above is always the bare immutable `<agent>/vX.Y.Z`, so it is
   # correctly resolved without a major.)
-  local ring_tag ring_commit
-  IFS=$'\t' read -r ring_tag ring_commit < <(_resolved_channel "$agent" "$ring")
-  # If the resolved tag (v-scoped or bare from _resolved_channel's logic) doesn't exist,
-  # and we got v-scoped, try the bare tag as a fallback. The agent may have released v<M>.*.*
-  # but not yet seeded channel tier tags, so bare still matters as an intermediate step.
-  if [ -z "$ring_commit" ] && [[ "$ring_tag" == *"/v"[0-9]* ]]; then
-    # Constructed ring_tag was v-scoped and doesn't exist; try bare.
-    local bare_commit bare_tag
-    bare_tag="$agent/$ring"
-    bare_commit="$(_channel_tag_commit "$agent" "$ring")"
-    if [ -n "$bare_commit" ]; then
-      ring_tag="$bare_tag"
-      ring_commit="$bare_commit"
-    else
-      # Both v-scoped and bare are absent; report the bare tag in the error message.
-      ring_tag="$bare_tag"
-    fi
+  # A lookup ERROR (5xx / rate limit / network) must never read as an absent tag: arm the
+  # per-lookup failure flag (#1225) and fail closed before any tag is moved.
+  local ring_tag ring_commit resolved flag lookup_failed=0
+  flag="$(mktemp 2>/dev/null || true)"
+  if [[ -z "$flag" ]]; then
+    echo "::error::rollback: cannot arm the tag-lookup failure flag — refusing to resolve $agent/$ring without error tracking" >&2
+    return 1
   fi
-  # Fail loudly rather than no-op (#1103): if BOTH v-scoped and bare (if tried) don't exist,
-  # refuse to create-and-move a channel tag nobody pins. The worst failure mode for rollback
-  # is a silent no-op that exits 0, so make it loud.
-  if [ -z "$ring_commit" ]; then
+  resolved="$(_CHANNEL_COMMIT_CACHE=(); _AGENT_CHANNEL_MAJOR_CACHE=(); _CANARY_TAG_FAIL_FLAG="$flag" _resolved_channel "$agent" "$ring" || true)"
+  [[ -s "$flag" ]] && lookup_failed=1
+  rm -f "$flag"
+  [[ "$resolved" == *"$_TAG_LOOKUP_UNRECORDED"* ]] && lookup_failed=1
+  if [[ "$lookup_failed" -eq 1 ]]; then
+    echo "::error::rollback: could not read the ring tag for $agent/$ring on $host (GitHub lookup error, not an absent tag) — refusing to move any tag. Retry once the API recovers." >&2
+    return 1
+  fi
+  IFS=$'\t' read -r ring_tag ring_commit <<< "$resolved"
+  # Fail loudly rather than no-op (#1103): if the resolved ring tag does not exist, refuse to
+  # create-and-move a channel tag nobody pins.
+  if [[ -z "$ring_commit" ]]; then
     echo "::error::rollback target ring tag $ring_tag does not exist on $host — refusing to create-and-move a channel tag nobody pins (that would be a silent no-op). Check the ring name and the agent's major line." >&2
     return 1
   fi

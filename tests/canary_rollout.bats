@@ -1216,9 +1216,12 @@ GITEOF
   # `rollback dev-lead stable --to v139.8.0` MUST target dev-lead/v139-stable — the tag the
   # fleet stubs actually pin — never the bare dev-lead/stable that nobody reads.
   _make_stub_bin
+  export PATCH_LOG="$BATS_TEST_TMPDIR/rollback.patch"
+  : > "$PATCH_LOG"
   cat > "$STUB_BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
 case "$*" in
+  *"-X PATCH"*"git/refs/tags/"*)         echo "$*" >> "$PATCH_LOG"; echo "{}" ;;
   *"matching-refs/tags/dev-lead/v"*)     printf 'refs/tags/dev-lead/v139-next\nrefs/tags/dev-lead/v139.8.0\n' ;;  # channel anchor + latest release
   *"git/ref/tags/dev-lead/v139-next"*)   echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # channel anchor exists → major=139
   *"git/ref/tags/dev-lead/v139-stable"*) echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # the pinned channel tag
@@ -1237,6 +1240,13 @@ GHEOF
   [[ "$output" == *"refs/tags/dev-lead/v139-stable"* ]]
   # The exact defect: the bare ring tag must never be the PATCH target.
   [[ "$output" != *"refs/tags/dev-lead/stable"* ]]
+
+  # Non-dry-run: the actual PATCH target must be the v-scoped tag, never the bare tier.
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
+    bash "$ORCH" rollback dev-lead stable --to v139.8.0
+  [ "$status" -eq 0 ]
+  grep -q "git/refs/tags/dev-lead/v139-stable" "$PATCH_LOG"
+  ! grep -q "git/refs/tags/dev-lead/stable" "$PATCH_LOG"
 }
 
 @test "orchestrator: rollback fails loudly when the resolved ring tag does not exist (no silent no-op) (#1103)" {
@@ -1259,24 +1269,22 @@ GHEOF
     bash "$ORCH" rollback dev-lead stable --to v139.8.0 --dry-run
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error::"* ]]
-  # The resolution falls back to the bare tier (v-scoped absent), so the loud error names the
-  # resolved-but-absent tag and refuses — never a "[DRY-RUN] would … (force)" success line.
-  [[ "$output" == *"dev-lead/stable does not exist"* ]]
+  # The established-major resolver treats the v-scoped tier as authoritative, so the loud error
+  # names the resolved-but-absent tag and refuses — never a "[DRY-RUN] would … (force)" success line.
+  [[ "$output" == *"dev-lead/v139-stable does not exist"* ]]
   [[ "$output" != *"DRY-RUN"* ]]
 }
 
-@test "orchestrator: rollback falls back to the bare ring tag when no v-scoped channel tag exists (#1103)" {
-  # Pre-F4 shape: releases exist (so a current major is derived) but the CHANNEL tags are
-  # still bare — v139-stable is absent, dev-lead/stable is what the fleet pins. Rollback must
-  # then move the bare tag, byte-identical to _resolved_channel's fall-back (matches promote).
+@test "orchestrator: rollback uses the bare ring tag for a legacy agent with no channel-major anchor (#1103)" {
+  # Pre-F4 shape: a release exists but there is NO v<M>-next anchor and the CHANNEL tags are
+  # bare — dev-lead/stable is what the fleet pins. _resolved_channel's legacy path resolves the
+  # bare tag; rollback uses exactly what it returns (no rollback-local fallback).
   _make_stub_bin
   cat > "$STUB_BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
 case "$*" in
-  *"matching-refs/tags/dev-lead/v"*)     printf 'refs/tags/dev-lead/v139-next\nrefs/tags/dev-lead/v139.8.0\n' ;;  # channel anchor + release
-  *"git/ref/tags/dev-lead/v139-next"*)   echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # channel anchor exists → major=139
+  *"matching-refs/tags/dev-lead/v"*)     printf 'refs/tags/dev-lead/v139.8.0\n' ;;  # release only, no channel anchor
   *"git/ref/tags/dev-lead/v139.8.0"*)    echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;  # release --to target
-  *"git/ref/tags/dev-lead/v139-stable"*) echo "" ;;                                    # v-scoped channel tag ABSENT
   *"git/ref/tags/dev-lead/stable"*)      echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef commit" ;;  # bare channel tag present
   *) echo "" ;;
 esac
@@ -1289,6 +1297,32 @@ GHEOF
   [[ "$output" == *"rolling back dev-lead/stable"* ]]
   [[ "$output" == *"refs/tags/dev-lead/stable"* ]]
   [[ "$output" != *"v139-stable"* ]]
+}
+
+@test "orchestrator: rollback fails closed when the ring-tag lookup errors (not absent) (#1103)" {
+  # A 5xx on the v-scoped ring-tag read must NOT read as "absent" — rollback must refuse and
+  # move nothing, rather than proceed on an empty commit.
+  _make_stub_bin
+  export PATCH_LOG="$BATS_TEST_TMPDIR/rollback.patch"
+  : > "$PATCH_LOG"
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"-X PATCH"*"git/refs/tags/"*)         echo "$*" >> "$PATCH_LOG"; echo "{}" ;;
+  *"matching-refs/tags/dev-lead/v"*)     printf 'refs/tags/dev-lead/v139-next\nrefs/tags/dev-lead/v139.8.0\n' ;;
+  *"git/ref/tags/dev-lead/v139-next"*)   echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;
+  *"git/ref/tags/dev-lead/v139.8.0"*)    echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;
+  *"git/ref/tags/dev-lead/v139-stable"*) echo "HTTP 502: Bad Gateway" >&2; exit 1 ;;  # transient outage
+  *) echo "" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
+    bash "$ORCH" rollback dev-lead stable --to v139.8.0
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"lookup error"* ]]
+  [ ! -s "$PATCH_LOG" ]
 }
 
 # ── orchestrator: full graduated verdicts (cut date + gh run data → gate state) ─
