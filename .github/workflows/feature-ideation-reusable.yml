@@ -75,7 +75,10 @@ on:
         # The Claude Code CLI resolves the family client-side (`--model opus`
         # in the analyst step) to the current version ID — never pin a
         # version ID here. See standards/agent-standards.md.
-        description: 'Model family (`opus` recommended — Sonnet produces shallower adversarial passes) or an explicit model ID. Client-side resolution by the Claude Code CLI; never pin a version-specific model ID.'
+        description: >-
+          Model family (`opus` recommended — Sonnet produces shallower adversarial
+          passes) or an explicit model ID. Client-side resolution by the Claude Code
+          CLI; never pin a version-specific model ID.
         required: false
         default: 'opus'
         type: string
