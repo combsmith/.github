@@ -57,6 +57,8 @@ LEGACY_TRIGGER_LABEL="${LEGACY_TRIGGER_LABEL:-claude}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/dev-lead-retrigger.sh
 . "$SCRIPT_DIR/lib/dev-lead-retrigger.sh"
+# shellcheck source=lib/not-served-repos.sh
+. "$SCRIPT_DIR/lib/not-served-repos.sh"
 
 ISSUES_RETRIGGERED=0
 ISSUES_SKIPPED=0
@@ -198,6 +200,12 @@ retrigger_stale_issues() {
     created_at=$(echo "$issue_json" | jq -r '.created_at')
     title=$(echo "$issue_json" | jq -r '.title')
 
+    # Repos the org standard does not serve are never retriggered (#1343).
+    if is_not_served_repo "$repo"; then
+      info "Skipping $repo#$number — repo is not served by the org standard"
+      continue
+    fi
+
     # Issues arrive oldest-first, so once we hit one newer than the cutoff every
     # remaining issue is also newer (not stale) — stop scanning entirely.
     if [[ "$created_at" > "$cutoff" ]]; then
@@ -276,6 +284,11 @@ retrigger_stale_issues() {
         repo=$(echo "$issue_json" | jq -r '.repo')
         created_at=$(echo "$issue_json" | jq -r '.created_at')
         title=$(echo "$issue_json" | jq -r '.title')
+        # Repos the org standard does not serve are never retriggered (#1343).
+        if is_not_served_repo "$repo"; then
+          info "Skipping legacy $repo#$number — repo is not served by the org standard"
+          continue
+        fi
         # Oldest-first: first non-stale issue means no older ones remain.
         if [[ "$created_at" > "$cutoff" ]]; then
           break

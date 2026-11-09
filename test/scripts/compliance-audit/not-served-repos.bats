@@ -48,6 +48,7 @@ _run_main() {
 
 @test "main audits served repos and skips not-served ones" {
   _run_main false
+  [ "$status" -eq 0 ]
   [[ "$output" == *"AUDITED markets"* ]]
   [[ "$output" == *"AUDITED broodly"* ]]
   [[ "$output" != *"AUDITED software-factory"* ]]
@@ -56,13 +57,16 @@ _run_main() {
 
 @test "the issue-management loop never reaches a not-served repo" {
   _run_main true
+  [ "$status" -eq 0 ]
   [[ "$output" == *"MANAGED markets"* ]]
+  [[ "$output" == *"MANAGED broodly"* ]]
   [[ "$output" != *"MANAGED software-factory"* ]]
   [[ "$output" != *"MANAGED Software-Factory-Canary"* ]]
 }
 
 @test "not-served repos are not counted in the audited-repos record" {
   _run_main false
+  [ "$status" -eq 0 ]
   run cat "$REPORT_DIR/audited-repos.txt"
   [[ "$output" == *"markets"* ]]
   [[ "$output" != *"software-factory"* ]]
