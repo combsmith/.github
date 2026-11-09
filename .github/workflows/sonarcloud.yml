@@ -144,7 +144,7 @@ jobs:
       - name: SonarCloud Scan
         id: sonar
         if: ${{ steps.token.outputs.present == 'true' }}
-        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+        uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8.4.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
@@ -162,7 +162,7 @@ jobs:
       - name: SonarCloud Scan (retry)
         id: sonar_retry
         if: ${{ steps.token.outputs.present == 'true' && steps.sonar.outcome == 'failure' && hashFiles('.scannerwork/report-task.txt') == '' }}
-        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+        uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8.4.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
