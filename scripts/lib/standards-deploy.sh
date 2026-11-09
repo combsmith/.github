@@ -59,6 +59,24 @@ sd_deploy_via_pr() {
 # N stubs for a repo is therefore N files in one PR, not N PRs. Idempotency is
 # keyed by the label — at most one open sync PR per repo; if one already exists
 # it is reused (skip). Trailing args are (path, local_file) pairs.
+_sd_branch_open_pr() {
+  local repo="$1" branch="$2" owner="${1%%/*}" parent q found
+  local -a queries=(
+    "repos/${repo}/pulls?state=open&per_page=100&head=${owner}:${branch}"
+    "repos/${repo}/pulls?state=open&per_page=100&base=${branch}"
+  )
+  # A fork's sync branch can be the head of a PR against its upstream; that PR
+  # lives in the parent repo, so probe there too.
+  parent=$(gh api "repos/${repo}" --jq '.parent.full_name // ""') || return 1
+  [ -n "$parent" ] && queries+=("repos/${parent}/pulls?state=open&per_page=100&head=${owner}:${branch}")
+  for q in "${queries[@]}"; do
+    found=$(gh api "$q" --paginate --jq '.[].number') || return 1
+    found="${found%%$'\n'*}"
+    if [ -n "$found" ]; then printf '%s' "$found"; return 0; fi
+  done
+  return 0
+}
+
 sd_deploy_files_via_pr() {
   local repo="$1" branch="$2" label="$3" title="$4" body="$5"
   shift 5
@@ -128,16 +146,16 @@ sd_deploy_files_via_pr() {
       echo "FAILED no-branch"
       return 1
     fi
-    # `gh pr list --head` matches the branch name only, so an open PR from a
-    # fork using the same name would match; keep only PRs whose head repo is $repo.
-    local branch_pr repo_l="${repo,,}"
-    if ! branch_pr=$(gh pr list --repo "$repo" --head "$branch" --state open \
-          --json number,headRepository,headRepositoryOwner \
-          --jq "[.[] | select((.headRepositoryOwner.login | ascii_downcase) == \"${repo_l%%/*}\" and (.headRepository.name | ascii_downcase) == \"${repo_l##*/}\")] | .[0].number // \"\"" \
-          2>/dev/null); then
-      echo "FAILED branch-pr-probe-failed:${branch}"
+    # Server-side, owner-qualified lookup (see _sd_branch_open_pr): exact, so
+    # no 30-result truncation and no same-named fork PRs to filter out.
+    local branch_pr probe_err probe_msg
+    probe_err=$(mktemp)
+    if ! branch_pr=$(_sd_branch_open_pr "$repo" "$branch" 2>"$probe_err"); then
+      probe_msg=$(tr '\n' ' ' < "$probe_err"); rm -f "$probe_err"
+      echo "FAILED branch-pr-probe-failed:${branch}${probe_msg:+:${probe_msg}}"
       return 1
     fi
+    rm -f "$probe_err"
     if [ -n "$branch_pr" ]; then
       echo "FAILED branch-in-use:${branch}#${branch_pr}"
       return 1
