@@ -16,5 +16,7 @@ agent_md_references_agents() {
   # Use here-string redirection to avoid SIGPIPE when grep matches early
   # in large files. This allows the verdict logic to work correctly with
   # pipefail enabled in compliance-audit.sh.
-  grep -Fi 'AGENTS.md' <<< "$(cat)" > /dev/null
+  local content
+  content=$(cat)
+  grep -Fi 'AGENTS.md' <<< "$content" > /dev/null
 }
