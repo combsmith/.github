@@ -42,12 +42,15 @@ setup() {
   export CODERABBIT_API_KEY="test-key-value" ORG="combsmith"
   : > "$STUB_LOG"
   mkdir -p "$STUB_DIR/workflows" "$STUB_DIR/issues"
+  printf '[]\n' > "$STUB_DIR/issues/bravo.json"
+  printf '[]\n' > "$STUB_DIR/issues/.github.json"
 
   cat > "$STUB_DIR/repos.ndjson" <<'JSON'
-{"id":"101","name":"alpha","archived":false}
-{"id":"102","name":"bravo","archived":false}
-{"id":"103","name":".github","archived":false}
-{"id":"104","name":"old","archived":true}
+{"id":"101","name":"alpha","archived":false,"has_issues":true}
+{"id":"102","name":"bravo","archived":false,"has_issues":true}
+{"id":"103","name":".github","archived":false,"has_issues":true}
+{"id":"104","name":"old","archived":true,"has_issues":true}
+{"id":"105","name":"noissues","archived":false,"has_issues":false}
 JSON
   printf 'jobs:\n  ci:\n    uses: combsmith/.github/.github/workflows/ci-reusable.yml@v1\n' \
     > "$STUB_DIR/workflows/stub.yml"
@@ -205,6 +208,75 @@ writes() { grep -E '^gh issue (create|edit|close)' "$STUB_LOG" || true; }
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   ! grep -qE '^gh issue create' "$STUB_LOG" || false
+}
+
+@test "a repo with Issues disabled is not listed" {
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  ! grep -E '^gh issue list' "$STUB_LOG" | grep -q noissues || false
+}
+@test "duplicate open and fixed rows for one fingerprint file one issue" {
+  {
+    finding a 101 src/a.ts medium open
+    finding a 101 src/a.ts medium fixed
+    finding a 101 src/a.ts medium open
+  } | sarif_of > "$STUB_DIR/dup"
+  printf '[]\n' > "$STUB_DIR/issues/alpha.json"
+  STUB_SARIF="$STUB_DIR/dup" run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(grep -cE '^gh issue create ' "$STUB_LOG")" -eq 1 ]
+  ! grep -qE '^gh issue close ' "$STUB_LOG" || false
+}
+@test "1000 open audit issues fail closed without issue or label writes" {
+  jq -n '[range(0;1000) | {number: ., body: "x"}]' > "$STUB_DIR/issues/alpha.json"
+  run bash "$SCRIPT"
+  assert_no_writes_and_red
+  ! grep -q '^gh label' "$STUB_LOG" || false
+}
+@test "each label is created once per repo across several new issues" {
+  {
+    finding a 101 src/a.ts medium open
+    finding b 101 src/b.ts high open
+  } | sarif_of > "$STUB_DIR/two"
+  printf '[]\n' > "$STUB_DIR/issues/alpha.json"
+  STUB_SARIF="$STUB_DIR/two" run bash "$SCRIPT"
+  [ "$(grep -cE '^gh label create needs-verification .*--repo combsmith/alpha ' "$STUB_LOG")" -eq 1 ]
+}
+@test "curl never follows redirects" {
+  run bash "$SCRIPT"
+  ! grep -E '^curl ' "$STUB_LOG" | grep -q -- '--location' || false
+}
+@test "an update removes a stale priority label and leaves a correct one alone" {
+  jq -n --arg g "$(fp 7)" '[{number: 7, body: ("<!-- coderabbit-audit:key=" + $g + " -->"),
+    labels: [{name: "priority:minor"}, {name: "priority:critical"}]}]' > "$STUB_DIR/issues/alpha.json"
+  run bash "$SCRIPT"
+  grep -E '^gh issue edit 7 ' "$STUB_LOG" | grep -q -- '--remove-label priority:minor'
+  ! grep -E '^gh issue edit 7 ' "$STUB_LOG" | grep -q -- '--add-label' || false
+}
+@test "an issue that already has the right priority is not edited" {
+  jq -n --arg g "$(fp 7)" '[{number: 7, body: ("<!-- coderabbit-audit:key=" + $g + " -->"),
+    labels: [{name: "priority:critical"}]}]' > "$STUB_DIR/issues/alpha.json"
+  run bash "$SCRIPT"
+  ! grep -qE '^gh issue edit 7 ' "$STUB_LOG" || false
+}
+@test "an already-existing label is not a failure" {
+  STUB_LABEL_EXISTS=1 run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qE '^gh issue create ' "$STUB_LOG"
+}
+@test "a failed label setup files nothing, retries per finding, and turns the run red" {
+  STUB_FAIL_LABEL=1 run bash "$SCRIPT"
+  [ "$status" -ne 0 ]
+  ! grep -qE '^gh issue create ' "$STUB_LOG" || false
+  [ "$(grep -cE '^gh label create coderabbit-audit .*--repo combsmith/alpha ' "$STUB_LOG")" -gt 0 ]
+}
+@test "an invalid MIN_SEVERITY fails and writes nothing; HIGH is accepted" {
+  MIN_SEVERITY=hgih run bash "$SCRIPT"
+  assert_no_writes_and_red
+  : > "$STUB_LOG"
+  MIN_SEVERITY=HIGH run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  ! grep -E "^gh issue create .*$(fp a | cut -c1-12)" "$STUB_LOG" || false
 }
 
 # ── fail closed ────────────────────────────────────────────────────────────

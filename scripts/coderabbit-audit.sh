@@ -232,11 +232,11 @@ parse_sarif() {
 # GitHub API
 # ---------------------------------------------------------------------------
 
-# All org repos as NDJSON {id,name,archived}. Repos the token cannot see are not
+# All org repos as NDJSON {id,name,archived,has_issues}. Repos the token cannot see are not
 # listed, so ORG_SCORECARD_TOKEN must cover all repositories (ci-standards.md).
 list_org_repos() {
   gh api --paginate "orgs/$ORG/repos?type=all&per_page=100" \
-    --jq '.[] | {id: (.id | tostring), name, archived}'
+    --jq '.[] | {id: (.id | tostring), name, archived, has_issues}'
 }
 
 # Text of a workflow file at the scanned revision. gh's stderr is discarded: a
@@ -247,10 +247,12 @@ read_workflow() {
 }
 
 # Create labels only when missing: priority:* and security are shared with the
-# other audits and the standard label set (no --force).
+# other audits and the standard label set (no --force). An existing label is
+# success; any other failure is reported and returned, and the repo is cached as
+# ready only once every label is present, so a later finding retries.
 declare -A LABELS_READY=()
 ensure_labels() {
-  local repo="$1"
+  local repo="$1" failed=0 out
   [[ -n "${LABELS_READY[$repo]:-}" ]] && return 0
   local specs=(
     "$CODERABBIT_AUDIT_LABEL|5c3bd6|CodeRabbit Deep Scan audit finding (idempotent marker)"
@@ -264,13 +266,19 @@ ensure_labels() {
   local name color desc
   for spec in "${specs[@]}"; do
     IFS='|' read -r name color desc <<< "$spec"
-    gh label create "$name" --repo "$ORG/$repo" --color "$color" \
-      --description "$desc" 2>/dev/null || true
+    if ! out=$(gh label create "$name" --repo "$ORG/$repo" --color "$color" \
+        --description "$desc" 2>&1); then
+      if [[ "$out" != *"already exists"* ]]; then
+        warn "$repo: could not create label $name"
+        failed=1
+      fi
+    fi
   done
+  [[ "$failed" = "0" ]] || return 1
   LABELS_READY[$repo]=1
 }
 
-# Open audit issues across the org, as NDJSON {fingerprint,repo,number}. Keyed
+# Open audit issues across the org, as NDJSON {fingerprint,repo,number,labels}. Keyed
 # org-wide so a finding whose route changes keeps its issue instead of gaining a
 # second one. Returns 1 on any failed listing: an incomplete index could file
 # duplicates.
@@ -281,7 +289,7 @@ build_issue_index() {
   while IFS= read -r repo; do
     [[ -z "$repo" ]] && continue
     if ! list=$(gh issue list --repo "$ORG/$repo" --label "$CODERABBIT_AUDIT_LABEL" --state open \
-        --json number,body --limit 1000); then
+        --json number,body,labels --limit 1000); then
       warn "$repo: could not list audit issues"
       failed=1
       continue
@@ -296,7 +304,7 @@ build_issue_index() {
     jq -c --arg repo "$repo" '.[]
       | ((.body // "") | try capture("coderabbit-audit:key=(?<fp>[0-9a-f]{64})").fp catch "") as $fp
       | select($fp != "")
-      | {fingerprint: $fp, repo: $repo, number}' <<< "$list" >> "$out"
+      | {fingerprint: $fp, repo: $repo, number, labels: ([.labels[]?.name] // [])}' <<< "$list" >> "$out"
   done <<< "$names"
   return "$failed"
 }
@@ -390,9 +398,9 @@ $(issue_marker "$fp")
 BODY
 }
 
-# args: <finding json> <existing issue "repo number" or "">
+# args: <finding json> <existing issue "repo number" or ""> <its labels, comma-separated>
 reconcile_open() {
-  local finding="$1" existing="$2"
+  local finding="$1" existing="$2" labels="${3:-}"
   local fp id sev scanned owner title prio body min_rank
   fp=$(jq -r '.fingerprint' <<< "$finding")
   id=$(jq -r '.finding_id' <<< "$finding")
@@ -415,25 +423,43 @@ reconcile_open() {
   fi
 
   if [[ -n "$existing" ]]; then
-    local repo number other
+    local repo number other have failed=0
+    local -a stale=()
     read -r repo number <<< "$existing"
+    have=",$labels,"
     # Only the priority label changes: the body holds the human-maintained
     # Acceptance checklist, and needs-verification and dev-lead are a person's
     # decisions, so a re-run never rewrites the body or restores/adds them.
-    if ! gh issue edit "$number" --repo "$ORG/$repo" --add-label "$prio" >/dev/null; then
-      warn "$repo: could not update #$number"
+    # Edits happen only when the labels are wrong, and a failure is reported.
+    for other in priority:blocker priority:critical priority:major priority:minor; do
+      if [[ "$other" != "$prio" && "$have" == *",$other,"* ]]; then
+        stale+=("$other")
+      fi
+    done
+    if [[ "$have" != *",$prio,"* ]]; then
+      if ! gh issue edit "$number" --repo "$ORG/$repo" --add-label "$prio" >/dev/null; then
+        warn "$repo: could not update #$number"
+        return 1
+      fi
+    fi
+    for other in ${stale[@]+"${stale[@]}"}; do
+      if ! gh issue edit "$number" --repo "$ORG/$repo" --remove-label "$other" >/dev/null; then
+        warn "$repo: could not remove $other from #$number"
+        failed=1
+      fi
+    done
+    if [[ "$failed" = "1" ]]; then
       return 1
     fi
-    for other in priority:blocker priority:critical priority:major priority:minor; do
-      [[ "$other" != "$prio" ]] && gh issue edit "$number" --repo "$ORG/$repo" \
-        --remove-label "$other" >/dev/null 2>&1 || true
-    done
     ISSUES_EXISTING=$((ISSUES_EXISTING + 1))
     info "Updated #$number in $repo :: $title"
     return 0
   fi
 
-  ensure_labels "$owner"
+  if ! ensure_labels "$owner"; then
+    warn "$owner: label setup failed, not filing :: $title"
+    return 1
+  fi
   body=$(render_body "$fp" "$id" "$sev" "$scanned" "$owner")
   local url
   if ! url=$(gh issue create --repo "$ORG/$owner" --title "$title" \
@@ -464,13 +490,14 @@ reconcile_closed() {
 
 # args: <issue index ndjson>
 reconcile_all() {
-  local index="$1" finding fp state existing failed=0
+  local index="$1" finding fp state existing labels failed=0
   while IFS= read -r finding; do
     fp=$(jq -r '.fingerprint' <<< "$finding")
     state=$(jq -r '.state' <<< "$finding")
     existing=$(jq -r --arg fp "$fp" 'select(.fingerprint == $fp) | "\(.repo) \(.number)"' "$index" | head -1)
+    labels=$(jq -r --arg fp "$fp" 'select(.fingerprint == $fp) | (.labels // []) | join(",")' "$index" | head -1)
     if [[ "$state" = "open" ]]; then
-      reconcile_open "$finding" "$existing" || failed=1
+      reconcile_open "$finding" "$existing" "$labels" || failed=1
     elif [[ -n "$existing" ]]; then
       reconcile_closed "$state" "$existing" || failed=1
     fi
@@ -544,6 +571,14 @@ main() {
     return 1
   fi
 
+  local normalized
+  normalized=$(normalize_severity "$MIN_SEVERITY")
+  if [[ "$normalized" = "unknown" ]]; then
+    fail_run "MIN_SEVERITY must be one of critical, high, medium, low."
+    return 1
+  fi
+  MIN_SEVERITY="$normalized"
+
   # Raw SARIF and routing paths stay here, outside REPORT_DIR.
   local work
   work=$(mktemp -d)
@@ -567,7 +602,8 @@ main() {
   resolve_findings "$work/parsed.ndjson" "$repos" || { fail_run "A workflow needed for routing could not be read."; return 1; }
 
   local names
-  names=$(jq -r 'select(.archived == false) | .name' "$repos")
+  # A repo with Issues disabled cannot hold audit issues and would fail the listing.
+  names=$(jq -r 'select(.archived == false and .has_issues != false) | .name' "$repos")
   build_issue_index "$names" "$work/index.ndjson" || { fail_run "Audit issues could not be listed, so duplicates could not be ruled out."; return 1; }
 
   local issues_failed=0

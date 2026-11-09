@@ -13,12 +13,30 @@ case "$1 $2" in
     base64 < "$STUB_DIR/workflows/$(basename "$path")" ;;
   "issue list")
     [[ -n "${STUB_FAIL_ISSUE_LIST:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
-    repo="${4#*/}"
-    cat "$STUB_DIR/issues/$repo.json" 2>/dev/null || echo "[]" ;;
+    shift 2
+    repo="" label="" state="" limit=""
+    while (( $# )); do
+      [[ $# -ge 2 ]] || exit 64
+      case "$1" in
+        --repo)  repo="${2#*/}" ;;
+        --label) label="$2" ;;
+        --state) state="$2" ;;
+        --limit) limit="$2" ;;
+        --json)  : ;;
+        *) echo "gh stub: unexpected issue list argument: $1" >&2; exit 64 ;;
+      esac
+      shift 2
+    done
+    [[ -n "$repo" && "$label" == "coderabbit-audit" && "$state" == "open" && "$limit" == "1000" ]] || exit 64
+    cat "$STUB_DIR/issues/$repo.json" || exit 1 ;;
   "issue create")
     [[ -n "${STUB_FAIL_ISSUE_CREATE:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
     echo "https://github.invalid/issues/1" ;;
-  "issue edit"|"issue close"|"label create")
+  "label create")
+    [[ -n "${STUB_FAIL_LABEL:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
+    [[ -n "${STUB_LABEL_EXISTS:-}" ]] && { echo "label already exists" >&2; exit 1; }
+    : ;;
+  "issue edit"|"issue close")
     : ;;
   *)
     echo "gh stub: unexpected call: $*" >&2; exit 64 ;;
