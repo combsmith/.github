@@ -281,6 +281,10 @@ RULESETS_SRC_DIR="${RULESETS_SRC_DIR:-$SCRIPT_DIR/../standards/rulesets}"
 # shellcheck source=lib/push-protection.sh
 . "$SCRIPT_DIR/lib/push-protection.sh"
 
+# Shared agent-file cross-reference verdict (also used by agent-shield-reusable.yml).
+# shellcheck source=lib/agent-md-xref.sh
+. "$SCRIPT_DIR/lib/agent-md-xref.sh"
+
 # Shared label source of truth — STANDARD_LABEL_SPECS (fixed set) and
 # persona_opt_out_label_configs (derived <id>:hands-off family). Sourced after
 # warn() is defined so the library uses this script's logging helper (issue #1139).
@@ -2556,22 +2560,92 @@ check_centralized_check_names() {
 check_claude_md() {
   local repo="$1"
 
-  local content
-  content=$(gh_api "repos/$ORG/$repo/contents/CLAUDE.md" --jq '.content' 2>/dev/null || echo "")
+  local content rc raw i
+  for i in 1 2 3; do
+    raw=$(gh api "repos/$ORG/$repo/contents/CLAUDE.md" 2>&1) && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && break
+    response_is_http_404 "$raw" && break
+    [ "$i" -lt 3 ] && sleep $((i * 2))
+  done
 
-  if [ -z "$content" ]; then
-    add_finding "$repo" "standards" "missing-claude-md" "error" \
-      "Missing \`CLAUDE.md\` — every repo must have a CLAUDE.md that references AGENTS.md" \
-      "AGENTS.md"
+  if [ "$rc" -ne 0 ]; then
+    if response_is_http_404 "$raw"; then
+      add_finding "$repo" "standards" "missing-claude-md" "error" \
+        "Missing \`CLAUDE.md\` — every repo must have a CLAUDE.md that references AGENTS.md" \
+        "AGENTS.md"
+    else
+      info "CLAUDE.md not readable for $repo (not a 404) — marking the repo inconclusive"
+      mark_repo_inconclusive "$repo"
+    fi
     return
   fi
 
-  local decoded
-  decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
+  # An empty file is a successful API response with empty content: it is
+  # non-compliant (no AGENTS.md reference), not a reason to abort the audit.
+  # Undecodable content is inconclusive. Neither may fall through to a bare
+  # `return` carrying a failed test status, which would trip `set -e`.
+  content=$(printf '%s' "$raw" | jq -r '.content? // empty' 2>/dev/null || echo "")
 
-  if ! echo "$decoded" | grep -qi 'AGENTS\.md'; then
+  local decoded=""
+  if [ -n "$content" ]; then
+    if ! decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null); then
+      info "CLAUDE.md content not decodable for $repo — marking the repo inconclusive"
+      mark_repo_inconclusive "$repo"
+      return 0
+    fi
+  fi
+
+  if ! printf '%s' "$decoded" | agent_md_references_agents; then
     add_finding "$repo" "standards" "claude-md-missing-agents-ref" "error" \
       "\`CLAUDE.md\` does not reference \`AGENTS.md\`" \
+      "AGENTS.md"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Check: GEMINI.md exists and references AGENTS.md
+# ---------------------------------------------------------------------------
+check_gemini_md() {
+  local repo="$1"
+
+  local content rc raw i
+  for i in 1 2 3; do
+    raw=$(gh api "repos/$ORG/$repo/contents/GEMINI.md" 2>&1) && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && break
+    response_is_http_404 "$raw" && break
+    [ "$i" -lt 3 ] && sleep $((i * 2))
+  done
+
+  if [ "$rc" -ne 0 ]; then
+    if response_is_http_404 "$raw"; then
+      add_finding "$repo" "standards" "missing-gemini-md" "error" \
+        "Missing \`GEMINI.md\` — every repo must have a GEMINI.md that references AGENTS.md" \
+        "AGENTS.md"
+    else
+      info "GEMINI.md not readable for $repo (not a 404) — marking the repo inconclusive"
+      mark_repo_inconclusive "$repo"
+    fi
+    return
+  fi
+
+  # An empty file is a successful API response with empty content: it is
+  # non-compliant (no AGENTS.md reference), not a reason to abort the audit.
+  # Undecodable content is inconclusive. Neither may fall through to a bare
+  # `return` carrying a failed test status, which would trip `set -e`.
+  content=$(printf '%s' "$raw" | jq -r '.content? // empty' 2>/dev/null || echo "")
+
+  local decoded=""
+  if [ -n "$content" ]; then
+    if ! decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null); then
+      info "GEMINI.md content not decodable for $repo — marking the repo inconclusive"
+      mark_repo_inconclusive "$repo"
+      return 0
+    fi
+  fi
+
+  if ! printf '%s' "$decoded" | agent_md_references_agents; then
+    add_finding "$repo" "standards" "gemini-md-missing-agents-ref" "error" \
+      "\`GEMINI.md\` does not reference \`AGENTS.md\`" \
       "AGENTS.md"
   fi
 }
@@ -3170,7 +3244,7 @@ create_umbrella_issue() {
     "reusable-workflows|Reusable Workflows (disabled_manually)|gh workflow disable <workflow> -R <repo>"
     "action-pinning|Action SHA Pinning|pin actions to SHA in each workflow file"
     "dependabot|Dependabot Configuration|per-repo .github/dependabot.yml"
-    "standards|Agent Standards (CLAUDE.md / AGENTS.md / copilot-setup-steps.yml)|per-repo doc and workflow additions"
+    "standards|Agent Standards (CLAUDE.md / GEMINI.md / AGENTS.md / copilot-setup-steps.yml)|per-repo doc and workflow additions"
   )
 
   local body
@@ -3774,6 +3848,7 @@ main() {
     check_verbatim_stubs "$repo"
     check_centralized_check_names "$repo"
     check_claude_md "$repo"
+    check_gemini_md "$repo"
     check_agents_md "$repo"
     check_copilot_setup_steps "$repo"
     check_copilot_instructions "$repo"

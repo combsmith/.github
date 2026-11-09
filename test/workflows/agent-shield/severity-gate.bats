@@ -227,9 +227,13 @@ REPORT_CLEAN='{"findings":[],"summary":{"totalFindings":0}}'
 @test "reusable: the gate tooling comes from the reusable's own commit, after the scan" {
   local names
   names=$(yq -r '.jobs["agent-shield"].steps[].name // "checkout"' "$WORKFLOW")
-  [ "$(sed -n 2p <<<"$names")" = "AgentShield Security Scan" ]
-  [ "$(sed -n 3p <<<"$names")" = "Checkout AgentShield gate tooling" ]
-  [ "$(sed -n 4p <<<"$names")" = "Enforce AgentShield severity threshold" ]
+  # Position-independent: other checkouts may precede the scan, but the scan,
+  # the tooling checkout and the gate must stay consecutive and in this order.
+  local scan_line
+  scan_line=$(grep -nxF "AgentShield Security Scan" <<<"$names" | cut -d: -f1)
+  [ -n "$scan_line" ]
+  [ "$(sed -n "$((scan_line + 1))p" <<<"$names")" = "Checkout AgentShield gate tooling" ]
+  [ "$(sed -n "$((scan_line + 2))p" <<<"$names")" = "Enforce AgentShield severity threshold" ]
   local step='.jobs["agent-shield"].steps[] | select(.name == "Checkout AgentShield gate tooling") | .with'
   # shellcheck disable=SC2016 # a literal GitHub expression, not a shell expansion
   [ "$(yq -r "$step.ref" "$WORKFLOW")" = '${{ job.workflow_sha }}' ]
