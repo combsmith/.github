@@ -177,6 +177,20 @@ setup() {
   [ "$output" = "1" ]
 }
 
+@test "sc_description_missing: an empty fenced block does NOT count as content" {
+  body=$'## Problem\n\n```\n```\n\n## Risk\n\nx\n\n## Test Plan\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "sc_description_missing: inline triple-backtick code with a closing run is not a fence opener" {
+  body=$'## Problem\n\nx\n\n## Risk\n\n```inline code``` here\n\n## Test Plan\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
+}
+
 @test "sc_description_missing: a Markdown thematic break under an otherwise empty section does NOT count as body text" {
   # '---' / '***' / '___' are structural rules, not content. The Problem
   # section only carries a horizontal rule and must still count as missing.

@@ -104,11 +104,18 @@ sc_description_missing() {
     # if we skip this (a `# problem` inside a ``` block would otherwise open
     # the Problem section).
     if (( in_fence )); then
-      _sc_is_fence_close "$line" "$fence_char" "$fence_len" && {
+      if _sc_is_fence_close "$line" "$fence_char" "$fence_len"; then
         in_fence=0
         fence_char=""
         fence_len=0
-      }
+      elif (( ${#current[@]} > 0 )) && [[ "$line" =~ [^[:space:]] ]]; then
+        # A fenced block counts as real content only once it holds a non-blank
+        # line — an empty template fence must not credit the section.
+        local idx
+        for idx in "${current[@]}"; do
+          found[idx]=1
+        done
+      fi
       continue
     fi
 
@@ -146,22 +153,24 @@ sc_description_missing() {
 
     # (b) Fence open? Record the delimiter and skip. CommonMark allows an info
     # string after the opening fence (e.g. ```` ```bash ````) — we don't care
-    # what it is; the whole line still just opens the fence. A code block IS
-    # real content, so credit every open section BEFORE skipping the fence
-    # body (otherwise a section whose only content is a code snippet would
-    # score as missing — exactly the opposite of what we want).
-    local fence_open_char
-    fence_open_char="$(_sc_fence_open_char "$stripped")"
+    # what it is, except that a backtick fence's info string may not contain a
+    # backtick (otherwise ```` ```inline code``` ```` is inline code, not a
+    # fence). Sections are credited from INSIDE the fence (see a1), on the first
+    # non-blank line, so an empty fence does not count as content. Checked
+    # inline (no command substitution) to avoid a subshell per body line.
+    local fence_open_char=""
+    # shellcheck disable=SC2016  # backticks are regex literals, not expansions
+    local backtick_open_regex='^ {0,3}`{3,}[^`]*$'
+    local tilde_open_regex='^ {0,3}~{3,}'
+    if [[ "$stripped" =~ $backtick_open_regex ]]; then
+      fence_open_char='`'
+    elif [[ "$stripped" =~ $tilde_open_regex ]]; then
+      fence_open_char='~'
+    fi
     if [[ -n "$fence_open_char" ]]; then
       fence_char="$fence_open_char"
       fence_len="$(_sc_fence_run_length "$stripped" "$fence_char")"
       in_fence=1
-      if (( ${#current[@]} > 0 )); then
-        local idx
-        for idx in "${current[@]}"; do
-          found[idx]=1
-        done
-      fi
       continue
     fi
 
@@ -218,26 +227,8 @@ sc_description_missing() {
 # Private helpers (prefix _sc_ marks them off the public sc_* surface)
 # ---------------------------------------------------------------------------
 
-# _sc_fence_open_char — return the fence delimiter character (` or ~) if the
-# argument is a CommonMark fenced-code-block OPEN line, else empty. CommonMark
-# requires three or more of the same delimiter at columns 0..3; anything may
-# follow as an info string.
-_sc_fence_open_char() {
-  local s="$1"
-  local backtick_open_regex='^ {0,3}`{3,}'
-  local tilde_open_regex='^ {0,3}~{3,}'
-  if [[ "$s" =~ $backtick_open_regex ]]; then
-    printf '`'
-    return 0
-  fi
-  if [[ "$s" =~ $tilde_open_regex ]]; then
-    printf '~'
-    return 0
-  fi
-}
-
 # _sc_fence_run_length — count the opening fence delimiter run on a line that
-# already matched _sc_fence_open_char. We walk past the leading whitespace and
+# already matched as a fence opener. We walk past the leading whitespace and
 # count the delimiter run; this is the minimum length the closing fence must
 # match or exceed per CommonMark.
 _sc_fence_run_length() {
