@@ -199,15 +199,16 @@ sc_description_missing() {
 
     # (d) Body text. If it sits under one or more open sections AND has at
     # least one non-whitespace character AND is neither a Markdown thematic
-    # break nor a known placeholder form, mark every one of those sections
-    # found. The thematic-break / placeholder filters are what keep a draft
-    # that reads as filled-but-empty (every section a `_No response_` under a
-    # `---` divider) from scoring 0/5 missing.
+    # break nor a known placeholder form nor an empty list marker, mark every
+    # one of those sections found. These filters keep a draft that reads as
+    # filled-but-empty (every section a `_No response_` under a `---` divider,
+    # or with empty checkboxes) from scoring 0/5 missing.
     if (( ${#current[@]} > 0 )); then
       local non_space_regex='[^[:space:]]'
       if [[ "$stripped" =~ $non_space_regex ]] \
         && ! _sc_is_thematic_break "$stripped" \
-        && ! _sc_is_placeholder "$stripped"; then
+        && ! _sc_is_placeholder "$stripped" \
+        && ! _sc_is_empty_list_marker "$stripped"; then
         local idx
         for idx in "${current[@]}"; do
           found[idx]=1
@@ -299,4 +300,16 @@ _sc_is_placeholder() {
     [[ "$lower" == "$form" ]] && return 0
   done
   return 1
+}
+
+# _sc_is_empty_list_marker — true iff the line is a bare list marker or
+# unchecked checkbox, which are structural/placeholder markers that should not
+# count as section content. Patterns: bare '-', '*', '+', or with optional
+# checkbox like '- [ ]', '- [x]'.
+_sc_is_empty_list_marker() {
+  local s="$1"
+  local trimmed="${s#"${s%%[![:space:]]*}"}"
+  trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+  # Match: list marker (-, *, or +) optionally followed by spaces and checkbox
+  [[ "$trimmed" =~ ^[-\*+]([[:space:]]+\[[ xX]*\])?$ ]]
 }

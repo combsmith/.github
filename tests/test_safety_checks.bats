@@ -210,6 +210,23 @@ setup() {
   [ "$output" = "3" ]
 }
 
+@test "sc_description_missing: empty list markers '- [ ]' do NOT count as body text" {
+  # Empty checkboxes are structural/placeholder markers, not real content. An
+  # unfilled section with only a checkbox should still count as missing.
+  body=$'## Problem\n\n- [ ]\n\n## Risk\n\nx\n\n## Test Plan\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "sc_description_missing: bare list markers do NOT count as body text" {
+  # A bare '-', '*', or '+' is a list marker without content, not real body text.
+  body=$'## Problem\n\n-\n\n## Risk\n\n*\n\n## Test Plan\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "2" ]
+}
+
 # --- fail-closed contract (stdin read failure) ----------------------------
 
 @test "sc_description_missing: a failing stdin reader returns non-zero and emits no numeric score" {
