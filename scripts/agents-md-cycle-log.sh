@@ -103,10 +103,17 @@ amcl_data_rows() {
 }
 
 # ---------------------------------------------------------------------------
-# amcl_is_uint <s> — 0 (true) iff <s> is a non-negative integer. Pure.
+# amcl_is_uint <s> — 0 (true) iff <s> is a non-negative integer whose value fits
+# safely in Bash arithmetic. Leading zeros are allowed (and ignored for the range
+# check) but more than 15 significant digits is rejected, so a later
+# $((10#$n)) can never wrap around to a small/zero value (e.g. a huge
+# false-positive count making a row look clean). Pure.
 # ---------------------------------------------------------------------------
 amcl_is_uint() {
-  [[ "$1" =~ ^[0-9]+$ ]]
+  local s="$1"
+  [[ "$s" =~ ^[0-9]+$ ]] || return 1
+  s="${s#"${s%%[!0]*}"}"
+  [[ "${#s}" -le 15 ]]
 }
 
 # ---------------------------------------------------------------------------

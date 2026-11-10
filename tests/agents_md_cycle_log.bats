@@ -377,3 +377,23 @@ split_row() {
   [ "$(amcl_clean_cycles_met "$f" 010)" = "false" ]
   [ "$(amcl_clean_cycles_met "$f" 08)" = "true" ]
 }
+
+@test "oversized counts are rejected before Bash arithmetic can wrap them" {
+  local f="$BATS_TEST_TMPDIR/big.md"
+  # 2^64 wraps to 0 under $((10#n)); it must not make the row look clean.
+  printf '| 2026-01-01 | 1 | 18446744073709551616 | x | @alice | yes |\n' > "$f"
+  run bash "$SCRIPT" validate "$f"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not a non-negative integer"* ]]
+  source "$SCRIPT"
+  [ "$(amcl_clean_cycles_met "$f" 1)" = "false" ]
+}
+
+@test "eligibility rejects an oversized required-clean-cycles; padded zeros stay valid" {
+  local f="$BATS_TEST_TMPDIR/ok.md"
+  printf '| 2026-01-01 | 0 | 0000000000000000000000 | — | @alice | yes |\n' > "$f"
+  run bash "$SCRIPT" eligibility "$f" 18446744073709551618
+  [ "$status" -eq 2 ]
+  run bash "$SCRIPT" validate "$f"
+  [ "$status" -eq 0 ]
+}
