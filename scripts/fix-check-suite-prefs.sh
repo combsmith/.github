@@ -40,7 +40,7 @@ fail() { echo "[FAIL]  $*" >&2; }
 # ---------------------------------------------------------------------------
 validate_token() {
   local token="${GH_TOKEN:-}"
-  if [ -z "$token" ]; then
+  if [[ -z "$token" ]]; then
     err "GH_TOKEN is not set. Export a classic PAT with 'repo' scope."
     err "  export GH_TOKEN=ghp_..."
     exit 1
@@ -60,7 +60,7 @@ build_payload() {
   local payload='{"auto_trigger_checks":['
   local first=true
   for app_id in "${APP_IDS[@]}"; do
-    if [ "$first" = true ]; then
+    if [[ "$first" = true ]]; then
       first=false
     else
       payload+=','
@@ -115,12 +115,12 @@ fix_repo() {
 validate_token
 export GH_TOKEN
 
-if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+if [[ "${1:-}" = "--help" ]] || [[ "${1:-}" = "-h" ]]; then
   sed -n '2,/^set /p' "$0" | grep '^#' | sed 's/^# \?//'
   exit 0
 fi
 
-if [ $# -ge 1 ] && [ "$1" != "--all" ]; then
+if [[ $# -ge 1 ]] && [[ "$1" != "--all" ]]; then
   # Single repo mode
   fix_repo "$1"
   exit $?
@@ -130,7 +130,7 @@ fi
 info "Fetching all non-archived repos in $ORG ..."
 repos=$(gh repo list "$ORG" --no-archived --json name -q '.[].name' --limit 500)
 
-if [ -z "$repos" ]; then
+if [[ -z "$repos" ]]; then
   err "No repositories found in $ORG — check GH_TOKEN permissions"
   exit 1
 fi
@@ -143,7 +143,7 @@ for repo in $repos; do
 done
 
 echo ""
-if [ "$failed" -gt 0 ]; then
+if [[ "$failed" -gt 0 ]]; then
   err "$failed/$total repo(s) failed — check output above"
   exit 1
 fi
