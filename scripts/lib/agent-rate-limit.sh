@@ -301,8 +301,8 @@ arl_breaker_decision() {
   backoff="$(arl_breaker_threshold "$agent_type" backoff_minutes)"
   # Leading-zero digit strings (e.g. "08") are valid config; force base 10 so bash
   # arithmetic does not reject them as octal.
-  [[ "$threshold" =~ ^[0-9]+$ ]] && threshold=$((10#$threshold))
-  [[ "$backoff" =~ ^[0-9]+$ ]] && backoff=$((10#$backoff))
+  if [[ "$threshold" =~ ^[0-9]+$ ]]; then threshold=$((10#$threshold)); fi
+  if [[ "$backoff" =~ ^[0-9]+$ ]]; then backoff=$((10#$backoff)); fi
 
   # Malformed / missing breaker config -> cannot evaluate -> allow (never block).
   if [[ -z "$threshold" ]] || [[ "$threshold" -le 0 ]]; then
