@@ -169,7 +169,7 @@ cbf_backfill_file() {
     id="${entry%%|*}"; check="${entry#*|}"
     elsewhere=false
     for other in "$@"; do cbf_reports_check "$other" "$check" && { elsewhere=true; break; }; done
-    [ "$elsewhere" = true ] && continue
+    [[ "$elsewhere" = true ]] && continue
     status="$(cbf_job_status "$out" "$id" "$check")" || return 1
     case "$status" in
       present) ;;
@@ -183,14 +183,14 @@ cbf_backfill_file() {
         added+=("$id") ;;
     esac
   done
-  if [ "${#conflicts[@]}" -gt 0 ]; then echo "${conflicts[*]}" >&2; return 2; fi
+  if (( ${#conflicts[@]} > 0 )); then echo "${conflicts[*]}" >&2; return 2; fi
   # Check the result: still valid YAML, and every job now reports its check.
   yq -e '.' "$out" >/dev/null 2>&1 || { echo "injected ci.yml is not valid YAML" >&2; return 1; }
   for entry in "${CBF_JOBS[@]}"; do
     cbf_reports_check "$out" "${entry#*|}" && continue
     elsewhere=false
     for other in "$@"; do cbf_reports_check "$other" "${entry#*|}" && { elsewhere=true; break; }; done
-    [ "$elsewhere" = true ] || { echo "job ${entry%%|*} still missing after injection" >&2; return 1; }
+    [[ "$elsewhere" = true ]] || { echo "job ${entry%%|*} still missing after injection" >&2; return 1; }
   done
   echo "${added[*]}"
 }
@@ -202,7 +202,7 @@ cbf_fetch() {
   err="$(mktemp)"
   gh api -H "Accept: application/vnd.github.raw+json" "repos/${repo}/contents/${path}" \
     >"$out" 2>"$err" && rc=0 || rc=$?
-  if [ "$rc" -ne 0 ]; then
+  if (( rc != 0 )); then
     if grep -q 'HTTP 404' "$err"; then rm -f "$err"; return 4; fi
     echo "$(head -c 200 "$err" | tr '\n' ' ')" >&2; rm -f "$err"; return 1
   fi
@@ -214,10 +214,10 @@ cbf_backfill_repo() {
   local repo="$1" ci new added rc=0 err files=() seed=false outcome
   ci="$(mktemp)"; new="$(mktemp)"; err="$(mktemp)"
   cbf_fetch "$repo" ".github/workflows/ci.yml" "$ci" 2>"$err" && rc=0 || rc=$?
-  if [ "$rc" -eq 4 ]; then
+  if (( rc == 4 )); then
     echo "NO_CI ${repo} — no .github/workflows/ci.yml; set one up from standards/workflows/ci.yml"
     rm -f "$ci" "$new" "$err"; return 0
-  elif [ "$rc" -ne 0 ]; then
+  elif (( rc != 0 )); then
     echo "FAILED ${repo} fetch-ci: $(cat "$err")"; rm -f "$ci" "$new" "$err"; return 1
   fi
 
@@ -236,13 +236,13 @@ cbf_backfill_repo() {
 
   added="$(cbf_backfill_file "$ci" "$new" "${others[@]}" 2>"$err")" && rc=0 || rc=$?
   rm -rf "$wfdir"
-  if [ "$rc" -eq 2 ]; then
+  if (( rc == 2 )); then
     echo "CONFLICT ${repo} — job id(s) $(cat "$err") already used for a different check name; fix by hand"
     rm -f "$ci" "$new" "$err"; return 0
-  elif [ "$rc" -ne 0 ]; then
+  elif (( rc != 0 )); then
     echo "FAILED ${repo} inject: $(cat "$err")"; rm -f "$ci" "$new" "$err"; return 1
   fi
-  if [ -z "$added" ]; then
+  if [[ -z "$added" ]]; then
     echo "OK ${repo} — secret-scan and coverage already present"
     rm -f "$ci" "$new" "$err"; return 0
   fi
@@ -253,20 +253,20 @@ cbf_backfill_repo() {
     local probe; probe="$(mktemp)"
     cbf_fetch "$repo" ".gitleaks.toml" "$probe" 2>"$err" && rc=0 || rc=$?
     rm -f "$probe"
-    if [ "$rc" -eq 4 ]; then seed=true; files+=(".gitleaks.toml" "$CBF_TEMPLATE_GITLEAKS")
-    elif [ "$rc" -ne 0 ]; then
+    if (( rc == 4 )); then seed=true; files+=(".gitleaks.toml" "$CBF_TEMPLATE_GITLEAKS")
+    elif (( rc != 0 )); then
       echo "FAILED ${repo} fetch-gitleaks: $(cat "$err")"; rm -f "$ci" "$new" "$err"; return 1
     fi
   fi
 
-  if [ "$DRY_RUN" = true ]; then
-    echo "PLAN ${repo} — add job(s): ${added}$([ "$seed" = true ] && echo '; seed .gitleaks.toml')"
+  if [[ "$DRY_RUN" = true ]]; then
+    echo "PLAN ${repo} — add job(s): ${added}$([[ "$seed" = true ]] && echo '; seed .gitleaks.toml')"
     rm -f "$ci" "$new" "$err"; return 0
   fi
 
   local title="ci: add secret-scan and coverage jobs (org standard, #581)"
   local body
-  body="Adds the org-standard \`secret-scan\` and \`coverage\` jobs to this repo's \`ci.yml\`, copied unchanged from [\`standards/workflows/ci.yml\`](https://github.com/${ORG}/.github/blob/main/standards/workflows/ci.yml). Added here: \`${added}\`$([ "$seed" = true ] && printf '%s' ", plus a seeded \`.gitleaks.toml\`")."
+  body="Adds the org-standard \`secret-scan\` and \`coverage\` jobs to this repo's \`ci.yml\`, copied unchanged from [\`standards/workflows/ci.yml\`](https://github.com/${ORG}/.github/blob/main/standards/workflows/ci.yml). Added here: \`${added}\`$([[ "$seed" = true ]] && printf '%s' ", plus a seeded \`.gitleaks.toml\`")."
   body+=$'\n\n'"These produce the \`Secret scan (gitleaks)\` and \`coverage\` checks, which ${ORG}/.github#581 will make **required** in the \`code-quality\` ruleset once every repo reports them. The coverage job stays green until the repo has tests. If you already measure coverage for your stack, replace the coverage step with yours, but keep the job id and \`name: coverage\`."
   body+=$'\n\n'"No other part of \`ci.yml\` is changed. Opened by \`scripts/backfill-ci-quality-jobs.sh\`."
   outcome="$(sd_deploy_files_via_pr "$repo" "$CBF_BRANCH" "$CBF_LABEL" "$title" "$body" "${files[@]}")" && rc=0 || rc=$?
@@ -297,9 +297,9 @@ cbf_verify_repo() {
   # Fall back only to a merged PR targeting the default branch; an open or
   # unmerged PR head (e.g. the backfill PR itself) would run the new jobs
   # even though the default branch does not define them yet.
-  if [ "${#missing[@]}" -gt 0 ]; then
-    pr_sha="$(gh pr list --repo "$repo" --state merged --base "$branch" --limit 1--json headRefOid --jq '.[0].headRefOid // ""' 2>/dev/null || true)"
-    if [ -n "$pr_sha" ] && names="$(cbf_check_names "$repo" "$pr_sha")"; then
+  if (( ${#missing[@]} > 0 )); then
+    pr_sha="$(gh pr list --repo "$repo" --state merged --base "$branch" --limit 1 --json headRefOid --jq '.[0].headRefOid // ""' 2>/dev/null || true)"
+    if [[ -n "$pr_sha" ]] && names="$(cbf_check_names "$repo" "$pr_sha")"; then
       missing=()
       for entry in "${CBF_JOBS[@]}"; do
         check="${entry#*|}"
@@ -307,29 +307,31 @@ cbf_verify_repo() {
       done
     fi
   fi
-  if [ "${#missing[@]}" -eq 0 ]; then echo "PASS ${repo}"; return 0; fi
+  if (( ${#missing[@]} == 0 )); then echo "PASS ${repo}"; return 0; fi
   local joined; joined="$(printf '"%s", ' "${missing[@]}")"
   echo "MISSING ${repo} ${joined%, }"
   return 1
 }
 
+# cbf_fleet_repos — list owner/repo for exactly the repos the code-quality ruleset is applied to.
 cbf_fleet_repos() {
   local repos_json classified action repo
   repos_json="$(gh repo list "$ORG" --json name,isArchived,isPrivate,hasIssuesEnabled --limit 1000)" \
     || { echo "::error::failed to list repositories for ${ORG}" >&2; return 1; }
   classified="$(classify_fleet_repos <<< "$repos_json")" || return 1
   while IFS=$'\t' read -r action repo; do
-    [ "$action" = apply ] && echo "${ORG}/${repo}"
+    [[ "$action" = apply ]] && echo "${ORG}/${repo}"
   done <<< "$classified"
   return 0
 }
 
+# cbf_main — parse args, then run backfill or verify per repo and report failures via exit code.
 cbf_main() {
   local target="" all=false verify=false
-  while [ $# -gt 0 ]; do
+  while (( $# > 0 )); do
     case "$1" in
       --repo)
-        [ "$#" -ge 2 ] || { echo "::error::--repo requires a value" >&2; return 2; }
+        (( $# >= 2 )) || { echo "::error::--repo requires a value" >&2; return 2; }
         target="$2"; shift 2 ;;
       --all)     all=true; shift ;;
       --verify)  verify=true; shift ;;
@@ -337,38 +339,38 @@ cbf_main() {
       *) echo "::error::unknown argument: $1" >&2; return 2 ;;
     esac
   done
-  if { [ -n "$target" ] && [ "$all" = true ]; } || { [ -z "$target" ] && [ "$all" = false ]; }; then
+  if { [[ -n "$target" ]] && [[ "$all" = true ]]; } || { [[ -z "$target" ]] && [[ "$all" = false ]]; }; then
     echo "::error::usage: $0 [--verify] (--repo <owner/repo> | --all) [--dry-run]" >&2; return 2
   fi
   gh auth status >/dev/null 2>&1 || { echo "::error::GitHub authentication failed — set GH_TOKEN or run 'gh auth login'" >&2; return 1; }
 
   local repos=() repo failed=0
-  if [ "$all" = true ]; then
+  if [[ "$all" = true ]]; then
     mapfile -t repos < <(cbf_fleet_repos) || return 1
-    [ "${#repos[@]}" -gt 0 ] || { echo "::error::no repositories found in ${ORG} — check GH_TOKEN" >&2; return 1; }
+    (( ${#repos[@]} > 0 )) || { echo "::error::no repositories found in ${ORG} — check GH_TOKEN" >&2; return 1; }
   else
     repos=("$(resolve_repo "$target")")
   fi
 
   for repo in "${repos[@]}"; do
-    if [ "$verify" = true ]; then
+    if [[ "$verify" = true ]]; then
       cbf_verify_repo "$repo" || failed=$((failed + 1))
     else
       cbf_backfill_repo "$repo" || failed=$((failed + 1))
     fi
   done
 
-  if [ "$verify" = true ]; then
-    if [ "$failed" -gt 0 ]; then
+  if [[ "$verify" = true ]]; then
+    if (( failed > 0 )); then
       echo "::error::${failed} of ${#repos[@]} repo(s) do not report both checks yet — do NOT add them to code-quality.json" >&2
       return 1
     fi
     echo "[backfill-ci-quality-jobs] all ${#repos[@]} repo(s) report both checks — safe to add them to code-quality.json (#581 step 3)"
     return 0
   fi
-  [ "$failed" -eq 0 ] || { echo "::error::${failed} repo(s) failed" >&2; return 1; }
+  (( failed == 0 )) || { echo "::error::${failed} repo(s) failed" >&2; return 1; }
 }
 
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   cbf_main "$@"
 fi

@@ -350,7 +350,7 @@ seed_repo() {  # seed_repo <name> [with-gitleaks]
   _stub_gh; mkdir -p "$FIXTURES/iota"
   run cbf_verify_repo combsmith/iota
   [ "$status" -ne 0 ]
-  grep -q -- "pr list.*--state merged.*--base main" "$GH_LOG"
+  grep -q -- "pr list.*--state merged.*--base main.*--limit 1 --json headRefOid" "$GH_LOG"
   ! grep -q -- "--state all" "$GH_LOG"
 }
 
