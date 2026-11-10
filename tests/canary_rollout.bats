@@ -173,6 +173,11 @@ setup() {
   [ "$(promotion_failure_next_count '' failed)" -eq 1 ]
   [ "$(promotion_failure_next_count 'x' failed)" -eq 1 ]
 }
+@test "promotion_failure_should_escalate: zero-padded operands compare as decimal" {
+  [ "$(promotion_failure_should_escalate 8 08)" -eq 1 ]
+  [ "$(promotion_failure_should_escalate 08 09)" -eq 0 ]
+}
+
 @test "promotion_failure_should_escalate: fires only at/after the threshold" {
   [ "$(promotion_failure_should_escalate 1 2)" -eq 0 ]
   [ "$(promotion_failure_should_escalate 2 2)" -eq 1 ]
