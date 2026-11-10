@@ -119,9 +119,9 @@ workflow_command_lines() {
   local fail=0 f line ver
   for f in "$REPO_ROOT"/scripts/*requirements*.txt; do
     while IFS= read -r line || [ -n "$line" ]; do
-      case "$line" in filelock==*) : ;; *) continue ;; esac
-      ver="${line#filelock==}"
-      ver="${ver%% *}"
+      # pip treats the name case-insensitively and allows spaces around '=='.
+      [[ "${line,,}" =~ ^[[:space:]]*filelock[[:space:]]*==[[:space:]]*([^[:space:]\\\;]+) ]] || continue
+      ver="${BASH_REMATCH[1]}"
       if [ "$(printf '%s\n%s\n' "$ver" 4.2.1 | sort -V | head -n1)" != "4.2.1" ]; then
         echo "VULNERABLE filelock==$ver in ${f##*/} (need >= 4.2.1)"; fail=1
       fi
