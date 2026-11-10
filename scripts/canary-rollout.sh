@@ -812,9 +812,10 @@ _repo_wf_runs_cached() {
     fi
     # Prefer the server's explicit throttle hint; otherwise exponential + full jitter.
     ra="$(_gh_retry_after "$err")"
-    if [[ -n "$ra" ]] && [[ "$((10#$ra))" -gt 0 ]]; then
-      delay=$((10#$ra))
-      [[ "$delay" -gt "$ra_cap" ]] && delay="$ra_cap"   # honor hint but cap runaway values
+    ra="${ra#"${ra%%[!0]*}"}"
+    if [[ -n "$ra" ]] && [[ "$ra" -gt 0 ]]; then
+      delay="$ra"
+      [[ "10#$delay" -gt "10#$ra_cap" ]] && delay="$((10#$ra_cap))"   # honor hint but cap runaway values
     else
       expo=$((attempt - 1)); [[ "$expo" -gt 20 ]] && expo=20     # guard the exponent from overflow
       delay=$(( base << expo ))
