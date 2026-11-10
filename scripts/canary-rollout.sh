@@ -77,9 +77,10 @@ THIS_REPO="${GITHUB_REPOSITORY:-combsmith/.github}"
 # is treated as UNRESOLVABLE and fails safe to a major bump (#1023 defect 1b), never silently to
 # patch. 50 pages = 5000 commits — far beyond any real inter-cut range.
 CANARY_MAX_COMMIT_PAGES="${CANARY_MAX_COMMIT_PAGES:-50}"
-if ! [[ "$CANARY_MAX_COMMIT_PAGES" =~ ^[0-9]+$ ]] || [[ "$CANARY_MAX_COMMIT_PAGES" -le 0 ]]; then
+if ! [[ "$CANARY_MAX_COMMIT_PAGES" =~ ^[0-9]+$ ]] || [[ "$((10#$CANARY_MAX_COMMIT_PAGES))" -le 0 ]]; then
   CANARY_MAX_COMMIT_PAGES=50
 fi
+CANARY_MAX_COMMIT_PAGES=$((10#$CANARY_MAX_COMMIT_PAGES))   # force decimal: [[ -le ]] reads 08/010 as octal
 
 # CANARY_PROMOTION_FAILURE_ESCALATE_AFTER — how many CONSECUTIVE scheduled runs a tag write may
 # fail before its tracking issue escalates to needs-human + dev-lead (#1023 defect 2). Default 2
@@ -733,8 +734,11 @@ _repo_wf_runs_cached() {
   local attempts="${CANARY_GH_RETRIES:-6}" base="${CANARY_GH_RETRY_SLEEP:-2}" attempt=1
   local ra_cap="${CANARY_GH_RETRY_AFTER_CAP:-900}"
   case "$ra_cap" in ''|*[!0-9]*) ra_cap=900 ;; esac
+  ra_cap=$((10#$ra_cap))   # force decimal (08/010 would be octal inside [[ ]])
   case "$attempts" in ''|*[!0-9]*) attempts=6 ;; esac
+  attempts=$((10#$attempts))
   case "$base" in ''|*[!0-9]*) base=2 ;; esac
+  base=$((10#$base))
   # Cache hit? A non-empty cache file for this (repo, workflow) — including a cached "[]"
   # for a no-runs / not-found workflow, so it is never re-queried within the sweep.
   if [[ -n "${_RUNS_CACHE_DIR:-}" ]]; then
@@ -808,8 +812,8 @@ _repo_wf_runs_cached() {
     fi
     # Prefer the server's explicit throttle hint; otherwise exponential + full jitter.
     ra="$(_gh_retry_after "$err")"
-    if [[ -n "$ra" ]] && [[ "$ra" -gt 0 ]]; then
-      delay="$ra"
+    if [[ -n "$ra" ]] && [[ "$((10#$ra))" -gt 0 ]]; then
+      delay=$((10#$ra))
       [[ "$delay" -gt "$ra_cap" ]] && delay="$ra_cap"   # honor hint but cap runaway values
     else
       expo=$((attempt - 1)); [[ "$expo" -gt 20 ]] && expo=20     # guard the exponent from overflow
@@ -994,7 +998,9 @@ _run_jobs_json() {
   local repo="$1" id="$2" cachef="" out attempt=1
   local attempts="${3:-${CANARY_GH_RETRIES:-6}}" base="${CANARY_GH_RETRY_SLEEP:-2}" delay span expo
   case "$attempts" in ''|*[!0-9]*) attempts=6 ;; esac
+  attempts=$((10#$attempts))
   case "$base" in ''|*[!0-9]*) base=2 ;; esac
+  base=$((10#$base))
   [[ "$attempts" -lt 1 ]] && attempts=1
   if [[ -n "${_RUNS_CACHE_DIR:-}" ]]; then
     _cache_name "jobs//${repo}//${id}"
@@ -1114,6 +1120,7 @@ _ingress_agent_runs() {
   # older one, rather than blocking a busy collapsed repo forever. Gating windows stay strict.
   local jobs_max="${CANARY_INGRESS_JOBS_MAX:-300}" nread=0 jrc role_oldest="" skipkind norole_created="" ncr
   case "$jobs_max" in ''|*[!0-9]*) jobs_max=300 ;; esac
+  jobs_max=$((10#$jobs_max))
   [[ "$jobs_max" -lt 1 ]] && jobs_max=300
   # The RUN LIST itself is capped too (`gh run list -L CANARY_INGRESS_RUN_LIMIT`, default 5000). A list
   # that hit its cap AND does not reach back past the window start may be missing older in-window runs,
@@ -2407,7 +2414,7 @@ cmd_promote() {
     # it removes the environmental block, never the soak. REGRESSION/SUSPECT were refused above.
     if [[ "$state" = "BLOCKED" ]] && [[ "$triage" = "PRE_EXISTING" ]] && [[ "$allow_pre" = true ]] && [[ "$advance" != true ]]; then
       if [[ "$_dwell" =~ ^[0-9]+$ && "$_floor" =~ ^[0-9]+$ && "$_sample" =~ ^[0-9]+$ && "$_target" =~ ^[0-9]+$ ]] \
-         && [[ "$_dwell" -ge "$_floor" ]] && [[ "$_sample" -ge "$_target" ]]; then
+         && [[ "$((10#$_dwell))" -ge "$((10#$_floor))" ]] && [[ "$((10#$_sample))" -ge "$((10#$_target))" ]]; then
         advance=true; via_allow_pre=true
       else
         soak_unmet=true
