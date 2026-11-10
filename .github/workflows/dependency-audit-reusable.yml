@@ -17,7 +17,8 @@
 #   Python 3.13 for pip-audit (`python-version` input). Never a floating "3.x":
 #   a new Python release can break the hash-locked tooling for every caller at
 #   once (3.15 removed sre_constants, crashing pip-api 0.0.34's vendored
-#   pyparsing).
+#   pyparsing). Minimum 3.11: the hash-locked filelock is >= 4.2.1 (fixes the
+#   advisories in #1380), and no filelock release that fixes them supports 3.10.
 #   Go `stable` for govulncheck, on purpose: setup-go sets GOTOOLCHAIN=local, so
 #   the toolchain must be at least every audited go.mod's `go` line, and a fixed
 #   pin would break the job the day a caller bumps it. The cost is that a new Go
@@ -29,7 +30,7 @@ on:
   workflow_call:
     inputs:
       python-version:
-        description: "Python minor the pip-audit tooling runs on (pinned; never a floating 3.x)"
+        description: "Python minor (>= 3.11) the pip-audit tooling runs on (pinned; never a floating 3.x)"
         required: false
         type: string
         default: "3.13"
