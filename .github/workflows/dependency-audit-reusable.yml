@@ -248,6 +248,17 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Validate python-version input (>= 3.11)
+        env:
+          PYTHON_VERSION: ${{ inputs.python-version }}
+        run: |
+          # The hash-locked filelock (>= 4.2.1) requires Python >= 3.11; fail
+          # early with a clear message instead of a pip resolution error.
+          if [[ ! "$PYTHON_VERSION" =~ ^3\.([0-9]+)(\.[0-9]+)?$ ]] || (( BASH_REMATCH[1] < 11 )); then
+            echo "::error::python-version '$PYTHON_VERSION' is unsupported: pip-audit lock requires Python >= 3.11 (e.g. 3.13)"
+            exit 1
+          fi
+
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ inputs.python-version }}
