@@ -214,6 +214,7 @@ apply_repo() {
 # GitHub creates a private fork named <repo>-ghsa-<id> for each security advisory,
 # without the fork flag and with issues disabled; its rulesets can't be read, so
 # applying to it always fails. A GHSA-shaped name alone is not enough: the repo
+# classify_fleet_repos — read repos from stdin as JSON, classify each as apply | archived | ghsa | excluded for ruleset targeting.
 # must also be private, have issues off, and have its parent repo in the org
 # (same check as dev-lead-retry.sh in combsmith/.github-private#2462).
 classify_fleet_repos() {
@@ -235,6 +236,7 @@ resolve_repo() {
   case "$1" in */*) printf '%s' "$1" ;; *) printf '%s/%s' "$ORG" "$1" ;; esac
 }
 
+# main — parse arguments (--repo, --all, --dry-run) and apply rulesets to target repo(s).
 main() {
   local target="" all=false
   local names=()
