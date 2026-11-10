@@ -67,6 +67,19 @@ YAML
   [ "$output" = conflict ]
 }
 
+@test "job_status: a reusable-workflow caller job does not report the check name (conflict, not present)" {
+  write_repo_ci "$WORK/ci.yml"
+  printf '  coverage:\n    uses: ./.github/workflows/cov.yml\n' >> "$WORK/ci.yml"
+  run cbf_job_status "$WORK/ci.yml" coverage coverage
+  [ "$output" = conflict ]
+}
+
+@test "reports_check: a reusable-workflow caller job in another workflow does not count" {
+  printf 'on: [pull_request]\njobs:\n  coverage:\n    uses: ./.github/workflows/cov.yml\n' > "$WORK/other.yml"
+  run cbf_reports_check "$WORK/other.yml" coverage
+  [ "$status" -ne 0 ]
+}
+
 # --- cbf_extract_job ---------------------------------------------------------
 
 @test "extract_job: secret-scan block comes from the template unchanged, lead comment included" {

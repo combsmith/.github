@@ -76,7 +76,8 @@ readonly CBF_JOBS=(
 )
 
 # cbf_job_status <ci_file> <job_id> <check_name> — echo present | missing | conflict.
-#   present   some job reports <check_name> (its `name:`, or its id when it has no name)
+#   present   some job reports <check_name> (its `name:`, or its id when it has no name;
+#             a reusable-workflow caller job (`uses:`) never does)
 #   conflict  no job reports <check_name>, but <job_id> is taken by a job that
 #             reports something else, so the template block cannot be added
 #   missing   neither, so the template block can be added
@@ -84,7 +85,7 @@ cbf_job_status() {
   local file="$1" id="$2" check="$3"
   ID="$id" CHECK="$check" yq -r '
     (.jobs // {}) | to_entries |
-    (map(select((.value.name // .key) == strenv(CHECK))) | length) as $hit |
+    (map(select((.value.uses == null) and ((.value.name // .key) == strenv(CHECK)))) | length) as $hit |
     (map(select(.key == strenv(ID))) | length) as $taken |
     if $hit > 0 then "present" elif $taken > 0 then "conflict" else "missing" end
   ' "$file"
@@ -92,8 +93,10 @@ cbf_job_status() {
 
 # cbf_reports_check <workflow_file> <check_name> — true if any job in the file
 # reports <check_name>. A file that does not parse counts as not reporting it.
+# A job that calls a reusable workflow (`uses:`) is reported by GitHub as
+# "<caller> / <called job>", so it never reports a bare <check_name>.
 cbf_reports_check() {
-  (( $(CHECK="$2" yq -r '[(.jobs // {}) | to_entries | .[] | select((.value.name // .key) == strenv(CHECK))] | length' "$1" 2>/dev/null) > 0 )) 2>/dev/null
+  (( $(CHECK="$2" yq -r '[(.jobs // {}) | to_entries | .[] | select((.value.uses == null) and ((.value.name // .key) == strenv(CHECK)))] | length' "$1" 2>/dev/null) > 0 )) 2>/dev/null
 }
 
 # cbf_extract_job <template_ci> <job_id> — print the job's block from the template
