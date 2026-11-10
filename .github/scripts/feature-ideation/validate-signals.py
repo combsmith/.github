@@ -143,6 +143,14 @@ def _confine_path(raw: str | os.PathLike[str]) -> Path | None:
 
 
 def main(argv: list[str]) -> int:
+    """Validate a signals.json file against a JSON schema.
+
+    Confines both the signals and schema file arguments to allowed directories
+    to prevent path traversal (S8707). Reads both files, reports missing files
+    or I/O errors as exit code 2, and validates the signals against the schema.
+    Reports validation errors to stderr and returns exit code 1 for validation
+    failures or 0 on success.
+    """
     if len(argv) < 2 or len(argv) > 3:
         sys.stderr.write(
             "usage: validate-signals.py <signals.json> [<schema.json>]\n"
