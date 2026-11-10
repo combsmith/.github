@@ -94,7 +94,7 @@ sd_deploy_files_via_pr() {
 
   # 1. Idempotency — at most one open sync PR per repo, keyed by label.
   local existing_pr
-  existing_pr=$(gh pr list --repo "$repo" --label "$label" --state open \
+  existing_pr=$(gh pr list --repo "$repo" --label "$label" --state open --paginate \
     --json number --jq '.[0].number // ""' 2>/dev/null || true)
   if [ -n "$existing_pr" ]; then
     echo "SKIP_PR_OPEN $existing_pr"

@@ -305,12 +305,20 @@ deploy() {
 # The probe is an owner-qualified server-side query (head=<owner>:<branch>), so
 # a same-named fork PR is never returned (nor truncated by a page limit): with
 # no match for the target repo the deploy proceeds.
-@test "the branch-in-use probe is an owner-qualified exact query and ignores fork PRs" {
+@test "the branch-in-use probe correctly ignores same-named fork PRs but stops on target-repo PRs" {
   GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+
+  # Model a same-named fork PR: probe finds no target-repo PR, so deployment proceeds
+  GH_BRANCH_PR=""; export GH_BRANCH_PR
   run deploy
   [ "$status" -eq 0 ]
   [ "$output" = "OPENED https://github.com/o/r/pull/1" ]
-  grep -q 'pulls?state=open&per_page=100&head=combsmith:standards-sync/add-to-project --paginate' "$GH_CALLS"
+
+  # Model a target-repository PR: probe finds the PR, deployment stops
+  GH_BRANCH_PR="55"; export GH_BRANCH_PR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-in-use:standards-sync/add-to-project#55" ]
 }
 
 @test "an open PR from the target repo on the branch stops the deploy" {
