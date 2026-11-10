@@ -276,6 +276,13 @@ iso_epoch() { date -d "$1" +%s; }
   [ "$output" = "$want" ]
 }
 
+@test "arl_token_iso_to_epoch accepts a date whose local midnight is skipped (TZ=America/Santiago)" {
+  local want; want="$(TZ=UTC date -d '2026-09-06T15:00:00Z' +%s 2>/dev/null || printf '')"
+  [ -z "$want" ] && skip "date -d unavailable"
+  run bash -c "export TZ=America/Santiago; source '$LIB'; arl_token_iso_to_epoch '2026-09-06T15:00:00Z'"
+  [ "$output" = "$want" ]
+}
+
 @test "arl_token_iso_to_epoch still rejects an invalid calendar date carrying an offset" {
   run bash -c "source '$LIB'; arl_token_iso_to_epoch '2026-02-30T23:30:00-05:00'"
   [ "$status" -eq 0 ]
