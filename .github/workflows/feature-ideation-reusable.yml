@@ -335,7 +335,7 @@ jobs:
           ENHANCE_BACKLOG: ${{ inputs.enhance_backlog && '1' || '0' }}
           SOURCES_FILE_PATH: ${{ inputs.sources_file }}
           RESEARCH_DEPTH: ${{ inputs.research_depth }}
-        # Model family resolution: as of claude-code-action v1.0.264, the family
+        # Model family resolution: as of claude-code-action v1.0.268, the family
         # `opus` resolves client-side to claude-opus-4-1-20250514 (#1210 AC3).
         uses: anthropics/claude-code-action@c0949c50a78c1ec8ce2647db36629b870e715d0c # v1.0.268
         with:
