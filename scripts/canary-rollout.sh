@@ -2532,7 +2532,7 @@ cmd_rollback() {
   host="${host:-$THIS_REPO}"
   local target
   target="$(_gh_tag_commit "$host" "$agent/$to")"
-  [ -z "$target" ] && { echo "::error::release tag $agent/$to not found on $host" >&2; return 1; }
+  [[ -z "$target" ]] && { echo "::error::release tag $agent/$to not found on $host" >&2; return 1; }
   # Resolve the RING tag through the SAME resolver as cmd_promote (major-scoped-channels epic
   # #657 F4, #1103): an agent with an established channel major resolves to the authoritative
   # v-scoped `<agent>/v<M>-<ring>` (never the bare tier, which no stub pins); a legacy bare-only
@@ -2564,7 +2564,7 @@ cmd_rollback() {
     return 1
   fi
   echo "rolling back $ring_tag -> $to (${target:0:12}) on $host"
-  if [ "$dry" = true ]; then
+  if [[ "$dry" == true ]]; then
     echo "[DRY-RUN] would: gh api PATCH repos/$host/git/refs/tags/$ring_tag sha=$target (force)"
     return 0
   fi
