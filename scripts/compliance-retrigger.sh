@@ -140,6 +140,8 @@ stale_cutoff() {
 # Re-trigger stale compliance issues
 # ---------------------------------------------------------------------------
 
+# retrigger_stale_issues — Search for stale compliance-audit issues across the org
+# and re-trigger those not currently under dev-lead engagement, skipping not-served repos.
 retrigger_stale_issues() {
   info "Looking for stale compliance-audit issues (older than ${STALE_DAYS} days)..."
   local cutoff
@@ -369,6 +371,7 @@ print_summary() {
 # Main
 # ---------------------------------------------------------------------------
 
+# main — Run the compliance-audit issue retrigger workflow.
 main() {
   info "compliance-retrigger starting (org=$ORG, stale_days=$STALE_DAYS, dry_run=$DRY_RUN)"
   retrigger_stale_issues
