@@ -3310,6 +3310,7 @@ cmd_sync_promotion_failures() {
   local dry=false; [[ "${1:-}" = "--dry-run" ]] && dry=true
   local threshold="${CANARY_PROMOTION_FAILURE_ESCALATE_AFTER:-2}"
   case "$threshold" in ''|*[!0-9]*) threshold=2 ;; esac
+  threshold=$((10#$threshold))   # force decimal: 08/010 must not be read as octal
   [[ "$threshold" -lt 1 ]] && threshold=1
   echo "== canary-rollout sync-promotion-failures: repo=$ISSUE_REPO dry=$dry threshold=$threshold =="
   local failed_agents ok_agents attempted
