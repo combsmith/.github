@@ -112,6 +112,24 @@ workflow_command_lines() {
   [ "$fail" -eq 0 ]
 }
 
+# combsmith/.github#1380: OpenSSF Scorecard (OSV) flagged 9 advisories against
+# filelock 3.29.7 (pulled in by pip-audit via cachecontrol[filecache]); all are
+# fixed in 4.2.1. Fail loud if any hash-locked requirements file pins it lower.
+@test "no hash-locked requirements file pins a vulnerable filelock (< 4.2.1)" {
+  local fail=0 f line ver
+  for f in "$REPO_ROOT"/scripts/*requirements*.txt; do
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in filelock==*) : ;; *) continue ;; esac
+      ver="${line#filelock==}"
+      ver="${ver%% *}"
+      if [ "$(printf '%s\n%s\n' "$ver" 4.2.1 | sort -V | head -n1)" != "4.2.1" ]; then
+        echo "VULNERABLE filelock==$ver in ${f##*/} (need >= 4.2.1)"; fail=1
+      fi
+    done < "$f"
+  done
+  [ "$fail" -eq 0 ]
+}
+
 # combsmith/.github#1405: npm loads "project" config from the .npmrc of its local
 # prefix (the cwd), so an `npx` run inside the PR checkout lets the scanned PR's
 # own .npmrc pick script-shell / registry for the scanner itself. The AgentShield
