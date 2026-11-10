@@ -815,7 +815,7 @@ _repo_wf_runs_cached() {
     ra="${ra#"${ra%%[!0]*}"}"
     if [[ -n "$ra" ]] && [[ "$ra" -gt 0 ]]; then
       delay="$ra"
-      [[ "10#$delay" -gt "10#$ra_cap" ]] && delay="$((10#$ra_cap))"   # honor hint but cap runaway values
+      [[ $((10#$delay)) -gt $((10#$ra_cap)) ]] && delay="$((10#$ra_cap))"   # honor hint but cap runaway values
     else
       expo=$((attempt - 1)); [[ "$expo" -gt 20 ]] && expo=20     # guard the exponent from overflow
       delay=$(( base << expo ))
