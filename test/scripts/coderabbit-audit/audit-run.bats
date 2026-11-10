@@ -227,6 +227,17 @@ writes() { grep -E '^gh issue (create|edit|close)' "$STUB_LOG" || true; }
   [ "$(grep -cE '^gh issue create ' "$STUB_LOG")" -eq 1 ]
   ! grep -qE '^gh issue close ' "$STUB_LOG" || false
 }
+@test "duplicate open and fixed rows leave an existing issue open and unedited" {
+  {
+    finding a 101 src/a.ts medium open
+    finding a 101 src/a.ts medium fixed
+  } | sarif_of > "$STUB_DIR/dup"
+  jq -n --arg a "$(fp a)" '[{number: 1, body: ("<!-- coderabbit-audit:key=" + $a + " -->"),
+    labels: [{name: "priority:major"}]}]' > "$STUB_DIR/issues/alpha.json"
+  STUB_SARIF="$STUB_DIR/dup" run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -z "$(writes)" ]
+}
 @test "1000 open audit issues fail closed without issue or label writes" {
   jq -n '[range(0;1000) | {number: ., body: "x"}]' > "$STUB_DIR/issues/alpha.json"
   run bash "$SCRIPT"
@@ -241,6 +252,17 @@ writes() { grep -E '^gh issue (create|edit|close)' "$STUB_LOG" || true; }
   printf '[]\n' > "$STUB_DIR/issues/alpha.json"
   STUB_SARIF="$STUB_DIR/two" run bash "$SCRIPT"
   [ "$(grep -cE '^gh label create needs-verification .*--repo combsmith/alpha ' "$STUB_LOG")" -eq 1 ]
+}
+@test "every label is created exactly once per repo across several new issues" {
+  {
+    finding a 101 src/a.ts medium open
+    finding b 101 src/b.ts high open
+  } | sarif_of > "$STUB_DIR/two"
+  printf '[]\n' > "$STUB_DIR/issues/alpha.json"
+  STUB_SARIF="$STUB_DIR/two" run bash "$SCRIPT"
+  for l in coderabbit-audit needs-verification security priority:blocker priority:critical priority:major priority:minor; do
+    [ "$(grep -cE "^gh label create $l .*--repo combsmith/alpha " "$STUB_LOG")" -eq 1 ]
+  done
 }
 @test "curl never follows redirects" {
   run bash "$SCRIPT"
