@@ -250,7 +250,7 @@ ring_highest_major() {
     v="${v#v}"
     [[ "$v" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || continue
     major="${BASH_REMATCH[1]}"
-    if [[ -z "$best" ]] || [[ "$major" -gt "$best" ]]; then
+    if [[ -z "$best" ]] || (( 10#$major > 10#$best )); then
       best="$major"
     fi
   done
@@ -299,7 +299,7 @@ ring_highest_channel_major() {
   for tok in "$@"; do
     [[ "$tok" =~ ^([0-9]+)-(stable|next|ring[0-9]+)$ ]] || continue
     major="${BASH_REMATCH[1]}"
-    if [[ -z "$best" ]] || [[ "$major" -gt "$best" ]]; then
+    if [[ -z "$best" ]] || (( 10#$major > 10#$best )); then
       best="$major"
     fi
   done
