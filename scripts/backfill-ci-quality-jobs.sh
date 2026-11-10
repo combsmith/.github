@@ -93,7 +93,7 @@ cbf_job_status() {
 # cbf_reports_check <workflow_file> <check_name> — true if any job in the file
 # reports <check_name>. A file that does not parse counts as not reporting it.
 cbf_reports_check() {
-  [ "$(CHECK="$2" yq -r '[(.jobs // {}) | to_entries | .[] | select((.value.name // .key) == strenv(CHECK))] | length' "$1" 2>/dev/null)" -gt 0 ] 2>/dev/null
+  (( $(CHECK="$2" yq -r '[(.jobs // {}) | to_entries | .[] | select((.value.name // .key) == strenv(CHECK))] | length' "$1" 2>/dev/null) > 0 )) 2>/dev/null
 }
 
 # cbf_extract_job <template_ci> <job_id> — print the job's block from the template
