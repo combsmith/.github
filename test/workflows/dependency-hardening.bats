@@ -122,7 +122,9 @@ workflow_command_lines() {
       # pip treats the name case-insensitively and allows spaces around '=='.
       [[ "${line,,}" =~ ^[[:space:]]*filelock[[:space:]]*==[[:space:]]*([^[:space:]\\\;]+) ]] || continue
       ver="${BASH_REMATCH[1]}"
-      if [ "$(printf '%s\n%s\n' "$ver" 4.2.1 | sort -V | head -n1)" != "4.2.1" ]; then
+      # sort -V is not PEP 440-aware (4.2.1rc1 sorts after 4.2.1), so reject
+      # any 4.2.1 pre/dev release explicitly.
+      if [[ "$ver" =~ ^4\.2\.1(-|_|a|b|c|rc|pre|preview|\.dev) ]] || [ "$(printf '%s\n%s\n' "$ver" 4.2.1 | sort -V | head -n1)" != "4.2.1" ]; then
         echo "VULNERABLE filelock==$ver in ${f##*/} (need >= 4.2.1)"; fail=1
       fi
     done < "$f"
