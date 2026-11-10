@@ -294,9 +294,11 @@ cbf_verify_repo() {
     grep -qxF "$check" <<< "$names" || missing+=("$check")
   done
   # If CI runs only on pull_request, the default branch tip has no CI checks.
-  # Fall back to the head of the most recent PR.
+  # Fall back only to a merged PR targeting the default branch; an open or
+  # unmerged PR head (e.g. the backfill PR itself) would run the new jobs
+  # even though the default branch does not define them yet.
   if [ "${#missing[@]}" -gt 0 ]; then
-    pr_sha="$(gh pr list --repo "$repo" --state all --limit 1 --json headRefOid --jq '.[0].headRefOid // ""' 2>/dev/null || true)"
+    pr_sha="$(gh pr list --repo "$repo" --state merged --base "$branch" --limit 1--json headRefOid --jq '.[0].headRefOid // ""' 2>/dev/null || true)"
     if [ -n "$pr_sha" ] && names="$(cbf_check_names "$repo" "$pr_sha")"; then
       missing=()
       for entry in "${CBF_JOBS[@]}"; do

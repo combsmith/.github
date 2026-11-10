@@ -346,6 +346,14 @@ seed_repo() {  # seed_repo <name> [with-gitleaks]
   [ "$status" -eq 0 ]; [ "$output" = "PASS combsmith/theta" ]
 }
 
+@test "verify_repo: PR fallback only consults merged PRs targeting the default branch" {
+  _stub_gh; mkdir -p "$FIXTURES/iota"
+  run cbf_verify_repo combsmith/iota
+  [ "$status" -ne 0 ]
+  grep -q -- "pr list.*--state merged.*--base main" "$GH_LOG"
+  ! grep -q -- "--state all" "$GH_LOG"
+}
+
 @test "main --verify --all: covers the apply-rulesets fleet and fails if any repo is missing a check" {
   _stub_gh
   export REPO_LIST='[{"name":"zeta","isArchived":false},{"name":"eta","isArchived":false},{"name":"old","isArchived":true},{"name":"software-factory","isArchived":false}]'
