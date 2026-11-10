@@ -8051,3 +8051,13 @@ GHEOF
   [ "$(idle_sample_waiver 09 010 0 1)" = "false" ]
   [ "$(idle_sample_waiver 010 010 0 1)" = "true" ]
 }
+
+# ── leading-zero env values are decimal, not octal (review on #1506) ──────────
+@test "CANARY_MAX_COMMIT_PAGES: leading-zero values are read as decimal" {
+  run env CANARY_MAX_COMMIT_PAGES=010 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [ "$status" -eq 0 ]; [ "${lines[-1]}" = "10" ]
+  run env CANARY_MAX_COMMIT_PAGES=08 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [ "$status" -eq 0 ]; [ "${lines[-1]}" = "8" ]
+  run env CANARY_MAX_COMMIT_PAGES=000 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [ "$status" -eq 0 ]; [ "${lines[-1]}" = "50" ]
+}
