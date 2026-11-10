@@ -139,6 +139,9 @@ sd_deploy_files_via_pr() {
   #    PR of any label uses the branch either, force-reset it to the base tip so
   #    it holds only what this run writes. Otherwise, or if the probe or reset
   #    errors, fail loudly naming the branch rather than build on unknown commits.
+  #    NOTE: A small race window exists between the open-PR check and the reset,
+  #    where concurrent same-day runs could interfere. Callers should use
+  #    unique branch names per run (e.g., with timestamps) to fully mitigate.
   if ! gh api "repos/${repo}/git/refs" --method POST \
         --raw-field "ref=refs/heads/${branch}" \
         --raw-field "sha=${base_sha}" --silent 2>/dev/null; then
