@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # sonar_list_projects must fail (not silently succeed) on malformed pages.
 
-SCRIPT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/scripts/sonarcloud-audit.sh"
+SCRIPT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/scripts/sonarcloud-audit.sh"
 
 @test "null components fails the listing" {
   run bash -c "source '$SCRIPT'; _sonar_get() { echo '{\"components\":null,\"paging\":{\"total\":3}}'; }; sonar_list_projects"
@@ -17,4 +17,9 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/scripts/sonarcloud-audit.sh"
   run bash -c "source '$SCRIPT'; _sonar_get() { echo '{\"components\":[{\"key\":\"a\"}],\"paging\":{\"total\":1}}'; }; sonar_list_projects"
   [ "$status" -eq 0 ]
   [[ "$output" == *a* ]]
+}
+
+@test "component with missing key fails the listing" {
+  run bash -c "source '$SCRIPT'; _sonar_get() { echo '{\"components\":[{\"name\":\"x\"}],\"paging\":{\"total\":1}}'; }; sonar_list_projects"
+  [ "$status" -ne 0 ]
 }
