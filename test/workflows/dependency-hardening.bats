@@ -135,8 +135,10 @@ workflow_command_lines() {
         bad=1
       elif [ "$cmp" = "$min" ]; then
         # Equal release: only a post release (or local version) is >= 4.2.1.
+        # A dev release of a post release (4.2.1.post1.dev1) is still newer
+        # than 4.2.1 under PEP 440; a bare dev/pre release (4.2.1.dev1, rc1) is not.
         [[ "$suffix" =~ ^([-_.]?(post|rev|r)[-_.]?[0-9]*|-[0-9]+)([-_.]?dev[-_.]?[0-9]*)?(\+.*)?$ ]] \
-          && [[ ! "$suffix" =~ dev ]] || [ -z "$suffix" ] || [[ "$suffix" == +* ]] || bad=1
+          || [ -z "$suffix" ] || [[ "$suffix" == +* ]] || bad=1
       fi
       if [ "$bad" -eq 1 ]; then
         echo "VULNERABLE filelock==$ver in ${f##*/} (need >= 4.2.1)"; fail=1
