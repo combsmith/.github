@@ -174,6 +174,10 @@ sonar_list_projects() {
     echo "$resp" | jq -r '.components[].key'
     total=$(echo "$resp" | jq '.paging.total')
     page_count=$(echo "$resp" | jq '.components | length')
+    if ! [[ "$total" =~ ^[0-9]+$ ]]; then
+      warn "sonar_list_projects: page ${page} has missing/non-numeric paging.total ('${total}') — results may be incomplete"
+      return 1
+    fi
     { [[ "$((page * 500))" -ge "$total" ]] || [[ "$page_count" -eq 0 ]]; } && break
     page=$((page + 1))
   done

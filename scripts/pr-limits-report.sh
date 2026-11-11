@@ -54,6 +54,7 @@ if ! [[ "$CAP" =~ ^[0-9]+$ ]]; then
   echo "pr-limits-report: error: org cap missing or not an integer (PR_LIMITS_ORG_CAP / org_wide.automation_open_pr_cap in $CONFIG)" >&2
   exit 1
 fi
+CAP=$((10#$CAP))
 EXEMPT_ACTORS="$(jq -c '.exempt_actors // []' "$CONFIG" 2>/dev/null || echo '[]')"
 EXEMPT_LABELS="$(jq -c '.exempt_labels // []' "$CONFIG" 2>/dev/null || echo '[]')"
 

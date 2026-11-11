@@ -94,7 +94,12 @@ error() { echo "[error] $*" >&2; }
 # exhausted. Both overridable via env so tests can run with zero delay.
 GH_SEARCH_ATTEMPTS="${GH_SEARCH_ATTEMPTS:-3}"
 GH_API_RETRY_BASE_DELAY="${GH_API_RETRY_BASE_DELAY:-2}"
-if ! [[ "$GH_SEARCH_ATTEMPTS" =~ ^[0-9]+$ ]] || [[ "$GH_SEARCH_ATTEMPTS" -lt 1 ]]; then
+if ! [[ "$GH_SEARCH_ATTEMPTS" =~ ^[0-9]+$ ]]; then
+  error "GH_SEARCH_ATTEMPTS must be an integer >= 1 (got: '${GH_SEARCH_ATTEMPTS}')"
+  exit 1
+fi
+GH_SEARCH_ATTEMPTS=$((10#$GH_SEARCH_ATTEMPTS))
+if [[ "$GH_SEARCH_ATTEMPTS" -lt 1 ]]; then
   error "GH_SEARCH_ATTEMPTS must be an integer >= 1 (got: '${GH_SEARCH_ATTEMPTS}')"
   exit 1
 fi

@@ -112,7 +112,8 @@ amcl_data_rows() {
 amcl_is_uint() {
   local s="$1"
   [[ "$s" =~ ^[0-9]+$ ]] || return 1
-  s="${s#"${s%%[!0]*}"}"
+  [[ "$s" =~ ^0*([1-9][0-9]*)?$ ]] || return 1
+  s="${BASH_REMATCH[1]}"
   [[ "${#s}" -le 15 ]]
 }
 
