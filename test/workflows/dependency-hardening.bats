@@ -120,15 +120,16 @@ workflow_command_lines() {
   for f in "$REPO_ROOT"/scripts/*requirements*.txt; do
     while IFS= read -r line || [ -n "$line" ]; do
       # pip treats the name case-insensitively and allows spaces around '=='.
-      [[ "${line,,}" =~ ^[[:space:]]*filelock[[:space:]]*==[[:space:]]*([^[:space:]\\\;]+) ]] || continue
-      ver="${BASH_REMATCH[1]}"
+      [[ "${line,,}" =~ ^[[:space:]]*filelock[[:space:]]*(\[[^]]*\][[:space:]]*)?==[[:space:]]*([^[:space:]\\\;]+) ]] || continue
+      ver="${BASH_REMATCH[2]}"
       # PEP 440-aware: compare the numeric release segment (zero-padded), then
       # judge the suffix. sort -V alone is not enough: 4.2.1rc1 sorts after
       # 4.2.1 although it is a prerelease, and 4.2.1-1 is a valid postrelease.
       [[ "$ver" =~ ^v?([0-9]+(\.[0-9]+)*)(.*)$ ]] || { echo "UNPARSEABLE filelock==$ver in ${f##*/}"; fail=1; continue; }
       local rel="${BASH_REMATCH[1]}" suffix="${BASH_REMATCH[3]}" a b c cmp
       IFS=. read -r a b c _ <<< "$rel"
-      cmp="$(printf '%08d%08d%08d' "${a:-0}" "${b:-0}" "${c:-0}")"
+      # 10# forces decimal: a component like 09 is not an invalid octal.
+      cmp="$(printf '%08d%08d%08d' "$((10#${a:-0}))" "$((10#${b:-0}))" "$((10#${c:-0}))")"
       local min="000000040000000200000001" bad=0
       if [[ "$cmp" < "$min" ]]; then
         bad=1
