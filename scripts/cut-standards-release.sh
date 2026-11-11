@@ -245,7 +245,7 @@ _cmd_verify() {
     : > "$out"
     # expect_output is required: without it a consumer would pass on its exit code
     # alone, which is exactly the hollow green this check exists to refuse.
-    if [[ -z "$id" ]] || [[ -z "$repo" ]] || [[ -z "$command" ]] || [[ -z "$expect" ]] \
+    if [[ -z "$id" || -z "$repo" || -z "$command" || -z "$expect" ]] \
         || ! [[ "$ref_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
       verdict="FAIL malformed-entry"
     elif ! dir="$(_consumer_checkout "$repo" "$work")"; then

@@ -480,7 +480,7 @@ main() {
   info "SonarCloud audit — org=$SONAR_ORG dry_run=$DRY_RUN create_issues=$CREATE_ISSUES"
   scan
 
-  if [[ "$CREATE_ISSUES" = "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
+  if [[ "$CREATE_ISSUES" = "true" && "$DRY_RUN" != "true" ]]; then
     while IFS= read -r group; do
       manage_group_issue "$group"
     done < <(jq -c '.[]' "$GROUPS_FILE")

@@ -137,7 +137,7 @@ migrate_repo() {
   done <<< "$issues"
 
   # 3. Delete the old label object (strips it from all issues/PRs).
-  if [[ "$DELETE_OLD_LABEL" = "true" ]] && [[ "$repo_failed" -eq 0 ]]; then
+  if [[ "$DELETE_OLD_LABEL" = "true" && "$repo_failed" -eq 0 ]]; then
     if [[ "$DRY_RUN" = "true" ]]; then
       info "[dry-run] would DELETE label '$OLD_LABEL' from $repo"
     else

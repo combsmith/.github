@@ -65,7 +65,7 @@ collect_classify_prs() {
 
     all_nodes_ndjson+=$(jq -c '.[]' <<< "$nodes")
     all_nodes_ndjson+=$'\n'
-    [[ "$has_next" = "true" ]] && [[ -n "$end_cursor" ]] || break
+    [[ "$has_next" = "true" && -n "$end_cursor" ]] || break
     cursor="$end_cursor"
   done
 

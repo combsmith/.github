@@ -375,7 +375,7 @@ step_codeowners() {
   local path
   for path in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
     encoded="$(gh api "repos/${repo}/contents/${path}" --jq '.content' 2>/dev/null || true)"
-    [[ -n "$encoded" ]] && [[ "$encoded" != "null" ]] && break
+    [[ -n "$encoded" && "$encoded" != "null" ]] && break
     encoded=""
   done
   if [[ -z "$encoded" ]]; then

@@ -112,7 +112,7 @@ apply_one() {
   local repo="$1" file="$2"
   local name id id_rc=0
   name="$(jq -r '.name' "$file")"
-  [[ -n "$name" ]] && [[ "$name" != "null" ]] || { echo "::error::$file has no .name" >&2; return 1; }
+  [[ -n "$name" && "$name" != "null" ]] || { echo "::error::$file has no .name" >&2; return 1; }
   id="$(ruleset_id_by_name "$repo" "$name")" && id_rc=0 || id_rc=$?
   if [[ "$id_rc" -ne 0 ]]; then
     echo "::error::failed to resolve ruleset ID for '${name}' on ${repo}" >&2

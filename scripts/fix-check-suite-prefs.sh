@@ -120,7 +120,7 @@ if [[ "${1:-}" = "--help" ]] || [[ "${1:-}" = "-h" ]]; then
   exit 0
 fi
 
-if [[ $# -ge 1 ]] && [[ "$1" != "--all" ]]; then
+if [[ $# -ge 1 && "$1" != "--all" ]]; then
   # Single repo mode
   fix_repo "$1"
   exit $?

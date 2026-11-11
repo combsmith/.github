@@ -369,7 +369,7 @@ argate_token_budget() {
   s_percent="$(arl_token_extract_percent "$body" session)"
   w_percent="$(arl_token_extract_percent "$body" weekly_all)"
 
-  if [[ "$status" -eq 200 ]] && { [[ -n "$s_percent" ]] || [[ -n "$w_percent" ]]; }; then
+  if [[ "$status" -eq 200 && ( -n "$s_percent" || -n "$w_percent" ) ]]; then
     argate_log "token-budget: telemetry OBTAINED (status=200) — evaluating pause-worthy account windows (session, weekly_all)"
   elif [[ "$status" -eq 200 ]]; then
     argate_log "token-budget: telemetry status=200 but NO usable window data (empty/malformed body) — the breaker fails open; any allow below is DEGRADED, not a genuine under-threshold allow"

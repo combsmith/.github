@@ -85,7 +85,7 @@ amdl_extract_headings() {
         fence_char="$_fc"
         fence_len="$_flen"
       elif [[ "$trimmed" =~ ^(\`{3,}|~{3,})[[:space:]]*$ ]] && \
-           [[ "$_fc" = "$fence_char" ]] && [[ "$_flen" -ge "$fence_len" ]]; then
+           [[ "$_fc" = "$fence_char" && "$_flen" -ge "$fence_len" ]]; then
         in_fence=0
         fence_char=""
         fence_len=0

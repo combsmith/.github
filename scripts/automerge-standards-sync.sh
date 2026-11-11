@@ -117,7 +117,7 @@ resolve_approver() {
   for item in "${_members[@]}"; do
     item="${item#"${item%%[![:space:]]*}"}"; item="${item%"${item##*[![:space:]]}"}"
     [[ -z "$item" ]] && continue
-    if [[ "$item" != "$author" ]] && [[ "$item" != "$last" ]]; then
+    if [[ "$item" != "$author" && "$item" != "$last" ]]; then
       printf '%s' "$item"
       return 0
     fi

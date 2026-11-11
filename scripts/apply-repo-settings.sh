@@ -358,7 +358,7 @@ apply_check_suite_prefs() {
       setting=$(jq -r --argjson id "$app_id" \
         '.preferences.auto_trigger_checks // [] | map(select(.app_id == $id)) | first | .setting | if . == null then "missing" else . end' <<< "$prefs")
       # "missing" means the app has never run in this repo — no orphaned suite possible, skip
-      if [[ "$setting" != "false" ]] && [[ "$setting" != "missing" ]]; then
+      if [[ "$setting" != "false" && "$setting" != "missing" ]]; then
         all_disabled=false
       fi
     done

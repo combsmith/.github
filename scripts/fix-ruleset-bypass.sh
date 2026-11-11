@@ -234,7 +234,7 @@ done
 
 # Default dry-run payload dir: a fresh, owner-only mktemp dir — never a fixed,
 # predictable path in a shared temp dir (#1388). An explicit OUT_DIR is honored.
-if [[ "$DRY_RUN" = true ]] && [[ -z "$OUT_DIR" ]]; then
+if [[ "$DRY_RUN" = true && -z "$OUT_DIR" ]]; then
   OUT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/petry-ruleset-payloads.XXXXXX")
 fi
 

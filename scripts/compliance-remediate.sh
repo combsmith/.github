@@ -1051,7 +1051,7 @@ SUMMARY
 
   cat "$REMEDIATION_REPORT"
 
-  if [[ "$skipped_count" -gt 0 ]] || [[ "$failed_count" -gt 0 ]]; then
+  if [[ "$skipped_count" -gt 0 || "$failed_count" -gt 0 ]]; then
     echo ""
     cat "$SKIPPED_REPORT"
   fi
