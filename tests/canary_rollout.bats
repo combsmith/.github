@@ -190,6 +190,15 @@ setup() {
   [[ "$output" == "10" ]]
 }
 
+@test "_ingress_run_limit: a long zero-padded value is normalized before the length guard" {
+  run env CANARY_INGRESS_RUN_LIMIT=00000000001 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "1" ]]
+  run env CANARY_INGRESS_RUN_LIMIT=0000000000 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "5000" ]]
+}
+
 @test "promotion_failure_should_escalate: fires only at/after the threshold" {
   [ "$(promotion_failure_should_escalate 1 2)" -eq 0 ]
   [ "$(promotion_failure_should_escalate 2 2)" -eq 1 ]

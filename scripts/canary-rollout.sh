@@ -1101,6 +1101,7 @@ _ingress_runs_fetch() {
 _ingress_run_limit() {
   local n="${CANARY_INGRESS_RUN_LIMIT:-5000}"
   case "$n" in ''|*[!0-9]*) n=5000 ;; esac
+  while [[ "$n" == 0?* ]]; do n="${n#0}"; done   # strip leading zeros first so the length guard sees the real magnitude
   [[ "${#n}" -gt 9 ]] && n=5000   # an oversized value would wrap 64-bit arithmetic below: fall back to the default
   n=$((10#$n))   # force decimal: 08/010 must not be read as octal
   [[ "$n" -lt 1 ]] && n=5000
