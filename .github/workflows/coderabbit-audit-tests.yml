@@ -11,6 +11,7 @@ on:
   pull_request:
     paths:
       - 'scripts/coderabbit-audit.sh'
+      - 'scripts/lib/cron-timing.sh'
       - 'test/scripts/coderabbit-audit/**'
       - '.github/workflows/coderabbit-audit.yml'
       - '.github/workflows/coderabbit-audit-tests.yml'
@@ -19,12 +20,12 @@ on:
       - main
     paths:
       - 'scripts/coderabbit-audit.sh'
+      - 'scripts/lib/cron-timing.sh'
       - 'test/scripts/coderabbit-audit/**'
       - '.github/workflows/coderabbit-audit.yml'
       - '.github/workflows/coderabbit-audit-tests.yml'
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: coderabbit-audit-tests-${{ github.ref }}
@@ -35,6 +36,8 @@ jobs:
     name: Lint and bats
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,8 +48,15 @@ jobs:
       - name: Install bats, shellcheck, and jq
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends bats shellcheck jq
+          for attempt in 1 2 3; do
+            if sudo apt-get update -qq \
+                && sudo apt-get install -y --no-install-recommends bats shellcheck jq; then
+              exit 0
+            fi
+            echo "apt attempt $attempt failed" >&2
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: shellcheck
         run: |

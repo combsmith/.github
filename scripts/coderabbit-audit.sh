@@ -55,6 +55,7 @@ BELOW_THRESHOLD=0
 NOT_IN_EXPORT=0
 UNMAPPED=0
 RUN_ERROR=""
+PARTIAL_ERROR=""
 
 info() { echo "[info] $*" >&2; }
 warn() { echo "[warn] $*" >&2; }
@@ -318,14 +319,15 @@ build_issue_index() {
 # finding in the wrong public repo.
 # args: <parsed ndjson> <org repos ndjson>
 resolve_findings() {
-  local parsed="$1" repos="$2" row id name archived path revision owner text sev
+  local parsed="$1" repos="$2" row id name archived has_issues path revision owner text sev
   local tmp failed=0
   tmp=$(mktemp)
   while IFS= read -r row; do
     id=$(jq -r '.repo_id' <<< "$row")
     name=$(jq -r --arg id "$id" 'select(.id == $id) | .name' "$repos" | head -1)
     archived=$(jq -r --arg id "$id" 'select(.id == $id) | .archived' "$repos" | head -1)
-    if [[ -z "$name" ]] || [[ "$archived" = "true" ]]; then
+    has_issues=$(jq -r --arg id "$id" 'select(.id == $id) | .has_issues' "$repos" | head -1)
+    if [[ -z "$name" ]] || [[ "$archived" = "true" ]] || [[ "$has_issues" = "false" ]]; then
       UNMAPPED=$((UNMAPPED + 1))
       continue
     fi
@@ -343,12 +345,21 @@ resolve_findings() {
     owner=$(route_owner "$ORG" "$name" "$path" "$text")
     if ! jq -e --arg owner "$owner" 'select(.name == $owner and .archived == false)' "$repos" >/dev/null; then
       owner="$name"
+    elif [[ "$(jq -r --arg o "$owner" 'select(.name == $o) | .has_issues' "$repos" | head -1)" = "false" ]]; then
+      UNMAPPED=$((UNMAPPED + 1))
+      continue
     fi
     sev=$(normalize_severity "$(jq -r '.severity' <<< "$row")")
     jq -c --arg scanned "$name" --arg owner "$owner" --arg sev "$sev" \
       '{fingerprint, finding_id, state, severity: $sev, scanned_repo: $scanned, owner_repo: $owner}' \
       <<< "$row" >> "$tmp"
   done < "$parsed"
+  # The same fingerprint routed to different repos is ambiguous: fail closed
+  # rather than file in a possibly wrong public repo.
+  if [[ "$(jq -s '[group_by(.fingerprint)[] | select((map(.owner_repo) | unique | length) > 1)] | length' "$tmp")" -gt 0 ]]; then
+    warn "a finding fingerprint resolved to more than one owning repo"
+    failed=1
+  fi
   # One row per fingerprint, preferring an open row so a conflicting fixed or
   # dismissed row cannot close an open finding or file a duplicate issue.
   jq -s 'group_by(.fingerprint)
@@ -535,6 +546,11 @@ generate_summary() {
       echo "> [!WARNING]"
       echo "> ${RUN_ERROR} Issues were left untouched. Check the workflow logs."
     fi
+    if [[ -n "$PARTIAL_ERROR" ]]; then
+      echo ""
+      echo "> [!WARNING]"
+      echo "> ${PARTIAL_ERROR} Check the workflow logs."
+    fi
     echo ""
     [[ "$DRY_RUN" = "true" ]] && { echo "Dry run: no issues written."; echo ""; }
     echo "## Open findings by severity"
@@ -612,6 +628,9 @@ main() {
 
   local issues_failed=0
   reconcile_all "$work/index.ndjson" || issues_failed=1
+  if [[ "$issues_failed" = "1" ]]; then
+    PARTIAL_ERROR="Some audit issues could not be created, updated or closed; the counts below are partial."
+  fi
 
   jq -n --argjson added "$ISSUES_ADDED" --argjson existing "$ISSUES_EXISTING" --argjson removed "$ISSUES_REMOVED" \
         '{added:$added,existing:$existing,removed:$removed}' > "$COUNTS_FILE"

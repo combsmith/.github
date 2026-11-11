@@ -2226,7 +2226,9 @@ org-level workflows that run across all repositories:
 
 - **Closing:** an issue closes only when the export reports its finding as `fixed` or
   `dismissed`. A finding absent from the export leaves its issue open and is counted
-  in the summary, because a partial-coverage scan omits findings it did not reach. To
+  in the full-org summary (targeted `target_repo` runs leave them open but report
+  zero, because they cover one repo), because a partial-coverage scan omits findings
+  it did not reach. To
   reject a finding, use **Dismiss finding** in CodeRabbit: an issue closed only on
   GitHub is filed again on the next run.
 - **Fail closed:** a failed read, an export without the expected fingerprint, finding

@@ -386,6 +386,15 @@ assert_no_writes_and_red() {
   TARGET_REPO=combsmith/bravo run bash "$SCRIPT"
   grep -E '^curl ' "$STUB_LOG" | grep -q 'repo_id=102'
   grep -q 'absent from this export) | 0 |' "$REPORT_DIR/summary.md"
+  # Only the target repo's findings (c, d) are acted on: none for alpha's.
+  ! grep -E "^gh issue (create|close|edit) .*--repo combsmith/alpha" "$STUB_LOG" || false
+  grep -E "^gh issue create " "$STUB_LOG" | grep -q "$(fp d | cut -c1-12)"
+}
+@test "a finding in a repo with Issues disabled is skipped, not filed" {
+  { finding a 105 src/x.ts high open; } | sarif_of > "$STUB_DIR/export.sarif"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -z "$(writes)" ]
 }
 @test "an unknown TARGET_REPO fails and writes nothing" {
   TARGET_REPO=nope run bash "$SCRIPT"

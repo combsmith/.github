@@ -6,9 +6,16 @@ cat > "$STUB_DIR/curl-stdin"
 
 [[ -n "${STUB_CURL_FAIL:-}" ]] && { echo "curl: (7) connection failed" >&2; exit 7; }
 out=""
+rid=""
 while [[ $# -gt 0 ]]; do
   [[ "$1" = "--output" ]] && out="$2"
+  [[ "$1" =~ repo_id=([0-9]+) ]] && rid="${BASH_REMATCH[1]}"
   shift
 done
-cp "${STUB_SARIF:-$STUB_DIR/export.sarif}" "$out"
+src="${STUB_SARIF:-$STUB_DIR/export.sarif}"
+if [[ -n "$rid" ]]; then
+  jq --arg rid "$rid" '.runs[0].results |= map(select(.properties.scanProvenance.scope.primary.repositoryId == $rid))' "$src" > "$out"
+else
+  cp "$src" "$out"
+fi
 printf '%s' "${STUB_HTTP_STATUS:-200}"
