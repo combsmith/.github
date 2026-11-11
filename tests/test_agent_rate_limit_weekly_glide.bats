@@ -242,6 +242,13 @@ iso_epoch() { date -d "$1" +%s; }
   [ "$output" = "$(date -u -d '2026-01-02T04:30:00Z' +%s)" ]
 }
 
+@test "arl_token_iso_to_epoch rejects out-of-range offsets (+24:00, +00:60)" {
+  run bash -c "source '$LIB'; arl_token_iso_to_epoch '2026-01-01T00:30:00+24:00'"
+  [[ -z "$output" ]]
+  run bash -c "source '$LIB'; arl_token_iso_to_epoch '2026-01-01T00:30:00+00:60'"
+  [[ -z "$output" ]]
+}
+
 @test "arl_token_iso_to_epoch echoes empty for a malformed timestamp" {
   run bash -c "source '$LIB'; arl_token_iso_to_epoch 'not a date'"
   [ "$status" -eq 0 ]
