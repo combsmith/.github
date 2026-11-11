@@ -235,6 +235,13 @@ iso_epoch() { date -d "$1" +%s; }
   [ "$output" = "$want" ]
 }
 
+@test "arl_token_iso_to_epoch accepts a non-UTC offset whose local date differs from its UTC date" {
+  run bash -c "source '$LIB'; arl_token_iso_to_epoch '2026-01-01T00:30:00+05:00'"
+  [ "$output" = "$(date -u -d '2025-12-31T19:30:00Z' +%s)" ]
+  run bash -c "source '$LIB'; arl_token_iso_to_epoch '2026-01-01T23:30:00-05:00'"
+  [ "$output" = "$(date -u -d '2026-01-02T04:30:00Z' +%s)" ]
+}
+
 @test "arl_token_iso_to_epoch echoes empty for a malformed timestamp" {
   run bash -c "source '$LIB'; arl_token_iso_to_epoch 'not a date'"
   [ "$status" -eq 0 ]
