@@ -564,6 +564,25 @@ refute_mutated() {
   [[ "$output" != *"telemetry OBTAINED"* ]]
 }
 
+@test "token-budget: an oversized status fails open on both breakers even with a high body percent" {
+  write_token_gate_config "initiative-driver" 90
+  write_telemetry '{"status":18446744073709551616,"body":{"limits":[{"kind":"session","percent":99,"resets_at":"2026-08-31T12:00:00Z","is_active":true}]}}'
+  export GH_RUNS_JSON; GH_RUNS_JSON="[]"
+  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"decision=allow"* ]]
+  [[ "$output" == *"NOT obtained"* ]]
+}
+
+@test "token-budget: a zero-padded 0200 status is read as 200 and still trips on a high percent" {
+  write_token_gate_config "initiative-driver" 90
+  write_telemetry '{"status":"0200","body":{"limits":[{"kind":"session","percent":99,"resets_at":"2026-08-31T12:00:00Z","is_active":true}]}}'
+  export GH_RUNS_JSON; GH_RUNS_JSON="[]"
+  run bash -c "AGENT_TOKEN_BUDGET_ENABLED=true SOURCE_NOW=1893456000 bash '$GATE' initiative-driver --mode enforce --actor donpetry-bot"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"decision=defer"* ]]
+}
+
 @test "token-budget: obtained under-threshold telemetry logs a genuine (non-degraded) allow (AC #5)" {
   write_token_gate_config "initiative-driver" 90
   write_telemetry "$(envelope_limits 10 10)"
