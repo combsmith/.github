@@ -76,6 +76,7 @@ dl_dev_lead_active() {
     if [[ "$in_progress_max_hours" =~ ^[0-9]+$ ]]; then
       in_progress_max_hours=$((10#$in_progress_max_hours))
     else
+      echo "[warn]  Invalid IN_PROGRESS_MAX_HOURS='$in_progress_max_hours' for $org/$repo#$issue — using default 4" >&2
       in_progress_max_hours=4
     fi
     local labeled_at

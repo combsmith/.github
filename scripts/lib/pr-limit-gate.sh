@@ -232,6 +232,7 @@ plg_admission_gate() {
   local decision="allow" reason
   reason="org queue ${org_count}/${org_cap}"
 
+  org_count=$((10#$org_count)); org_cap=$((10#$org_cap))
   if [[ "$org_count" -ge "$org_cap" ]]; then
     decision="defer"
     reason="org queue ${org_count}/${org_cap} at or over the org-wide cap"

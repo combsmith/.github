@@ -194,7 +194,7 @@ envelope_limits() {
 
 @test "decision: zero-padded threshold is decimal, not octal (08)" {
   run bash -c "source '$LIB'; arl_token_budget_decision 100 08 true"
-  [ "$status" -eq 1 ]
+  [[ "$status" -eq 1 ]]
   [[ "$output" == *"decision=defer"* ]]
 }
 

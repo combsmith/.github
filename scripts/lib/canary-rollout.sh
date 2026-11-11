@@ -22,8 +22,8 @@
 # clamp <value> <lo> <hi> — echo value bounded to [lo, hi].
 clamp() {
   local v="$1" lo="$2" hi="$3"
-  if [[ "$v" -lt "$lo" ]]; then echo "$lo"; return 0; fi
-  if [[ "$v" -gt "$hi" ]]; then echo "$hi"; return 0; fi
+  if [[ "$v" =~ ^[0-9]+$ && "$lo" =~ ^[0-9]+$ ]] && (( 10#$v < 10#$lo )); then echo "$lo"; return 0; fi
+  if [[ "$v" =~ ^[0-9]+$ && "$hi" =~ ^[0-9]+$ ]] && (( 10#$v > 10#$hi )); then echo "$hi"; return 0; fi
   echo "$v"
 }
 
@@ -362,7 +362,7 @@ _looks_like_oid() { [[ "$1" =~ ^[0-9a-f]{7,64}$ ]]; }
 # least floor_hours on the source tier, else 0.
 dwell_met() {
   local dwell="${1:-0}" floor="${2:-0}"
-  if [[ "$dwell" -ge "$floor" ]]; then echo 1; else echo 0; fi
+  if [[ "$dwell" =~ ^[0-9]+$ && "$floor" =~ ^[0-9]+$ ]] && (( 10#$dwell >= 10#$floor )); then echo 1; else echo 0; fi
 }
 
 # iso_after <a> <b> — echo "yes" if ISO-8601 UTC timestamp a is at or after b, else
@@ -382,7 +382,7 @@ run_list_covers() {
   local n="${1:-0}" cap="${2:-0}" oldest="${3:-}" since="${4:-}"
   case "$n" in ''|*[!0-9]*) return 1 ;; esac
   case "$cap" in ''|*[!0-9]*) return 1 ;; esac
-  [[ "$n" -lt "$cap" ]] && return 0
+  (( 10#$n < 10#$cap )) && return 0
   [[ -n "$since" ]] && [[ -n "$oldest" ]] && [[ "$oldest" < "$since" ]]
 }
 
