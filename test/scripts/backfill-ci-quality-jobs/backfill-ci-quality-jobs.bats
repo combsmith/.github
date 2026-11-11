@@ -244,6 +244,11 @@ case "$args" in
     # real --jq filter, so the passing-conclusion filter is under test.
     sha="${path#*/commits/}"; sha="${sha%%/*}"
     filter=""; prev=""; for a in "$@"; do [ "$prev" = --jq ] && filter="$a"; prev="$a"; done
+    # checks-fail-second-<sha>: the 2nd check-runs request for that sha fails.
+    if [ -f "$FIXTURES/$repo/checks-fail-second-$sha" ]; then
+      n="$FIXTURES/$repo/.calls-$sha"; echo x >> "$n"
+      [ "$(wc -l < "$n")" -ge 2 ] && { echo "gh: HTTP 502" >&2; exit 1; }
+    fi
     f="$FIXTURES/$repo/checks-$sha"; [ -f "$f" ] || f=/dev/null
     jq -R -s 'split("\n") | map(select(length > 0) | split("|") | {name: .[0], conclusion: (.[1] // "success")}) | {check_runs: .}' "$f" \
       | jq -r "$filter" ;;
@@ -411,5 +416,17 @@ seed_repo() {  # seed_repo <name> [with-gitleaks]
   printf 'Secret scan (gitleaks)\ncoverage\n' > "$FIXTURES/lambda/checks-prsha"
   run cbf_verify_repo combsmith/lambda
   [ "$status" -ne 0 ]
+  ! grep -q -- "pr list" "$GH_LOG"
+}
+
+@test "verify_repo: a failed check-runs request does not trigger the PR fallback" {
+  _stub_gh; mkdir -p "$FIXTURES/lambda"
+  echo prsha > "$FIXTURES/lambda/pr-sha"
+  : > "$FIXTURES/lambda/checks-fail-second-tipsha"
+  printf 'Secret scan (gitleaks)|failure\n' > "$FIXTURES/lambda/checks-tipsha"
+  printf 'Secret scan (gitleaks)\ncoverage\n' > "$FIXTURES/lambda/checks-prsha"
+  run cbf_verify_repo combsmith/lambda
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot read check runs"* ]]
   ! grep -q -- "pr list" "$GH_LOG"
 }

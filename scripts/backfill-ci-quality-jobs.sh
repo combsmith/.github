@@ -302,7 +302,12 @@ cbf_verify_repo() {
   # even though the default branch does not define them yet.
   # Only when the default-branch tip has no check runs at all: if it has CI
   # evidence, a real failure there must not be replaced by an unrelated PR's checks.
-  if (( ${#missing[@]} > 0 )) && [[ -z "$(gh api --paginate "repos/${repo}/commits/${sha}/check-runs?per_page=100" --jq '.check_runs[].name' 2>/dev/null)" ]]; then
+  # A failed request is a verification failure, never an empty result.
+  local all_names=""
+  if (( ${#missing[@]} > 0 )); then
+    all_names="$(gh api --paginate "repos/${repo}/commits/${sha}/check-runs?per_page=100" --jq '.check_runs[].name' 2>/dev/null)"       || { echo "MISSING ${repo} (cannot read check runs)"; return 1; }
+  fi
+  if (( ${#missing[@]} > 0 )) && [[ -z "$all_names" ]]; then
     pr_sha="$(gh pr list --repo "$repo" --state merged --base "$branch" --limit 1 --json headRefOid --jq '.[0].headRefOid // ""' 2>/dev/null || true)"
     if [[ -n "$pr_sha" ]] && names="$(cbf_check_names "$repo" "$pr_sha")"; then
       missing=()
