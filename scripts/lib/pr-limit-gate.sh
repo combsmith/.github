@@ -247,6 +247,8 @@ plg_admission_gate() {
         plg_log "error: retrieved source PR count is not a valid integer: '$src_count'"
         return 2
       fi
+      # Force base 10: leading-zero values must not be parsed as octal.
+      sub_cap=$((10#$sub_cap)); src_count=$((10#$src_count))
       reason="org queue ${org_count}/${org_cap}, source '${source}' queue ${src_count}/${sub_cap}"
       if [[ "$src_count" -ge "$sub_cap" ]]; then
         decision="defer"
