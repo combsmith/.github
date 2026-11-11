@@ -122,9 +122,22 @@ workflow_command_lines() {
       # pip treats the name case-insensitively and allows spaces around '=='.
       [[ "${line,,}" =~ ^[[:space:]]*filelock[[:space:]]*==[[:space:]]*([^[:space:]\\\;]+) ]] || continue
       ver="${BASH_REMATCH[1]}"
-      # sort -V is not PEP 440-aware (4.2.1rc1 sorts after 4.2.1), so reject
-      # any 4.2.1 pre/dev release explicitly.
-      if [[ "$ver" =~ ^4\.2\.1(-|_|a|b|c|rc|pre|preview|\.dev) ]] || [ "$(printf '%s\n%s\n' "$ver" 4.2.1 | sort -V | head -n1)" != "4.2.1" ]; then
+      # PEP 440-aware: compare the numeric release segment (zero-padded), then
+      # judge the suffix. sort -V alone is not enough: 4.2.1rc1 sorts after
+      # 4.2.1 although it is a prerelease, and 4.2.1-1 is a valid postrelease.
+      [[ "$ver" =~ ^v?([0-9]+(\.[0-9]+)*)(.*)$ ]] || { echo "UNPARSEABLE filelock==$ver in ${f##*/}"; fail=1; continue; }
+      local rel="${BASH_REMATCH[1]}" suffix="${BASH_REMATCH[3]}" a b c cmp
+      IFS=. read -r a b c _ <<< "$rel"
+      cmp="$(printf '%08d%08d%08d' "${a:-0}" "${b:-0}" "${c:-0}")"
+      local min="000000040000000200000001" bad=0
+      if [[ "$cmp" < "$min" ]]; then
+        bad=1
+      elif [ "$cmp" = "$min" ]; then
+        # Equal release: only a post release (or local version) is >= 4.2.1.
+        [[ "$suffix" =~ ^([-_.]?(post|rev|r)[-_.]?[0-9]*|-[0-9]+)([-_.]?dev[-_.]?[0-9]*)?(\+.*)?$ ]] \
+          && [[ ! "$suffix" =~ dev ]] || [ -z "$suffix" ] || [[ "$suffix" == +* ]] || bad=1
+      fi
+      if [ "$bad" -eq 1 ]; then
         echo "VULNERABLE filelock==$ver in ${f##*/} (need >= 4.2.1)"; fail=1
       fi
     done < "$f"
