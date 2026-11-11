@@ -96,7 +96,9 @@ cbf_job_status() {
 # A job that calls a reusable workflow (`uses:`) is reported by GitHub as
 # "<caller> / <called job>", so it never reports a bare <check_name>.
 cbf_reports_check() {
-  (( $(CHECK="$2" yq -r '[(.jobs // {}) | to_entries | .[] | select((.value.uses == null) and ((.value.name // .key) == strenv(CHECK)))] | length' "$1" 2>/dev/null) > 0 )) 2>/dev/null
+  local count
+  count="$(CHECK="$2" yq -r '[(.jobs // {}) | to_entries | .[] | select((.value.uses == null) and ((.value.name // .key) == strenv(CHECK)))] | length' "$1" 2>/dev/null)" || count=0
+  [[ "$count" =~ ^[0-9]+$ ]] && (( count > 0 ))
 }
 
 # cbf_extract_job <template_ci> <job_id> — print the job's block from the template
@@ -255,6 +257,11 @@ cbf_backfill_repo() {
   if [[ " ${added} " == *" secret-scan "* ]]; then
     local probe; probe="$(mktemp)"
     cbf_fetch "$repo" ".gitleaks.toml" "$probe" 2>"$err" && rc=0 || rc=$?
+    # An existing config without `useDefault = true` replaces gitleaks' built-in rules
+    # (--config), so the scan could run with zero rules. Warn; never edit the repo's file.
+    if (( rc == 0 )) && ! grep -Eq '^[[:space:]]*useDefault[[:space:]]*=[[:space:]]*true' "$probe"; then
+      echo "WARN ${repo} — existing .gitleaks.toml lacks [extend] useDefault = true; secret-scan may run with no rules"
+    fi
     rm -f "$probe"
     if (( rc == 4 )); then seed=true; files+=(".gitleaks.toml" "$CBF_TEMPLATE_GITLEAKS")
     elif (( rc != 0 )); then
@@ -352,6 +359,7 @@ cbf_main() {
   if { [[ -n "$target" ]] && [[ "$all" = true ]]; } || { [[ -z "$target" ]] && [[ "$all" = false ]]; }; then
     echo "::error::usage: $0 [--verify] (--repo <owner/repo> | --all) [--dry-run]" >&2; return 2
   fi
+  command -v yq >/dev/null 2>&1 || { echo "::error::yq is required but not installed" >&2; return 1; }
   gh auth status >/dev/null 2>&1 || { echo "::error::GitHub authentication failed — set GH_TOKEN or run 'gh auth login'" >&2; return 1; }
 
   local repos=() repo failed=0
