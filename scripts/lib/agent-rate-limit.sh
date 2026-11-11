@@ -1124,6 +1124,13 @@ arl_token_iso_to_epoch() {
   # timestamp near midnight, whose UTC date is the day before or after.
   local reconstructed_date
   reconstructed_date="$(date -u -d "${iso:0:10}" +%Y-%m-%d 2>/dev/null || printf '')"
+  local offset_re="([+-])([0-9]{2}):([0-9]{2})$"
+  if [[ "$iso" =~ $offset_re ]]; then
+    # Reject out-of-range offsets (e.g. +24:00, +00:60) that date would silently normalise.
+    if (( 10#${BASH_REMATCH[2]} > 23 || 10#${BASH_REMATCH[3]} > 59 )); then
+      return 0
+    fi
+  fi
   [[ "$reconstructed_date" = "${iso:0:10}" ]] || return 0
   printf '%s' "$epoch"
 }

@@ -4414,12 +4414,13 @@ DECISION_KNOBS='{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_p
   [[ "$(decide_graduated 18446744073709551620 4 8 5 false 0 0)" == "SOAKING" ]]
 }
 @test "decide_suspect_downgrade: padded operands are decimal; a malformed or oversized rate or sample HOLDs" {
-  [ "$(decide_suspect_downgrade 08 09 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "DOWNGRADE" ]
-  [ "$(decide_suspect_downgrade '0+0' 5 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "HOLD" ]
-  [ "$(decide_suspect_downgrade 5 '0+0' 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "HOLD" ]
-  [ "$(decide_suspect_downgrade 5 5 'x' '{"min_baseline_sample":0,"margin_permille":0}')" = "HOLD" ]
+  [[ "$(decide_suspect_downgrade 08 09 20 '{"min_baseline_sample":10,"margin_permille":0}')" == "DOWNGRADE" ]]
+  [[ "$(decide_suspect_downgrade 09 08 20 '{"min_baseline_sample":10,"margin_permille":0}')" == "HOLD" ]]
+  [[ "$(decide_suspect_downgrade '1+1' 0 20 '{"min_baseline_sample":10,"margin_permille":0}')" == "HOLD" ]]
+  [[ "$(decide_suspect_downgrade 5 '1+1' 20 '{"min_baseline_sample":10,"margin_permille":0}')" == "HOLD" ]]
+  [[ "$(decide_suspect_downgrade 5 5 'x' '{"min_baseline_sample":0,"margin_permille":0}')" == "HOLD" ]]
   # 2^64 wraps to 0 under $((10#n)); it must not read as a clean candidate.
-  [ "$(decide_suspect_downgrade 18446744073709551616 5 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "HOLD" ]
+  [[ "$(decide_suspect_downgrade 18446744073709551616 5 20 '{"min_baseline_sample":10,"margin_permille":0}')" == "HOLD" ]]
 }
 @test "decide_decision_shift: shares within threshold → OK (no effect)" {
   # ~917‰/83‰ vs ~909‰/91‰ dispatched/skip-draft — max per-class delta 8‰ ≪ 400‰
