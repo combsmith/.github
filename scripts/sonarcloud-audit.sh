@@ -171,9 +171,12 @@ sonar_list_projects() {
   while :; do
     resp=$(_sonar_get "/api/components/search?organization=${SONAR_ORG}&qualifiers=TRK&ps=500&p=${page}") \
       || { warn "sonar_list_projects: page ${page} fetch failed — results may be incomplete"; return 1; }
-    echo "$resp" | jq -r '.components[].key'
-    total=$(echo "$resp" | jq '.paging.total')
-    page_count=$(echo "$resp" | jq '.components | length')
+    echo "$resp" | jq -r '.components[].key' \
+      || { warn "sonar_list_projects: page ${page} has missing/malformed components — results may be incomplete"; return 1; }
+    total=$(echo "$resp" | jq '.paging.total') \
+      || { warn "sonar_list_projects: page ${page} paging.total extraction failed"; return 1; }
+    page_count=$(echo "$resp" | jq '.components | length') \
+      || { warn "sonar_list_projects: page ${page} components length extraction failed"; return 1; }
     if ! [[ "$total" =~ ^[0-9]+$ ]]; then
       warn "sonar_list_projects: page ${page} has missing/non-numeric paging.total ('${total}') — results may be incomplete"
       return 1

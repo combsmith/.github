@@ -924,7 +924,7 @@ arl_token_transport_decision() {
   # never error out and fall through to evaluating the body.
   status="${status#"${status%%[!0]*}"}"
   status="${status:-0}"
-  if [ "${#status}" -gt 15 ]; then status=0; fi
+  if [[ ${#status} -gt 15 ]]; then status=0; fi
 
   # Fresh 429 with a positive retry-after: the one telemetry response that
   # blocks (ADR §7). An observation timestamp (observed_at) or absolute deadline

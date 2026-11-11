@@ -357,7 +357,10 @@ argate_token_budget() {
   body="$(jq -c '.body? // {}' <<<"$envelope" 2>/dev/null || printf '{}')"
   # Normalize to decimal (leading zeros such as 0200 must not be read as octal);
   # an absurdly long digit string is treated as not-obtained rather than wrapped.
-  if [[ "${#status}" -le 15 ]]; then status=$((10#$status)); else status=0; fi
+  # Strip leading zeros first so the length bound matches arl_token_transport_decision.
+  status="${status#"${status%%[!0]*}"}"
+  status="${status:-0}"
+  if [[ ${#status} -le 15 ]]; then status=$((10#$status)); else status=0; fi
 
   # Extract both pause-worthy window percents up front so the OBTAINED/DEGRADED
   # headline reflects whether the body actually carried usable window data. A 200
