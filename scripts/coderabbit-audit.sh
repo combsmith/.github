@@ -427,19 +427,23 @@ reconcile_open() {
     local -a stale=()
     read -r repo number <<< "$existing"
     have=",$labels,"
-    # Only the priority label changes: the body holds the human-maintained
-    # Acceptance checklist, and needs-verification and dev-lead are a person's
-    # decisions, so a re-run never rewrites the body or restores/adds them.
-    # Edits happen only when the labels are wrong, and a failure is reported.
     for other in priority:blocker priority:critical priority:major priority:minor; do
       if [[ "$other" != "$prio" && "$have" == *",$other,"* ]]; then
         stale+=("$other")
       fi
     done
+    # Skip edits only when the desired priority is present and no conflicting
+    # managed priority is present; otherwise add the desired label if needed
+    # and remove present conflicting labels, reporting failures.
+    if [[ "$have" == *",$prio,"* && ${#stale[@]} -eq 0 ]]; then
+      ISSUES_EXISTING=$((ISSUES_EXISTING + 1))
+      info "No label update needed for #$number in $repo :: $title"
+      return 0
+    fi
     if [[ "$have" != *",$prio,"* ]]; then
       if ! gh issue edit "$number" --repo "$ORG/$repo" --add-label "$prio" >/dev/null; then
-        warn "$repo: could not update #$number"
-        return 1
+        warn "$repo: could not add label $prio to #$number"
+        failed=1
       fi
     fi
     for other in ${stale[@]+"${stale[@]}"}; do

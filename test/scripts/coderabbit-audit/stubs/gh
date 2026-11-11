@@ -14,21 +14,19 @@ case "$1 $2" in
   "issue list")
     [[ -n "${STUB_FAIL_ISSUE_LIST:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
     shift 2
-    repo="" label="" state="" limit=""
+    repo="" label="" state="" limit="" json=0
     while (( $# )); do
-      [[ $# -ge 2 ]] || exit 64
       case "$1" in
-        --repo)  repo="${2#*/}" ;;
-        --label) label="$2" ;;
-        --state) state="$2" ;;
-        --limit) limit="$2" ;;
-        --json)  : ;;
+        --repo)  [[ $# -ge 2 ]] || { echo "gh stub: --repo requires value" >&2; exit 64; }; repo="${2#*/}"; shift 2 ;;
+        --label) [[ $# -ge 2 ]] || { echo "gh stub: --label requires value" >&2; exit 64; }; label="$2"; shift 2 ;;
+        --state) [[ $# -ge 2 ]] || { echo "gh stub: --state requires value" >&2; exit 64; }; state="$2"; shift 2 ;;
+        --limit) [[ $# -ge 2 ]] || { echo "gh stub: --limit requires value" >&2; exit 64; }; limit="$2"; shift 2 ;;
+        --json)  [[ $# -ge 2 ]] || { echo "gh stub: --json requires value" >&2; exit 64; }; json=1; shift 2 ;;
         *) echo "gh stub: unexpected issue list argument: $1" >&2; exit 64 ;;
       esac
-      shift 2
     done
-    [[ -n "$repo" && "$label" == "coderabbit-audit" && "$state" == "open" && "$limit" == "1000" ]] || exit 64
-    cat "$STUB_DIR/issues/$repo.json" || exit 1 ;;
+    [[ -n "$repo" && "$label" == "coderabbit-audit" && "$state" == "open" && "$limit" == "1000" && "$json" == "1" ]] || exit 64
+    [[ -f "$STUB_DIR/issues/$repo.json" ]] && cat "$STUB_DIR/issues/$repo.json" || printf '%s\n' '[]' ;;
   "issue create")
     [[ -n "${STUB_FAIL_ISSUE_CREATE:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
     echo "https://github.invalid/issues/1" ;;
