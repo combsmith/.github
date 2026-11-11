@@ -273,20 +273,23 @@ _semver_gt() {
   local a1=0 a2=0 a3=0 b1=0 b2=0 b3=0
   IFS=. read -r a1 a2 a3 <<< "$1"
   IFS=. read -r b1 b2 b3 <<< "$2"
-  # Normalize to base-10 strings (strip leading zeros); compare by length first
-  # (fewer digits < more digits for numeric strings), then lexicographically.
-  # This avoids overflow for arbitrarily large components.
-  a1=$((10#$a1)); a2=$((10#$a2)); a3=$((10#$a3))
-  b1=$((10#$b1)); b2=$((10#$b2)); b3=$((10#$b3))
-  # Compare major
-  if [[ ${#a1} -ne ${#b1} ]]; then [[ ${#a1} -gt ${#b1} ]]; return $?; fi
-  if [[ "$a1" != "$b1" ]]; then [[ "$a1" > "$b1" ]]; return $?; fi
-  # Compare minor
-  if [[ ${#a2} -ne ${#b2} ]]; then [[ ${#a2} -gt ${#b2} ]]; return $?; fi
-  if [[ "$a2" != "$b2" ]]; then [[ "$a2" > "$b2" ]]; return $?; fi
-  # Compare patch
-  if [[ ${#a3} -ne ${#b3} ]]; then [[ ${#a3} -gt ${#b3} ]]; return $?; fi
-  [[ "$a3" > "$b3" ]]
+  # Strip leading zeros by string ops (never arithmetic: $((10#n)) wraps past 2^63),
+  # then compare by length first (fewer digits < more digits), then lexicographically
+  # (equal-length digit strings order the same as their numeric values).
+  local _v
+  for _v in a1 a2 a3 b1 b2 b3; do
+    local _s="${!_v}"
+    _s="${_s#"${_s%%[!0]*}"}"
+    printf -v "$_v" '%s' "${_s:-0}"
+  done
+  local _x _y
+  for _x in "$a1:$b1" "$a2:$b2" "$a3:$b3"; do
+    _y="${_x#*:}"; _x="${_x%%:*}"
+    if [[ ${#_x} -ne ${#_y} ]]; then [[ ${#_x} -gt ${#_y} ]]; return $?; fi
+    # shellcheck disable=SC2071  # intentional: equal-length digit strings, lexicographic == numeric
+    if [[ "$_x" != "$_y" ]]; then [[ "$_x" > "$_y" ]]; return $?; fi
+  done
+  return 1
 }
 
 # max_semver <version...> — echo the highest strict MAJOR.MINOR.PATCH among the

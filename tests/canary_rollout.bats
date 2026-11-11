@@ -273,6 +273,14 @@ YML
   run _semver_gt 2.1.0 2.1.1; [ "$status" -ne 0 ]
 }
 
+@test "_semver_gt: oversized and zero-padded components do not overflow" {
+  run _semver_gt 99999999999999999999999.0.0 1.0.0; [ "$status" -eq 0 ]
+  run _semver_gt 1.0.0 99999999999999999999999.0.0; [ "$status" -ne 0 ]
+  run _semver_gt 99999999999999999999999.0.0 99999999999999999999998.0.0; [ "$status" -eq 0 ]
+  run _semver_gt 01.002.0 1.2.0; [ "$status" -ne 0 ]
+  run _semver_gt 1.10.0 1.9.9; [ "$status" -eq 0 ]
+}
+
 @test "max_semver: picks the highest version" {
   [ "$(max_semver 2.0.5 2.1.0 2.0.9)" = "2.1.0" ]
   [ "$(max_semver 1.0.0)" = "1.0.0" ]
