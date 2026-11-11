@@ -813,9 +813,12 @@ _repo_wf_runs_cached() {
     # Prefer the server's explicit throttle hint; otherwise exponential + full jitter.
     ra="$(_gh_retry_after "$err")"
     ra="${ra#"${ra%%[!0]*}"}"
-    if [[ -n "$ra" ]] && [[ "$ra" -gt 0 ]]; then
+    if [[ -n "$ra" ]]; then   # leading zeros stripped above, so non-empty == > 0 (no integer eval of a huge hint)
       delay="$ra"
-      [[ $((10#$delay)) -gt $((10#$ra_cap)) ]] && delay="$((10#$ra_cap))"   # honor hint but cap runaway values
+      # Clamp >9-digit hints before any integer eval so an oversized hint can't wrap in 64-bit arithmetic.
+      [[ "${#delay}" -gt 9 ]] && delay=999999999
+      [[ "${#ra_cap}" -gt 9 ]] && ra_cap=999999999
+      [[ "$delay" -gt "$ra_cap" ]] && delay="$ra_cap"   # honor hint but cap runaway values
     else
       expo=$((attempt - 1)); [[ "$expo" -gt 20 ]] && expo=20     # guard the exponent from overflow
       delay=$(( base << expo ))
@@ -1098,6 +1101,7 @@ _ingress_runs_fetch() {
 _ingress_run_limit() {
   local n="${CANARY_INGRESS_RUN_LIMIT:-5000}"
   case "$n" in ''|*[!0-9]*) n=5000 ;; esac
+  n=$((10#$n))   # force decimal: 08/010 must not be read as octal
   [[ "$n" -lt 1 ]] && n=5000
   _INGRESS_RUN_LIMIT="$n"   # a variable, not stdout: callers avoid a `$(...)` fork per call (#1259)
 }
