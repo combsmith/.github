@@ -211,9 +211,13 @@ scan() {
   local ndjson_file="$REPORT_DIR/findings.ndjson"
   : > "$ndjson_file"
   : > "$SCANNED_FILE"
-  local project repo issues family
+  local project repo issues family projects
 
-  for project in $(sonar_list_projects); do
+  # Capture the listing so a failed/malformed page aborts the audit instead of
+  # silently truncating it (a `for … in $(…)` swallows the exit status).
+  projects=$(sonar_list_projects) || return 1
+
+  for project in $projects; do
     repo=$(sonar_project_to_repo "$project")
     [[ -n "$target_name" ]] && [[ "$repo" != "$target_name" ]] && continue
     info "Scanning $project -> $repo"
