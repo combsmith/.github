@@ -389,3 +389,30 @@ make_go_fixture() {
     [ "$v" = '${{ inputs.python-version }}' ]
   done <<<"$versions"
 }
+
+# Executes the real `Validate python-version input` step (extracted with yq)
+# so the >= 3.11 floor and the 3.N / 3.N.P / 3.N.x forms stay pinned.
+run_python_version_guard() {
+  local script
+  script=$(yq '.jobs["audit-pip"].steps[] | select(.name == "Validate python-version input (>= 3.11)") | .run' \
+    "$DA_REPO_ROOT/.github/workflows/dependency-audit-reusable.yml")
+  [ -n "$script" ] && [ "$script" != "null" ]
+  PYTHON_VERSION="$1" run bash -c "$script"
+}
+
+@test "python-version guard rejects 3.10, 3.10.x and floating 3.x" {
+  local v
+  for v in 3.10 3.10.14 3.10.x 3.x 3 4.0 ""; do
+    run_python_version_guard "$v"
+    [ "$status" -ne 0 ] || { echo "accepted '$v'"; return 1; }
+    [[ "$output" == *"unsupported"* ]]
+  done
+}
+
+@test "python-version guard accepts 3.11, 3.11.x, 3.13 and 3.13.2" {
+  local v
+  for v in 3.11 3.11.x 3.11.4 3.13 3.13.2; do
+    run_python_version_guard "$v"
+    [ "$status" -eq 0 ] || { echo "rejected '$v': $output"; return 1; }
+  done
+}
