@@ -3749,9 +3749,8 @@ main() {
       echo "[]" > "$FINDINGS_FILE"
       return 1
     else
+      # Fall through: the zero-repo tail still writes summary.md and issue-counts.json.
       info "All repositories in $ORG are excluded (not-served); audit completes with no findings"
-      echo "[]" > "$FINDINGS_FILE"
-      return 0
     fi
   fi
 

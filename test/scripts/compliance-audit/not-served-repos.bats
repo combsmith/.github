@@ -20,12 +20,12 @@ setup() {
 # per-repo check, feed main() an org listing with served and not-served repos,
 # and echo which repos were audited and which reached issue management.
 _run_main() {
-  APPLY_FLAG="$1" run bash -c '
+  APPLY_FLAG="$1" LISTING="${2:-markets software-factory Software-Factory-Canary broodly}" run bash -c '
     source "$SCRIPT" >/dev/null 2>&1
     gh() {
       case "$1 $2" in
         "auth status") return 0 ;;
-        "repo list") printf "%s\n" markets software-factory Software-Factory-Canary broodly ;;
+        "repo list") printf "%s\n" $LISTING ;;
         *) return 0 ;;
       esac
     }
@@ -72,6 +72,13 @@ _run_main() {
   [[ "$output" == *"markets"* ]]
   [[ "$output" != *"software-factory"* ]]
   [[ "$output" != *"Software-Factory-Canary"* ]]
+}
+
+@test "all repos excluded: audit succeeds and still writes summary and issue counts" {
+  _run_main false "software-factory Software-Factory-Canary"
+  [ "$status" -eq 0 ]
+  [ -s "$REPORT_DIR/summary.md" ]
+  [ -s "$REPORT_DIR/issue-counts.json" ]
 }
 
 # The shared list itself (scripts/lib/not-served-repos.sh). This file runs on any
