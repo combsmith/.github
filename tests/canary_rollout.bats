@@ -4388,6 +4388,19 @@ DECISION_KNOBS='{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_p
   [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_permille":"0+0"}')" = "SHIFT" ]
   [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":"1+1","min_baseline_sample":20,"max_shift_permille":400}')" = "SHIFT" ]
 }
+@test "decide_decision_shift: malformed max_shift_permille \"400+1\" and oversized knobs fail closed → SHIFT" {
+  [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_permille":"400+1"}')" = "SHIFT" ]
+  [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":99999999999999999999,"min_baseline_sample":20,"max_shift_permille":400}')" = "SHIFT" ]
+}
+@test "decide_graduated: malformed sample target \"0+0\" never promotes; padded \"08\" compares as decimal" {
+  [ "$(decide_graduated 10 4 0 "0+0" false 0 0)" = "SOAKING" ]
+  [ "$(decide_graduated 10 4 8 "08" false 0 0)" = "PROMOTE" ]
+  [ "$(decide_graduated 10 4 7 "08" false 0 0)" = "SOAKING" ]
+}
+@test "decide_suspect_downgrade: padded and malformed operands are normalised, never evaluated" {
+  [ "$(decide_suspect_downgrade 08 09 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "DOWNGRADE" ]
+  [ "$(decide_suspect_downgrade '0+0' 5 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "DOWNGRADE" ]
+}
 @test "decide_decision_shift: shares within threshold → OK (no effect)" {
   # ~917‰/83‰ vs ~909‰/91‰ dispatched/skip-draft — max per-class delta 8‰ ≪ 400‰
   [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' "$DECISION_KNOBS")" = "OK" ]

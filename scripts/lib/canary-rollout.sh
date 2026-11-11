@@ -403,7 +403,14 @@ decide_graduated() {
   fi
   local dwell_ok sample_ok
   dwell_ok=$(dwell_met "$dwell" "$floor")
-  if [[ "$waived" = "true" ]] || [[ "$sample" -ge "$target" ]]; then sample_ok=1; else sample_ok=0; fi
+  if [[ "$waived" = "true" ]]; then
+    sample_ok=1
+  else
+    # Malformed sample/target (e.g. "0+0") must never reach arithmetic: hold (SOAKING).
+    case "$sample" in ''|*[!0-9]*) echo "SOAKING"; return 0 ;; esac
+    case "$target" in ''|*[!0-9]*) echo "SOAKING"; return 0 ;; esac
+    if (( 10#$sample >= 10#$target )); then sample_ok=1; else sample_ok=0; fi
+  fi
   if [[ "$dwell_ok" -eq 1 ]] && [[ "$sample_ok" -eq 1 ]]; then
     echo "PROMOTE"; return 0
   fi
@@ -470,8 +477,13 @@ decide_suspect_downgrade() {
   local min_base margin
   min_base="$(jq -r '.min_baseline_sample // 0' <<< "$knobs" 2>/dev/null || echo 0)"
   margin="$(jq -r '.margin_permille // 0' <<< "$knobs" 2>/dev/null || echo 0)"
-  case "$min_base" in ''|*[!0-9]*) min_base=0 ;; esac
-  case "$margin" in ''|*[!0-9]*) margin=0 ;; esac
+  # Validate every operand as a digit string and normalise to base 10 (no octal, no arithmetic
+  # injection); a malformed operand degrades to 0.
+  case "$min_base" in ''|*[!0-9]*) min_base=0 ;; *) min_base=$((10#$min_base)) ;; esac
+  case "$margin" in ''|*[!0-9]*) margin=0 ;; *) margin=$((10#$margin)) ;; esac
+  case "$cand" in ''|*[!0-9]*) cand=0 ;; *) cand=$((10#$cand)) ;; esac
+  case "$base" in ''|*[!0-9]*) base=0 ;; *) base=$((10#$base)) ;; esac
+  case "$base_sample" in ''|*[!0-9]*) base_sample=0 ;; *) base_sample=$((10#$base_sample)) ;; esac
   # Tiny-n guard first: too little baseline data → keep the human (conservative), regardless of rate.
   if [[ "$base_sample" -lt "$min_base" ]]; then echo "HOLD"; return 0; fi
   if [[ "$cand" -le $(( base + margin )) ]]; then echo "DOWNGRADE"; return 0; fi
@@ -667,6 +679,9 @@ decision_class() {
 #   SHIFT        — some decision class's share (per-mille of that side's total) moved by at
 #                  least max_shift_permille between candidate and baseline → HOLD (SUSPECT).
 #   OK           — every class's share is within threshold → no effect.
+# Fail closed on a malformed knob (non-decimal or out of range): echoes SHIFT (HOLD) before any
+# sample-size check, so a misconfigured gate holds rather than promotes — even for a low-traffic
+# agent that would otherwise be INSUFFICIENT.
 # Shares are integer per-mille, rounded half-up; the max absolute per-class delta is compared
 # to max_shift_permille (inclusive). Gross always/never/gross shifts only — by design (n=10–25).
 decide_decision_shift() {
@@ -684,6 +699,10 @@ decide_decision_shift() {
   for k in "$min_c" "$min_b" "$max_shift"; do
     case "$k" in ''|*[!0-9]*) echo "SHIFT"; return 0 ;; esac
   done
+  # Reject out-of-range magnitudes too: 10# would wrap an oversized value to a negative number.
+  if [[ ${#min_c} -gt 18 || ${#min_b} -gt 18 || ${#max_shift} -gt 18 ]]; then
+    echo "SHIFT"; return 0
+  fi
   min_c=$((10#$min_c)); min_b=$((10#$min_b)); max_shift=$((10#$max_shift))
   local cand_total base_total
   cand_total="$(jq -r 'if type=="object" then ([.[]?]|add // 0) else "x" end' <<< "$cand" 2>/dev/null || echo x)"

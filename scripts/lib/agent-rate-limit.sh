@@ -307,7 +307,7 @@ arl_breaker_decision() {
   if [[ "$backoff" =~ ^[0-9]+$ ]]; then backoff=$((10#$backoff)); fi
 
   # Malformed / missing breaker config -> cannot evaluate -> allow (never block).
-  if [[ -z "$threshold" ]] || [[ "$threshold" -le 0 ]]; then
+  if ! [[ "$threshold" =~ ^[0-9]+$ ]] || [[ "$threshold" -le 0 ]]; then
     arl_log "breaker for '${agent_type}': state=closed (no usable consecutive_failure_threshold — allowing)"
     printf 'decision=allow\n'
     return 0
@@ -321,7 +321,7 @@ arl_breaker_decision() {
 
   # Breaker has tripped. Without a usable backoff we cannot time a half-open
   # probe; degrade to allow rather than block indefinitely on bad config.
-  if [[ -z "$backoff" ]] || [[ "$backoff" -le 0 ]]; then
+  if ! [[ "$backoff" =~ ^[0-9]+$ ]] || [[ "$backoff" -le 0 ]]; then
     arl_log "breaker for '${agent_type}': state=open but no usable backoff_minutes — allowing (degraded)"
     printf 'decision=allow\n'
     return 0
