@@ -1061,7 +1061,7 @@ _horizon_from() {
   [[ "$days" -ge 1 ]] || days=1
   for t in $tiers; do
     case "$t" in ''|*[!0-9]*) continue ;; esac
-    if [[ "$days" -le "$t" ]]; then
+    if [[ "$days" -le "$((10#$t))" ]]; then
       _HORIZON_FROM="$(date -u -d "-${t} days" +%Y-%m-%d 2>/dev/null || date -u -v"-${t}d" +%Y-%m-%d 2>/dev/null || true)"
       return 0
     fi
