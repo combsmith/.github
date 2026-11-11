@@ -395,8 +395,11 @@ make_go_fixture() {
 run_python_version_guard() {
   local script
   script=$(yq '.jobs["audit-pip"].steps[] | select(.name == "Validate python-version input (>= 3.11)") | .run' \
-    "$DA_REPO_ROOT/.github/workflows/dependency-audit-reusable.yml")
-  [ -n "$script" ] && [ "$script" != "null" ]
+    "$DA_WORKFLOW")
+  if [ -z "$script" ] || [ "$script" = "null" ]; then
+    echo "Failed to extract validation script from $DA_WORKFLOW" >&2
+    return 1
+  fi
   PYTHON_VERSION="$1" run bash -c "$script"
 }
 
