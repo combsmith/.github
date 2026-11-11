@@ -23,3 +23,9 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/scripts/sonarcloud-audit.sh"
   run bash -c "source '$SCRIPT'; _sonar_get() { echo '{\"components\":[{\"name\":\"x\"}],\"paging\":{\"total\":1}}'; }; sonar_list_projects"
   [ "$status" -ne 0 ]
 }
+
+@test "valid empty project listing succeeds with no keys" {
+  run bash -c "source '$SCRIPT'; _sonar_get() { echo '{\"components\":[],\"paging\":{\"total\":0}}'; }; sonar_list_projects"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
