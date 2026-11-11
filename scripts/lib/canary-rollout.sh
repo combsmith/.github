@@ -410,7 +410,11 @@ run_list_covers() {
 decide_graduated() {
   local dwell="${1:-0}" floor="${2:-0}" sample="${3:-0}" target="${4:-0}"
   local waived="${5:-false}" cum_fail="${6:-0}" cum_startup="${7:-0}"
-  if [[ "$cum_fail" -gt 0 ]] || [[ "$cum_startup" -gt 0 ]]; then
+  # Malformed/oversized counts fail closed (BLOCKED); force base 10 so "08" is not octal.
+  case "$cum_fail" in ''|*[!0-9]*) echo "BLOCKED"; return 0 ;; esac
+  case "$cum_startup" in ''|*[!0-9]*) echo "BLOCKED"; return 0 ;; esac
+  if [[ ${#cum_fail} -gt 18 || ${#cum_startup} -gt 18 ]]; then echo "BLOCKED"; return 0; fi
+  if (( 10#$cum_fail > 0 || 10#$cum_startup > 0 )); then
     echo "BLOCKED"; return 0
   fi
   local dwell_ok sample_ok

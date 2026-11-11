@@ -4395,17 +4395,24 @@ DECISION_KNOBS='{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_p
   [ "$(decide_decision_shift '{"skip-checks-pending":12}' '{"dispatched":22}' "$DECISION_KNOBS")" = "SHIFT" ]
 }
 @test "decide_decision_shift: malformed knobs (e.g. \"0+0\") fail closed → SHIFT, never evaluated as arithmetic" {
-  [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_permille":"0+0"}')" = "SHIFT" ]
-  [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":"1+1","min_baseline_sample":20,"max_shift_permille":400}')" = "SHIFT" ]
+  [[ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_permille":"0+0"}')" = "SHIFT" ]]
+  [[ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":"1+1","min_baseline_sample":20,"max_shift_permille":400}')" = "SHIFT" ]]
 }
 @test "decide_decision_shift: malformed max_shift_permille \"400+1\" and oversized knobs fail closed → SHIFT" {
-  [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_permille":"400+1"}')" = "SHIFT" ]
-  [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":99999999999999999999,"min_baseline_sample":20,"max_shift_permille":400}')" = "SHIFT" ]
+  [[ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_permille":"400+1"}')" = "SHIFT" ]]
+  [[ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":99999999999999999999,"min_baseline_sample":20,"max_shift_permille":400}')" = "SHIFT" ]]
 }
 @test "decide_graduated: malformed sample target \"0+0\" never promotes; padded \"08\" compares as decimal" {
-  [ "$(decide_graduated 10 4 0 "0+0" false 0 0)" = "SOAKING" ]
-  [ "$(decide_graduated 10 4 8 "08" false 0 0)" = "PROMOTE" ]
-  [ "$(decide_graduated 10 4 7 "08" false 0 0)" = "SOAKING" ]
+  [[ "$(decide_graduated 10 4 0 "0+0" false 0 0)" = "SOAKING" ]]
+  [[ "$(decide_graduated 10 4 8 "08" false 0 0)" = "PROMOTE" ]]
+  [[ "$(decide_graduated 10 4 7 "08" false 0 0)" = "SOAKING" ]]
+}
+@test "decide_graduated: zero-padded or malformed failure counts still BLOCK" {
+  [[ "$(decide_graduated 10 4 8 5 false 08 0)" == "BLOCKED" ]]
+  [[ "$(decide_graduated 10 4 8 5 false 0 09)" == "BLOCKED" ]]
+  [[ "$(decide_graduated 10 4 8 5 false "1+1" 0)" == "BLOCKED" ]]
+  [[ "$(decide_graduated 10 4 8 5 false 0 "")" == "BLOCKED" ]]
+  [[ "$(decide_graduated 10 4 8 5 false 00 000)" == "PROMOTE" ]]
 }
 @test "decide_graduated: an oversized sample, target or dwell never promotes" {
   # 2^64 wraps to 0 under $((10#n)) and 2^64+5 to 5: neither may meet a gate.
