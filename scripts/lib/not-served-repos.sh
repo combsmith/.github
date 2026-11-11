@@ -20,13 +20,19 @@
 # The Scorecard and SonarCloud audits do not read this list yet.
 NOT_SERVED_REPOS=("software-factory" "software-factory-canary")
 
-# True if <repo> is in NOT_SERVED_REPOS.
+# True if <repo> is in NOT_SERVED_REPOS. The optional second argument is the
+# org the repo belongs to; the list names combsmith repos only, so a repo of any
+# other org is never "not served" (an unrelated org may own a same-named repo).
 is_not_served_repo() {
   local repo s
-  # GitHub repo names are case-insensitive; compare lowercased.
+  if [[ -n "${2:-}" && "${2,,}" != "combsmith" ]]; then
+    return 1
+  fi
+  # GitHub repo names are case-insensitive. NOT_SERVED_REPOS is lowercase, so
+  # lowercase only the input, once, outside the loop.
   repo=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
   for s in "${NOT_SERVED_REPOS[@]}"; do
-    [[ "$repo" == "$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]')" ]] && return 0
+    [[ "$repo" == "$s" ]] && return 0
   done
   return 1
 }

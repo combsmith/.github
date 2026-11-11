@@ -203,7 +203,7 @@ retrigger_stale_issues() {
     title=$(echo "$issue_json" | jq -r '.title')
 
     # Repos the org standard does not serve are never retriggered (#1343).
-    if is_not_served_repo "$repo"; then
+    if is_not_served_repo "$repo" "$ORG"; then
       info "Skipping $repo#$number — repo is not served by the org standard"
       continue
     fi
@@ -287,7 +287,7 @@ retrigger_stale_issues() {
         created_at=$(echo "$issue_json" | jq -r '.created_at')
         title=$(echo "$issue_json" | jq -r '.title')
         # Repos the org standard does not serve are never retriggered (#1343).
-        if is_not_served_repo "$repo"; then
+        if is_not_served_repo "$repo" "$ORG"; then
           info "Skipping legacy $repo#$number — repo is not served by the org standard"
           continue
         fi

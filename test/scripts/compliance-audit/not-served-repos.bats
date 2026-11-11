@@ -85,3 +85,8 @@ _run_main() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "is_not_served_repo: a same-named repo in another org is served" {
+  run bash -c 'source "$1"; is_not_served_repo software-factory combsmith && ! is_not_served_repo software-factory other-org' _ "${REPO_ROOT}/scripts/lib/not-served-repos.sh"
+  [ "$status" -eq 0 ]
+}
