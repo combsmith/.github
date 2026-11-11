@@ -80,11 +80,13 @@ For `Secret scan (gitleaks)` + `coverage` (#581), the backfill and the gate are
 ```bash
 GH_TOKEN=<repo-write> bash scripts/backfill-ci-quality-jobs.sh --all --dry-run  # preview
 GH_TOKEN=<repo-write> bash scripts/backfill-ci-quality-jobs.sh --all            # one standards-sync PR per repo
+# merge each standards-sync PR first: --verify reads the default branch (or a merged PR)
 GH_TOKEN=<read>       bash scripts/backfill-ci-quality-jobs.sh --verify --all   # the gate
 ```
 
-It adds the template's `secret-scan` / `coverage` job blocks, unchanged, to each
-repo's existing `ci.yml`. Copying the whole template would delete the repo's own
+It adds each missing template job block, unchanged, to an eligible repo's existing
+`ci.yml`; checks already supplied by another workflow are skipped, and repos
+without `ci.yml` or with conflicting job IDs are reported for manual follow-up. Copying the whole template would delete the repo's own
 stack jobs, which is why `ci.yml` is not in `deploy-standard-workflows.sh`. It also
 seeds `.gitleaks.toml` when needed. Add the two contexts here and run
 `apply-rulesets.sh --all` **only after `--verify --all` exits 0**.

@@ -331,8 +331,8 @@ The following are **intentionally NOT** in `code-quality.json` today:
 **Sequencing (why Secret Scan + Coverage are staged).** Adding a required context
 to `code-quality.json` makes it a merge gate on **every** repo the ruleset targets;
 a repo that does not *produce* that check is bricked. Both contexts are produced by
-the template `ci.yml` since #578, but existing repos only produce them once the fleet
-backfill (`scripts/backfill-ci-quality-jobs.sh`) has added the jobs to their `ci.yml`.
+the template `ci.yml` since #578, but existing repos produce them once the fleet
+backfill (`scripts/backfill-ci-quality-jobs.sh`) has added the jobs to their `ci.yml`, unless they already define them.
 Both are added to the shared ruleset only **after** `backfill-ci-quality-jobs.sh --verify --all`
 exits 0. Until then, keep them scoped to repos that already produce them. See
 [combsmith/.github#575](https://github.com/combsmith/.github/issues/575) and

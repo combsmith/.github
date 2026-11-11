@@ -403,3 +403,13 @@ seed_repo() {  # seed_repo <name> [with-gitleaks]
   [[ "$output" != *"coverage"* ]]
   [[ "$output" != *"Secret scan (gitleaks)"* ]]
 }
+
+@test "verify_repo: PR fallback is skipped when the default branch already has check runs" {
+  _stub_gh; mkdir -p "$FIXTURES/lambda"
+  echo prsha > "$FIXTURES/lambda/pr-sha"
+  printf 'Secret scan (gitleaks)|failure\n' > "$FIXTURES/lambda/checks-tipsha"
+  printf 'Secret scan (gitleaks)\ncoverage\n' > "$FIXTURES/lambda/checks-prsha"
+  run cbf_verify_repo combsmith/lambda
+  [ "$status" -ne 0 ]
+  ! grep -q -- "pr list" "$GH_LOG"
+}

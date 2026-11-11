@@ -300,7 +300,9 @@ cbf_verify_repo() {
   # Fall back only to a merged PR targeting the default branch; an open or
   # unmerged PR head (e.g. the backfill PR itself) would run the new jobs
   # even though the default branch does not define them yet.
-  if (( ${#missing[@]} > 0 )); then
+  # Only when the default-branch tip has no check runs at all: if it has CI
+  # evidence, a real failure there must not be replaced by an unrelated PR's checks.
+  if (( ${#missing[@]} > 0 )) && [[ -z "$(gh api --paginate "repos/${repo}/commits/${sha}/check-runs?per_page=100" --jq '.check_runs[].name' 2>/dev/null)" ]]; then
     pr_sha="$(gh pr list --repo "$repo" --state merged --base "$branch" --limit 1 --json headRefOid --jq '.[0].headRefOid // ""' 2>/dev/null || true)"
     if [[ -n "$pr_sha" ]] && names="$(cbf_check_names "$repo" "$pr_sha")"; then
       missing=()
@@ -349,7 +351,7 @@ cbf_main() {
 
   local repos=() repo failed=0
   if [[ "$all" = true ]]; then
-    mapfile -t repos < <(cbf_fleet_repos) || return 1
+    while IFS= read -r repo; do repos+=("$repo"); done < <(cbf_fleet_repos)
     (( ${#repos[@]} > 0 )) || { echo "::error::no repositories found in ${ORG} — check GH_TOKEN" >&2; return 1; }
   else
     repos=("$(resolve_repo "$target")")
