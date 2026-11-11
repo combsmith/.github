@@ -110,6 +110,20 @@ run_sweep() { run bash "${TT_SCRIPTS_DIR}/sweep-dispatch.sh"; }
   echo "$output" | grep -q 'dispatched 2 of 2'
 }
 
+@test "sweep: zero-padded DISPATCH_RETRIES (08) is accepted, not rejected or read as octal" {
+  export DISPATCH_RETRIES="08"
+  run_sweep
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'dispatched 2 of 2'
+}
+
+@test "sweep: DISPATCH_RETRIES=000 is still rejected" {
+  export DISPATCH_RETRIES="000"
+  run_sweep
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'DISPATCH_RETRIES must be a positive integer'
+}
+
 # ── fault isolation: a transient dispatch failure must not abort the sweep ─────
 
 @test "sweep: a transient dispatch failure on one PR does not abort the run" {

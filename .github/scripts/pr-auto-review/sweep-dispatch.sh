@@ -51,7 +51,7 @@ DISPATCH_RETRIES="${DISPATCH_RETRIES:-3}"
 DISPATCH_RETRY_SLEEP="${DISPATCH_RETRY_SLEEP:-5}"
 
 # Validate retry configuration before candidate processing.
-if ! [[ "${DISPATCH_RETRIES}" =~ ^[1-9][0-9]*$ ]]; then
+if ! [[ "${DISPATCH_RETRIES}" =~ ^0*[1-9][0-9]*$ ]]; then
   echo "::error::DISPATCH_RETRIES must be a positive integer, got: '${DISPATCH_RETRIES}'" >&2
   exit 1
 fi
