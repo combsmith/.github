@@ -3735,7 +3735,7 @@ main() {
   local listed served="" all_repos_before_filter=""
   [[ -n "$repos" ]] && all_repos_before_filter="yes"
   for listed in $repos; do
-    if is_not_served_repo "$listed"; then
+    if is_not_served_repo "$listed" "$ORG"; then
       info "Skipping $ORG/$listed (not served — NOT_SERVED_REPOS)"
       continue
     fi
