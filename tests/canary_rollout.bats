@@ -4384,6 +4384,10 @@ DECISION_KNOBS='{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_p
   # candidate is all skip-checks-pending (0‰ dispatched) vs an all-dispatched baseline → 1000‰ move
   [ "$(decide_decision_shift '{"skip-checks-pending":12}' '{"dispatched":22}' "$DECISION_KNOBS")" = "SHIFT" ]
 }
+@test "decide_decision_shift: malformed knobs (e.g. \"0+0\") fail closed → SHIFT, never evaluated as arithmetic" {
+  [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_permille":"0+0"}')" = "SHIFT" ]
+  [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' '{"min_candidate_sample":"1+1","min_baseline_sample":20,"max_shift_permille":400}')" = "SHIFT" ]
+}
 @test "decide_decision_shift: shares within threshold → OK (no effect)" {
   # ~917‰/83‰ vs ~909‰/91‰ dispatched/skip-draft — max per-class delta 8‰ ≪ 400‰
   [ "$(decide_decision_shift '{"dispatched":11,"skip-draft":1}' '{"dispatched":20,"skip-draft":2}' "$DECISION_KNOBS")" = "OK" ]

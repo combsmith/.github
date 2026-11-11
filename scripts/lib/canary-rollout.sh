@@ -678,6 +678,13 @@ decide_decision_shift() {
   min_c="$(jq -r '.min_candidate_sample // 0' <<< "$knobs" 2>/dev/null || echo 0)"
   min_b="$(jq -r '.min_baseline_sample // 0' <<< "$knobs" 2>/dev/null || echo 0)"
   max_shift="$(jq -r '.max_shift_permille // 0' <<< "$knobs" 2>/dev/null || echo 0)"
+  # Malformed knobs (e.g. "0+0", "1.5", negative) must never reach Bash arithmetic, where they would
+  # be evaluated as expressions. Fail closed: a gate misconfiguration HOLDs rather than promotes.
+  local k
+  for k in "$min_c" "$min_b" "$max_shift"; do
+    case "$k" in ''|*[!0-9]*) echo "SHIFT"; return 0 ;; esac
+  done
+  min_c=$((10#$min_c)); min_b=$((10#$min_b)); max_shift=$((10#$max_shift))
   local cand_total base_total
   cand_total="$(jq -r 'if type=="object" then ([.[]?]|add // 0) else "x" end' <<< "$cand" 2>/dev/null || echo x)"
   base_total="$(jq -r 'if type=="object" then ([.[]?]|add // 0) else "x" end' <<< "$base" 2>/dev/null || echo x)"
