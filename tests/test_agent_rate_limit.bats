@@ -553,6 +553,6 @@ stub_concurrent_runs() {
 
 @test "arl_sanitize_int normalises zero-padded input to decimal" {
   source "$LIB"
-  [ "$(arl_sanitize_int 08 5)" = "8" ]
+  [[ "$(arl_sanitize_int 08 5)" == "8" ]]
   [[ "$(arl_sanitize_int 08 5)" -ge 8 ]]
 }

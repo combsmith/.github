@@ -215,7 +215,7 @@ sr_cut_decision() {
 sr_consumer_verdict() {
   local rc="${1:-}" out="${2:-}" expect="${3:-}" reject="${4:-}"
   if ! [[ "$rc" =~ ^[0-9]+$ ]]; then echo "FAIL not-run"; return 0; fi
-  if [[ "$rc" -ne 0 ]]; then echo "FAIL exit-$rc"; return 0; fi
+  if (( 10#$rc != 0 )); then echo "FAIL exit-$rc"; return 0; fi
   if [[ -z "$out" ]] || [[ ! -r "$out" ]]; then echo "FAIL output-unreadable"; return 0; fi
   if [[ -n "$reject" ]] && grep -Eq -- "$reject" "$out"; then echo "FAIL rejected-output"; return 0; fi
   if [[ -n "$expect" ]] && ! grep -Eq -- "$expect" "$out"; then echo "FAIL expected-output-missing"; return 0; fi

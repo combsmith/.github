@@ -50,6 +50,7 @@ ss_tree_diff() {
 ss_age_days() {
   local now="${1:-}" then="${2:-}"
   [[ "$now" =~ ^[0-9]+$ && "$then" =~ ^[0-9]+$ ]] || return 1
+  now=$((10#$now)); then=$((10#$then))
   if [[ "$then" -ge "$now" ]]; then echo 0; return 0; fi
   echo $(( (now - then) / 86400 ))
 }

@@ -122,9 +122,11 @@ arl_is_dry_run() {
 arl_sanitize_int() {
   local value="${1:-}" fallback="${2:-0}"
   if [[ "$value" =~ ^[0-9]+$ ]]; then
-    # Force base 10 so zero-padded input ("08") is not read as invalid octal
-    # by later [[ -ge ]] comparisons.
-    printf '%s' "$((10#$value))"
+    # Strip leading zeros textually (no arithmetic, so arbitrarily long digit
+    # strings cannot overflow) so zero-padded input ("08") is not read as
+    # invalid octal by later [[ -ge ]] comparisons.
+    value="${value#"${value%%[!0]*}"}"
+    printf '%s' "${value:-0}"
   else
     printf '%s' "$fallback"
   fi
