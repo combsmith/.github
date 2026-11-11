@@ -49,8 +49,8 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
-            if sudo apt-get update -qq \
-                && sudo apt-get install -y --no-install-recommends bats shellcheck jq; then
+            if timeout 120 sudo apt-get update -qq \
+                && timeout 180 sudo apt-get install -y --no-install-recommends bats shellcheck jq; then
               exit 0
             fi
             echo "apt attempt $attempt failed" >&2

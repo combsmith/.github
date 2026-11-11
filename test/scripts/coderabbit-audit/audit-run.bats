@@ -394,6 +394,7 @@ assert_no_writes_and_red() {
   { finding a 105 src/x.ts high open; } | sarif_of > "$STUB_DIR/export.sarif"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
+  grep -q 'Skipped (repo archived or outside this org) | 1 |' "$REPORT_DIR/summary.md"
   [ -z "$(writes)" ]
 }
 @test "an unknown TARGET_REPO fails and writes nothing" {
