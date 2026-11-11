@@ -20,6 +20,16 @@ setup() {
 @test "clamp: below floor snaps to floor" { [ "$(clamp 1 3 15)" -eq 3 ]; }
 @test "clamp: above ceiling snaps to ceiling" { [ "$(clamp 25 3 15)" -eq 15 ]; }
 @test "clamp: at bounds is inclusive" { [ "$(clamp 3 3 15)" -eq 3 ]; [ "$(clamp 15 3 15)" -eq 15 ]; }
+@test "clamp: a negative value still snaps to the floor; padded operands are decimal" {
+  [[ "$(clamp -5 3 15)" == "3" ]]
+  [[ "$(clamp 08 3 15)" == "08" ]]
+  [[ "$(clamp 09 10 15)" == "10" ]]
+}
+@test "clamp: a malformed or oversized value is raised to the floor, never evaluated" {
+  [[ "$(clamp '0+0' 3 15)" == "3" ]]
+  [[ "$(clamp 'a[$(echo x)]' 3 15)" == "3" ]]
+  [[ "$(clamp 18446744073709551616 3 15)" == "3" ]]
+}
 
 # ── round_div (banker-free half-up rounding) ──────────────────────────────────
 @test "round_div: exact" { [ "$(round_div 10 5)" -eq 2 ]; }
@@ -4397,9 +4407,19 @@ DECISION_KNOBS='{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_p
   [ "$(decide_graduated 10 4 8 "08" false 0 0)" = "PROMOTE" ]
   [ "$(decide_graduated 10 4 7 "08" false 0 0)" = "SOAKING" ]
 }
-@test "decide_suspect_downgrade: padded and malformed operands are normalised, never evaluated" {
+@test "decide_graduated: an oversized sample, target or dwell never promotes" {
+  # 2^64 wraps to 0 under $((10#n)) and 2^64+5 to 5: neither may meet a gate.
+  [[ "$(decide_graduated 10 4 18446744073709551621 5 false 0 0)" == "SOAKING" ]]
+  [[ "$(decide_graduated 10 4 0 18446744073709551616 false 0 0)" == "SOAKING" ]]
+  [[ "$(decide_graduated 18446744073709551620 4 8 5 false 0 0)" == "SOAKING" ]]
+}
+@test "decide_suspect_downgrade: padded operands are decimal; a malformed or oversized rate or sample HOLDs" {
   [ "$(decide_suspect_downgrade 08 09 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "DOWNGRADE" ]
-  [ "$(decide_suspect_downgrade '0+0' 5 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "DOWNGRADE" ]
+  [ "$(decide_suspect_downgrade '0+0' 5 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "HOLD" ]
+  [ "$(decide_suspect_downgrade 5 '0+0' 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "HOLD" ]
+  [ "$(decide_suspect_downgrade 5 5 'x' '{"min_baseline_sample":0,"margin_permille":0}')" = "HOLD" ]
+  # 2^64 wraps to 0 under $((10#n)); it must not read as a clean candidate.
+  [ "$(decide_suspect_downgrade 18446744073709551616 5 20 '{"min_baseline_sample":10,"margin_permille":0}')" = "HOLD" ]
 }
 @test "decide_decision_shift: shares within threshold → OK (no effect)" {
   # ~917‰/83‰ vs ~909‰/91‰ dispatched/skip-draft — max per-class delta 8‰ ≪ 400‰

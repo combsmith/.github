@@ -19,11 +19,23 @@
 # The dwell floors and sample fractions are registry-configurable per transition
 # (see standards/canary-rings.json .gate); the numbers above are the defaults.
 
-# clamp <value> <lo> <hi> — echo value bounded to [lo, hi].
+# _signed_dec <s> — echo a signed decimal digit string read in base 10 (so "08" is 8, not octal).
+# The caller has already matched it against ^-?[0-9]{1,18}$.
+_signed_dec() {
+  local s="$1" sign=""
+  if [[ "$s" == -* ]]; then sign="-"; s="${s#-}"; fi
+  echo "${sign}$((10#$s))"
+}
+
+# clamp <value> <lo> <hi> — echo value bounded to [lo, hi]. Operands are signed decimal integers
+# of at most 18 digits, read in base 10 and never evaluated as expressions. A value that is not
+# one is raised to lo (the clamp minimum); a bound that is not one is not applied.
 clamp() {
-  local v="$1" lo="$2" hi="$3"
-  if [[ "$v" =~ ^[0-9]+$ && "$lo" =~ ^[0-9]+$ ]] && (( 10#$v < 10#$lo )); then echo "$lo"; return 0; fi
-  if [[ "$v" =~ ^[0-9]+$ && "$hi" =~ ^[0-9]+$ ]] && (( 10#$v > 10#$hi )); then echo "$hi"; return 0; fi
+  local v="$1" lo="$2" hi="$3" n
+  [[ "$v" =~ ^-?[0-9]{1,18}$ ]] || { echo "$lo"; return 0; }
+  n=$(_signed_dec "$v")
+  if [[ "$lo" =~ ^-?[0-9]{1,18}$ ]] && (( n < $(_signed_dec "$lo") )); then echo "$lo"; return 0; fi
+  if [[ "$hi" =~ ^-?[0-9]{1,18}$ ]] && (( n > $(_signed_dec "$hi") )); then echo "$hi"; return 0; fi
   echo "$v"
 }
 
@@ -362,7 +374,7 @@ _looks_like_oid() { [[ "$1" =~ ^[0-9a-f]{7,64}$ ]]; }
 # least floor_hours on the source tier, else 0.
 dwell_met() {
   local dwell="${1:-0}" floor="${2:-0}"
-  if [[ "$dwell" =~ ^[0-9]+$ && "$floor" =~ ^[0-9]+$ ]] && (( 10#$dwell >= 10#$floor )); then echo 1; else echo 0; fi
+  if [[ "$dwell" =~ ^[0-9]{1,18}$ && "$floor" =~ ^[0-9]{1,18}$ ]] && (( 10#$dwell >= 10#$floor )); then echo 1; else echo 0; fi
 }
 
 # iso_after <a> <b> — echo "yes" if ISO-8601 UTC timestamp a is at or after b, else
@@ -409,6 +421,9 @@ decide_graduated() {
     # Malformed sample/target (e.g. "0+0") must never reach arithmetic: hold (SOAKING).
     case "$sample" in ''|*[!0-9]*) echo "SOAKING"; return 0 ;; esac
     case "$target" in ''|*[!0-9]*) echo "SOAKING"; return 0 ;; esac
+    # Oversized too: $((10#n)) wraps past 2^63, which could make a huge sample look tiny or
+    # a huge target look met.
+    if [[ ${#sample} -gt 18 || ${#target} -gt 18 ]]; then echo "SOAKING"; return 0; fi
     if (( 10#$sample >= 10#$target )); then sample_ok=1; else sample_ok=0; fi
   fi
   if [[ "$dwell_ok" -eq 1 ]] && [[ "$sample_ok" -eq 1 ]]; then
@@ -469,6 +484,8 @@ triage_label() {
 #   HOLD      — thin baseline (base_sample < min_baseline_sample: NEVER downgrade on tiny-n — the
 #               conservative default keeps the human) OR the candidate is materially worse
 #               (cand_rate > base_rate + margin_permille) → stay SUSPECT (increment 2 behaviour).
+#               Also HOLD when a rate or the sample is not a decimal integer of at most 18 digits:
+#               evidence that cannot be read never removes the human.
 # Knobs object {min_baseline_sample, margin_permille}; absent knobs default to 0 (margin 0 = strict
 # no-worse; min_baseline_sample 0 = no tiny-n guard, though the orchestrator always sets it).
 decide_suspect_downgrade() {
@@ -478,12 +495,16 @@ decide_suspect_downgrade() {
   min_base="$(jq -r '.min_baseline_sample // 0' <<< "$knobs" 2>/dev/null || echo 0)"
   margin="$(jq -r '.margin_permille // 0' <<< "$knobs" 2>/dev/null || echo 0)"
   # Validate every operand as a digit string and normalise to base 10 (no octal, no arithmetic
-  # injection); a malformed operand degrades to 0.
+  # injection). A malformed knob degrades to 0, as before; a malformed or oversized rate or
+  # sample HOLDs, since reading it as 0 would make the candidate look no worse and downgrade.
   case "$min_base" in ''|*[!0-9]*) min_base=0 ;; *) min_base=$((10#$min_base)) ;; esac
   case "$margin" in ''|*[!0-9]*) margin=0 ;; *) margin=$((10#$margin)) ;; esac
-  case "$cand" in ''|*[!0-9]*) cand=0 ;; *) cand=$((10#$cand)) ;; esac
-  case "$base" in ''|*[!0-9]*) base=0 ;; *) base=$((10#$base)) ;; esac
-  case "$base_sample" in ''|*[!0-9]*) base_sample=0 ;; *) base_sample=$((10#$base_sample)) ;; esac
+  local v
+  for v in "$cand" "$base" "$base_sample"; do
+    case "$v" in ''|*[!0-9]*) echo "HOLD"; return 0 ;; esac
+    if [[ ${#v} -gt 18 ]]; then echo "HOLD"; return 0; fi
+  done
+  cand=$((10#$cand)); base=$((10#$base)); base_sample=$((10#$base_sample))
   # Tiny-n guard first: too little baseline data → keep the human (conservative), regardless of rate.
   if [[ "$base_sample" -lt "$min_base" ]]; then echo "HOLD"; return 0; fi
   if [[ "$cand" -le $(( base + margin )) ]]; then echo "DOWNGRADE"; return 0; fi
