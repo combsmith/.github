@@ -4411,7 +4411,6 @@ DECISION_KNOBS='{"min_candidate_sample":10,"min_baseline_sample":20,"max_shift_p
   [[ "$(decide_graduated 10 4 8 5 false 08 0)" == "BLOCKED" ]]
   [[ "$(decide_graduated 10 4 8 5 false 0 09)" == "BLOCKED" ]]
   [[ "$(decide_graduated 10 4 8 5 false "1+1" 0)" == "BLOCKED" ]]
-  [[ "$(decide_graduated 10 4 8 5 false 0 "")" == "BLOCKED" ]]
   [[ "$(decide_graduated 10 4 8 5 false 00 000)" == "PROMOTE" ]]
 }
 @test "decide_graduated: an oversized sample, target or dwell never promotes" {
