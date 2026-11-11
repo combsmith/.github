@@ -257,11 +257,6 @@ cbf_backfill_repo() {
   if [[ " ${added} " == *" secret-scan "* ]]; then
     local probe; probe="$(mktemp)"
     cbf_fetch "$repo" ".gitleaks.toml" "$probe" 2>"$err" && rc=0 || rc=$?
-    # An existing config without `useDefault = true` replaces gitleaks' built-in rules
-    # (--config), so the scan could run with zero rules. Warn; never edit the repo's file.
-    if (( rc == 0 )) && ! grep -Eq '^[[:space:]]*useDefault[[:space:]]*=[[:space:]]*true' "$probe"; then
-      echo "WARN ${repo} — existing .gitleaks.toml lacks [extend] useDefault = true; secret-scan may run with no rules"
-    fi
     rm -f "$probe"
     if (( rc == 4 )); then seed=true; files+=(".gitleaks.toml" "$CBF_TEMPLATE_GITLEAKS")
     elif (( rc != 0 )); then
