@@ -174,8 +174,20 @@ setup() {
   [ "$(promotion_failure_next_count 'x' failed)" -eq 1 ]
 }
 @test "promotion_failure_should_escalate: zero-padded operands compare as decimal" {
-  [[ "$(promotion_failure_should_escalate 8 08)" -eq 1 ]]
-  [[ "$(promotion_failure_should_escalate 08 09)" -eq 0 ]]
+  run promotion_failure_should_escalate 8 08
+  [ "$status" -eq 0 ]
+  [[ "$output" == "1" ]]
+  run promotion_failure_should_escalate 08 09
+  [ "$status" -eq 0 ]
+  [[ "$output" == "0" ]]
+}
+
+@test "_ingress_run_limit: an oversized (>9 digit) value falls back to 5000 instead of wrapping" {
+  run env CANARY_INGRESS_RUN_LIMIT=99999999999999999999 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "5000" ]]
+  run env CANARY_INGRESS_RUN_LIMIT=010 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [[ "$output" == "10" ]]
 }
 
 @test "promotion_failure_should_escalate: fires only at/after the threshold" {
