@@ -3732,7 +3732,8 @@ main() {
 
   # Drop repos outside the standard (NOT_SERVED_REPOS) before both the audit loop
   # and the issue-management loop, so no finding, issue or label lands there.
-  local listed served=""
+  local listed served="" all_repos_before_filter=""
+  [[ -n "$repos" ]] && all_repos_before_filter="yes"
   for listed in $repos; do
     if is_not_served_repo "$listed"; then
       info "Skipping $ORG/$listed (not served — NOT_SERVED_REPOS)"
@@ -3743,9 +3744,15 @@ main() {
   repos="$served"
 
   if [[ -z "$repos" ]]; then
-    warn "No repositories found in $ORG — check GH_TOKEN permissions"
-    echo "[]" > "$FINDINGS_FILE"
-    return 1
+    if [[ -z "$all_repos_before_filter" ]]; then
+      warn "No repositories found in $ORG — check GH_TOKEN permissions"
+      echo "[]" > "$FINDINGS_FILE"
+      return 1
+    else
+      info "All repositories in $ORG are excluded (not-served); audit completes with no findings"
+      echo "[]" > "$FINDINGS_FILE"
+      return 0
+    fi
   fi
 
   local repo_count=0
@@ -3823,6 +3830,12 @@ main() {
     info "Managing issues..."
 
     for repo in $repos; do
+      # Repos the org standard does not serve are never managed (#1343).
+      if is_not_served_repo "$repo" "$ORG"; then
+        info "Skipping issue management for $repo — repo is not served by the org standard"
+        continue
+      fi
+
       ensure_audit_label "$repo"
       ensure_required_labels "$repo"
 

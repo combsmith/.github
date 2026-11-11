@@ -68,6 +68,7 @@ _run_main() {
   _run_main false
   [ "$status" -eq 0 ]
   run cat "$REPORT_DIR/audited-repos.txt"
+  [ "$status" -eq 0 ]
   [[ "$output" == *"markets"* ]]
   [[ "$output" != *"software-factory"* ]]
   [[ "$output" != *"Software-Factory-Canary"* ]]

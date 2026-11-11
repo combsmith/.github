@@ -87,8 +87,8 @@ for arg in "$@"; do
           exit 1
         fi
       fi
-      if [ -n "${GH_STUB_SEARCH_BODY:-}" ]; then
-        printf '%s\n' "$GH_STUB_SEARCH_BODY"
+      if [ -n "${GH_STUB_SEARCH_BODY+x}" ]; then
+        printf '%s' "$GH_STUB_SEARCH_BODY"
         exit 0
       fi
       printf '{"total_count":0,"items":[]}\n'
