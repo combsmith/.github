@@ -43,7 +43,7 @@ ORG="${ORG:-combsmith}"
 # shellcheck source=scripts/lib/pr-limit-gate.sh
 source "${SCRIPT_DIR}/lib/pr-limit-gate.sh"
 
-if [ ! -f "$CONFIG" ]; then
+if [[ ! -f "$CONFIG" ]]; then
   echo "pr-limits-report: error: config not found at $CONFIG" >&2
   exit 1
 fi
@@ -54,6 +54,7 @@ if ! [[ "$CAP" =~ ^[0-9]+$ ]]; then
   echo "pr-limits-report: error: org cap missing or not an integer (PR_LIMITS_ORG_CAP / org_wide.automation_open_pr_cap in $CONFIG)" >&2
   exit 1
 fi
+CAP=$((10#$CAP))
 EXEMPT_ACTORS="$(jq -c '.exempt_actors // []' "$CONFIG" 2>/dev/null || echo '[]')"
 EXEMPT_LABELS="$(jq -c '.exempt_labels // []' "$CONFIG" 2>/dev/null || echo '[]')"
 
@@ -71,10 +72,10 @@ PRS="$(gh search prs \
   --json author,labels,repository,title,url \
   2>/dev/null)" || gh_rc=$?
 
-if [ "$gh_rc" -ne 0 ]; then
+if [[ "$gh_rc" -ne 0 ]]; then
   UNAVAILABLE="$(printf '## PR-limits report — %s\n\n> ⚠️ **Metric unavailable** — `gh search prs` failed (rc=%s); the open-PR queue could not be enumerated. No cap comparison was produced.\n' "$ORG" "$gh_rc")"
   printf '%s\n' "$UNAVAILABLE"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     printf '%s\n' "$UNAVAILABLE" >>"$GITHUB_STEP_SUMMARY"
   fi
   exit 1
@@ -82,7 +83,7 @@ fi
 
 # rc 0: a genuinely empty result is a real "0 open PRs". Keep the unparseable-JSON
 # guard as a secondary safety net (rc 0 but garbage stdout).
-if [ -z "$PRS" ]; then
+if [[ -z "$PRS" ]]; then
   PRS='[]'
 fi
 if ! jq -e . >/dev/null 2>&1 <<<"$PRS"; then
@@ -117,7 +118,7 @@ COUNTED="$(jq -r '.counted' <<<"$METRICS")"
 EXEMPT="$(jq -r '.exempt' <<<"$METRICS")"
 HEADROOM=$(( CAP - COUNTED ))
 
-if [ "$COUNTED" -ge "$CAP" ]; then
+if [[ "$COUNTED" -ge "$CAP" ]]; then
   STATUS_ICON="🔴"
   STATUS_LINE="**AT OR OVER CAP** — ${COUNTED}/${CAP} counted automation PRs (headroom ${HEADROOM})."
 else
@@ -143,7 +144,7 @@ render_summary() {
   printf '%s %s\n\n' "$STATUS_ICON" "$STATUS_LINE"
 
   printf '### Breakdown by source (counted PRs by author)\n\n'
-  if [ "$COUNTED" -eq 0 ]; then
+  if [[ "$COUNTED" -eq 0 ]]; then
     printf '_No counted automation PRs._\n'
   else
     printf '| Source (author login) | Counted PRs |\n'
@@ -157,7 +158,7 @@ SUMMARY="$(render_summary)"
 printf '%s\n' "$SUMMARY"
 
 # Mirror the daily-org-status pattern: also append to the job summary when set.
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   printf '%s\n' "$SUMMARY" >>"$GITHUB_STEP_SUMMARY"
 fi
 

@@ -148,7 +148,7 @@ section_merge_activity() {
     local repo row_total
     repo=$(printf '%s' "$row" | jq -r '.repo')
     row_total=$(printf '%s' "$row" | jq -r '.total')
-    [[ "$row_total" =~ ^[0-9]+$ ]] && [ "$row_total" -eq 0 ] && continue
+    [[ "$row_total" =~ ^[0-9]+$ ]] && [[ "$row_total" -eq 0 ]] && continue
 
     printf '| [%s](https://github.com/%s) |' "$repo" "$repo"
     local i=0
@@ -174,13 +174,13 @@ section_merge_activity() {
   local -a counts_arr
   mapfile -t counts_arr < <(printf '%s' "$MERGE_DAILY" | jq -r '.[].org')
   local n=${#counts_arr[@]}
-  if [ "$n" -ge 6 ]; then
+  if [[ "$n" -ge 6 ]]; then
     local first3=0 last3=0
     first3=$(( ${counts_arr[0]} + ${counts_arr[1]} + ${counts_arr[2]} ))
     last3=$(( ${counts_arr[n-3]} + ${counts_arr[n-2]} + ${counts_arr[n-1]} ))
     local trend="Flat"
-    [ "$last3" -gt "$first3" ] && trend="Increasing"
-    [ "$last3" -lt "$first3" ] && trend="Decreasing"
+    [[ "$last3" -gt "$first3" ]] && trend="Increasing"
+    [[ "$last3" -lt "$first3" ]] && trend="Decreasing"
     printf 'Grand total: **%s** merges over 8 days. Trend: **%s**.\n\n' "$grand_total" "$trend"
   fi
 }
@@ -191,7 +191,7 @@ section_needs_review() {
 
   local count
   count=$(printf '%s' "$NEEDS_REVIEW_PRS" | jq 'length')
-  if [ "$count" -eq 0 ]; then
+  if [[ "$count" -eq 0 ]]; then
     printf '_none_\n\n'
     return
   fi
@@ -220,7 +220,7 @@ section_dep_bumps() {
   rows=$(printf '%s' "$PR_BY_REPO" | jq -r 'map(select(.dep_bumps > 0)) | sort_by(-.dep_bumps)[] |
     [.repo, (.dep_bumps | tostring)] | @tsv')
 
-  if [ -z "$rows" ]; then
+  if [[ -z "$rows" ]]; then
     printf '_none_\n\n'
     return
   fi
@@ -240,7 +240,7 @@ section_open_issues() {
 
   local count
   count=$(printf '%s' "$ISSUES_BY_REPO_TRIMMED" | jq 'length')
-  if [ "$count" -eq 0 ]; then
+  if [[ "$count" -eq 0 ]]; then
     printf '_none_\n\n'
     return
   fi
@@ -251,7 +251,7 @@ section_open_issues() {
     issue_count=$(printf '%s' "$repo_block" | jq -r '.count')
     truncated=$(printf '%s' "$repo_block" | jq -r '.truncated')
 
-    if [ "$truncated" = "true" ]; then
+    if [[ "$truncated" = "true" ]]; then
       printf '### [%s](https://github.com/%s) (showing %s of %s issues)\n\n' \
         "$repo" "$repo" "$ISSUE_LIMIT" "$issue_count"
     else
@@ -283,7 +283,7 @@ section_open_discussions() {
 
   local total
   total=$(printf '%s' "$DISCUSSIONS" | jq '[.[].discussions | length] | add // 0')
-  if [ "$total" -eq 0 ]; then
+  if [[ "$total" -eq 0 ]]; then
     printf '_none_\n\n'
     return
   fi
