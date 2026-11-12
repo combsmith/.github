@@ -1745,7 +1745,8 @@ _baseline_daily() {
 _reusable_differs() {
   local agent="$1" cand="$2" prior="$3" reusable a b host
   reusable="$(_agent_field "$agent" reusable)"
-  [[ -z "$reusable" ]] || [[ -z "$cand" ]] || [[ -z "$prior" ]] && { echo 0; return 0; }
+  [[ -z "$reusable" ]] && { echo 0; return 0; }
+  [[ -z "$cand" ]] || [[ -z "$prior" ]] && { echo 1; return 0; }
   host="$(_agent_field "$agent" host)"; host="${host:-$THIS_REPO}"
   if [[ "$host" = "$THIS_REPO" ]]; then
     # This-repo agent: the reusable blob lives in the local checkout.
