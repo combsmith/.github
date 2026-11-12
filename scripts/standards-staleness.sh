@@ -50,13 +50,13 @@ _current_channel() {
   refs="$(gh api "repos/$SS_REPO/git/matching-refs/tags/standards/v" --jq '.[].ref')" \
     || _fail "could not list standards/* tags on $SS_REPO"
   while IFS= read -r ref; do
-    [ -n "$ref" ] || continue
+    [[ -n "$ref" ]] || continue
     v="$(sr_version_from_tag "${ref#refs/tags/}")"
-    [ -n "$v" ] && versions+=("$v")
+    [[ -n "$v" ]] && versions+=("$v")
   done <<< "$refs"
-  [ "${#versions[@]}" -gt 0 ] || return 0
+  [[ "${#versions[@]}" -gt 0 ]] || return 0
   highest="$(sr_max_version "${versions[@]}")"
-  [ -n "$highest" ] || return 0
+  [[ -n "$highest" ]] || return 0
   sr_channel_for "$highest"
 }
 
@@ -88,7 +88,7 @@ _standards_tree_sha() {
 # is never diffed as if it were complete.
 _standards_blobs() {
   local out
-  [ -n "${1:-}" ] || return 0
+  [[ -n "${1:-}" ]] || return 0
   out="$(gh api "repos/$SS_REPO/git/trees/$1?recursive=1")" || _fail "could not list standards/ at tree ${1:0:12} on $SS_REPO"
   jq -e '(.tree | type == "array") and (.truncated != true)' <<< "$out" > /dev/null \
     || _fail "the listing of standards/ at tree ${1:0:12} on $SS_REPO came back incomplete"
@@ -112,13 +112,13 @@ main() {
   [[ "$SS_MAX_DAYS" =~ ^[0-9]+$ ]] || _fail "STANDARDS_STALENESS_MAX_DAYS must be a whole number of days, got '$SS_MAX_DAYS'"
 
   local branch="${SS_BRANCH:-}" channel="${SS_CHANNEL:-}"
-  if [ -z "$branch" ]; then
+  if [[ -z "$branch" ]]; then
     branch="$(gh api "repos/$SS_REPO" --jq '.default_branch')" || _fail "could not read the default branch of $SS_REPO"
   fi
-  if [ -z "$channel" ]; then
+  if [[ -z "$channel" ]]; then
     channel="$(_current_channel)"
   fi
-  if [ -z "$channel" ]; then
+  if [[ -z "$channel" ]]; then
     echo "::notice::no standards/vX.Y.Z release is published on $SS_REPO yet — there is no channel to compare."
     return 0
   fi
@@ -144,7 +144,7 @@ main() {
   local base_tree head_tree base_list head_list files="" n wf
   base_tree="$(_standards_tree_sha "$channel_sha")"
   head_tree="$(_standards_tree_sha "$branch_sha")"
-  if [ "$base_tree" != "$head_tree" ]; then
+  if [[ "$base_tree" != "$head_tree" ]]; then
     base_list="$(mktemp)"; head_list="$(mktemp)"
     _standards_blobs "$base_tree" > "$base_list"
     _standards_blobs "$head_tree" > "$head_list"
@@ -159,14 +159,14 @@ main() {
   # filter and the history disagree), fall back to the channel commit's own date.
   # The gap cannot be older than that, so it is a stated upper bound.
   local age="" bound=0 now oldest
-  if [ "$n" -gt 0 ]; then
+  if [[ "$n" -gt 0 ]]; then
     now="$(date -u +%s)"
     oldest="$(gh api --paginate "repos/$SS_REPO/commits?sha=${branch_sha}&path=standards&since=${channel_date}&per_page=100" \
         --jq '.[] | [.sha, .commit.committer.date] | @tsv')" \
       || _fail "could not list the commits that changed standards/ on $branch since $channel_date"
     oldest="$(printf '%s\n' "$oldest" | awk -F'\t' -v base="$channel_sha" '$1 != "" && $1 != base { print $2 }' \
       | jq -Rr 'select(length > 0) | fromdateiso8601' | sort -n | head -n 1)"
-    if [ -z "$oldest" ]; then
+    if [[ -z "$oldest" ]]; then
       oldest="$(jq -rn --arg d "$channel_date" '$d | fromdateiso8601')"
       bound=1
     fi
@@ -178,16 +178,16 @@ main() {
   echo "channel:  $channel -> ${channel_sha:0:12}"
   echo "branch:   $branch -> ${branch_sha:0:12} ($ahead commit(s) ahead)"
   echo "differs:  $n file(s) under standards/, $wf under standards/workflows/"
-  [ -z "$age" ] || echo "oldest:   $age day(s)$([ "$bound" = "1" ] && echo ' (upper bound)') — limit $SS_MAX_DAYS"
+  [[ -z "$age" ]] || echo "oldest:   $age day(s)$([[ "$bound" = "1" ]] && echo ' (upper bound)') — limit $SS_MAX_DAYS"
   echo "decision: $decision"
-  [ "$decision" != "UNKNOWN" ] || _fail "the staleness inputs could not be judged — not reporting the channel as fresh"
+  [[ "$decision" != "UNKNOWN" ]] || _fail "the staleness inputs could not be judged — not reporting the channel as fresh"
 
   local marker title existing body_file
   marker="$(ss_issue_marker "$channel")"
   title="$(ss_issue_title "$channel" "$branch")"
   existing="$(_alarm_issue "$marker")"
 
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     {
       printf '### Standards channel staleness\n\n'
       printf -- '- Channel: `%s` at `%s`\n- Branch: `%s` at `%s`, %s commit(s) ahead\n' \
@@ -201,10 +201,10 @@ main() {
       body_file="$(mktemp)"
       printf '%s\n' "$files" | ss_issue_body "$channel" "$channel_sha" "$branch" "$branch_sha" "$ahead" \
         "$decision" "$age" "$SS_MAX_DAYS" "$bound" > "$body_file"
-      if [ "$DRY_RUN" = "true" ]; then
-        echo "[dry-run] would $([ -n "$existing" ] && echo "update issue #$existing" || echo "open an issue"): $title"
+      if [[ "$DRY_RUN" = "true" ]]; then
+        echo "[dry-run] would $([[ -n "$existing" ]] && echo "update issue #$existing" || echo "open an issue"): $title"
         cat "$body_file"
-      elif [ -n "$existing" ]; then
+      elif [[ -n "$existing" ]]; then
         gh issue edit "$existing" --repo "$SS_REPO" --title "$title" --body-file "$body_file" >/dev/null \
           || { rm -f "$body_file"; _fail "could not update alarm issue #$existing"; }
         echo "updated alarm issue #$existing"
@@ -215,9 +215,9 @@ main() {
       rm -f "$body_file"
       ;;
     *)
-      if [ -z "$existing" ]; then
+      if [[ -z "$existing" ]]; then
         echo "no alarm issue is open; nothing to do."
-      elif [ "$DRY_RUN" = "true" ]; then
+      elif [[ "$DRY_RUN" = "true" ]]; then
         echo "[dry-run] would close alarm issue #$existing ($decision)"
       else
         gh issue close "$existing" --repo "$SS_REPO" \
