@@ -260,6 +260,35 @@ iso_epoch() { date -d "$1" +%s; }
   [ "$output" = "$want" ]
 }
 
+@test "arl_token_iso_to_epoch accepts a negative offset whose UTC date rolls to the next day" {
+  # 2026-09-08T23:30:00-05:00 is 2026-09-09T04:30Z. The calendar check must not
+  # compare the input's date with the UTC date and reject this valid timestamp.
+  local want; want="$(date -d '2026-09-08T23:30:00-05:00' +%s 2>/dev/null || printf '')"
+  [ -z "$want" ] && skip "date -d does not support -HH:MM on this platform"
+  run bash -c "source '$LIB'; arl_token_iso_to_epoch '2026-09-08T23:30:00-05:00'"
+  [ "$output" = "$want" ]
+}
+
+@test "arl_token_iso_to_epoch accepts a positive offset whose UTC date rolls to the previous day" {
+  local want; want="$(date -d '2026-09-09T00:30:00+05:00' +%s 2>/dev/null || printf '')"
+  [ -z "$want" ] && skip "date -d does not support +HH:MM on this platform"
+  run bash -c "source '$LIB'; arl_token_iso_to_epoch '2026-09-09T00:30:00+05:00'"
+  [ "$output" = "$want" ]
+}
+
+@test "arl_token_iso_to_epoch accepts a date whose local midnight is skipped (TZ=America/Santiago)" {
+  local want; want="$(TZ=UTC date -d '2026-09-06T15:00:00Z' +%s 2>/dev/null || printf '')"
+  [ -z "$want" ] && skip "date -d unavailable"
+  run bash -c "export TZ=America/Santiago; source '$LIB'; arl_token_iso_to_epoch '2026-09-06T15:00:00Z'"
+  [ "$output" = "$want" ]
+}
+
+@test "arl_token_iso_to_epoch still rejects an invalid calendar date carrying an offset" {
+  run bash -c "source '$LIB'; arl_token_iso_to_epoch '2026-02-30T23:30:00-05:00'"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
 @test "arl_token_extract_resets_at reads the weekly_all limits[] entry" {
   body='{"limits":[{"kind":"weekly_all","percent":40,"resets_at":"2026-09-02T15:59:59Z"}]}'
   run bash -c "source '$LIB'; arl_token_extract_resets_at '$body' weekly_all"
