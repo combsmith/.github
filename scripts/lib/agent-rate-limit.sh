@@ -929,6 +929,12 @@ arl_token_transport_decision() {
   local envelope="$1" now status retry_after
   now="$(arl_sanitize_int "${2:-}")"
   status="$(arl_sanitize_int "$(jq -r '.status? // 0' <<<"$envelope" 2>/dev/null || printf '0')")"
+  # Normalize: strip leading zeros (0200 -> 200, 0429 -> 429) and treat an
+  # oversized digit string as "not obtained" (0) so the integer tests below can
+  # never error out and fall through to evaluating the body.
+  status="${status#"${status%%[!0]*}"}"
+  status="${status:-0}"
+  if [[ ${#status} -gt 15 ]]; then status=0; fi
 
   # Fresh 429 with a positive retry-after: the one telemetry response that
   # blocks (ADR §7). An observation timestamp (observed_at) or absolute deadline
