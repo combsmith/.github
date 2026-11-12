@@ -42,7 +42,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SCAN_DIR="${1:-$REPO_ROOT}"
 
-if [ ! -d "$SCAN_DIR" ]; then
+if [[ ! -d "$SCAN_DIR" ]]; then
   echo "::error::check-duplicate-decls: scan directory does not exist: ${SCAN_DIR}" >&2
   exit 2
 fi
@@ -163,12 +163,12 @@ report=""
 _record() {
   # _record <file> <kind> <findings>   (<findings> is "SYMBOL<TAB>COUNT" lines)
   local file="$1" kind="$2" findings="$3" sym count IFS
-  [ -n "$findings" ] || return 0
+  [[ -n "$findings" ]] || return 0
   fail=1
   report="${report}- \`${file}\` — duplicated top-level ${kind}:
 "
   while IFS="$(printf '\t')" read -r sym count; do
-    [ -n "$sym" ] || continue
+    [[ -n "$sym" ]] || continue
     report="${report}  - \`${sym}\` (declared ${count} times)
 "
   done <<EOF
@@ -178,14 +178,14 @@ EOF
 
 # ── shell: duplicate top-level function declarations ─────────────────────────
 while IFS= read -r -d '' f; do
-  [ -n "$f" ] || continue
+  [[ -n "$f" ]] || continue
   findings="$(extract_shell_functions "$f" | duplicates_with_counts)"
   _record "$f" "function declarations" "$findings"
 done < <(_find_files sh | LC_ALL=C sort -z)
 
 # ── markdown: duplicate top-level headings ───────────────────────────────────
 while IFS= read -r -d '' f; do
-  [ -n "$f" ] || continue
+  [[ -n "$f" ]] || continue
   findings="$(extract_markdown_headings "$f" | duplicates_with_counts)"
   _record "$f" "headings" "$findings"
 done < <(_find_files md | LC_ALL=C sort -z)
@@ -193,11 +193,11 @@ done < <(_find_files md | LC_ALL=C sort -z)
 # ── json: duplicate object keys / unparseable files ──────────────────────────
 json_files=()
 while IFS= read -r -d '' f; do
-  [ -n "$f" ] || continue
+  [[ -n "$f" ]] || continue
   json_files+=("$f")
 done < <(_find_files json | LC_ALL=C sort -z)
 
-if [ "${#json_files[@]}" -gt 0 ]; then
+if [[ "${#json_files[@]}" -gt 0 ]]; then
   if ! command -v python3 >/dev/null 2>&1; then
     echo "::error::check-duplicate-decls: python3 is required to validate JSON files but was not found" >&2
     exit 2
@@ -244,7 +244,7 @@ PY
   }
 fi
 
-if [ "$fail" -ne 0 ]; then
+if [[ "$fail" -ne 0 ]]; then
   echo "::error::Duplicate top-level declarations found — the #1485 corruption class. This merge is blocked."
   printf '%s\n' "$report"
   echo "This is the signature of a botched automated conflict resolution or a"
