@@ -253,3 +253,17 @@ setup() {
   run shellcheck --shell=bash "$LIB"
   [ "$status" -eq 0 ]
 }
+
+@test "sc_description_missing: suffix variants like 'Risky Changes' match their section" {
+  body=$'## Problem\n\nx\n\n## Risky Changes\n\nx\n\n## Test Plan\n\nx\n\n## Rollback\n\nx\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
+}
+
+@test "sc_description_missing: a four-space-indented fence line does NOT close an open fence" {
+  body=$'## Problem\n\nx\n\n## Risk\n\nx\n\n## Test Plan\n\n```\n    ```\n## Rollback\n\ny\n```\n\n## Monitoring\n\nx\n'
+  run bash -c "source '$LIB'; printf '%s' \"\$1\" | sc_description_missing" _ "$body"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]  # only Rollback stays missing: its heading sits inside the fence
+}

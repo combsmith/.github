@@ -37,11 +37,11 @@ SC_DESCRIPTION_SECTION_KEYS=(problem risk test-plan rollback monitoring)
 # "Tests", "Testing", "How to test" — with the "plan" segment optional, so a
 # "## Tests" heading is not mis-flagged as a missing test section.
 SC_DESCRIPTION_SECTION_PATTERNS=(
-  '(^|[^[:alnum:]])problems?([^[:alnum:]]|$)'
-  '(^|[^[:alnum:]])risks?([^[:alnum:]]|$)'
-  '(^|[^[:alnum:]])test(s|ing)?([[:space:]-]?plan(s)?)?([^[:alnum:]]|$)'
-  '(^|[^[:alnum:]])rollback(s)?([^[:alnum:]]|$)'
-  '(^|[^[:alnum:]])monitoring([^[:alnum:]]|$)'
+  '(^|[^[:alnum:]])problem[[:alpha:]]*'
+  '(^|[^[:alnum:]])risk[[:alpha:]]*'
+  '(^|[^[:alnum:]])test[[:alpha:]]*([[:space:]-]?plan[[:alpha:]]*)?'
+  '(^|[^[:alnum:]])rollback[[:alpha:]]*'
+  '(^|[^[:alnum:]])monitoring[[:alpha:]]*'
 )
 
 # Lines whose entire trimmed-and-lowercased content matches one of these forms
@@ -67,9 +67,10 @@ SC_DESCRIPTION_PLACEHOLDER_FORMS=(
 # A section is "present" iff a markdown heading matches one of the five
 # SC_DESCRIPTION_SECTION_PATTERNS AND at least one non-heading, non-comment,
 # non-blank, non-structural line of real text sits under that heading before
-# the next heading (or end-of-body). Lines inside fenced code blocks, HTML
-# comments, Markdown thematic breaks (`---`, `***`, `___`), and known
-# placeholder forms (`_No response_`) do NOT count — the #1976 regression
+# the next heading (or end-of-body). A fenced code block under a heading counts
+# as real content once it holds a non-blank line (an empty fence does not), but
+# a `#` line inside a fence never opens a section. HTML comments, Markdown thematic breaks (`---`,
+# `***`, `___`), and known placeholder forms (`_No response_`) do NOT count — the #1976 regression
 # class includes a draft that looks filled because every section carries a
 # default placeholder and a horizontal rule between sections.
 #
@@ -248,6 +249,9 @@ _sc_fence_run_length() {
 # else.
 _sc_is_fence_close() {
   local s="$1" ch="$2" needed="$3"
+  # At most three leading spaces; a tab or 4+ spaces is not a closing fence.
+  local close_indent_regex='^ {0,3}[^[:space:]]'
+  [[ "$s" =~ $close_indent_regex ]] || return 1
   local trimmed="${s#"${s%%[![:space:]]*}"}"
   # Strip trailing whitespace.
   trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
