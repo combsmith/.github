@@ -1994,9 +1994,10 @@ _pair_state() {
   done
   local prior="${commit_array[$dst_idx]:--}" differs
   [[ "$prior" = "-" ]] && prior=""
-  # A comparison needs BOTH commits (#1249): an empty side is indeterminate ("unknown"), not a
-  # candidate regression. "unknown" still narrows the benign allowlist (fail closed) and
-  # classify_failure maps it to "-" rather than REGRESSION.
+  # A comparison needs BOTH commits (#1249): when either side is missing, mark as "unknown" to indicate
+  # no comparison was possible. This fails closed (unknown acts like differs=1 for the benign allowlist,
+  # narrowing eligible exceptions) but marks triage as INDETERMINATE rather than REGRESSION, since no
+  # diff was actually observed.
   if [[ -n "$cand" ]] && [[ -n "$prior" ]]; then
     differs="$(_reusable_differs "$agent" "$cand" "$prior")"
   else
