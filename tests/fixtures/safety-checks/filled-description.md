@@ -1,25 +1,24 @@
 ## Problem
 
-The compliance audit script crashed on repos without a default branch set.
-Repro: `scripts/compliance-audit.sh --repo petry-projects/empty-fixture`.
+The PR-description safety check had no reusable helper for counting which
+required sections of a description are missing or left as template filler.
 
 ## Risk
 
-Low. The fix is a two-line guard around a `jq` expression that was dereferencing
-a null default_branch; no schema change, no state migration.
+Low. The change adds a new shell library and fixtures only; no existing
+workflow sources it yet, so nothing in production behavior changes.
 
 ## Test Plan
 
-Added a bats fixture covering the null-default-branch case to
-`tests/test_safety_checks.bats`; existing cases stay green. Ran the full suite
-locally.
+Added bats cases in `tests/test_safety_checks.bats` that run the helper against
+the fixtures in this directory; the full suite passes locally.
 
 ## Rollback
 
-Revert this commit; the pre-change path was identical except for the guard.
+Revert this commit; nothing else depends on the new library.
 No cleanup needed.
 
 ## Monitoring
 
-The daily `compliance-audit-and-improvement` workflow writes a run summary
-that will light up on the next cron tick if the guard regresses.
+The `safety-checks-tests` workflow runs the bats suite on every change to the
+library and will fail if the behavior regresses.
