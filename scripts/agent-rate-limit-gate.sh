@@ -357,10 +357,11 @@ argate_token_budget() {
   body="$(jq -c '.body? // {}' <<<"$envelope" 2>/dev/null || printf '{}')"
   # Normalize to decimal (leading zeros such as 0200 must not be read as octal);
   # an absurdly long digit string is treated as not-obtained rather than wrapped.
-  # Force base-10 interpretation before length check to strip any leading zeros.
-  status="$((10#${status}))"
+  # Strip leading zeros textually and bound the length BEFORE any arithmetic, so a
+  # long zero-padded or oversized digit string can never wrap in 64-bit math.
+  status="${status#"${status%%[!0]*}"}"
   status="${status:-0}"
-  if [[ ${#status} -le 15 ]]; then :; else status=0; fi
+  if [[ ${#status} -le 15 ]]; then status="$((10#${status}))"; else status=0; fi
 
   # Extract both pause-worthy window percents up front so the OBTAINED/DEGRADED
   # headline reflects whether the body actually carried usable window data. A 200
