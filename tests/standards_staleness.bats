@@ -402,3 +402,9 @@ _compare() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"must be a whole number of days"* ]]
 }
+
+@test "ss_decision: zero-padded max/age are compared as decimal, not octal" {
+  [[ "$(ss_decision 1 0 9 010)" = "PENDING" ]]
+  [[ "$(ss_decision 1 0 9 08)" = "STALE age" ]]
+  [[ "$(ss_decision 1 0 07 08)" = "PENDING" ]]
+}
