@@ -330,9 +330,7 @@ cbf_verify_repo() {
   return 1
 }
 
-# cbf_fleet_repos — list owner/repo for exactly the repos the code-quality ruleset is applied to.
-# Limits processing to repositories covered by the ruleset (archived repos, GHSA forks and
-# FLEET_EXCLUDE are skipped, matching apply-rulesets.sh behavior).
+# cbf_fleet_repos — list owner/repo, limiting to repos covered by the ruleset (excludes archived, GHSA forks, FLEET_EXCLUDE).
 cbf_fleet_repos() {
   local repos_json classified action repo
   repos_json="$(gh repo list "$ORG" --json name,isArchived,isPrivate,hasIssuesEnabled --limit 1000)" \
@@ -344,8 +342,7 @@ cbf_fleet_repos() {
   return 0
 }
 
-# cbf_main — parse arguments and run backfill or verification for each target repository,
-# reporting outcomes and failures via exit code.
+# cbf_main — parse arguments and run backfill or verification for each target repository, reporting outcomes and failures.
 cbf_main() {
   local target="" all=false verify=false
   while (( $# > 0 )); do
