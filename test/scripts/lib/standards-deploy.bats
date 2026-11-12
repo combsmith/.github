@@ -25,6 +25,10 @@ case "$sub" in
     case "${1:-}" in
       list)
         # The label-keyed idempotency check.
+        if [ "${GH_PR_LIST_RC:-0}" -ne 0 ]; then
+          printf '%s\n' "${GH_PR_LIST_ERR:-gh: HTTP 401}" >&2
+          exit "${GH_PR_LIST_RC}"
+        fi
         printf '%s' "${GH_EXISTING_PR:-}" ;;
       create)
         [ "${GH_PR_CREATE_RC:-0}" -ne 0 ] && exit "${GH_PR_CREATE_RC}"
@@ -45,6 +49,8 @@ case "$sub" in
         case "$endpoint" in
           repos/combsmith/upstream/*) printf '%s' "${GH_PARENT_PR:-}" ;;
           *base=*)                    printf '%s' "${GH_BASE_PR:-}" ;;
+          *head=combsmith:*)          printf '%s' "${GH_BRANCH_PR:-}" ;;
+          *head=*)                    printf '%s' "${GH_FORK_PR:-}" ;;
           *)                          printf '%s' "${GH_BRANCH_PR:-}" ;;
         esac ;;
       */git/refs)          exit "${GH_REF_CREATE_RC:-0}" ;;
@@ -308,7 +314,8 @@ deploy() {
 @test "the branch-in-use probe correctly ignores same-named fork PRs but stops on target-repo PRs" {
   GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
 
-  # Model a same-named fork PR: probe finds no target-repo PR, so deployment proceeds
+  # A same-named fork PR exists: only an unqualified head query would see it.
+  GH_FORK_PR="77"; export GH_FORK_PR
   GH_BRANCH_PR=""; export GH_BRANCH_PR
   run deploy
   [ "$status" -eq 0 ]
@@ -475,4 +482,13 @@ deploy() {
   [ "$status" -ne 0 ]
   [[ "$output" == FAILED\ sha-unresolved:* ]]
   ! grep -q 'contents/.* --method PUT' "$GH_CALLS"
+}
+
+@test "a failed open-PR listing fails loudly instead of being treated as no PR" {
+  GH_PR_LIST_RC="1"; export GH_PR_LIST_RC
+  GH_PR_LIST_ERR="gh: HTTP 401"; export GH_PR_LIST_ERR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED pr-list-failed:gh: HTTP 401 " ]
+  [ "$(grep -c 'git/refs' "$GH_CALLS")" -eq 0 ]
 }
