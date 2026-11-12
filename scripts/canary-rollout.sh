@@ -1994,7 +1994,14 @@ _pair_state() {
   done
   local prior="${commit_array[$dst_idx]:--}" differs
   [[ "$prior" = "-" ]] && prior=""
-  differs="$(_reusable_differs "$agent" "$cand" "$prior")"
+  # A comparison needs BOTH commits (#1249): an empty side is indeterminate ("unknown"), not a
+  # candidate regression. "unknown" still narrows the benign allowlist (fail closed) and
+  # classify_failure maps it to "-" rather than REGRESSION.
+  if [[ -n "$cand" ]] && [[ -n "$prior" ]]; then
+    differs="$(_reusable_differs "$agent" "$cand" "$prior")"
+  else
+    differs="unknown"
+  fi
 
   # Cumulative health since this candidate's own cut, across every concrete tier EXCEPT a ring
   # strictly BELOW the source that runs a DIFFERENT (newer) candidate (#1118 AC5): that ring's
