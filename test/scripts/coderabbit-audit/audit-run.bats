@@ -76,6 +76,8 @@ JSON
     {number: 9, body: ("x <!-- coderabbit-audit:key=" + $h + " -->")},
     {number: 11, body: "an issue with the label but no marker"}
   ]' > "$STUB_DIR/issues/alpha.json"
+  printf '[]\n' > "$STUB_DIR/issues/old.json"
+  printf '[]\n' > "$STUB_DIR/issues/noissues.json"
 }
 
 teardown() {

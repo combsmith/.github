@@ -26,7 +26,8 @@ case "$1 $2" in
       esac
     done
     [[ -n "$repo" && "$label" == "coderabbit-audit" && "$state" == "open" && "$limit" == "1000" && "$json" == "1" ]] || exit 64
-    [[ -f "$STUB_DIR/issues/$repo.json" ]] && cat "$STUB_DIR/issues/$repo.json" || printf '%s\n' '[]' ;;
+    [[ -f "$STUB_DIR/issues/$repo.json" ]] || { echo "gh stub: missing issues fixture for $repo" >&2; exit 64; }
+    cat "$STUB_DIR/issues/$repo.json" ;;
   "issue create")
     [[ -n "${STUB_FAIL_ISSUE_CREATE:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
     echo "https://github.invalid/issues/1" ;;
