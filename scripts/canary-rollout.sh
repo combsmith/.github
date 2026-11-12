@@ -3486,8 +3486,17 @@ _host_release_versions() {
   local agent="$1" host
   host="$(_agent_field "$agent" host)"
   [ -z "$host" ] && return 0
-  gh api "repos/$host/git/matching-refs/tags/$agent/v" --jq '.[]?.ref' 2>/dev/null \
-    | sed -n "s#^refs/tags/${agent}/v##p" || true
+  # A listing ERROR must not read as "no release/anchor tags" (that would make a channel-scoped
+  # agent look legacy and resolve its stale bare tier): record it to the armed
+  # _CANARY_TAG_FAIL_FLAG exactly like a failed tag lookup (#1225), so fail-closed callers
+  # (cmd_rollback) can refuse. Output is unchanged (empty) for callers that do not arm the flag.
+  local refs rc=0
+  refs="$(gh api "repos/$host/git/matching-refs/tags/$agent/v" --jq '.[]?.ref' 2>/dev/null)" || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    _tag_lookup_failed "$host" "$agent/v*" "matching-refs listing failed (exit $rc)" || true
+    return 0
+  fi
+  printf '%s\n' "$refs" | sed -n "s#^refs/tags/${agent}/v##p" || true
 }
 
 # _autocut_bump_override <agent> — the EXPLICIT bump override for the agent (registry knob

@@ -1325,6 +1325,31 @@ GHEOF
   [ ! -s "$PATCH_LOG" ]
 }
 
+@test "orchestrator: rollback fails closed when the matching-refs listing errors (never reads as legacy) (#1103)" {
+  # A 5xx on the release/anchor listing must NOT make a v-scoped agent look legacy (no v<M>-next
+  # anchor) and move its stale bare tag — rollback must refuse and move nothing.
+  _make_stub_bin
+  export PATCH_LOG="$BATS_TEST_TMPDIR/rollback-list.patch"
+  : > "$PATCH_LOG"
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"-X PATCH"*"git/refs/tags/"*)         echo "$*" >> "$PATCH_LOG"; echo "{}" ;;
+  *"matching-refs/tags/dev-lead/v"*)     echo "HTTP 502: Bad Gateway" >&2; exit 1 ;;
+  *"git/ref/tags/dev-lead/v139.8.0"*)    echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;
+  *"git/ref/tags/dev-lead/stable"*)      echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;
+  *) echo "" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
+    bash "$ORCH" rollback dev-lead stable --to v139.8.0
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"lookup error"* ]]
+  [ ! -s "$PATCH_LOG" ]
+}
+
 # ── orchestrator: full graduated verdicts (cut date + gh run data → gate state) ─
 # Lay out next = candidate (cccc); ring0/ring1/stable = prior (bbbb): frontier = ring0,
 # transition next->ring0, source = next. The release tag cccc is dated `cut_days` ago,
