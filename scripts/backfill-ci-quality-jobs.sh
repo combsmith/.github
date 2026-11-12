@@ -302,14 +302,19 @@ cbf_verify_repo() {
   # Fall back only to a merged PR targeting the default branch; an open or
   # unmerged PR head (e.g. the backfill PR itself) would run the new jobs
   # even though the default branch does not define them yet.
-  # Only when the default-branch tip has no check runs at all: if it has CI
-  # evidence, a real failure there must not be replaced by an unrelated PR's checks.
+  # Skip the fallback only when a required check exists on the tip but did not
+  # pass (a real failure must not be masked by an unrelated PR's checks). Other
+  # push-triggered checks on the tip (CodeQL, SonarCloud) do not block it.
   # A failed request is a verification failure, never an empty result.
-  local all_names=""
+  local all_names="" has_nonpassing=false
   if (( ${#missing[@]} > 0 )); then
-    all_names="$(gh api --paginate "repos/${repo}/commits/${sha}/check-runs?per_page=100" --jq '.check_runs[].name' 2>/dev/null)"       || { echo "MISSING ${repo} (cannot read check runs)"; return 1; }
+    all_names="$(gh api --paginate "repos/${repo}/commits/${sha}/check-runs?per_page=100" --jq '.check_runs[].name' 2>/dev/null)" \
+      || { echo "MISSING ${repo} (cannot read check runs)"; return 1; }
+    for check in "${missing[@]}"; do
+      if grep -qxF "$check" <<< "$all_names"; then has_nonpassing=true; break; fi
+    done
   fi
-  if (( ${#missing[@]} > 0 )) && [[ -z "$all_names" ]]; then
+  if (( ${#missing[@]} > 0 )) && [[ "$has_nonpassing" = false ]]; then
     pr_sha="$(gh pr list --repo "$repo" --state merged --base "$branch" --limit 1 --json headRefOid --jq '.[0].headRefOid // ""' 2>/dev/null || true)"
     if [[ -n "$pr_sha" ]] && names="$(cbf_check_names "$repo" "$pr_sha")"; then
       missing=()
