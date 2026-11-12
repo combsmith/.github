@@ -487,7 +487,15 @@ _agent_current_channel_major() {
     return 0
   fi
   local major
-  major="$(_host_release_versions "$agent" | sed -n 's/^\([0-9][0-9]*\)-next$/\1/p' | sort -n | tail -1)"
+  local versions
+  versions="$(_host_release_versions "$agent")"
+  if [[ "$versions" == *"$_TAG_LOOKUP_UNRECORDED"* ]]; then
+    # Listing failed AND the failure could not be recorded: surface the sentinel (uncached) so
+    # _resolved_channel / fail-closed callers read the agent's major as UNKNOWN.
+    echo "$_TAG_LOOKUP_UNRECORDED"
+    return 0
+  fi
+  major="$(printf '%s\n' "$versions" | sed -n 's/^\([0-9][0-9]*\)-next$/\1/p' | sort -n | tail -1)"
   _AGENT_CHANNEL_MAJOR_CACHE["$agent"]="$major"
   echo "$major"
 }
@@ -504,6 +512,10 @@ _agent_current_channel_major() {
 _resolved_channel() {
   local agent="$1" tier="$2" major tag suffix
   major="$(_agent_current_channel_major "$agent")"
+  if [[ "$major" == *"$_TAG_LOOKUP_UNRECORDED"* ]]; then
+    printf '%s\t%s\n' "$(channel_tag "$agent" "$tier")" "$_TAG_LOOKUP_UNRECORDED"
+    return 0
+  fi
   if _agent_has_channel_major "$agent" "$major"; then
     tag="$(channel_tag "$agent" "$tier" "$major")"; suffix="${tag#"$agent"/}"
     printf '%s\t%s\n' "$tag" "$(_channel_tag_commit "$agent" "$suffix")"
@@ -2548,7 +2560,13 @@ cmd_rollback() {
     echo "::error::rollback: cannot arm the tag-lookup failure flag — refusing to resolve $agent/$ring without error tracking" >&2
     return 1
   fi
-  resolved="$(_CHANNEL_COMMIT_CACHE=(); _AGENT_CHANNEL_MAJOR_CACHE=(); _CANARY_TAG_FAIL_FLAG="$flag" _resolved_channel "$agent" "$ring" || true)"
+  # An explicitly v-scoped ring (v<M>-<tier>) already names its exact tag — resolving it through
+  # _resolved_channel would re-prefix the major (v139-v139-stable). Probe that exact tag instead.
+  if [[ "$ring" =~ ^v[0-9]+-.+$ ]]; then
+    resolved="$(_CHANNEL_COMMIT_CACHE=(); _CANARY_TAG_FAIL_FLAG="$flag"; printf '%s\t%s\n' "$agent/$ring" "$(_channel_tag_commit "$agent" "$ring")")"
+  else
+    resolved="$(_CHANNEL_COMMIT_CACHE=(); _AGENT_CHANNEL_MAJOR_CACHE=(); _CANARY_TAG_FAIL_FLAG="$flag" _resolved_channel "$agent" "$ring" || true)"
+  fi
   [[ -s "$flag" ]] && lookup_failed=1
   rm -f "$flag"
   [[ "$resolved" == *"$_TAG_LOOKUP_UNRECORDED"* ]] && lookup_failed=1
@@ -3493,7 +3511,8 @@ _host_release_versions() {
   local refs rc=0
   refs="$(gh api "repos/$host/git/matching-refs/tags/$agent/v" --jq '.[]?.ref' 2>/dev/null)" || rc=$?
   if [[ "$rc" -ne 0 ]]; then
-    _tag_lookup_failed "$host" "$agent/v*" "matching-refs listing failed (exit $rc)" || true
+    _tag_lookup_failed "$host" "$agent/v*" "matching-refs listing failed (exit $rc)" \
+      || printf '%s\n' "$_TAG_LOOKUP_UNRECORDED"
     return 0
   fi
   printf '%s\n' "$refs" | sed -n "s#^refs/tags/${agent}/v##p" || true

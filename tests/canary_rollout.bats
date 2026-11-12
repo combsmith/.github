@@ -1350,6 +1350,32 @@ GHEOF
   [ ! -s "$PATCH_LOG" ]
 }
 
+@test "orchestrator: rollback of an explicit v<M>-<tier> ring on an established-major agent moves that exact tag (#1103)" {
+  # Regression: the scoped ring must not be re-prefixed (v139-v139-stable) by the resolver.
+  _make_stub_bin
+  export PATCH_LOG="$BATS_TEST_TMPDIR/rollback-scoped.patch"
+  : > "$PATCH_LOG"
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"-X PATCH"*"git/refs/tags/"*)         echo "$*" >> "$PATCH_LOG"; echo "{}" ;;
+  *"matching-refs/tags/dev-lead/v"*)     printf 'refs/tags/dev-lead/v139.8.0\nrefs/tags/dev-lead/v139-next\n' ;;
+  *"git/ref/tags/dev-lead/v139.8.0"*)    echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;
+  *"git/ref/tags/dev-lead/v139-next"*)   echo "90dcc01ca854d7acd65044bb8defcc32789a8335 commit" ;;
+  *"git/ref/tags/dev-lead/v139-stable"*) echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef commit" ;;
+  *) echo "" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+
+  run env GITHUB_REPOSITORY="combsmith/.github" CANARY_RINGS="$RINGS" \
+    bash "$ORCH" rollback dev-lead v139-stable --to v139.8.0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rolled back dev-lead/v139-stable -> v139.8.0"* ]]
+  grep -Fq "git/refs/tags/dev-lead/v139-stable " "$PATCH_LOG"
+  ! grep -Fq "v139-v139" "$PATCH_LOG"
+}
+
 # ── orchestrator: full graduated verdicts (cut date + gh run data → gate state) ─
 # Lay out next = candidate (cccc); ring0/ring1/stable = prior (bbbb): frontier = ring0,
 # transition next->ring0, source = next. The release tag cccc is dated `cut_days` ago,
