@@ -79,4 +79,4 @@ Scheduled workflows in this repo post audit reports and status digests as issues
 ## Related
 
 The companion repository [`combsmith/.github-private`](https://github.com/combsmith/.github-private) holds org automation:
-custom agents, skills, agentic workflow infrastructure, installed frameworks, and scheduled CI.
+custom agents, agentic workflow infrastructure, installed frameworks, and scheduled CI.
