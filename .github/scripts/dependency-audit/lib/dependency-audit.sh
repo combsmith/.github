@@ -79,16 +79,16 @@ dep_audit_python_run() {
     shown="$(dep_audit_display "$dir")"
     echo "::group::pip-audit ${shown}"
     audited=0
-    if [ -f "$dir/pyproject.toml" ]; then
+    if [[ -f "$dir/pyproject.toml" ]]; then
       audited=1
       pip-audit "$dir" </dev/null || status=1
     fi
-    if [ -f "$dir/requirements.txt" ]; then
+    if [[ -f "$dir/requirements.txt" ]]; then
       audited=1
       pip-audit -r "$dir/requirements.txt" </dev/null || status=1
     fi
     echo "::endgroup::"
-    if [ "$audited" -eq 0 ]; then
+    if [[ "$audited" -eq 0 ]]; then
       echo "::error::Discovered Python project ${shown} but found no readable pyproject.toml or requirements.txt to audit"
       status=1
     fi
@@ -148,7 +148,7 @@ dep_audit_cargo_audit_roots() {
     fi
     # Sentinel keeps a trailing newline in the path intact through $(...).
     ws="$(printf '%s' "$meta" | dep_audit_cargo_workspace_root && printf x)"
-    if [ "${ws%x}" = "$ws" ] || [ -z "${ws%x}" ]; then
+    if [[ "${ws%x}" = "$ws" ]] || [[ -z "${ws%x}" ]]; then
       echo "::error::cargo metadata for $(dep_audit_display "$dir")/Cargo.toml has no workspace_root" >&2
       status=1
       continue
@@ -156,12 +156,12 @@ dep_audit_cargo_audit_roots() {
     ws="${ws%x}"
     seen=0
     for s in ${roots[@]+"${roots[@]}"}; do
-      if [ "$s" = "$ws" ]; then
+      if [[ "$s" = "$ws" ]]; then
         seen=1
         break
       fi
     done
-    if [ "$seen" -eq 0 ]; then
+    if [[ "$seen" -eq 0 ]]; then
       roots+=("$ws")
       printf '%s\0' "$ws"
     fi
@@ -179,7 +179,7 @@ dep_audit_cargo_audit_dir() {
   local dir="$1"
   (
     cd -- "$dir" || exit 1
-    if [ ! -e Cargo.lock ]; then
+    if [[ ! -e Cargo.lock ]]; then
       echo "No committed Cargo.lock in $(dep_audit_display "$dir"); generating one to audit."
       if ! cargo generate-lockfile </dev/null; then
         echo "::error::cargo generate-lockfile failed in $(dep_audit_display "$dir")"
@@ -268,11 +268,11 @@ dep_audit_gate_verdict() {
     return 1
   fi
   while IFS=$'\t' read -r job result; do
-    [ -n "$job" ] || continue
+    [[ -n "$job" ]] || continue
     echo "${job}: ${result}"
-    if [ "$job" = "detect" ]; then
+    if [[ "$job" = "detect" ]]; then
       saw_detect=1
-      if [ "$result" != "success" ]; then
+      if [[ "$result" != "success" ]]; then
         echo "::error::Ecosystem detection did not succeed (${result}); no audit can be trusted"
         status=1
       fi
@@ -288,7 +288,7 @@ dep_audit_gate_verdict() {
   done <<EOF
 $pairs
 EOF
-  if [ "$saw_detect" -eq 0 ]; then
+  if [[ "$saw_detect" -eq 0 ]]; then
     echo "::error::Audit gate saw no result for the detect job"
     status=1
   fi
