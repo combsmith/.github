@@ -34,11 +34,11 @@ declare -A HOST_LOADED      # host -> 1
 
 load_host_tags() {
   local host="$1"
-  [ -n "${HOST_LOADED[$host]:-}" ] && return 0
+  [[ -n "${HOST_LOADED[$host]:-}" ]] && return 0
   HOST_LOADED[$host]=1
   local name sha
-  while IFS=$'\t' read -r name sha || [ -n "$name" ]; do
-    [ -n "$name" ] && TAG_SHA["$host"$'\t'"$name"]="$sha"
+  while IFS=$'\t' read -r name sha || [[ -n "$name" ]]; do
+    [[ -n "$name" ]] && TAG_SHA["$host"$'\t'"$name"]="$sha"
   done < <(gh api --paginate "repos/$ORG/$host/tags" \
              --jq '.[] | [.name, .commit.sha] | @tsv' 2>/dev/null | tr -d '\r' || true)
 }
@@ -53,11 +53,11 @@ resolve_version() {
   if [[ "$ref" =~ $ref_regex ]]; then
     printf '%s' "${ref#"$agent"/}"; return 0
   fi
-  [ -z "$chan_sha" ] && { printf '?'; return 0; }
+  [[ -z "$chan_sha" ]] && { printf '?'; return 0; }
   local t
   for t in "${!TAG_SHA[@]}"; do
     [[ "$t" == "$host"$'\t'"$agent"/v*.*.* ]] || continue
-    if [ "${TAG_SHA[$t]}" = "$chan_sha" ]; then
+    if [[ "${TAG_SHA[$t]}" = "$chan_sha" ]]; then
       printf '%s' "${t##*/}"; return 0
     fi
   done
@@ -86,10 +86,10 @@ for repo in "${REPOS[@]}"; do
     reusable_file="$(ring_reusable_file "$agent")"
     reusable_re="${reusable_file//./\\.}"   # escape dots for the ERE below
     content="$(gh api "repos/$ORG/$repo/contents/$stub" --jq '.content // empty' 2>/dev/null | base64 -d 2>/dev/null || true)"
-    [ -n "$content" ] || continue
+    [[ -n "$content" ]] || continue
     # Extract the reusable uses: line -> host + @ref.
     uses_line="$(grep -oE "uses:[[:space:]]*$ORG/(\.github|\.github-private)/\.github/workflows/${reusable_re}@[^[:space:]#]+" <<< "$content" | head -1 || true)"
-    [ -n "$uses_line" ] || continue
+    [[ -n "$uses_line" ]] || continue
     ref="${uses_line##*@}"          # e.g. dev-lead/v1-ring1
     host=""
     host_regex="$ORG/(\.github(-private)?)/"
@@ -103,10 +103,10 @@ for repo in "${REPOS[@]}"; do
     local_drift=""
     case "$channel" in
       *"$tier"|"$tier") : ;;                              # e.g. v1-ring1 endswith ring1
-      stable|v*-stable) [ "$tier" = "stable" ] || local_drift="⚠️" ;;
+      stable|v*-stable) [[ "$tier" = "stable" ]] || local_drift="⚠️" ;;
       *) local_drift="⚠️" ;;
     esac
-    [ -n "$local_drift" ] && drift_count=$((drift_count + 1))
+    [[ -n "$local_drift" ]] && drift_count=$((drift_count + 1))
     rows+="| \`$repo\` | \`$agent\` | \`$tier\` | \`$channel\` | \`$version\` | ${local_drift:-✅} |"$'\n'
   done
 done
@@ -133,7 +133,7 @@ done
     for k in "${!SEEN_VERSION[@]}"; do
       [[ "$k" == "$agent"$'\t'* ]] && vers_arr+=("${k#*$'\t'}")
     done
-    if [ "${#vers_arr[@]}" -gt 0 ]; then
+    if [[ "${#vers_arr[@]}" -gt 0 ]]; then
       vers="$(printf '%s\n' "${vers_arr[@]}" | sort -u | tr '\n' ' ')"
       echo "| \`$agent\` | ${vers% } |"
     fi

@@ -358,3 +358,42 @@ split_row() {
   [ "$status" -eq 0 ]
   [[ "$output" == *clean-cycles-met=false* ]]
 }
+
+@test "zero-padded counts are compared as decimal, not invalid octal" {
+  local f="$BATS_TEST_TMPDIR/pad.md"
+  printf '| 2026-01-01 | 9 | 08 | | @alice | no |\n' > "$f"
+  run bash "$SCRIPT" validate "$f"
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"cannot be empty"* || "$output" == *"is empty"* ]]
+}
+
+@test "amcl_clean_cycles_met: zero-padded required is decimal, not octal" {
+  source "$SCRIPT"
+  local f="$BATS_TEST_TMPDIR/eight.md" i
+  : > "$f"
+  for i in 01 02 03 04 05 06 07 08; do
+    printf '| 2026-01-%s | 0 | 0 | — | @alice | yes |\n' "$i" >> "$f"
+  done
+  [[ "$(amcl_clean_cycles_met "$f" 010)" = "false" ]]
+  [[ "$(amcl_clean_cycles_met "$f" 08)" = "true" ]]
+}
+
+@test "oversized counts are rejected before Bash arithmetic can wrap them" {
+  local f="$BATS_TEST_TMPDIR/big.md"
+  # 2^64 wraps to 0 under $((10#n)); it must not make the row look clean.
+  printf '| 2026-01-01 | 1 | 18446744073709551616 | x | @alice | yes |\n' > "$f"
+  run bash "$SCRIPT" validate "$f"
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"not a non-negative integer"* ]]
+  source "$SCRIPT"
+  [[ "$(amcl_clean_cycles_met "$f" 1)" = "false" ]]
+}
+
+@test "eligibility rejects an oversized required-clean-cycles; padded zeros stay valid" {
+  local f="$BATS_TEST_TMPDIR/ok.md"
+  printf '| 2026-01-01 | 0 | 0000000000000000000000 | — | @alice | yes |\n' > "$f"
+  run bash "$SCRIPT" eligibility "$f" 18446744073709551618
+  [[ "$status" -eq 2 ]]
+  run bash "$SCRIPT" validate "$f"
+  [[ "$status" -eq 0 ]]
+}

@@ -50,7 +50,7 @@ ISSUES_REMOVED=0
 # dl_cycle_trigger_label(). Only sourced when present (skipped under bats).
 _LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/dev-lead-retrigger.sh"
 # shellcheck source=/dev/null
-[ -f "$_LIB" ] && source "$_LIB"
+[[ -f "$_LIB" ]] && source "$_LIB"
 
 info() { echo "[info] $*" >&2; }
 warn() { echo "[warn] $*" >&2; }
@@ -161,7 +161,7 @@ priority_label_color() {
 _sonar_get() {
   local path="$1"
   local auth=()
-  [ -n "${SONAR_TOKEN:-}" ] && auth=(-u "${SONAR_TOKEN}:")
+  [[ -n "${SONAR_TOKEN:-}" ]] && auth=(-u "${SONAR_TOKEN}:")
   curl -sf "${auth[@]}" "${SONAR_URL}${path}"
 }
 
@@ -171,10 +171,17 @@ sonar_list_projects() {
   while :; do
     resp=$(_sonar_get "/api/components/search?organization=${SONAR_ORG}&qualifiers=TRK&ps=500&p=${page}") \
       || { warn "sonar_list_projects: page ${page} fetch failed — results may be incomplete"; return 1; }
-    echo "$resp" | jq -r '.components[].key'
-    total=$(echo "$resp" | jq '.paging.total')
-    page_count=$(echo "$resp" | jq '.components | length')
-    { [ "$((page * 500))" -ge "$total" ] || [ "$page_count" -eq 0 ]; } && break
+    echo "$resp" | jq -r 'if (.components | type == "array" and all(.[]; (.key | type == "string" and length > 0))) and (.paging.total == 0 or (.components | length > 0)) then .components[].key else error("bad components") end' \
+      || { warn "sonar_list_projects: page ${page} has missing/malformed components — results may be incomplete"; return 1; }
+    total=$(echo "$resp" | jq '.paging.total') \
+      || { warn "sonar_list_projects: page ${page} paging.total extraction failed"; return 1; }
+    page_count=$(echo "$resp" | jq '.components | length') \
+      || { warn "sonar_list_projects: page ${page} components length extraction failed"; return 1; }
+    if ! [[ "$total" =~ ^[0-9]+$ ]]; then
+      warn "sonar_list_projects: page ${page} has missing/non-numeric paging.total ('${total}') — results may be incomplete"
+      return 1
+    fi
+    { [[ "$((page * 500))" -ge "$total" ]] || [[ "$page_count" -eq 0 ]]; } && break
     page=$((page + 1))
   done
 }
@@ -188,9 +195,9 @@ sonar_project_issues() {
     total=$(echo "$resp" | jq '.total')
     out=$(jq -s '.[0] + .[1]' <(echo "$out") <(echo "$resp" | jq '.issues'))
     fetched=$(echo "$out" | jq 'length')
-    { [ "$fetched" -ge "$total" ] || [ "$(echo "$resp" | jq '.issues | length')" -eq 0 ]; } && break
+    { [[ "$fetched" -ge "$total" ]] || [[ "$(echo "$resp" | jq '.issues | length')" -eq 0 ]]; } && break
     page=$((page + 1))
-    [ "$page" -gt 40 ] && break   # 20k-issue backstop
+    [[ "$page" -gt 40 ]] && break   # 20k-issue backstop
   done
   echo "$out"
 }
@@ -200,18 +207,22 @@ sonar_project_issues() {
 # ---------------------------------------------------------------------------
 scan() {
   local target_name=""
-  if [ -n "$TARGET_REPO" ]; then
+  if [[ -n "$TARGET_REPO" ]]; then
     target_name="${TARGET_REPO#"$ORG/"}"
   fi
 
   local ndjson_file="$REPORT_DIR/findings.ndjson"
   : > "$ndjson_file"
   : > "$SCANNED_FILE"
-  local project repo issues family
+  local project repo issues family projects
 
-  for project in $(sonar_list_projects); do
+  # Capture the listing so a failed/malformed page aborts the audit instead of
+  # silently truncating it (a `for … in $(…)` swallows the exit status).
+  projects=$(sonar_list_projects) || return 1
+
+  for project in $projects; do
     repo=$(sonar_project_to_repo "$project")
-    [ -n "$target_name" ] && [ "$repo" != "$target_name" ] && continue
+    [[ -n "$target_name" ]] && [[ "$repo" != "$target_name" ]] && continue
     info "Scanning $project -> $repo"
     issues=$(sonar_project_issues "$project") || return 1
     # Only repos recorded here are eligible for close_resolved (#1409).
@@ -219,7 +230,7 @@ scan() {
 
     # Emit one NDJSON object per issue with its computed family.
     while IFS= read -r row; do
-      [ -z "$row" ] && continue
+      [[ -z "$row" ]] && continue
       local rule sev typ msg comp
       rule=$(echo "$row" | jq -r '.rule')
       sev=$(echo "$row" | jq -r '.severity // "MINOR"')
@@ -236,7 +247,7 @@ scan() {
   done
 
   # Convert NDJSON to a JSON array in a single O(n) pass.
-  if [ -s "$ndjson_file" ]; then
+  if [[ -s "$ndjson_file" ]]; then
     jq -s '.' "$ndjson_file" > "$FINDINGS_FILE"
   else
     echo "[]" > "$FINDINGS_FILE"
@@ -340,14 +351,14 @@ manage_group_issue() {
   prio=$(severity_priority_label "$max_sev")
 
   labels="$SONAR_AUDIT_LABEL,dev-lead,$prio"
-  if family_is_security "$family" || [ "$(echo "$group" | jq -r '.has_vuln')" = "true" ]; then
+  if family_is_security "$family" || [[ "$(echo "$group" | jq -r '.has_vuln')" = "true" ]]; then
     labels="$labels,security"
   fi
 
   local body
   body=$(render_body "$group")
 
-  if [ "$DRY_RUN" = "true" ] || [ "$CREATE_ISSUES" != "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]] || [[ "$CREATE_ISSUES" != "true" ]]; then
     info "[dry-run] $repo :: $stable_title [$labels]"
     return
   fi
@@ -362,13 +373,13 @@ manage_group_issue() {
     --json number,body --limit 200 2>/dev/null \
     | jq -r --arg m "$marker" '.[] | select((.body // "") | contains($m)) | .number' 2>/dev/null | head -1 || echo "")
 
-  if [ -n "$existing" ]; then
+  if [[ -n "$existing" ]]; then
     # Refresh the dashboard body + ensure current priority label, drop stale ones.
     gh issue edit "$existing" --repo "$ORG/$repo" --body "$body" \
       --add-label "$prio" 2>/dev/null || true
     local other
     for other in priority:blocker priority:critical priority:major priority:minor priority:info; do
-      [ "$other" != "$prio" ] && gh issue edit "$existing" --repo "$ORG/$repo" \
+      [[ "$other" != "$prio" ]] && gh issue edit "$existing" --repo "$ORG/$repo" \
         --remove-label "$other" 2>/dev/null || true
     done
     gh issue comment "$existing" --repo "$ORG/$repo" \
@@ -391,7 +402,7 @@ manage_group_issue() {
   local url
   url=$(gh issue create --repo "$ORG/$repo" --title "$stable_title" \
     --label "$labels" --body "$body" 2>/dev/null || echo "")
-  if [ -n "$url" ]; then
+  if [[ -n "$url" ]]; then
     ISSUES_ADDED=$((ISSUES_ADDED + 1))
     info "Created $url"
   else
@@ -408,7 +419,7 @@ close_resolved() {
   open_issues=$(gh issue list --repo "$ORG/$repo" --label "$SONAR_AUDIT_LABEL" --state open \
     --json number,body --limit 200 2>/dev/null \
     | jq -r '.[] | "\(.number)\t" + ((.body // "") | (try (capture("sonarcloud-audit:key=[^/]+/(?<fam>[a-z0-9]+)").fam) catch ""))' 2>/dev/null || echo "")
-  [ -z "$open_issues" ] && return
+  [[ -z "$open_issues" ]] && return
 
   # Families currently present for this repo.
   local current_fams
@@ -416,8 +427,8 @@ close_resolved() {
 
   local num fam
   while IFS=$'\t' read -r num fam; do
-    [ -z "$num" ] && continue
-    [ -z "$fam" ] && continue   # not a marker-bearing audit issue — leave it alone
+    [[ -z "$num" ]] && continue
+    [[ -z "$fam" ]] && continue   # not a marker-bearing audit issue — leave it alone
     if ! echo "$current_fams" | grep -qxF "$fam"; then
       gh issue close "$num" --repo "$ORG/$repo" \
         --comment "Resolved! No open SonarCloud findings remain in this workstream as of $(date -u +%Y-%m-%d). Closing automatically." 2>/dev/null \
@@ -476,7 +487,7 @@ main() {
   info "SonarCloud audit — org=$SONAR_ORG dry_run=$DRY_RUN create_issues=$CREATE_ISSUES"
   scan
 
-  if [ "$CREATE_ISSUES" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+  if [[ "$CREATE_ISSUES" = "true" && "$DRY_RUN" != "true" ]]; then
     while IFS= read -r group; do
       manage_group_issue "$group"
     done < <(jq -c '.[]' "$GROUPS_FILE")
@@ -484,7 +495,7 @@ main() {
     # successfully scanned (#1409). A repo that was not scanned has no findings in
     # groups.json for that reason alone — not because they were resolved.
     while IFS= read -r repo; do
-      [ -n "$repo" ] && close_resolved "$repo"
+      [[ -n "$repo" ]] && close_resolved "$repo"
     done < <(sort -u "$SCANNED_FILE")
   else
     while IFS= read -r group; do manage_group_issue "$group"; done < <(jq -c '.[]' "$GROUPS_FILE")
