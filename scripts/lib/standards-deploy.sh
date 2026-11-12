@@ -68,11 +68,11 @@ _sd_branch_open_pr() {
   # A fork's sync branch can be the head of a PR against its upstream; that PR
   # lives in the parent repo, so probe there too.
   parent=$(gh api "repos/${repo}" --jq '.parent.full_name // ""') || return 1
-  [ -n "$parent" ] && queries+=("repos/${parent}/pulls?state=open&per_page=100&head=${owner}:${branch}")
+  [[ -n "$parent" ]] && queries+=("repos/${parent}/pulls?state=open&per_page=100&head=${owner}:${branch}")
   for q in "${queries[@]}"; do
     found=$(gh api "$q" --paginate --jq '.[].number') || return 1
     found="${found%%$'\n'*}"
-    if [ -n "$found" ]; then printf '%s' "$found"; return 0; fi
+    if [[ -n "$found" ]]; then printf '%s' "$found"; return 0; fi
   done
   return 0
 }
@@ -159,7 +159,7 @@ sd_deploy_files_via_pr() {
       return 1
     fi
     rm -f "$probe_err"
-    if [ -n "$branch_pr" ]; then
+    if [[ -n "$branch_pr" ]]; then
       echo "FAILED branch-in-use:${branch}#${branch_pr}"
       return 1
     fi
