@@ -34,7 +34,13 @@ pr_auto_review_sweep_candidates() {
   # Back-pressure guard: only a positive integer bounds the run. Anything else
   # (0, negative, non-numeric) selects nothing so a misconfigured cap can never
   # fire an unbounded dispatch burst.
-  if ! [[ "$max" =~ ^[0-9]+$ ]] || [ "$max" -le 0 ]; then
+  if ! [[ "$max" =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+  # Normalize to base 10 so zero-padded values (08, 09) are not parsed as octal
+  # by bash arithmetic or rejected by jq --argjson (JSON forbids leading zeros).
+  max=$((10#$max))
+  if [[ "$max" -le 0 ]]; then
     return 0
   fi
 

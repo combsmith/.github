@@ -51,7 +51,7 @@ DISCUSSION_FIELDS='
 '
 
 set_proceed() {
-  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'proceed=%s\n' "$1" >>"$GITHUB_OUTPUT"
   fi
   printf '[load-discussion-context] proceed=%s\n' "$1" >&2
@@ -94,14 +94,14 @@ load_single() {
   discussion=$(printf '%s' "$discussion" | jq -c '.[0]')
 
   local reason=""
-  if [ "$(printf '%s' "$discussion" | jq -r '.category')" != "ideas" ]; then
+  if [[ "$(printf '%s' "$discussion" | jq -r '.category')" != "ideas" ]]; then
     reason="not in the Ideas category"
-  elif [ "$(printf '%s' "$discussion" | jq -r '.author_trusted')" != "true" ]; then
+  elif [[ "$(printf '%s' "$discussion" | jq -r '.author_trusted')" != "true" ]]; then
     reason="author does not have write access"
-  elif [ "$(printf '%s' "$discussion" | jq -r '.enhanced')" = "true" ]; then
+  elif [[ "$(printf '%s' "$discussion" | jq -r '.enhanced')" = "true" ]]; then
     reason="already enhanced"
   fi
-  if [ -n "$reason" ]; then
+  if [[ -n "$reason" ]]; then
     printf '::notice title=Feature ideation::Discussion %s not enhanced: %s.\n' "$TARGET_DISCUSSION" "$reason"
     set_proceed false
     return 0
@@ -124,13 +124,13 @@ load_backlog() {
     }
   }"
   while :; do
-    if [ -n "$cursor" ]; then
+    if [[ -n "$cursor" ]]; then
       page=$(gh_safe_graphql -f query="$query" -f owner="$owner" -f name="$name" -f cursor="$cursor")
     else
       page=$(gh_safe_graphql -f query="$query" -f owner="$owner" -f name="$name")
     fi
     nodes=$(jq -cn --argjson a "$nodes" --argjson b "$(printf '%s' "$page" | jq -c '.data.repository.discussions.nodes // []')" '$a + $b')
-    [ "$(printf '%s' "$page" | jq -r '.data.repository.discussions.pageInfo.hasNextPage // false')" = "true" ] || break
+    [[ "$(printf '%s' "$page" | jq -r '.data.repository.discussions.pageInfo.hasNextPage // false')" = "true" ]] || break
     cursor=$(printf '%s' "$page" | jq -r '.data.repository.discussions.pageInfo.endCursor')
   done
 
@@ -151,24 +151,24 @@ main() {
     printf '[load-discussion-context] REPO must be in owner/name format\n' >&2
     return 64
   fi
-  if [ -z "${GH_TOKEN:-}" ] || [ -z "${DISCUSSION_CONTEXT_PATH:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]] || [[ -z "${DISCUSSION_CONTEXT_PATH:-}" ]]; then
     printf '[load-discussion-context] GH_TOKEN and DISCUSSION_CONTEXT_PATH are required\n' >&2
     return 64
   fi
 
-  if [ -n "${TARGET_DISCUSSION:-}" ]; then
+  if [[ -n "${TARGET_DISCUSSION:-}" ]]; then
     if [[ ! $TARGET_DISCUSSION =~ ^[1-9][0-9]*$ ]]; then
       printf '[load-discussion-context] TARGET_DISCUSSION must be a positive integer\n' >&2
       return 64
     fi
     load_single
-  elif [ "${ENHANCE_BACKLOG:-0}" = "1" ]; then
+  elif [[ "${ENHANCE_BACKLOG:-0}" = "1" ]]; then
     load_backlog
   else
     set_proceed true
   fi
 }
 
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

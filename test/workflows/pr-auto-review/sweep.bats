@@ -102,3 +102,48 @@ LIST='[
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 0 ]
 }
+
+# ── zero-padded MAX is normalized to base 10 (not octal) ─────────────────────
+
+@test "candidates: zero-padded MAX 08 is parsed as decimal 8, not octal" {
+  run pr_auto_review_sweep_candidates 08 <<<"$LIST"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "candidates: zero-padded MAX 09 is parsed as decimal 9, not octal" {
+  run pr_auto_review_sweep_candidates 09 <<<"$LIST"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "candidates: zero-padded MAX 01 caps at one candidate" {
+  run pr_auto_review_sweep_candidates 01 <<<"$LIST"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [ "${lines[0]}" = "https://github.com/combsmith/repo-a/pull/1" ]
+}
+
+@test "candidates: MAX 000 normalizes to 0 and emits nothing" {
+  run pr_auto_review_sweep_candidates 000 <<<"$LIST"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 0 ]
+}
+
+@test "candidates: jq receives the normalized MAX via --argjson" {
+  # Wrap jq to record the value bound to --argjson max (JSON forbids leading zeros).
+  jq() {
+    local i
+    for ((i = 1; i < $#; i++)); do
+      if [[ "${!i}" == "--argjson" ]]; then
+        local n=$((i + 1)) v=$((i + 2))
+        echo "${!n}=${!v}" >"$BATS_TEST_TMPDIR/argjson"
+      fi
+    done
+    command jq "$@"
+  }
+  run pr_auto_review_sweep_candidates 08 <<<"$LIST"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/argjson")" = "max=8" ]
+}

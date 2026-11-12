@@ -169,7 +169,7 @@ pr_auto_review_ready() {
         self_name="$5" review_decision="$6" blocking_thread_count="${7:-0}"
 
   # 1. PR must be open and not a draft.
-  if [ "$state" != "OPEN" ] || [ "$is_draft" = "true" ]; then
+  if [[ "$state" != "OPEN" ]] || [[ "$is_draft" = "true" ]]; then
     echo "skip-draft"
     return 1
   fi
@@ -179,7 +179,7 @@ pr_auto_review_ready() {
   #    delegated to pr_auto_review_checks_ready (issue #680, unchanged).
   local total
   total=$(printf '%s' "$checks_json" | jq 'if type == "array" then length else 0 end' 2>/dev/null)
-  if [ -z "$total" ] || [ "$total" -eq 0 ] \
+  if [[ -z "$total" ]] || [[ "$total" -eq 0 ]] \
      || ! printf '%s' "$checks_json" \
           | pr_auto_review_checks_ready "$required_json" "$self_name" >/dev/null; then
     echo "skip-checks-pending"
@@ -187,13 +187,13 @@ pr_auto_review_ready() {
   fi
 
   # 3. Effective review decision must not be CHANGES_REQUESTED.
-  if [ "$review_decision" = "CHANGES_REQUESTED" ]; then
+  if [[ "$review_decision" = "CHANGES_REQUESTED" ]]; then
     echo "skip-changes-requested"
     return 1
   fi
 
   # 4. No blocking review threads (unresolved AND not outdated).
-  if [ "$blocking_thread_count" -gt 0 ]; then
+  if [[ "$blocking_thread_count" -gt 0 ]]; then
     echo "skip-unresolved-threads"
     return 1
   fi
