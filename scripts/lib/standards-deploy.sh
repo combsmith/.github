@@ -109,7 +109,7 @@ sd_deploy_files_via_pr() {
   #    surfaced distinctly — they must NOT be misreported as "no write access".
   #    Repo-level push permission implies PR-create for a collaborator identity.
   local can_push perm_err perm_rc
-  perm_err=$(mktemp)
+  perm_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
   can_push=$(gh api "repos/${repo}" --jq '.permissions.push // false' 2>"$perm_err") && perm_rc=0 || perm_rc=$?
   if [ "$perm_rc" -ne 0 ]; then
     local perm_msg; perm_msg=$(tr '\n' ' ' < "$perm_err"); rm -f "$perm_err"
@@ -152,7 +152,7 @@ sd_deploy_files_via_pr() {
     # Server-side, owner-qualified lookup (see _sd_branch_open_pr): exact, so
     # no 30-result truncation and no same-named fork PRs to filter out.
     local branch_pr probe_err probe_msg
-    probe_err=$(mktemp)
+    probe_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
     if ! branch_pr=$(_sd_branch_open_pr "$repo" "$branch" 2>"$probe_err"); then
       probe_msg=$(tr '\n' ' ' < "$probe_err"); rm -f "$probe_err"
       echo "FAILED branch-pr-probe-failed:${branch}${probe_msg:+:${probe_msg}}"
@@ -164,7 +164,7 @@ sd_deploy_files_via_pr() {
       return 1
     fi
     local reset_err reset_msg
-    reset_err=$(mktemp)
+    reset_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
     if ! gh api "repos/${repo}/git/refs/heads/${branch}" --method PATCH \
           --raw-field "sha=${base_sha}" -F force=true --silent 2>"$reset_err"; then
       reset_msg=$(tr '\n' ' ' < "$reset_err"); rm -f "$reset_err"
