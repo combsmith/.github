@@ -31,13 +31,10 @@ on:
 
 permissions: {}
 
-# github.sha scopes the concurrency group per-commit, not per-ref: a rapid
-# push sequence then cancels only its own in-flight run, so the LATEST
-# commit always keeps its own test result (otherwise a push-then-push race
-# cancels this run against the newer sha and the merged head has no test
-# evidence of its own).
+# Per-ref group (#1202 AC5): a newer push to the same ref cancels the older
+# in-flight run, so the latest commit always keeps its own test result.
 concurrency:
-  group: safety-checks-tests-${{ github.ref }}-${{ github.sha }}
+  group: safety-checks-tests-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
