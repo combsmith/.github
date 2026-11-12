@@ -37,7 +37,7 @@ trusted_author_check() {
 
   local known
   for known in "${TRUSTED_PIPELINE_AUTHORS[@]}"; do
-    [ "$login" = "$known" ] && return 0
+    [[ "$login" = "$known" ]] && return 0
   done
 
   # Other bots and malformed names never have a collaborator record. Checking
@@ -56,7 +56,7 @@ trusted_author_check() {
   stderr=$(cat "$tmp_err")
   rm -f "$tmp_err"
 
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     case "$stderr" in
       *"HTTP 404"*) return 1 ;;
     esac
@@ -77,7 +77,7 @@ trusted_authors_allowlist() {
   local allowed='[]'
   local login rc
   while IFS= read -r login; do
-    [ -n "$login" ] || continue
+    [[ -n "$login" ]] || continue
     rc=0
     trusted_author_check "$repo" "$login" || rc=$?
     case "$rc" in
