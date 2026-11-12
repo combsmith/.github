@@ -307,13 +307,13 @@ _sc_is_placeholder() {
 }
 
 # _sc_is_empty_list_marker — true iff the line is a bare list marker or
-# unchecked checkbox, which are structural/placeholder markers that should not
+# empty checkbox, which are structural/placeholder markers that should not
 # count as section content. Patterns: bare '-', '*', '+', or with optional
-# checkbox like '- [ ]', '- [x]'.
+# empty checkbox like '- [ ]'. Checked checkboxes (e.g. '- [x]') count as content.
 _sc_is_empty_list_marker() {
   local s="$1"
   local trimmed="${s#"${s%%[![:space:]]*}"}"
   trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-  # Match: list marker (-, *, or +) optionally followed by spaces and checkbox
-  [[ "$trimmed" =~ ^[-\*+]([[:space:]]+\[[ xX]*\])?$ ]]
+  # Match: list marker (-, *, or +) optionally followed by spaces and empty checkbox (spaces only in brackets)
+  [[ "$trimmed" =~ ^[-\*+]([[:space:]]+\[[ ]*\])?$ ]]
 }
