@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Fake `gh` for the CodeRabbit audit tests. Logs each call to $STUB_LOG as one
+# shell-quoted line and answers from the files setup() writes under $STUB_DIR.
+printf '%q ' gh "$@" >> "$STUB_LOG"; echo >> "$STUB_LOG"
+
+case "$1 $2" in
+  "api --paginate")
+    [[ -n "${STUB_FAIL_REPOS:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
+    cat "$STUB_DIR/repos.ndjson" ;;
+  api\ repos/*)
+    [[ -n "${STUB_FAIL_CONTENTS:-}" ]] && { echo "gh: Get \"https://api.github.com/$2\": CANARYSECRET connection refused" >&2; exit 1; }
+    path="${2%%\?*}"
+    base64 < "$STUB_DIR/workflows/$(basename "$path")" ;;
+  "issue list")
+    [[ -n "${STUB_FAIL_ISSUE_LIST:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
+    shift 2
+    repo="" label="" state="" limit="" json=0
+    while (( $# )); do
+      case "$1" in
+        --repo)  [[ $# -ge 2 ]] || { echo "gh stub: --repo requires value" >&2; exit 64; }; repo="${2#*/}"; shift 2 ;;
+        --label) [[ $# -ge 2 ]] || { echo "gh stub: --label requires value" >&2; exit 64; }; label="$2"; shift 2 ;;
+        --state) [[ $# -ge 2 ]] || { echo "gh stub: --state requires value" >&2; exit 64; }; state="$2"; shift 2 ;;
+        --limit) [[ $# -ge 2 ]] || { echo "gh stub: --limit requires value" >&2; exit 64; }; limit="$2"; shift 2 ;;
+        --json)  [[ $# -ge 2 ]] || { echo "gh stub: --json requires value" >&2; exit 64; }; json=1; shift 2 ;;
+        *) echo "gh stub: unexpected issue list argument: $1" >&2; exit 64 ;;
+      esac
+    done
+    [[ -n "$repo" && "$label" == "coderabbit-audit" && "$state" == "open" && "$limit" == "1000" && "$json" == "1" ]] || exit 64
+    [[ -f "$STUB_DIR/issues/$repo.json" ]] || { echo "gh stub: missing issues fixture for $repo" >&2; exit 64; }
+    cat "$STUB_DIR/issues/$repo.json" ;;
+  "issue create")
+    [[ -n "${STUB_FAIL_ISSUE_CREATE:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
+    echo "https://github.invalid/issues/1" ;;
+  "label create")
+    [[ -n "${STUB_FAIL_LABEL:-}" ]] && { echo "gh: forbidden" >&2; exit 1; }
+    [[ -n "${STUB_LABEL_EXISTS:-}" ]] && { echo "label already exists" >&2; exit 1; }
+    : ;;
+  "issue edit"|"issue close")
+    : ;;
+  *)
+    echo "gh stub: unexpected call: $*" >&2; exit 64 ;;
+esac
