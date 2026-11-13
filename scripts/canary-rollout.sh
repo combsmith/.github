@@ -1994,15 +1994,7 @@ _pair_state() {
   done
   local prior="${commit_array[$dst_idx]:--}" differs
   [[ "$prior" = "-" ]] && prior=""
-  # A comparison needs BOTH commits (#1249): when either side is missing, mark as "unknown" to indicate
-  # no comparison was possible. This fails closed (unknown acts like differs=1 for the benign allowlist,
-  # narrowing eligible exceptions) but marks triage as INDETERMINATE rather than REGRESSION, since no
-  # diff was actually observed.
-  if [[ -n "$cand" ]] && [[ -n "$prior" ]]; then
-    differs="$(_reusable_differs "$agent" "$cand" "$prior")"
-  else
-    differs="unknown"
-  fi
+  differs="$(_reusable_differs "$agent" "$cand" "$prior")"
 
   # Cumulative health since this candidate's own cut, across every concrete tier EXCEPT a ring
   # strictly BELOW the source that runs a DIFFERENT (newer) candidate (#1118 AC5): that ring's
