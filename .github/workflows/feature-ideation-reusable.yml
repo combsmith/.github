@@ -72,10 +72,13 @@ on:
         default: 'standard'
         type: string
       model:
-        description: >
-          Model family — `opus` (default, recommended), `sonnet`, or `haiku`.
-          The resolver/CLI maps the family to the current version ID. An
-          operator MAY override with a concrete model ID for a one-off pin.
+        # The Claude Code CLI resolves the family client-side (`--model opus`
+        # in the analyst step) to the current version ID — never pin a
+        # version ID here. See standards/agent-standards.md.
+        description: >-
+          Model family (`opus` recommended — Sonnet produces shallower adversarial
+          passes) or an explicit model ID. Client-side resolution by the Claude Code
+          CLI; never pin a version-specific model ID.
         required: false
         default: 'opus'
         type: string
@@ -332,6 +335,8 @@ jobs:
           ENHANCE_BACKLOG: ${{ inputs.enhance_backlog && '1' || '0' }}
           SOURCES_FILE_PATH: ${{ inputs.sources_file }}
           RESEARCH_DEPTH: ${{ inputs.research_depth }}
+        # Model family resolution: `--model` is passed through to the Claude
+        # CLI, which resolves the family alias (#1210 AC3).
         uses: anthropics/claude-code-action@c0949c50a78c1ec8ce2647db36629b870e715d0c # v1.0.268
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

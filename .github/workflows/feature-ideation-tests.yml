@@ -76,7 +76,9 @@ jobs:
           tmp="$(mktemp -d)"
           # --proto '=https' --proto-redir '=https' enforces HTTPS on both the
           # initial request and any redirect -L follows (SonarCloud S6506, #1360).
-          curl -sL --proto '=https' --proto-redir '=https' -o "${tmp}/yq" \
+          # Same retry/timeout flags as the install step above (#739).
+          curl -sSfL --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 60 \
+            --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors -o "${tmp}/yq" \
             "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
           echo "${YQ_SHA256}  ${tmp}/yq" | sha256sum -c -
           sudo install -m 0755 "${tmp}/yq" /usr/local/bin/yq
