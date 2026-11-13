@@ -214,6 +214,18 @@ cbf_fetch() {
   rm -f "$err"
 }
 
+# cbf_needs_seed <repo> <added ids> — exit 0 if secret-scan was added and the repo has no
+# .gitleaks.toml (seed it), 1 if no seed is needed, 2 (message on stderr) on a fetch error.
+cbf_needs_seed() {
+  local probe rc=0
+  [[ " $2 " == *" secret-scan "* ]] || return 1
+  probe="$(mktemp)"
+  cbf_fetch "$1" ".gitleaks.toml" "$probe" && rc=0 || rc=$?
+  rm -f "$probe"
+  if (( rc == 4 )); then return 0; elif (( rc != 0 )); then return 2; fi
+  return 1
+}
+
 # cbf_backfill_repo <owner/repo> — print one outcome line; non-zero on FAILED.
 cbf_backfill_repo() {
   local repo="$1" ci new added rc=0 err files=() seed=false outcome
@@ -240,70 +252,59 @@ cbf_backfill_repo() {
   done <<< "$names"
 
   added="$(cbf_backfill_file "$ci" "$new" "${others[@]}" 2>"$err")" && rc=0 || rc=$?
-  rm -rf "$wfdir"
   if (( rc == 2 )); then
     echo "CONFLICT ${repo} — job id(s) $(cat "$err") already used for a different check name; fix by hand"
-    rm -f "$ci" "$new" "$err"; return 0
+    rm -rf "$wfdir" "$ci" "$new" "$err"; return 0
   elif (( rc != 0 )); then
-    echo "FAILED ${repo} inject: $(cat "$err")"; rm -f "$ci" "$new" "$err"; return 1
+    echo "FAILED ${repo} inject: $(cat "$err")"; rm -rf "$wfdir" "$ci" "$new" "$err"; return 1
   fi
   if [[ -z "$added" ]]; then
     echo "OK ${repo} — secret-scan and coverage already present"
-    rm -f "$ci" "$new" "$err"; return 0
+    rm -rf "$wfdir" "$ci" "$new" "$err"; return 0
   fi
   files=(".github/workflows/ci.yml" "$new")
 
   # Seed .gitleaks.toml when this PR adds the secret-scan job and the repo has none.
-  if [[ " ${added} " == *" secret-scan "* ]]; then
-    local probe; probe="$(mktemp)"
-    cbf_fetch "$repo" ".gitleaks.toml" "$probe" 2>"$err" && rc=0 || rc=$?
-    rm -f "$probe"
-    if (( rc == 4 )); then seed=true; files+=(".gitleaks.toml" "$CBF_TEMPLATE_GITLEAKS")
-    elif (( rc != 0 )); then
-      echo "FAILED ${repo} fetch-gitleaks: $(cat "$err")"; rm -f "$ci" "$new" "$err"; return 1
-    fi
+  cbf_needs_seed "$repo" "$added" 2>"$err" && rc=0 || rc=$?
+  if (( rc == 0 )); then seed=true
+  elif (( rc == 2 )); then
+    echo "FAILED ${repo} fetch-gitleaks: $(cat "$err")"; rm -rf "$wfdir" "$ci" "$new" "$err"; return 1
   fi
 
   if [[ "$DRY_RUN" = true ]]; then
     echo "PLAN ${repo} — add job(s): ${added}$([[ "$seed" = true ]] && echo '; seed .gitleaks.toml')"
-    rm -f "$ci" "$new" "$err"; return 0
+    rm -rf "$wfdir" "$ci" "$new" "$err"; return 0
   fi
 
-  # Refetch ci.yml from the default branch to avoid race condition: intervening
-  # edits to the default branch could appear reverted if we backfill from a stale
-  # snapshot. Re-backfill from the current tip to ensure the deployed version
-  # includes any changes made after the initial fetch.
+  # Refetch ci.yml right before deploying to narrow the race with intervening edits to
+  # the default branch (it cannot close it: the PR base is read later, in the deploy).
+  # $others still points into $wfdir, which is kept until every exit below.
   local ci_fresh new_fresh added_fresh seed_fresh=false
   ci_fresh="$(mktemp)"
   new_fresh="$(mktemp)"
   cbf_fetch "$repo" ".github/workflows/ci.yml" "$ci_fresh" 2>"$err" && rc=0 || rc=$?
   if (( rc != 0 )); then
-    echo "FAILED ${repo} refetch-ci: $(cat "$err")"; rm -f "$ci" "$new" "$ci_fresh" "$new_fresh" "$err"; return 1
+    echo "FAILED ${repo} refetch-ci: $(cat "$err")"; rm -rf "$wfdir" "$ci" "$new" "$ci_fresh" "$new_fresh" "$err"; return 1
   fi
   added_fresh="$(cbf_backfill_file "$ci_fresh" "$new_fresh" "${others[@]}" 2>"$err")" && rc=0 || rc=$?
   if (( rc == 2 )); then
     echo "CONFLICT ${repo} — job id(s) $(cat "$err") already used for a different check name; fix by hand"
-    rm -f "$ci" "$new" "$ci_fresh" "$new_fresh" "$err"; return 0
+    rm -rf "$wfdir" "$ci" "$new" "$ci_fresh" "$new_fresh" "$err"; return 0
   elif (( rc != 0 )); then
-    echo "FAILED ${repo} refill: $(cat "$err")"; rm -f "$ci" "$new" "$ci_fresh" "$new_fresh" "$err"; return 1
+    echo "FAILED ${repo} refill: $(cat "$err")"; rm -rf "$wfdir" "$ci" "$new" "$ci_fresh" "$new_fresh" "$err"; return 1
   fi
   rm -f "$ci_fresh"
   # If ci.yml was already compliant when we re-checked, skip deployment.
   if [[ -z "$added_fresh" ]]; then
     echo "OK ${repo} — secret-scan and coverage already present"
-    rm -f "$ci" "$new" "$new_fresh" "$err"; return 0
+    rm -rf "$wfdir" "$ci" "$new" "$new_fresh" "$err"; return 0
   fi
   files=(".github/workflows/ci.yml" "$new_fresh")
 
-  # Seed .gitleaks.toml when this PR adds the secret-scan job and the repo has none.
-  if [[ " ${added_fresh} " == *" secret-scan "* ]]; then
-    local probe; probe="$(mktemp)"
-    cbf_fetch "$repo" ".gitleaks.toml" "$probe" 2>"$err" && rc=0 || rc=$?
-    rm -f "$probe"
-    if (( rc == 4 )); then seed_fresh=true; files+=(".gitleaks.toml" "$CBF_TEMPLATE_GITLEAKS")
-    elif (( rc != 0 )); then
-      echo "FAILED ${repo} fetch-gitleaks: $(cat "$err")"; rm -f "$ci" "$new" "$new_fresh" "$err"; return 1
-    fi
+  cbf_needs_seed "$repo" "$added_fresh" 2>"$err" && rc=0 || rc=$?
+  if (( rc == 0 )); then seed_fresh=true; files+=(".gitleaks.toml" "$CBF_TEMPLATE_GITLEAKS")
+  elif (( rc == 2 )); then
+    echo "FAILED ${repo} fetch-gitleaks: $(cat "$err")"; rm -rf "$wfdir" "$ci" "$new" "$new_fresh" "$err"; return 1
   fi
 
   local title="ci: add secret-scan and coverage jobs (org standard, #581)"
@@ -312,7 +313,7 @@ cbf_backfill_repo() {
   body+=$'\n\n'"These produce the \`Secret scan (gitleaks)\` and \`coverage\` checks, which ${ORG}/.github#581 will make **required** in the \`code-quality\` ruleset once every repo reports them. The coverage job stays green until the repo has tests. If you already measure coverage for your stack, replace the coverage step with yours, but keep the job id and \`name: coverage\`."
   body+=$'\n\n'"No other part of \`ci.yml\` is changed. Opened by \`scripts/backfill-ci-quality-jobs.sh\`."
   outcome="$(sd_deploy_files_via_pr "$repo" "$CBF_BRANCH" "$CBF_LABEL" "$title" "$body" "${files[@]}")" && rc=0 || rc=$?
-  rm -f "$ci" "$new" "$new_fresh" "$err"
+  rm -rf "$wfdir" "$ci" "$new" "$new_fresh" "$err"
   echo "${outcome%% *} ${repo} ${outcome#* }"
   return "$rc"
 }

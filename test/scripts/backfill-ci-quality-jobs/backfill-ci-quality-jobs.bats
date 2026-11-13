@@ -327,6 +327,60 @@ seed_repo() {  # seed_repo <name> [with-gitleaks]
   [ "$(yq -r '.jobs | keys | join(",")' "$WORK/deployed-ci.yml")" = "build-and-test,secret-scan,coverage" ]
 }
 
+# gh wrapper: the Nth (1-based) ci.yml contents request serves $2 ("404" or a file path).
+_stub_ci_nth() {  # _stub_ci_nth <n> <404|file>
+  mv "$STUB_BIN/gh" "$STUB_BIN/gh.real"
+  cat > "$STUB_BIN/gh" <<WRAP
+#!/usr/bin/env bash
+case "\$*" in
+  *"/contents/.github/workflows/ci.yml"*)
+    echo x >> "$WORK/ci-calls"
+    if [ "\$(wc -l < "$WORK/ci-calls")" -eq $1 ]; then
+      if [ "$2" = 404 ]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi
+      cat "$2"; exit 0
+    fi ;;
+esac
+exec "$STUB_BIN/gh.real" "\$@"
+WRAP
+  chmod +x "$STUB_BIN/gh"
+}
+
+@test "backfill_repo: FAILED refetch-ci when the pre-deploy refetch errors" {
+  _stub_gh; seed_repo zeta
+  _stub_ci_nth 2 404
+  DRY_RUN=false run cbf_backfill_repo combsmith/zeta
+  [ "$status" -ne 0 ]; [[ "$output" == "FAILED combsmith/zeta refetch-ci"* ]]
+}
+
+@test "backfill_repo: CONFLICT reported when the refetched ci.yml has a clashing job id" {
+  _stub_gh; seed_repo eta
+  write_repo_ci "$WORK/clash.yml"
+  printf '  coverage:\n    name: Coverage report\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n' >> "$WORK/clash.yml"
+  _stub_ci_nth 2 "$WORK/clash.yml"
+  DRY_RUN=false run cbf_backfill_repo combsmith/eta
+  [ "$status" -eq 0 ]; [[ "$output" == "CONFLICT combsmith/eta"* ]]
+  ! grep -q -- 'pr create' "$GH_LOG"
+}
+
+@test "backfill_repo: OK, no PR, when ci.yml became compliant between the two fetches" {
+  _stub_gh; seed_repo theta
+  cbf_backfill_file "$FIXTURES/theta/.github/workflows/ci.yml" "$WORK/full.yml" >/dev/null
+  _stub_ci_nth 2 "$WORK/full.yml"
+  sd_deploy_files_via_pr() { echo "unexpected deploy" >&2; return 1; }
+  DRY_RUN=false run cbf_backfill_repo combsmith/theta
+  [ "$status" -eq 0 ]; [[ "$output" == "OK combsmith/theta"* ]]
+}
+
+@test "backfill_repo: refetch pass still honours checks supplied by another workflow" {
+  _stub_gh; seed_repo iota with-gitleaks
+  printf 'on: [pull_request]\njobs:\n  coverage:\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n' \
+    > "$FIXTURES/iota/.github/workflows/coverage.yml"
+  sd_deploy_files_via_pr() { cp "$7" "$WORK/deployed-ci.yml"; echo "OPENED u"; }
+  DRY_RUN=false run cbf_backfill_repo combsmith/iota
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.jobs | keys | join(",")' "$WORK/deployed-ci.yml")" = "build-and-test,secret-scan" ]
+}
+
 @test "verify_repo: PASS when the default-branch tip reports both checks" {
   _stub_gh; mkdir -p "$FIXTURES/zeta"
   printf 'build-and-test\nSecret scan (gitleaks)\ncoverage\n' > "$FIXTURES/zeta/checks-tipsha"
