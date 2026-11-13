@@ -1992,7 +1992,7 @@ _pair_state() {
     # ring is never mistaken for an idle one; any failure still BLOCKs in decide_graduated.
     local idle_after
     idle_after="$(_gate_knob "$agent" "$transition" waive_sample_if_idle_after_hours)"
-    if [ "$(idle_sample_waiver "$dwell_h" "$idle_after" "$sample" "$target")" = "true" ]; then
+    if [[ "$(idle_sample_waiver "$dwell_h" "$idle_after" "$sample" "$target")" = "true" ]]; then
       echo "::notice::$agent $transition: source ring is idle (0 executed runs since the cut) and dwell ${dwell_h}h >= ${idle_after}h — sample floor ($target) waived (#1513)." >&2
       # Same shape as waive_sample (target 0): consumers that re-derive "sample met" from sample >= target
       # (promote --allow-pre-existing) then agree with the gate.
