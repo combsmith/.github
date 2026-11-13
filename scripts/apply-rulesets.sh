@@ -23,7 +23,8 @@ set -euo pipefail
 #   CI Pipeline (build-and-test) → repo-specific job name → required per-repo via
 #     branch protection, not a fixed org context (see github-settings.md §code-quality).
 #   Secret scan (gitleaks) + coverage → produced by the template ci.yml; added to the
-#     ruleset fleet-wide only after the coverage backfill (#581), not here.
+#     ruleset fleet-wide only after the coverage backfill (#581), not here. The
+#     backfill + gate: scripts/backfill-ci-quality-jobs.sh (--all, then --verify --all).
 #
 # Rulesets live ON each repo: editing a JSON here changes the desired state, not any
 # live ruleset, until this applier runs.
@@ -234,6 +235,7 @@ resolve_repo() {
   case "$1" in */*) printf '%s' "$1" ;; *) printf '%s/%s' "$ORG" "$1" ;; esac
 }
 
+# main — parse arguments (--repo, --all, --dry-run) and apply rulesets to target repo(s).
 main() {
   local target="" all=false
   local names=()

@@ -324,17 +324,19 @@ The following are **intentionally NOT** in `code-quality.json` today:
 | Check | Status | Check Name(s) | Why |
 |-------|--------|---------------|-----|
 | **Secret Scan** | ⏳ Template / new repos; not yet fleet-wide | `Secret scan (gitleaks)` | Produced by the template [`ci.yml`](workflows/ci.yml) (see [Push Protection Standard](push-protection.md#layer-3--ci-secret-scanning-secondary-defense)). Added to the ruleset fleet-wide only once existing repos produce it |
-| **Coverage** | ⏳ Template / new repos; not yet fleet-wide | `coverage` | **Not produced by the template [`ci.yml`](workflows/ci.yml) out of the box** — the template ships a single `build-and-test` job; a separate `coverage` check must be explicitly configured when adopting the template (see [ci-standards.md](ci-standards.md)). Requiring it fleet-wide before repos produce it would brick every PR — backfill first, then add the context |
+| **Coverage** | ⏳ Template / new repos; not yet fleet-wide | `coverage` | Produced by the template [`ci.yml`](workflows/ci.yml)'s `coverage` job, which stays green until tests exist (#578). Existing repos get it from the fleet backfill (`scripts/backfill-ci-quality-jobs.sh`, #581). Requiring it fleet-wide before repos produce it would block every PR, so backfill first, then add the context |
 | **Dev-Lead Agent** | ❌ Not a required context | `Dev-Lead Agent / dev-lead` | Per-PR AI review, not a merge gate: the agent's GitHub App refuses to mint a token for any PR touching workflow files, so requiring it would deadlock every workflow-modifying PR |
 | **CI Pipeline** | Repo-specific (not a fixed org context) | e.g. `build-and-test`, `TypeScript`, `Go` | Lint/format/typecheck/test; the job name is repo-defined, so it is required per-repo by declaring it in the repo's `.github/required-checks.json` (see [Repo-declared required checks](#repo-declared-required-checks)), not as a codified org-wide context |
 
 **Sequencing (why Secret Scan + Coverage are staged).** Adding a required context
 to `code-quality.json` makes it a merge gate on **every** repo the ruleset targets;
-a repo that does not *produce* that check is bricked. Neither context is produced by
-the template `ci.yml` out of the box — repos must explicitly add a coverage job and
-the gitleaks secret-scan step before those check names appear. Both are added to the
-shared ruleset only **after** a fleet backfill. Until then, keep them scoped to repos
-that already produce them. See [combsmith/.github#575](https://github.com/combsmith/.github/issues/575).
+a repo that does not *produce* that check is bricked. Both contexts are produced by
+the template `ci.yml` since #578, but existing repos produce them once the fleet
+backfill (`scripts/backfill-ci-quality-jobs.sh`) has added the jobs to their `ci.yml`, unless they already define them.
+Both are added to the shared ruleset only **after** `backfill-ci-quality-jobs.sh --verify --all`
+exits 0. Until then, keep them scoped to repos that already produce them. See
+[combsmith/.github#575](https://github.com/combsmith/.github/issues/575) and
+[#581](https://github.com/combsmith/.github/issues/581).
 
 > **Check names must match exactly.** GitHub-managed CodeQL produces a check named
 > `CodeQL` — **not** `Analyze (actions)`, `Analyze (javascript-typescript)`, or

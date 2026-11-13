@@ -73,3 +73,20 @@ gate on every repo the ruleset targets**. A repo that does not *produce* that ch
 is bricked (the required check never reports). Sequence any additions safely: ship
 the producing CI job fleet-wide first, then add the context here. Keep stricter sets
 scoped to the template / new repos until the fleet backfill lands.
+
+For `Secret scan (gitleaks)` + `coverage` (#581), the backfill and the gate are
+`scripts/backfill-ci-quality-jobs.sh`:
+
+```bash
+GH_TOKEN=<repo-write> bash scripts/backfill-ci-quality-jobs.sh --all --dry-run  # preview
+GH_TOKEN=<repo-write> bash scripts/backfill-ci-quality-jobs.sh --all            # one standards-sync PR per repo
+# merge each standards-sync PR first: --verify reads the default branch (or a merged PR)
+GH_TOKEN=<read>       bash scripts/backfill-ci-quality-jobs.sh --verify --all   # the gate
+```
+
+It adds each missing template job block, unchanged, to an eligible repo's existing
+`ci.yml`; checks already supplied by another workflow are skipped, and repos
+without `ci.yml` or with conflicting job IDs are reported for manual follow-up. Copying the whole template would delete the repo's own
+stack jobs, which is why `ci.yml` is not in `deploy-standard-workflows.sh`. It also
+seeds `.gitleaks.toml` when needed. Add the two contexts here and run
+`apply-rulesets.sh --all` **only after `--verify --all` exits 0**.
