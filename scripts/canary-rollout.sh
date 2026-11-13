@@ -487,7 +487,15 @@ _agent_current_channel_major() {
     return 0
   fi
   local major
-  major="$(_host_release_versions "$agent" | sed -n 's/^\([0-9][0-9]*\)-next$/\1/p' | sort -n | tail -1)"
+  local versions
+  versions="$(_host_release_versions "$agent")"
+  if [[ "$versions" == *"$_TAG_LOOKUP_UNRECORDED"* ]]; then
+    # Listing failed AND the failure could not be recorded: surface the sentinel (uncached) so
+    # _resolved_channel / fail-closed callers read the agent's major as UNKNOWN.
+    echo "$_TAG_LOOKUP_UNRECORDED"
+    return 0
+  fi
+  major="$(printf '%s\n' "$versions" | sed -n 's/^\([0-9][0-9]*\)-next$/\1/p' | sort -n | tail -1)"
   _AGENT_CHANNEL_MAJOR_CACHE["$agent"]="$major"
   echo "$major"
 }
@@ -504,6 +512,10 @@ _agent_current_channel_major() {
 _resolved_channel() {
   local agent="$1" tier="$2" major tag suffix
   major="$(_agent_current_channel_major "$agent")"
+  if [[ "$major" == *"$_TAG_LOOKUP_UNRECORDED"* ]]; then
+    printf '%s\t%s\n' "$(channel_tag "$agent" "$tier")" "$_TAG_LOOKUP_UNRECORDED"
+    return 0
+  fi
   if _agent_has_channel_major "$agent" "$major"; then
     tag="$(channel_tag "$agent" "$tier" "$major")"; suffix="${tag#"$agent"/}"
     printf '%s\t%s\n' "$tag" "$(_channel_tag_commit "$agent" "$suffix")"
@@ -2589,15 +2601,51 @@ cmd_rollback() {
   host="${host:-$THIS_REPO}"
   local target
   target="$(_gh_tag_commit "$host" "$agent/$to")"
-  [ -z "$target" ] && { echo "::error::release tag $agent/$to not found on $host" >&2; return 1; }
-  echo "rolling back $agent/$ring -> $to (${target:0:12}) on $host"
-  if [ "$dry" = true ]; then
-    echo "[DRY-RUN] would: gh api PATCH repos/$host/git/refs/tags/$agent/$ring sha=$target (force)"
+  [[ -z "$target" ]] && { echo "::error::release tag $agent/$to not found on $host" >&2; return 1; }
+  # Resolve the RING tag through the SAME resolver as cmd_promote (major-scoped-channels epic
+  # #657 F4, #1103): an agent with an established channel major resolves to the authoritative
+  # v-scoped `<agent>/v<M>-<ring>` (never the bare tier, which no stub pins); a legacy bare-only
+  # agent resolves to `<agent>/<ring>`. There is deliberately NO rollback-local bare fallback —
+  # it would move a tag nobody pins and exit 0 (a silent no-op on the emergency lever).
+  # (The `--to` release tag above is always the bare immutable `<agent>/vX.Y.Z`, so it is
+  # correctly resolved without a major.)
+  # A lookup ERROR (5xx / rate limit / network) must never read as an absent tag: arm the
+  # per-lookup failure flag (#1225) and fail closed before any tag is moved.
+  local ring_tag ring_commit resolved flag lookup_failed=0
+  flag="$(mktemp 2>/dev/null || true)"
+  if [[ -z "$flag" ]]; then
+    echo "::error::rollback: cannot arm the tag-lookup failure flag — refusing to resolve $agent/$ring without error tracking" >&2
+    return 1
+  fi
+  # An explicitly v-scoped ring (v<M>-<tier>) already names its exact tag — resolving it through
+  # _resolved_channel would re-prefix the major (v139-v139-stable). Probe that exact tag instead.
+  if [[ "$ring" =~ ^v[0-9]+-.+$ ]]; then
+    resolved="$(_CHANNEL_COMMIT_CACHE=(); _CANARY_TAG_FAIL_FLAG="$flag"; printf '%s\t%s\n' "$agent/$ring" "$(_channel_tag_commit "$agent" "$ring")")"
+  else
+    resolved="$(_CHANNEL_COMMIT_CACHE=(); _AGENT_CHANNEL_MAJOR_CACHE=(); _CANARY_TAG_FAIL_FLAG="$flag" _resolved_channel "$agent" "$ring" || true)"
+  fi
+  [[ -s "$flag" ]] && lookup_failed=1
+  rm -f "$flag"
+  [[ "$resolved" == *"$_TAG_LOOKUP_UNRECORDED"* ]] && lookup_failed=1
+  if [[ "$lookup_failed" -eq 1 ]]; then
+    echo "::error::rollback: could not read the ring tag for $agent/$ring on $host (GitHub lookup error, not an absent tag) — refusing to move any tag. Retry once the API recovers." >&2
+    return 1
+  fi
+  IFS=$'\t' read -r ring_tag ring_commit <<< "$resolved"
+  # Fail loudly rather than no-op (#1103): if the resolved ring tag does not exist, refuse to
+  # create-and-move a channel tag nobody pins.
+  if [[ -z "$ring_commit" ]]; then
+    echo "::error::rollback target ring tag $ring_tag does not exist on $host — refusing to create-and-move a channel tag nobody pins (that would be a silent no-op). Check the ring name and the agent's major line." >&2
+    return 1
+  fi
+  echo "rolling back $ring_tag -> $to (${target:0:12}) on $host"
+  if [[ "$dry" == true ]]; then
+    echo "[DRY-RUN] would: gh api PATCH repos/$host/git/refs/tags/$ring_tag sha=$target (force)"
     return 0
   fi
-  _gh_move_tag "$host" "$agent/$ring" "$target" \
-    || { echo "::error::failed to move $agent/$ring -> $to on $host" >&2; return 1; }
-  echo "rolled back $agent/$ring -> $to"
+  _gh_move_tag "$host" "$ring_tag" "$target" \
+    || { echo "::error::failed to move $ring_tag -> $to on $host" >&2; return 1; }
+  echo "rolled back $ring_tag -> $to"
 }
 
 # ── blocker-issue + fleet-status automation (auto-triage of held promotions) ────
@@ -3513,8 +3561,18 @@ _host_release_versions() {
   local agent="$1" host
   host="$(_agent_field "$agent" host)"
   [ -z "$host" ] && return 0
-  gh api "repos/$host/git/matching-refs/tags/$agent/v" --jq '.[]?.ref' 2>/dev/null \
-    | sed -n "s#^refs/tags/${agent}/v##p" || true
+  # A listing ERROR must not read as "no release/anchor tags" (that would make a channel-scoped
+  # agent look legacy and resolve its stale bare tier): record it to the armed
+  # _CANARY_TAG_FAIL_FLAG exactly like a failed tag lookup (#1225), so fail-closed callers
+  # (cmd_rollback) can refuse. Output is unchanged (empty) for callers that do not arm the flag.
+  local refs rc=0
+  refs="$(gh api "repos/$host/git/matching-refs/tags/$agent/v" --jq '.[]?.ref' 2>/dev/null)" || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    _tag_lookup_failed "$host" "$agent/v*" "matching-refs listing failed (exit $rc)" \
+      || printf '%s\n' "$_TAG_LOOKUP_UNRECORDED"
+    return 0
+  fi
+  printf '%s\n' "$refs" | sed -n "s#^refs/tags/${agent}/v##p" || true
 }
 
 # _autocut_bump_override <agent> — the EXPLICIT bump override for the agent (registry knob
