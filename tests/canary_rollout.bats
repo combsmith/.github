@@ -173,6 +173,32 @@ setup() {
   [ "$(promotion_failure_next_count '' failed)" -eq 1 ]
   [ "$(promotion_failure_next_count 'x' failed)" -eq 1 ]
 }
+@test "promotion_failure_should_escalate: zero-padded operands compare as decimal" {
+  run promotion_failure_should_escalate 8 08
+  [ "$status" -eq 0 ]
+  [[ "$output" == "1" ]]
+  run promotion_failure_should_escalate 08 09
+  [ "$status" -eq 0 ]
+  [[ "$output" == "0" ]]
+}
+
+@test "_ingress_run_limit: an oversized (>9 digit) value falls back to 5000 instead of wrapping" {
+  run env CANARY_INGRESS_RUN_LIMIT=99999999999999999999 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "5000" ]]
+  run env CANARY_INGRESS_RUN_LIMIT=010 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [[ "$output" == "10" ]]
+}
+
+@test "_ingress_run_limit: a long zero-padded value is normalized before the length guard" {
+  run env CANARY_INGRESS_RUN_LIMIT=00000000001 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "1" ]]
+  run env CANARY_INGRESS_RUN_LIMIT=0000000000 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "5000" ]]
+}
+
 @test "promotion_failure_should_escalate: fires only at/after the threshold" {
   [ "$(promotion_failure_should_escalate 1 2)" -eq 0 ]
   [ "$(promotion_failure_should_escalate 2 2)" -eq 1 ]
@@ -8045,4 +8071,14 @@ GHEOF
   [ "$(idle_sample_waiver 09 08 0 1)" = "true" ]
   [ "$(idle_sample_waiver 09 010 0 1)" = "false" ]
   [ "$(idle_sample_waiver 010 010 0 1)" = "true" ]
+}
+
+# ── leading-zero env values are decimal, not octal (review on #1506) ──────────
+@test "CANARY_MAX_COMMIT_PAGES: leading-zero values are read as decimal" {
+  run env CANARY_MAX_COMMIT_PAGES=010 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "10" ]]
+  run env CANARY_MAX_COMMIT_PAGES=08 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "8" ]]
+  run env CANARY_MAX_COMMIT_PAGES=000 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "50" ]]
 }
