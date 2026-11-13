@@ -117,6 +117,27 @@ baseline_sample_decision() {
   echo "false $(robust_sample_target "$frac" "$lo" "$hi" "$cap_multiple" "$@") measured"
 }
 
+# idle_sample_waiver <dwell_h> <idle_after_h> <sample> <target> — echo "true" when a fixed-floor (sample_min)
+# transition's sample should be waived because its source ring is IDLE, else "false" (#1513). Idle means the
+# ring had ZERO executed (success/failure) runs since the cut, so it can never collect the sample by itself;
+# the waiver applies only once dwell has reached the opt-in <idle_after_h> threshold (well past the dwell
+# floor). An absent, zero or non-numeric threshold never waives, and any non-numeric reading fails closed.
+# A ring with even one executed run is not idle: it must meet the floor itself. Health is not this core's
+# concern — decide_graduated checks cumulative failures first, so a waived sample never masks a failure.
+idle_sample_waiver() {
+  local dwell="${1:-}" after="${2:-}" sample="${3:-}" target="${4:-}" v
+  for v in "$dwell" "$after" "$sample" "$target"; do
+    case "$v" in ''|*[!0-9]*) echo "false"; return 0 ;; *) ;; esac
+  done
+  # 10# forces decimal: a leading-zero operand (08, 010) would otherwise be read as octal by [[ -gt/-ge ]].
+  dwell=$((10#$dwell)); after=$((10#$after)); sample=$((10#$sample)); target=$((10#$target))
+  if [[ "$after" -gt 0 && "$sample" -eq 0 && "$target" -gt 0 && "$dwell" -ge "$after" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
 # ── version-bump math (autocut front end, #1069) ──────────────────────────────
 # Pure semver helpers used by `canary-rollout.sh autocut` to compute the next
 # immutable release version from the highest existing <agent>/vX.Y.Z on the host.
