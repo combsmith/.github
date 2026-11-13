@@ -1354,6 +1354,50 @@ _tier_sample() {
   echo "$executed ${earliest:--}"
 }
 
+# _tier_inflight <agent> <since_z> <repo...> — count of source-tier runs since the cut that have no
+# conclusion yet (queued / in progress). _tier_sample ignores them, so the idle waiver (#1513) must not
+# treat a ring with a run in flight as idle: that run may still fail after promotion.
+_tier_inflight() {
+  local agent="$1" since="$2"; shift 2
+  local repo json n=0 wf role iwf iraw rc jrc st sraw sn
+  for repo in "$@"; do
+    # A failed run-list read is NOT "zero runs": count it as one in-flight run so the idle waiver holds
+    # (fail closed). _tier_sample reads the same lists and reports 0 on a failed read, so without this
+    # an unreadable ring would look idle on the cmd_promote path, which has no fetch-failure flag.
+    jrc=0; json="$(_agent_run_json "$agent" "$repo" "$since")" || jrc=$?
+    if [ "$jrc" -ne 0 ]; then n=$((n + 1)); continue; fi
+    n=$(( n + $(jq '[.[]?|select((.conclusion // "")=="")]|length' 2>/dev/null <<< "${json:-[]}" || echo 0) ))
+    # A collapsed (ingress-routed) repo: _ingress_agent_runs only emits COMPLETED runs, so an in-flight
+    # ingress run is invisible above. Count it from the ingress run list's own `conclusion` instead.
+    # (Ingress runs are not role-filtered here — a pending run's role job may not exist yet — so this
+    # errs toward holding the waiver, the conservative side.)
+    _reg_ingress_job "$agent"; role="$_REG_VAL"
+    _reg_run_workflow "$agent"; wf="$_REG_VAL"
+    _horizon_from "$since" "${CANARY_RUNS_HORIZON_TIERS-15}"
+    rc=0; _repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then
+      # Legacy per-role workflow. Its general list is the newest $_LEGACY_RUN_LIMIT runs, so a flood of newer
+      # skipped runs can push an older in-flight run out of view (_agent_run_json completes only failure-class
+      # runs). Read the unfinished runs separately, server-side, so the list cannot truncate them away; an
+      # unreadable or itself-capped list holds the waiver.
+      for st in queued in_progress waiting requested pending; do
+        sraw="$(_repo_wf_runs_cached "$repo" "$wf" 0 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" "$st" 2>/dev/null)" || { n=$((n + 1)); continue; }
+        sn="$(jq --arg since "$since" '[.[]?|select((.conclusion // "")=="")|select($since=="" or (.createdAt // "")>=$since)]|length' 2>/dev/null <<< "${sraw:-[]}")" || sn=""
+        case "$sn" in ''|*[!0-9]*) n=$((n + 1)) ;; *) n=$((n + sn)) ;; esac
+      done
+      continue
+    fi
+    [ -z "$role" ] && continue
+    [ "$rc" -eq 3 ] || continue
+    _reg_ingress_wf; iwf="$_REG_VAL"
+    rc=0; iraw="$(_ingress_runs_fetch "$repo" "$iwf" "$since")" || rc=$?
+    [ "$rc" -eq 3 ] && continue   # no ingress workflow on this repo: nothing in flight there
+    if [ "$rc" -ne 0 ]; then n=$((n + 1)); continue; fi   # unreadable ingress list: hold the waiver
+    n=$(( n + $(jq --arg since "$since" '[.[]?|select((.conclusion // "")=="")|select($since=="" or (.createdAt // "")>=$since)]|length' 2>/dev/null <<< "${iraw:-[]}" || echo 0) ))
+  done
+  echo "$n"
+}
+
 # _benign_patterns <agent> <differs 0|1> — emit the per-reusable known-benign
 # failure-class allowlist (#1025 P2) as TSV "<workflow_regex>\t<step_regex>", one entry
 # per line. Empty if none apply. differs-aware (#668): when the candidate CHANGED the
@@ -1948,7 +1992,8 @@ _pair_state() {
   # release that actually ran, so old-release failures there never block. Every other tier — the
   # source tier and below, plus any tier whose commit is unknown — counts RAW, as before #1176:
   # the source tier's sample still includes runs from before the candidate reached it, so dropping
-  # only their failures would let a candidate with no executions there reach PROMOTE.
+  # only their failures would risk letting a candidate with zero new executions bypass gate checks.
+  # The idle-waiver (#1513) separately waives sample_min for idle rings, but health gates still apply.
   local raw_repos=() attr_repos=() ch3
   for idx in "${!chan_array[@]}"; do
     ch3="${chan_array[$idx]}"
@@ -1987,6 +2032,18 @@ _pair_state() {
     waived="true"
   elif [ -n "$(_gate_knob "$agent" "$transition" sample_min)" ]; then
     target="$(_gate_knob "$agent" "$transition" sample_min)"
+    # Idle ring (#1513): zero executed runs since the cut and dwell past the opt-in idle threshold → waive
+    # the fixed floor. A member whose runs could not be read is held UNRESOLVED below, so an unreadable
+    # ring is never mistaken for an idle one; any failure still BLOCKs in decide_graduated.
+    local idle_after
+    idle_after="$(_gate_knob "$agent" "$transition" waive_sample_if_idle_after_hours)"
+    if [[ -n "$idle_after" && "$(idle_sample_waiver "$dwell_h" "$idle_after" "$sample" "$target")" = "true" \
+          && "$(_tier_inflight "$agent" "$cut_z" "${src_repos[@]}")" = "0" ]]; then
+      echo "::notice::$agent $transition: source ring is idle (0 executed runs since the cut) and dwell ${dwell_h}h >= ${idle_after}h — sample floor ($target) waived (#1513)." >&2
+      # Same shape as waive_sample (target 0): consumers that re-derive "sample met" from sample >= target
+      # (promote --allow-pre-existing) then agree with the gate.
+      waived="true"; target=0
+    fi
   else
     local win frac cmin cmax spike_cap daily basis
     win="${SOAK_WINDOW_DAYS:-$(_gate_field "$agent" baseline_window_days)}"; win="${win:-14}"
