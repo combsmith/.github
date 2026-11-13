@@ -1359,10 +1359,24 @@ _tier_sample() {
 # treat a ring with a run in flight as idle: that run may still fail after promotion.
 _tier_inflight() {
   local agent="$1" since="$2"; shift 2
-  local repo json n=0
+  local repo json n=0 wf role iwf iraw rc
   for repo in "$@"; do
     json="$(_agent_run_json "$agent" "$repo" "$since")"
     n=$(( n + $(jq '[.[]?|select((.conclusion // "")=="")]|length' 2>/dev/null <<< "${json:-[]}" || echo 0) ))
+    # A collapsed (ingress-routed) repo: _ingress_agent_runs only emits COMPLETED runs, so an in-flight
+    # ingress run is invisible above. Count it from the ingress run list's own `conclusion` instead.
+    # (Ingress runs are not role-filtered here — a pending run's role job may not exist yet — so this
+    # errs toward holding the waiver, the conservative side.)
+    _reg_ingress_job "$agent"; role="$_REG_VAL"
+    [ -z "$role" ] && continue
+    _reg_run_workflow "$agent"; wf="$_REG_VAL"
+    _horizon_from "$since" "${CANARY_RUNS_HORIZON_TIERS-15}"
+    rc=0; _repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 3 ] || continue
+    _reg_ingress_wf; iwf="$_REG_VAL"
+    rc=0; iraw="$(_ingress_runs_fetch "$repo" "$iwf" "$since")" || rc=$?
+    [ "$rc" -eq 0 ] || continue
+    n=$(( n + $(jq --arg since "$since" '[.[]?|select((.conclusion // "")=="")|select($since=="" or (.createdAt // "")>=$since)]|length' 2>/dev/null <<< "${iraw:-[]}" || echo 0) ))
   done
   echo "$n"
 }
