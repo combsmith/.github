@@ -3951,6 +3951,15 @@ _idle_rings() {
   [ "$output" = "2" ]
 }
 
+@test "_tier_inflight: an in-flight run hidden behind a truncated general list is found by the status read (#1513)" {
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _agent_run_json() { echo '[]'; } \
+     && _repo_wf_runs_cached() { if [ \"\${6:-}\" = in_progress ]; then echo '[{\"conclusion\":null,\"createdAt\":\"2999-01-01T00:00:00Z\",\"databaseId\":1}]'; else echo '[]'; fi; } \
+     && _tier_inflight dev-lead '' org/a"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
 @test "orchestrator: without the knob an idle ring still SOAKs at sample_min (#1513 opt-in)" {
   _confirm_stub skipped 0
   run env CANARY_RINGS="$(_idle_rings "")" bash "$ORCH" evaluate dev-lead

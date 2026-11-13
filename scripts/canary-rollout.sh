@@ -1359,7 +1359,7 @@ _tier_sample() {
 # treat a ring with a run in flight as idle: that run may still fail after promotion.
 _tier_inflight() {
   local agent="$1" since="$2"; shift 2
-  local repo json n=0 wf role iwf iraw rc jrc
+  local repo json n=0 wf role iwf iraw rc jrc st sraw sn
   for repo in "$@"; do
     # A failed run-list read is NOT "zero runs": count it as one in-flight run so the idle waiver holds
     # (fail closed). _tier_sample reads the same lists and reports 0 on a failed read, so without this
@@ -1372,10 +1372,22 @@ _tier_inflight() {
     # (Ingress runs are not role-filtered here — a pending run's role job may not exist yet — so this
     # errs toward holding the waiver, the conservative side.)
     _reg_ingress_job "$agent"; role="$_REG_VAL"
-    [ -z "$role" ] && continue
     _reg_run_workflow "$agent"; wf="$_REG_VAL"
     _horizon_from "$since" "${CANARY_RUNS_HORIZON_TIERS-15}"
     rc=0; _repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then
+      # Legacy per-role workflow. Its general list is the newest $_LEGACY_RUN_LIMIT runs, so a flood of newer
+      # skipped runs can push an older in-flight run out of view (_agent_run_json completes only failure-class
+      # runs). Read the unfinished runs separately, server-side, so the list cannot truncate them away; an
+      # unreadable or itself-capped list holds the waiver.
+      for st in queued in_progress waiting; do
+        sraw="$(_repo_wf_runs_cached "$repo" "$wf" 0 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" "$st" 2>/dev/null)" || { n=$((n + 1)); continue; }
+        sn="$(jq --arg since "$since" '[.[]?|select((.conclusion // "")=="")|select($since=="" or (.createdAt // "")>=$since)]|length' 2>/dev/null <<< "${sraw:-[]}")" || sn=""
+        case "$sn" in ''|*[!0-9]*) n=$((n + 1)) ;; *) n=$((n + sn)) ;; esac
+      done
+      continue
+    fi
+    [ -z "$role" ] && continue
     [ "$rc" -eq 3 ] || continue
     _reg_ingress_wf; iwf="$_REG_VAL"
     rc=0; iraw="$(_ingress_runs_fetch "$repo" "$iwf" "$since")" || rc=$?

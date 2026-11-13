@@ -1171,7 +1171,7 @@
             "waive_sample": true
           },
           "ring1->stable": {
-            "_idle_note": "combsmith/.github#1513 — ring 1 is two low-traffic repos, and a PR-triggered reviewer runs only when one of them gets a PR, so the sample often never arrives and every stable promotion needed override. waive_sample_if_idle_after_hours waives sample_min ONLY when the source ring had ZERO executed (success/failure) runs since the cut AND dwell has reached this threshold (6x the 12h floor). Skipped runs do not count as executed. Health still gates: any failure the gate counts (cum_fail) since the cut BLOCKs, including the waived ring's own, and a member whose runs could not be read is held UNRESOLVED, never read as idle. If ring 1 ran even once, sample_min applies as usual.",
+            "_idle_note": "combsmith/.github#1513 — ring 1 is two low-traffic repos, and a PR-triggered reviewer runs only when one of them gets a PR, so the sample often never arrives and every stable promotion needed override. waive_sample_if_idle_after_hours waives sample_min ONLY when the source ring had ZERO executed (success/failure) runs since the cut, NO run was still in flight (queued/in progress) or unreadable, AND dwell has reached this threshold (6x the 12h floor). Skipped runs do not count as executed. Health still gates: any failure the gate counts (cum_fail) since the cut BLOCKs, including the waived ring's own, and a member whose runs could not be read is held UNRESOLVED, never read as idle. If ring 1 ran even once, sample_min applies as usual.",
             "dwell_hours": 12,
             "sample_min": 1,
             "waive_sample_if_idle_after_hours": 72
