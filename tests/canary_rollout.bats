@@ -85,6 +85,34 @@ setup() {
   [ "$(baseline_sample_decision 250 3 15 3 true 4 x 2)" = "false 3 unknown" ]
 }
 
+# ── idle_sample_waiver: an idle ring past the idle threshold waives a sample_min floor (#1513) ──────────
+# A sample_min transition whose source ring had ZERO executed runs since the cut can never collect its
+# sample by itself. Once dwell reaches the opt-in idle threshold the sample is waived; health still gates.
+@test "idle_sample_waiver: an idle ring at or past the threshold is waived (#1513)" {
+  [ "$(idle_sample_waiver 72 72 0 1)" = "true" ]
+  [ "$(idle_sample_waiver 129 72 0 1)" = "true" ]
+}
+@test "idle_sample_waiver: dwell under the threshold keeps the sample floor (#1513)" {
+  [ "$(idle_sample_waiver 71 72 0 1)" = "false" ]
+  [ "$(idle_sample_waiver 0 72 0 1)" = "false" ]
+}
+@test "idle_sample_waiver: a ring with any executed run is not idle — it must meet the floor itself (#1513)" {
+  [ "$(idle_sample_waiver 129 72 1 3)" = "false" ]
+  [ "$(idle_sample_waiver 129 72 2 3)" = "false" ]
+}
+@test "idle_sample_waiver: an absent, zero or non-numeric threshold never waives (#1513)" {
+  [ "$(idle_sample_waiver 129 "" 0 1)" = "false" ]
+  [ "$(idle_sample_waiver 129 0 0 1)" = "false" ]
+  [ "$(idle_sample_waiver 129 x 0 1)" = "false" ]
+  [ "$(idle_sample_waiver 129 -5 0 1)" = "false" ]
+  [ "$(idle_sample_waiver 129)" = "false" ]
+}
+@test "idle_sample_waiver: non-numeric dwell/sample fails closed (#1513)" {
+  [ "$(idle_sample_waiver "" 72 0 1)" = "false" ]
+  [ "$(idle_sample_waiver 129 72 "" 1)" = "false" ]
+  [ "$(idle_sample_waiver 129 72 x 1)" = "false" ]
+}
+
 # ── version-bump math (autocut front end, #1069) ──────────────────────────────
 @test "bump_version: patch increments the patch component" {
   [ "$(bump_version 2.1.0 patch)" = "2.1.1" ]
@@ -1050,6 +1078,9 @@ _pv_rings() {
   [ "$status" -eq 0 ]
   # standard #548 gate + organic-traffic model (no synthetic-canary fields)
   run jq -e '.agents["pr-review"].gate.transitions["ring1->stable"].sample_min == 1' "$RINGS"
+  [ "$status" -eq 0 ]
+  # #1513: ring 1 is small and often idle, so the sample is waived once dwell is 6x its 12h floor.
+  run jq -e '.agents["pr-review"].gate.transitions["ring1->stable"].waive_sample_if_idle_after_hours == 72' "$RINGS"
   [ "$status" -eq 0 ]
   run jq -e '.agents["pr-review"] | (has("next_tier_health_signal")|not) and (has("soak_start_ring")|not)' "$RINGS"
   [ "$status" -eq 0 ]
@@ -3997,7 +4028,7 @@ _sync_gap_stub() {
 # ago. conclusion=success + reusable_diff=0 → reliability PROMOTE → overlaid to AWAITING_CONFIRMATION;
 # conclusion=failure + reusable_diff=1 + a non-suspect step → BLOCKED + REGRESSION.
 _confirm_stub() {
-  local conclusion="${1:-success}" reusable_diff="${2:-0}" failed_step="${3:-Compile TypeScript}"
+  local conclusion="${1-success}" reusable_diff="${2:-0}" failed_step="${3:-Compile TypeScript}"
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
   local cut_iso run_iso cand_blob="reuseAAAA" prior_blob="reuseAAAA"
   [ "$reusable_diff" = "1" ] && prior_blob="reuseBBBB"
@@ -4036,6 +4067,83 @@ GITEOF
   [[ "$output" == *"ring1->stable"* ]]
   [[ "$output" == *"AWAITING_CONFIRMATION"* ]]
   [[ "$output" == *"--confirm"* ]]   # the report names the exact clearing action
+}
+
+# ── idle-ring sample waiver at a sample_min transition (#1513) ───────────────────────────────────────────
+# pr-review's ring1 had one member on a legacy tag and one with no PRs, so `ring1->stable` sat at
+# sample=0/1 forever and every stable promotion needed override. `waive_sample_if_idle_after_hours`
+# waives the sample once dwell reaches the threshold and the source ring had ZERO executed runs; health
+# (any failure → BLOCKED) still dominates. Reuses _confirm_stub's dev-lead topology (ring1->stable,
+# cut 48h ago) with require_confirmation dropped so the reliability verdict is observed directly.
+
+# _idle_rings <idle_after_hours|""> — a registry copy whose dev-lead ring1->stable is a plain
+# sample_min:1 transition, optionally opted into the idle waiver.
+_idle_rings() {
+  local out="$BATS_TEST_TMPDIR/idle-rings.json"
+  jq --arg h "${1:-}" '.agents["dev-lead"].gate.transitions["ring1->stable"] |=
+      (del(.require_confirmation, .waive_sample_if_idle_after_hours) | .sample_min = 1
+       | if $h == "" then . else .waive_sample_if_idle_after_hours = ($h | tonumber) end)' "$RINGS" > "$out"
+  echo "$out"
+}
+
+@test "canary-rings.json: only pr-review's ring1->stable opts into the idle sample waiver (#1513)" {
+  run jq -e '[.agents | to_entries[] | .key as $a | .value.gate.transitions | to_entries[]
+             | select(.value.waive_sample_if_idle_after_hours != null) | "\($a) \(.key)"] == ["pr-review ring1->stable"]' "$RINGS"
+  [ "$status" -eq 0 ]
+}
+
+@test "orchestrator: an idle ring past the idle threshold PROMOTEs without override (#1513)" {
+  _confirm_stub skipped 0   # every ring-1 run skipped → sample 0, no failures
+  run env CANARY_RINGS="$(_idle_rings 24)" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ring1->stable"*"PROMOTE"* ]]
+  [[ "$output" == *"idle"* ]]   # the waiver is announced, not silent
+}
+
+@test "orchestrator: an idle ring under the idle threshold keeps SOAKING (#1513)" {
+  _confirm_stub skipped 0   # dwell 48h < 72h threshold
+  run env CANARY_RINGS="$(_idle_rings 72)" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ring1->stable"*"SOAKING"* ]]
+}
+
+@test "orchestrator: a source ring with in-flight runs is not idle — the waiver stays off (#1513)" {
+  _confirm_stub "" 0   # runs with no conclusion yet (queued / in progress) → sample 0 but not idle
+  run env CANARY_RINGS="$(_idle_rings 24)" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"ring1->stable"*"PROMOTE"* ]]
+  [[ "$output" != *"sample floor"*"waived"* ]]
+}
+
+@test "_tier_inflight: a failed run-list read counts as in-flight so the idle waiver fails closed (#1513)" {
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _agent_run_json() { return 1; } && _tier_inflight dev-lead '' org/a org/b"
+  [ "$status" -eq 0 ]
+  [ "$output" = "2" ]
+}
+
+@test "_tier_inflight: an in-flight run hidden behind a truncated general list is found by the status read (#1513)" {
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _agent_run_json() { echo '[]'; } \
+     && _repo_wf_runs_cached() { if [ \"\${6:-}\" = in_progress ]; then echo '[{\"conclusion\":null,\"createdAt\":\"2999-01-01T00:00:00Z\",\"databaseId\":1}]'; else echo '[]'; fi; } \
+     && _tier_inflight dev-lead '' org/a"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "orchestrator: without the knob an idle ring still SOAKs at sample_min (#1513 opt-in)" {
+  _confirm_stub skipped 0
+  run env CANARY_RINGS="$(_idle_rings "")" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ring1->stable"*"SOAKING"* ]]
+}
+
+@test "orchestrator: the idle waiver never masks a failure — a failing ring is BLOCKED (#1513)" {
+  _confirm_stub failure 1
+  run env CANARY_RINGS="$(_idle_rings 24)" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ring1->stable"*"BLOCKED"* ]]
+  [[ "$output" != *"ring1->stable"*"PROMOTE"* ]]
 }
 
 @test "orchestrator: AWAITING_CONFIRMATION does NOT advance without --confirm (scheduled sweep holds)" {
@@ -8102,4 +8210,10 @@ GHEOF
   run bash -c "source '$ORCH' && _gh_move_tag combsmith/.github dev-lead/v139-stable 12b0075a9c48000000000000000000000000000"
   [ "$status" -eq 0 ]
   grep -q '^PATCH$' "$CALL_LOG"
+}
+
+@test "idle_sample_waiver: leading-zero operands are decimal, not octal (#1513)" {
+  [ "$(idle_sample_waiver 09 08 0 1)" = "true" ]
+  [ "$(idle_sample_waiver 09 010 0 1)" = "false" ]
+  [ "$(idle_sample_waiver 010 010 0 1)" = "true" ]
 }
