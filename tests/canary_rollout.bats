@@ -3857,7 +3857,7 @@ _sync_gap_stub() {
 # ago. conclusion=success + reusable_diff=0 → reliability PROMOTE → overlaid to AWAITING_CONFIRMATION;
 # conclusion=failure + reusable_diff=1 + a non-suspect step → BLOCKED + REGRESSION.
 _confirm_stub() {
-  local conclusion="${1:-success}" reusable_diff="${2:-0}" failed_step="${3:-Compile TypeScript}"
+  local conclusion="${1-success}" reusable_diff="${2:-0}" failed_step="${3:-Compile TypeScript}"
   STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
   local cut_iso run_iso cand_blob="reuseAAAA" prior_blob="reuseAAAA"
   [ "$reusable_diff" = "1" ] && prior_blob="reuseBBBB"
@@ -3934,6 +3934,14 @@ _idle_rings() {
   run env CANARY_RINGS="$(_idle_rings 72)" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"ring1->stable"*"SOAKING"* ]]
+}
+
+@test "orchestrator: a source ring with in-flight runs is not idle — the waiver stays off (#1513)" {
+  _confirm_stub "" 0   # runs with no conclusion yet (queued / in progress) → sample 0 but not idle
+  run env CANARY_RINGS="$(_idle_rings 24)" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"ring1->stable"*"PROMOTE"* ]]
+  [[ "$output" != *"sample floor"*"waived"* ]]
 }
 
 @test "orchestrator: without the knob an idle ring still SOAKs at sample_min (#1513 opt-in)" {
@@ -8015,4 +8023,10 @@ GHEOF
   run bash -c "source '$ORCH' && _gh_move_tag combsmith/.github dev-lead/v139-stable 12b0075a9c48000000000000000000000000000"
   [ "$status" -eq 0 ]
   grep -q '^PATCH$' "$CALL_LOG"
+}
+
+@test "idle_sample_waiver: leading-zero operands are decimal, not octal (#1513)" {
+  [ "$(idle_sample_waiver 09 08 0 1)" = "true" ]
+  [ "$(idle_sample_waiver 09 010 0 1)" = "false" ]
+  [ "$(idle_sample_waiver 010 010 0 1)" = "true" ]
 }

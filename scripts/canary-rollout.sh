@@ -1354,6 +1354,19 @@ _tier_sample() {
   echo "$executed ${earliest:--}"
 }
 
+# _tier_inflight <agent> <since_z> <repo...> — count of source-tier runs since the cut that have no
+# conclusion yet (queued / in progress). _tier_sample ignores them, so the idle waiver (#1513) must not
+# treat a ring with a run in flight as idle: that run may still fail after promotion.
+_tier_inflight() {
+  local agent="$1" since="$2"; shift 2
+  local repo json n=0
+  for repo in "$@"; do
+    json="$(_agent_run_json "$agent" "$repo" "$since")"
+    n=$(( n + $(jq '[.[]?|select((.conclusion // "")=="")]|length' 2>/dev/null <<< "${json:-[]}" || echo 0) ))
+  done
+  echo "$n"
+}
+
 # _benign_patterns <agent> <differs 0|1> — emit the per-reusable known-benign
 # failure-class allowlist (#1025 P2) as TSV "<workflow_regex>\t<step_regex>", one entry
 # per line. Empty if none apply. differs-aware (#668): when the candidate CHANGED the
@@ -1992,7 +2005,8 @@ _pair_state() {
     # ring is never mistaken for an idle one; any failure still BLOCKs in decide_graduated.
     local idle_after
     idle_after="$(_gate_knob "$agent" "$transition" waive_sample_if_idle_after_hours)"
-    if [[ "$(idle_sample_waiver "$dwell_h" "$idle_after" "$sample" "$target")" = "true" ]]; then
+    if [[ -n "$idle_after" && "$(idle_sample_waiver "$dwell_h" "$idle_after" "$sample" "$target")" = "true" \
+          && "$(_tier_inflight "$agent" "$cut_z" "${src_repos[@]}")" = "0" ]]; then
       echo "::notice::$agent $transition: source ring is idle (0 executed runs since the cut) and dwell ${dwell_h}h >= ${idle_after}h — sample floor ($target) waived (#1513)." >&2
       # Same shape as waive_sample (target 0): consumers that re-derive "sample met" from sample >= target
       # (promote --allow-pre-existing) then agree with the gate.

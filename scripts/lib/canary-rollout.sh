@@ -117,6 +117,8 @@ idle_sample_waiver() {
   for v in "$dwell" "$after" "$sample" "$target"; do
     case "$v" in ''|*[!0-9]*) echo "false"; return 0 ;; *) ;; esac
   done
+  # 10# forces decimal: a leading-zero operand (08, 010) would otherwise be read as octal by [[ -gt/-ge ]].
+  dwell=$((10#$dwell)); after=$((10#$after)); sample=$((10#$sample)); target=$((10#$target))
   if [[ "$after" -gt 0 && "$sample" -eq 0 && "$target" -gt 0 && "$dwell" -ge "$after" ]]; then
     echo "true"
   else
