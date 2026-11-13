@@ -269,13 +269,50 @@ cbf_backfill_repo() {
     rm -f "$ci" "$new" "$err"; return 0
   fi
 
+  # Refetch ci.yml from the default branch to avoid race condition: intervening
+  # edits to the default branch could appear reverted if we backfill from a stale
+  # snapshot. Re-backfill from the current tip to ensure the deployed version
+  # includes any changes made after the initial fetch.
+  local ci_fresh new_fresh added_fresh seed_fresh=false
+  ci_fresh="$(mktemp)"
+  new_fresh="$(mktemp)"
+  cbf_fetch "$repo" ".github/workflows/ci.yml" "$ci_fresh" 2>"$err" && rc=0 || rc=$?
+  if (( rc != 0 )); then
+    echo "FAILED ${repo} refetch-ci: $(cat "$err")"; rm -f "$ci" "$new" "$ci_fresh" "$new_fresh" "$err"; return 1
+  fi
+  added_fresh="$(cbf_backfill_file "$ci_fresh" "$new_fresh" "${others[@]}" 2>"$err")" && rc=0 || rc=$?
+  if (( rc == 2 )); then
+    echo "CONFLICT ${repo} — job id(s) $(cat "$err") already used for a different check name; fix by hand"
+    rm -f "$ci" "$new" "$ci_fresh" "$new_fresh" "$err"; return 0
+  elif (( rc != 0 )); then
+    echo "FAILED ${repo} refill: $(cat "$err")"; rm -f "$ci" "$new" "$ci_fresh" "$new_fresh" "$err"; return 1
+  fi
+  rm -f "$ci_fresh"
+  # If ci.yml was already compliant when we re-checked, skip deployment.
+  if [[ -z "$added_fresh" ]]; then
+    echo "OK ${repo} — secret-scan and coverage already present"
+    rm -f "$ci" "$new" "$new_fresh" "$err"; return 0
+  fi
+  files=(".github/workflows/ci.yml" "$new_fresh")
+
+  # Seed .gitleaks.toml when this PR adds the secret-scan job and the repo has none.
+  if [[ " ${added_fresh} " == *" secret-scan "* ]]; then
+    local probe; probe="$(mktemp)"
+    cbf_fetch "$repo" ".gitleaks.toml" "$probe" 2>"$err" && rc=0 || rc=$?
+    rm -f "$probe"
+    if (( rc == 4 )); then seed_fresh=true; files+=(".gitleaks.toml" "$CBF_TEMPLATE_GITLEAKS")
+    elif (( rc != 0 )); then
+      echo "FAILED ${repo} fetch-gitleaks: $(cat "$err")"; rm -f "$ci" "$new" "$new_fresh" "$err"; return 1
+    fi
+  fi
+
   local title="ci: add secret-scan and coverage jobs (org standard, #581)"
   local body
-  body="Adds the org-standard \`secret-scan\` and \`coverage\` jobs to this repo's \`ci.yml\`, copied unchanged from [\`standards/workflows/ci.yml\`](https://github.com/${ORG}/.github/blob/main/standards/workflows/ci.yml). Added here: \`${added}\`$([[ "$seed" = true ]] && printf '%s' ", plus a seeded \`.gitleaks.toml\`")."
+  body="Adds the org-standard \`secret-scan\` and \`coverage\` jobs to this repo's \`ci.yml\`, copied unchanged from [\`standards/workflows/ci.yml\`](https://github.com/${ORG}/.github/blob/main/standards/workflows/ci.yml). Added here: \`${added_fresh}\`$([[ "$seed_fresh" = true ]] && printf '%s' ", plus a seeded \`.gitleaks.toml\`")."
   body+=$'\n\n'"These produce the \`Secret scan (gitleaks)\` and \`coverage\` checks, which ${ORG}/.github#581 will make **required** in the \`code-quality\` ruleset once every repo reports them. The coverage job stays green until the repo has tests. If you already measure coverage for your stack, replace the coverage step with yours, but keep the job id and \`name: coverage\`."
   body+=$'\n\n'"No other part of \`ci.yml\` is changed. Opened by \`scripts/backfill-ci-quality-jobs.sh\`."
   outcome="$(sd_deploy_files_via_pr "$repo" "$CBF_BRANCH" "$CBF_LABEL" "$title" "$body" "${files[@]}")" && rc=0 || rc=$?
-  rm -f "$ci" "$new" "$err"
+  rm -f "$ci" "$new" "$new_fresh" "$err"
   echo "${outcome%% *} ${repo} ${outcome#* }"
   return "$rc"
 }
