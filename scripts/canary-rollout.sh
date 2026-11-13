@@ -1992,7 +1992,8 @@ _pair_state() {
   # release that actually ran, so old-release failures there never block. Every other tier — the
   # source tier and below, plus any tier whose commit is unknown — counts RAW, as before #1176:
   # the source tier's sample still includes runs from before the candidate reached it, so dropping
-  # only their failures would let a candidate with no executions there reach PROMOTE.
+  # only their failures would risk letting a candidate with zero new executions bypass gate checks.
+  # The idle-waiver (#1513) separately waives sample_min for idle rings, but health gates still apply.
   local raw_repos=() attr_repos=() ch3
   for idx in "${!chan_array[@]}"; do
     ch3="${chan_array[$idx]}"
