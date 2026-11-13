@@ -1380,7 +1380,7 @@ _tier_inflight() {
       # skipped runs can push an older in-flight run out of view (_agent_run_json completes only failure-class
       # runs). Read the unfinished runs separately, server-side, so the list cannot truncate them away; an
       # unreadable or itself-capped list holds the waiver.
-      for st in queued in_progress waiting; do
+      for st in queued in_progress waiting requested pending; do
         sraw="$(_repo_wf_runs_cached "$repo" "$wf" 0 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" "$st" 2>/dev/null)" || { n=$((n + 1)); continue; }
         sn="$(jq --arg since "$since" '[.[]?|select((.conclusion // "")=="")|select($since=="" or (.createdAt // "")>=$since)]|length' 2>/dev/null <<< "${sraw:-[]}")" || sn=""
         case "$sn" in ''|*[!0-9]*) n=$((n + 1)) ;; *) n=$((n + sn)) ;; esac
