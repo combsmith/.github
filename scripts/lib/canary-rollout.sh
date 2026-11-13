@@ -19,11 +19,23 @@
 # The dwell floors and sample fractions are registry-configurable per transition
 # (see standards/canary-rings.json .gate); the numbers above are the defaults.
 
-# clamp <value> <lo> <hi> — echo value bounded to [lo, hi].
+# _signed_dec <s> — echo a signed decimal digit string read in base 10 (so "08" is 8, not octal).
+# The caller has already matched it against ^-?[0-9]{1,18}$.
+_signed_dec() {
+  local s="$1" sign=""
+  if [[ "$s" == -* ]]; then sign="-"; s="${s#-}"; fi
+  echo "${sign}$((10#$s))"
+}
+
+# clamp <value> <lo> <hi> — echo value bounded to [lo, hi]. Operands are signed decimal integers
+# of at most 18 digits, read in base 10 and never evaluated as expressions. A value that is not
+# one is raised to lo (the clamp minimum); a bound that is not one is not applied.
 clamp() {
-  local v="$1" lo="$2" hi="$3"
-  if [ "$v" -lt "$lo" ]; then echo "$lo"; return 0; fi
-  if [ "$v" -gt "$hi" ]; then echo "$hi"; return 0; fi
+  local v="$1" lo="$2" hi="$3" n
+  [[ "$v" =~ ^-?[0-9]{1,18}$ ]] || { echo "$lo"; return 0; }
+  n=$(_signed_dec "$v")
+  if [[ "$lo" =~ ^-?[0-9]{1,18}$ ]] && (( n < $(_signed_dec "$lo") )); then echo "$lo"; return 0; fi
+  if [[ "$hi" =~ ^-?[0-9]{1,18}$ ]] && (( n > $(_signed_dec "$hi") )); then echo "$hi"; return 0; fi
   echo "$v"
 }
 
@@ -31,7 +43,7 @@ clamp() {
 # Denominator must be > 0. Pure arithmetic, no bc.
 round_div() {
   local n="$1" d="$2"
-  if [ "${d:-0}" -le 0 ]; then echo 0; return 1; fi
+  if [[ "${d:-0}" -le 0 ]]; then echo 0; return 1; fi
   echo $(( (2 * n + d) / (2 * d) ))
 }
 
@@ -39,14 +51,14 @@ round_div() {
 # half-integer median stays exact). Empty set → 0.
 median_x2() {
   local n=$#
-  [ "$n" -eq 0 ] && { echo 0; return 0; }
+  [[ "$n" -eq 0 ]] && { echo 0; return 0; }
   local sorted
   sorted=$(printf '%s\n' "$@" | sort -n)
   local arr=()
   local x
   while IFS= read -r x; do arr+=("$x"); done <<< "$sorted"
   local mid=$(( n / 2 ))
-  if [ $(( n % 2 )) -eq 1 ]; then
+  if [[ $(( n % 2 )) -eq 1 ]]; then
     echo $(( 2 * arr[mid] ))
   else
     echo $(( arr[mid - 1] + arr[mid] ))
@@ -65,13 +77,13 @@ median_x2() {
 robust_sample_target() {
   local frac="$1" lo="$2" hi="$3" cap_multiple="${4:-3}"; shift 4
   local n=$#
-  [ "$n" -eq 0 ] && { clamp 0 "$lo" "$hi"; return 0; }
+  [[ "$n" -eq 0 ]] && { clamp 0 "$lo" "$hi"; return 0; }
   local m2 cap3 c c2 sum2=0
   m2=$(median_x2 "$@")
   cap3=$(( cap_multiple * m2 ))
   for c in "$@"; do
     c2=$(( 2 * c ))
-    [ "$c2" -gt "$cap3" ] && c2=$cap3
+    [[ "$c2" -gt "$cap3" ]] && c2=$cap3
     sum2=$(( sum2 + c2 ))
   done
   # target_raw = round( frac · sum2 / (2000·n) )
@@ -156,8 +168,8 @@ bump_version() {
 decide_bump() {
   local breaking="${1:-0}" feat="${2:-0}" override="${3:-}"
   case "$override" in major|minor|patch) echo "$override"; return 0 ;; esac
-  if [ "$breaking" = 1 ]; then echo major; return 0; fi
-  if [ "$feat" = 1 ]; then echo minor; return 0; fi
+  if [[ "$breaking" = 1 ]]; then echo major; return 0; fi
+  if [[ "$feat" = 1 ]]; then echo minor; return 0; fi
   echo patch
 }
 
@@ -188,8 +200,9 @@ promotion_failure_should_escalate() {
   local count="$1" threshold="$2"
   case "$count" in ''|*[!0-9]*) echo 0; return 0 ;; esac
   case "$threshold" in ''|*[!0-9]*) echo 0; return 0 ;; esac
-  [ "$threshold" -lt 1 ] && threshold=1
-  if [ "$count" -ge "$threshold" ]; then echo 1; else echo 0; fi
+  count=$((10#$count)); threshold=$((10#$threshold))   # leading zeros are decimal, not octal
+  [[ "$threshold" -lt 1 ]] && threshold=1
+  if [[ "$count" -ge "$threshold" ]]; then echo 1; else echo 0; fi
 }
 
 # ── autocut pagination termination (#1023) ────────────────────────────────────
@@ -199,7 +212,7 @@ promotion_failure_should_escalate() {
 # exist), else return 0 (keep paginating). Pure: no I/O, unit-testable.
 commit_page_done() {
   local found="$1" count="${2:-0}" per_page="${3:-100}"
-  if [ "$found" = "true" ] || [ "$count" -lt "$per_page" ]; then return 1; fi
+  if [[ "$found" = "true" ]] || [[ "$count" -lt "$per_page" ]]; then return 1; fi
   return 0
 }
 
@@ -251,23 +264,23 @@ workflow_call_iface() {
 interface_break() {
   local old="$1" new="$2" kind name req key
   local -A new_has=() old_has=() new_input_req=() old_input_req=()
-  while read -r kind name req || [ -n "$kind" ]; do
-    [ -z "$kind" ] && continue
+  while read -r kind name req || [[ -n "$kind" ]]; do
+    [[ -z "$kind" ]] && continue
     kind="${kind%$'\r'}"; name="${name%$'\r'}"; req="${req%$'\r'}"
     new_has["$kind/$name"]=1
-    [ "$kind" = input ] && new_input_req["$name"]="${req:-0}"
+    [[ "$kind" = input ]] && new_input_req["$name"]="${req:-0}"
   done <<< "$new"
-  while read -r kind name req || [ -n "$kind" ]; do
-    [ -z "$kind" ] && continue
+  while read -r kind name req || [[ -n "$kind" ]]; do
+    [[ -z "$kind" ]] && continue
     kind="${kind%$'\r'}"; name="${name%$'\r'}"; req="${req%$'\r'}"
     old_has["$kind/$name"]=1
-    [ "$kind" = input ] && old_input_req["$name"]="${req:-0}"
+    [[ "$kind" = input ]] && old_input_req["$name"]="${req:-0}"
   done <<< "$old"
   for key in "${!old_has[@]}"; do
-    if [ -z "${new_has[$key]:-}" ]; then echo 1; return 0; fi   # removed / renamed
+    if [[ -z "${new_has[$key]:-}" ]]; then echo 1; return 0; fi   # removed / renamed
   done
   for name in "${!new_input_req[@]}"; do
-    if [ "${new_input_req[$name]}" = 1 ] && [ "${old_input_req[$name]:-x}" != 1 ]; then
+    if [[ "${new_input_req[$name]}" = 1 ]] && [[ "${old_input_req[$name]:-x}" != 1 ]]; then
       echo 1; return 0                                          # newly-required input
     fi
   done
@@ -275,14 +288,29 @@ interface_break() {
 }
 
 # _semver_gt <a> <b> — return 0 iff semver a is strictly greater than b (compared
-# by major, then minor, then patch). Equal is NOT greater.
+# by major, then minor, then patch). Equal is NOT greater. Component values larger
+# than 64-bit signed range are handled safely via length-first comparison.
 _semver_gt() {
   local a1=0 a2=0 a3=0 b1=0 b2=0 b3=0
   IFS=. read -r a1 a2 a3 <<< "$1"
   IFS=. read -r b1 b2 b3 <<< "$2"
-  if [ "$a1" -ne "$b1" ]; then [ "$a1" -gt "$b1" ]; return $?; fi
-  if [ "$a2" -ne "$b2" ]; then [ "$a2" -gt "$b2" ]; return $?; fi
-  [ "$a3" -gt "$b3" ]
+  # Strip leading zeros by string ops (never arithmetic: $((10#n)) wraps past 2^63),
+  # then compare by length first (fewer digits < more digits), then lexicographically
+  # (equal-length digit strings order the same as their numeric values).
+  local _v
+  for _v in a1 a2 a3 b1 b2 b3; do
+    local _s="${!_v}"
+    _s="${_s#"${_s%%[!0]*}"}"
+    printf -v "$_v" '%s' "${_s:-0}"
+  done
+  local _x _y
+  for _x in "$a1:$b1" "$a2:$b2" "$a3:$b3"; do
+    _y="${_x#*:}"; _x="${_x%%:*}"
+    if [[ ${#_x} -ne ${#_y} ]]; then [[ ${#_x} -gt ${#_y} ]]; return $?; fi
+    # shellcheck disable=SC2071  # intentional: equal-length digit strings, lexicographic == numeric
+    if [[ "$_x" != "$_y" ]]; then [[ "$_x" > "$_y" ]]; return $?; fi
+  done
+  return 1
 }
 
 # max_semver <version...> — echo the highest strict MAJOR.MINOR.PATCH among the
@@ -291,7 +319,7 @@ max_semver() {
   local v hi=""
   for v in "$@"; do
     [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
-    if [ -z "$hi" ] || _semver_gt "$v" "$hi"; then hi="$v"; fi
+    if [[ -z "$hi" ]] || _semver_gt "$v" "$hi"; then hi="$v"; fi
   done
   echo "$hi"
 }
@@ -318,7 +346,7 @@ _is_release_tag_suffix() { [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 # ring-pins.sh); without it the legacy bare `<agent>/<tier>`. Pure. (Epic #657 F4.)
 channel_tag() {
   local agent="$1" tier="$2" major="${3:-}"
-  if [ -n "$major" ]; then printf '%s/v%s-%s' "$agent" "$major" "$tier"
+  if [[ -n "$major" ]]; then printf '%s/v%s-%s' "$agent" "$major" "$tier"
   else printf '%s/%s' "$agent" "$tier"; fi
 }
 
@@ -379,7 +407,7 @@ _looks_like_oid() { [[ "$1" =~ ^[0-9a-f]{7,64}$ ]]; }
 # least floor_hours on the source tier, else 0.
 dwell_met() {
   local dwell="${1:-0}" floor="${2:-0}"
-  if [ "$dwell" -ge "$floor" ]; then echo 1; else echo 0; fi
+  if [[ "$dwell" =~ ^[0-9]{1,18}$ && "$floor" =~ ^[0-9]{1,18}$ ]] && (( 10#$dwell >= 10#$floor )); then echo 1; else echo 0; fi
 }
 
 # iso_after <a> <b> — echo "yes" if ISO-8601 UTC timestamp a is at or after b, else
@@ -399,8 +427,8 @@ run_list_covers() {
   local n="${1:-0}" cap="${2:-0}" oldest="${3:-}" since="${4:-}"
   case "$n" in ''|*[!0-9]*) return 1 ;; esac
   case "$cap" in ''|*[!0-9]*) return 1 ;; esac
-  [ "$n" -lt "$cap" ] && return 0
-  [ -n "$since" ] && [ -n "$oldest" ] && [[ "$oldest" < "$since" ]]
+  (( 10#$n < 10#$cap )) && return 0
+  [[ -n "$since" ]] && [[ -n "$oldest" ]] && [[ "$oldest" < "$since" ]]
 }
 
 # decide_graduated <dwell_h> <dwell_floor> <sample> <sample_target> <sample_waived> \
@@ -415,13 +443,27 @@ run_list_covers() {
 decide_graduated() {
   local dwell="${1:-0}" floor="${2:-0}" sample="${3:-0}" target="${4:-0}"
   local waived="${5:-false}" cum_fail="${6:-0}" cum_startup="${7:-0}"
-  if [ "$cum_fail" -gt 0 ] || [ "$cum_startup" -gt 0 ]; then
+  # Malformed/oversized counts fail closed (BLOCKED); force base 10 so "08" is not octal.
+  case "$cum_fail" in ''|*[!0-9]*) echo "BLOCKED"; return 0 ;; esac
+  case "$cum_startup" in ''|*[!0-9]*) echo "BLOCKED"; return 0 ;; esac
+  if [[ ${#cum_fail} -gt 18 || ${#cum_startup} -gt 18 ]]; then echo "BLOCKED"; return 0; fi
+  if (( 10#$cum_fail > 0 || 10#$cum_startup > 0 )); then
     echo "BLOCKED"; return 0
   fi
   local dwell_ok sample_ok
   dwell_ok=$(dwell_met "$dwell" "$floor")
-  if [ "$waived" = "true" ] || [ "$sample" -ge "$target" ]; then sample_ok=1; else sample_ok=0; fi
-  if [ "$dwell_ok" -eq 1 ] && [ "$sample_ok" -eq 1 ]; then
+  if [[ "$waived" = "true" ]]; then
+    sample_ok=1
+  else
+    # Malformed sample/target (e.g. "0+0") must never reach arithmetic: hold (SOAKING).
+    case "$sample" in ''|*[!0-9]*) echo "SOAKING"; return 0 ;; esac
+    case "$target" in ''|*[!0-9]*) echo "SOAKING"; return 0 ;; esac
+    # Oversized too: $((10#n)) wraps past 2^63, which could make a huge sample look tiny or
+    # a huge target look met.
+    if [[ ${#sample} -gt 18 || ${#target} -gt 18 ]]; then echo "SOAKING"; return 0; fi
+    if (( 10#$sample >= 10#$target )); then sample_ok=1; else sample_ok=0; fi
+  fi
+  if [[ "$dwell_ok" -eq 1 ]] && [[ "$sample_ok" -eq 1 ]]; then
     echo "PROMOTE"; return 0
   fi
   echo "SOAKING"
@@ -454,9 +496,9 @@ classify_failure() {
   case "$category" in
     comment-cap|rate-limit|infra|data) echo "PRE_EXISTING"; return 0 ;;
   esac
-  if [ "$differs" = "unknown" ]; then echo "-"; return 0; fi
-  if [ "$differs" != "1" ]; then echo "PRE_EXISTING"; return 0; fi
-  if [ "$suspect" -gt 0 ]; then echo "SUSPECT"; else echo "REGRESSION"; fi
+  if [[ "$differs" = "unknown" ]]; then echo "-"; return 0; fi
+  if [[ "$differs" != "1" ]]; then echo "PRE_EXISTING"; return 0; fi
+  if [[ "$suspect" -gt 0 ]]; then echo "SUSPECT"; else echo "REGRESSION"; fi
 }
 
 # triage_label <triage> — the triage as a human reads it: the indeterminate "-" (or an empty
@@ -479,19 +521,30 @@ triage_label() {
 #   HOLD      — thin baseline (base_sample < min_baseline_sample: NEVER downgrade on tiny-n — the
 #               conservative default keeps the human) OR the candidate is materially worse
 #               (cand_rate > base_rate + margin_permille) → stay SUSPECT (increment 2 behaviour).
+#               Also HOLD when a rate or the sample is not a decimal integer of at most 18 digits:
+#               evidence that cannot be read never removes the human.
 # Knobs object {min_baseline_sample, margin_permille}; absent knobs default to 0 (margin 0 = strict
 # no-worse; min_baseline_sample 0 = no tiny-n guard, though the orchestrator always sets it).
 decide_suspect_downgrade() {
   local cand="${1:-0}" base="${2:-0}" base_sample="${3:-0}" knobs="$4"
-  [ -z "$knobs" ] && knobs='{}'
+  [[ -z "$knobs" ]] && knobs='{}'
   local min_base margin
   min_base="$(jq -r '.min_baseline_sample // 0' <<< "$knobs" 2>/dev/null || echo 0)"
   margin="$(jq -r '.margin_permille // 0' <<< "$knobs" 2>/dev/null || echo 0)"
-  case "$min_base" in ''|*[!0-9]*) min_base=0 ;; esac
-  case "$margin" in ''|*[!0-9]*) margin=0 ;; esac
+  # Validate every operand as a digit string and normalise to base 10 (no octal, no arithmetic
+  # injection). A malformed knob degrades to 0, as before; a malformed or oversized rate or
+  # sample HOLDs, since reading it as 0 would make the candidate look no worse and downgrade.
+  case "$min_base" in ''|*[!0-9]*) min_base=0 ;; *) min_base=$((10#$min_base)) ;; esac
+  case "$margin" in ''|*[!0-9]*) margin=0 ;; *) margin=$((10#$margin)) ;; esac
+  local v
+  for v in "$cand" "$base" "$base_sample"; do
+    case "$v" in ''|*[!0-9]*) echo "HOLD"; return 0 ;; esac
+    if [[ ${#v} -gt 18 ]]; then echo "HOLD"; return 0; fi
+  done
+  cand=$((10#$cand)); base=$((10#$base)); base_sample=$((10#$base_sample))
   # Tiny-n guard first: too little baseline data → keep the human (conservative), regardless of rate.
-  if [ "$base_sample" -lt "$min_base" ]; then echo "HOLD"; return 0; fi
-  if [ "$cand" -le $(( base + margin )) ]; then echo "DOWNGRADE"; return 0; fi
+  if [[ "$base_sample" -lt "$min_base" ]]; then echo "HOLD"; return 0; fi
+  if [[ "$cand" -le $(( base + margin )) ]]; then echo "DOWNGRADE"; return 0; fi
   echo "HOLD"
 }
 
@@ -504,8 +557,8 @@ decide_suspect_downgrade() {
 # since ERE has no inline case-insensitivity flag.)
 benign_match() {
   local wf="$1" sig="$2" wf_re="$3" step_re="$4"
-  [ -z "$step_re" ] && { echo "no"; return 0; }
-  if [ -n "$wf_re" ] && ! [[ "$wf" =~ $wf_re ]]; then echo "no"; return 0; fi
+  [[ -z "$step_re" ]] && { echo "no"; return 0; }
+  if [[ -n "$wf_re" ]] && ! [[ "$wf" =~ $wf_re ]]; then echo "no"; return 0; fi
   if [[ "$sig" =~ $step_re ]]; then echo "yes"; else echo "no"; fi
 }
 
@@ -522,11 +575,11 @@ benign_match() {
 # conclusion alone. Emits nothing; sourced under `set -euo pipefail`, so it returns
 # and never exits.
 _is_evicted_run() {
-  [ "$#" -ge 2 ] || return 1
+  [[ "$#" -ge 2 ]] || return 1
   local conclusion="$1" count="$2"
-  [ "$conclusion" = "cancelled" ] || return 1
+  [[ "$conclusion" = "cancelled" ]] || return 1
   case "$count" in ''|*[!0-9]*) return 1 ;; esac
-  [ "$count" -eq 0 ]
+  [[ "$count" -eq 0 ]]
 }
 
 # next_channel_in_order <current_channel> <ordered_channels_csv>
@@ -538,7 +591,7 @@ next_channel_in_order() {
   local chan_array=()
   IFS=, read -r -a chan_array <<< "$csv"
   for ch in "${chan_array[@]}"; do
-    if [ "$prev" = "$current" ]; then found="$ch"; break; fi
+    if [[ "$prev" = "$current" ]]; then found="$ch"; break; fi
     prev="$ch"
   done
   echo "$found"
@@ -554,7 +607,7 @@ transition_key() {
   local chan_array=()
   IFS=, read -r -a chan_array <<< "$csv"
   for ch in "${chan_array[@]}"; do
-    if [ "$ch" = "$frontier" ] && [ -n "$prev" ]; then echo "${prev}->${frontier}"; return 0; fi
+    if [[ "$ch" = "$frontier" ]] && [[ -n "$prev" ]]; then echo "${prev}->${frontier}"; return 0; fi
     prev="$ch"
   done
   echo ""
@@ -596,10 +649,10 @@ set_difference() {
   local a="$1" b="$2" line
   declare -A b_map
   while IFS= read -r line; do
-    [ -n "$line" ] && b_map["$line"]=1
+    [[ -n "$line" ]] && b_map["$line"]=1
   done <<< "$b"
   while IFS= read -r line; do
-    [ -z "$line" ] && continue
+    [[ -z "$line" ]] && continue
     if [[ -z "${b_map["$line"]:-}" ]]; then
       printf '%s\n' "$line"
     fi
@@ -621,14 +674,14 @@ set_difference() {
 watched_hits() {
   local files="$1" patterns="$2" p f
   local -a pats=()
-  while IFS= read -r p; do [ -n "$p" ] && pats+=("$p"); done <<< "$patterns"
-  [ "${#pats[@]}" -eq 0 ] && return 0
+  while IFS= read -r p; do [[ -n "$p" ]] && pats+=("$p"); done <<< "$patterns"
+  [[ "${#pats[@]}" -eq 0 ]] && return 0
   for p in "${pats[@]}"; do
     while IFS= read -r f; do
-      [ -z "$f" ] && continue
+      [[ -z "$f" ]] && continue
       case "$p" in
-        */) if [ "${f#"$p"}" != "$f" ]; then printf '%s\n' "$p"; break; fi ;;
-        *)  if [ "$f" = "$p" ] || [ "${f#"$p"/}" != "$f" ]; then printf '%s\n' "$p"; break; fi ;;
+        */) if [[ "${f#"$p"}" != "$f" ]]; then printf '%s\n' "$p"; break; fi ;;
+        *)  if [[ "$f" = "$p" ]] || [[ "${f#"$p"/}" != "$f" ]]; then printf '%s\n' "$p"; break; fi ;;
       esac
     done <<< "$files"
   done
@@ -637,7 +690,7 @@ watched_hits() {
 # any_watched_change <changed_files_nl> <patterns_nl> — echo 1 if any changed file is covered by
 # any watched pattern, else 0. Thin wrapper over watched_hits (DRY).
 any_watched_change() {
-  if [ -n "$(watched_hits "$1" "$2")" ]; then echo 1; else echo 0; fi
+  if [[ -n "$(watched_hits "$1" "$2")" ]]; then echo 1; else echo 0; fi
 }
 
 # gate_summary_line <transition> <state> <dwell_h> <dwell_floor> <sample> <sample_target> <cum_fail> <cum_startup> [cum_benign]
@@ -663,7 +716,7 @@ gate_summary_line() {
 # branch, only the taken branch runs). Empty when no decision step ran (absent/unparseable).
 decision_class() {
   local prefix="$1" json="$2"
-  [ -z "$json" ] && json='{}'
+  [[ -z "$json" ]] && json='{}'
   jq -r --arg p "$prefix" '
     [ (.jobs[]?.steps[]?)
       | select((.conclusion // "") != "skipped")
@@ -684,27 +737,41 @@ decision_class() {
 #   SHIFT        — some decision class's share (per-mille of that side's total) moved by at
 #                  least max_shift_permille between candidate and baseline → HOLD (SUSPECT).
 #   OK           — every class's share is within threshold → no effect.
+# Fail closed on a malformed knob (non-decimal or out of range): echoes SHIFT (HOLD) before any
+# sample-size check, so a misconfigured gate holds rather than promotes — even for a low-traffic
+# agent that would otherwise be INSUFFICIENT.
 # Shares are integer per-mille, rounded half-up; the max absolute per-class delta is compared
 # to max_shift_permille (inclusive). Gross always/never/gross shifts only — by design (n=10–25).
 decide_decision_shift() {
   local cand="$1" base="$2" knobs="$3"
-  [ -z "$cand" ] && cand='{}'
-  [ -z "$base" ] && base='{}'
-  [ -z "$knobs" ] && knobs='{}'
+  [[ -z "$cand" ]] && cand='{}'
+  [[ -z "$base" ]] && base='{}'
+  [[ -z "$knobs" ]] && knobs='{}'
   local min_c min_b max_shift
   min_c="$(jq -r '.min_candidate_sample // 0' <<< "$knobs" 2>/dev/null || echo 0)"
   min_b="$(jq -r '.min_baseline_sample // 0' <<< "$knobs" 2>/dev/null || echo 0)"
   max_shift="$(jq -r '.max_shift_permille // 0' <<< "$knobs" 2>/dev/null || echo 0)"
+  # Malformed knobs (e.g. "0+0", "1.5", negative) must never reach Bash arithmetic, where they would
+  # be evaluated as expressions. Fail closed: a gate misconfiguration HOLDs rather than promotes.
+  local k
+  for k in "$min_c" "$min_b" "$max_shift"; do
+    case "$k" in ''|*[!0-9]*) echo "SHIFT"; return 0 ;; esac
+  done
+  # Reject out-of-range magnitudes too: 10# would wrap an oversized value to a negative number.
+  if [[ ${#min_c} -gt 18 || ${#min_b} -gt 18 || ${#max_shift} -gt 18 ]]; then
+    echo "SHIFT"; return 0
+  fi
+  min_c=$((10#$min_c)); min_b=$((10#$min_b)); max_shift=$((10#$max_shift))
   local cand_total base_total
   cand_total="$(jq -r 'if type=="object" then ([.[]?]|add // 0) else "x" end' <<< "$cand" 2>/dev/null || echo x)"
   base_total="$(jq -r 'if type=="object" then ([.[]?]|add // 0) else "x" end' <<< "$base" 2>/dev/null || echo x)"
   # Unparseable / non-object / empty → INSUFFICIENT (no decision steps to compare).
   case "$cand_total" in ''|*[!0-9]*) echo "INSUFFICIENT"; return 0 ;; esac
   case "$base_total" in ''|*[!0-9]*) echo "INSUFFICIENT"; return 0 ;; esac
-  if [ "$cand_total" -lt "$min_c" ] || [ "$base_total" -lt "$min_b" ]; then
+  if [[ "$cand_total" -lt "$min_c" ]] || [[ "$base_total" -lt "$min_b" ]]; then
     echo "INSUFFICIENT"; return 0
   fi
-  if [ "$cand_total" -eq 0 ] || [ "$base_total" -eq 0 ]; then
+  if [[ "$cand_total" -eq 0 ]] || [[ "$base_total" -eq 0 ]]; then
     echo "INSUFFICIENT"; return 0
   fi
   # Max absolute per-class share delta, in integer per-mille (round half-up), over the union
@@ -719,5 +786,5 @@ decide_decision_shift() {
         | (($cs - $bs) | if . < 0 then -. else . end) ]
     | max // 0' 2>/dev/null || echo 0)"
   case "$max_delta" in ''|*[!0-9]*) max_delta=0 ;; esac
-  if [ "$max_delta" -ge "$max_shift" ]; then echo "SHIFT"; else echo "OK"; fi
+  if [[ "$max_delta" -ge "$max_shift" ]]; then echo "SHIFT"; else echo "OK"; fi
 }

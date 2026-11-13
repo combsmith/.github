@@ -29,7 +29,7 @@
 #
 # shellcheck shell=bash
 
-if [ -n "${_SSP_SOURCED:-}" ]; then
+if [[ -n "${_SSP_SOURCED:-}" ]]; then
   return 0 2>/dev/null || true
 fi
 _SSP_SOURCED=1
@@ -48,15 +48,15 @@ SSP_MAX_COMMITS=250
 # workflow filename.
 ssp_allowed_paths() {
   local deploy_script="$1" list w out=""
-  [ -f "$deploy_script" ] || return 1
+  [[ -f "$deploy_script" ]] || return 1
   list=$(
     # shellcheck source=/dev/null
     source "$deploy_script" >/dev/null 2>&1 || exit 1
     printf '%s\n' "${DEPLOYABLE_WORKFLOWS[@]}"
   ) 2>/dev/null || return 1
-  [ -n "$list" ] || return 1
+  [[ -n "$list" ]] || return 1
   while IFS= read -r w; do
-    [ -n "$w" ] || continue
+    [[ -n "$w" ]] || continue
     case "$w" in
       *[!A-Za-z0-9._-]*|.*) return 1 ;;
       *.yml|*.yaml) ;;
@@ -64,14 +64,14 @@ ssp_allowed_paths() {
     esac
     out+=".github/workflows/${w}"$'\n'
   done <<< "$list"
-  [ -n "$out" ] || return 1
+  [[ -n "$out" ]] || return 1
   printf '%s' "$out"
 }
 
 # ssp_check_commits <commits-json-array> <deployer-login> <head-sha>
 ssp_check_commits() {
   local commits="$1" deployer="$2" head_sha="$3" reason
-  [ -n "$deployer" ] && [ -n "$head_sha" ] || { echo "no deployer or head SHA to verify against"; return 1; }
+  [[ -n "$deployer" ]] && [[ -n "$head_sha" ]] || { echo "no deployer or head SHA to verify against"; return 1; }
   reason=$(jq -r --arg d "$deployer" --arg h "$head_sha" --argjson max "$SSP_MAX_COMMITS" '
     if type != "array" then "commit list is not an array"
     elif length == 0 then "PR has no commits"
@@ -88,7 +88,7 @@ ssp_check_commits() {
         | "commit \(.sha // "?") author=\($a | if . == "" then "<unlinked>" else . end) committer=\($c | if . == "" then "<unlinked>" else . end) is not the deployer \($d)"
       ] | first // ""
     end' <<< "$commits" 2>/dev/null) || { echo "commit list is not valid JSON"; return 1; }
-  if [ -n "$reason" ]; then
+  if [[ -n "$reason" ]]; then
     printf '%s\n' "$reason"
     return 1
   fi
@@ -100,7 +100,7 @@ ssp_check_commits() {
 # <activity-json-array> is GET /repos/{o}/{r}/activity?ref=refs/heads/<branch>.
 ssp_check_pushes() {
   local activity="$1" deployer="$2" head_sha="$3" reason
-  [ -n "$deployer" ] && [ -n "$head_sha" ] || { echo "no deployer or head SHA to verify against"; return 1; }
+  [[ -n "$deployer" ]] && [[ -n "$head_sha" ]] || { echo "no deployer or head SHA to verify against"; return 1; }
   reason=$(jq -r --arg d "$deployer" --arg h "$head_sha" '
     if type != "array" then "branch activity is not an array"
     elif length == 0 then "no recorded pushes for the head branch"
@@ -113,7 +113,7 @@ ssp_check_pushes() {
           then "newest recorded push is \((sort_by(.timestamp // "") | last | .after) // "?"), not head \($h)"
         else "" end
     end' <<< "$activity" 2>/dev/null) || { echo "branch activity is not valid JSON"; return 1; }
-  if [ -n "$reason" ]; then
+  if [[ -n "$reason" ]]; then
     printf '%s\n' "$reason"
     return 1
   fi
@@ -123,7 +123,7 @@ ssp_check_pushes() {
 # ssp_check_files <files-json-array> <allowed-paths (newline-separated)>
 ssp_check_files() {
   local files="$1" allowed="$2" reason
-  [ -n "$allowed" ] || { echo "standards-deploy path allowlist is unavailable (DEPLOYABLE_WORKFLOWS could not be loaded from deploy-standard-workflows.sh; it needs bash 4+)"; return 1; }
+  [[ -n "$allowed" ]] || { echo "standards-deploy path allowlist is unavailable (DEPLOYABLE_WORKFLOWS could not be loaded from deploy-standard-workflows.sh; it needs bash 4+)"; return 1; }
   reason=$(jq -r --arg allowed "$allowed" '
     ($allowed | split("\n") | map(select(length > 0))) as $ok
     | if type != "array" then "changed-file list is not an array"
@@ -136,7 +136,7 @@ ssp_check_files() {
           | "\($s) \($f) is outside the standards-deploy scope"
         ] | first // ""
       end' <<< "$files" 2>/dev/null) || { echo "changed-file list is not valid JSON"; return 1; }
-  if [ -n "$reason" ]; then
+  if [[ -n "$reason" ]]; then
     printf '%s\n' "$reason"
     return 1
   fi
@@ -151,8 +151,8 @@ ssp_check_files() {
 ssp_fetch_and_verify() {
   local repo="$1" pr="$2" branch="$3" head_sha="$4" deployer="$5" allowed="$6"
   local commits files activity ref_q
-  [ -n "$head_sha" ] || { echo "PR head SHA is unknown"; return 1; }
-  [ -n "$branch" ] || { echo "PR head branch is unknown"; return 1; }
+  [[ -n "$head_sha" ]] || { echo "PR head SHA is unknown"; return 1; }
+  [[ -n "$branch" ]] || { echo "PR head branch is unknown"; return 1; }
   ref_q=$(jq -rn --arg r "refs/heads/${branch}" '$r | @uri')
 
   commits=$(gh api --paginate "repos/${repo}/pulls/${pr}/commits?per_page=100" --jq '.[]' 2>/dev/null) \

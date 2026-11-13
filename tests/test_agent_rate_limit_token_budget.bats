@@ -192,6 +192,12 @@ envelope_limits() {
   [[ "$output" == *"decision=defer"* ]]
 }
 
+@test "decision: zero-padded threshold is decimal, not octal (08)" {
+  run bash -c "source '$LIB'; arl_token_budget_decision 100 08 true"
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"decision=defer"* ]]
+}
+
 @test "decision: percent exactly at threshold defers (>= boundary)" {
   run bash -c "source '$LIB'; arl_token_budget_decision 90 90 true"
   [ "$status" -eq 1 ]
