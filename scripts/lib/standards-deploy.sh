@@ -8,7 +8,8 @@
 #
 #   1. checks for an already-open PR on the sync branch (idempotent skip),
 #   2. preflights that the token can write the repo (clear finding on a scope gap),
-#   3. creates (or reuses) a sync branch off the repo's default branch,
+#   3. creates a sync branch off the repo's default branch (an existing one with
+#      no open PR is reset to the default-branch tip, never reused as-is),
 #   4. PUTs the verbatim file content onto that branch via the Contents API,
 #   5. opens a labeled pull request.
 #
@@ -33,7 +34,7 @@ _STANDARDS_DEPLOY_SOURCED=1
 #   repo_slug   owner/name of the target repo (e.g. combsmith/markets)
 #   path        path of the file within the target repo
 #   local_file  local file whose contents are deployed verbatim
-#   branch      head branch to create/reuse for the PR
+#   branch      head branch to create (or reset) for the PR
 #   label       label applied to the opened PR (e.g. standards-sync)
 #   title       commit message and PR title
 #   body        PR body (markdown)
@@ -58,6 +59,24 @@ sd_deploy_via_pr() {
 # N stubs for a repo is therefore N files in one PR, not N PRs. Idempotency is
 # keyed by the label — at most one open sync PR per repo; if one already exists
 # it is reused (skip). Trailing args are (path, local_file) pairs.
+_sd_branch_open_pr() {
+  local repo="$1" branch="$2" owner="${1%%/*}" parent q found
+  local -a queries=(
+    "repos/${repo}/pulls?state=open&per_page=100&head=${owner}:${branch}"
+    "repos/${repo}/pulls?state=open&per_page=100&base=${branch}"
+  )
+  # A fork's sync branch can be the head of a PR against its upstream; that PR
+  # lives in the parent repo, so probe there too.
+  parent=$(gh api "repos/${repo}" --jq '.parent.full_name // ""') || return 1
+  [[ -n "$parent" ]] && queries+=("repos/${parent}/pulls?state=open&per_page=100&head=${owner}:${branch}")
+  for q in "${queries[@]}"; do
+    found=$(gh api "$q" --paginate --jq '.[].number') || return 1
+    found="${found%%$'\n'*}"
+    if [[ -n "$found" ]]; then printf '%s' "$found"; return 0; fi
+  done
+  return 0
+}
+
 sd_deploy_files_via_pr() {
   local repo="$1" branch="$2" label="$3" title="$4" body="$5"
   shift 5
@@ -75,8 +94,11 @@ sd_deploy_files_via_pr() {
 
   # 1. Idempotency — at most one open sync PR per repo, keyed by label.
   local existing_pr
-  existing_pr=$(gh pr list --repo "$repo" --label "$label" --state open \
-    --json number --jq '.[0].number // ""' 2>/dev/null || true)
+  if ! existing_pr=$(gh pr list --repo "$repo" --label "$label" --state open --limit 1000 \
+    --json number --jq '.[0].number // ""' 2>&1); then
+    echo "FAILED pr-list-failed:$(tr '\n' ' ' <<< "$existing_pr")"
+    return 1
+  fi
   if [ -n "$existing_pr" ]; then
     echo "SKIP_PR_OPEN $existing_pr"
     return 0
@@ -90,7 +112,7 @@ sd_deploy_files_via_pr() {
   #    surfaced distinctly — they must NOT be misreported as "no write access".
   #    Repo-level push permission implies PR-create for a collaborator identity.
   local can_push perm_err perm_rc
-  perm_err=$(mktemp)
+  perm_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
   can_push=$(gh api "repos/${repo}" --jq '.permissions.push // false' 2>"$perm_err") && perm_rc=0 || perm_rc=$?
   if [ "$perm_rc" -ne 0 ]; then
     local perm_msg; perm_msg=$(tr '\n' ' ' < "$perm_err"); rm -f "$perm_err"
@@ -113,7 +135,16 @@ sd_deploy_files_via_pr() {
     return 1
   fi
 
-  # 4. Create the sync branch; reuse it if a prior run already created it.
+  # 4. Create the sync branch off the default-branch tip. If a prior run already
+  #    created it (same-date name), it may carry that run's commits — or later
+  #    pushes to them — which must NOT leak into this run's PR
+  #    (combsmith/.github#1296). Step 1 found no open labeled PR; if no open
+  #    PR of any label uses the branch either, force-reset it to the base tip so
+  #    it holds only what this run writes. Otherwise, or if the probe or reset
+  #    errors, fail loudly naming the branch rather than build on unknown commits.
+  #    NOTE: A small race window exists between the open-PR check and the reset,
+  #    where concurrent same-day runs could interfere. Callers should use
+  #    unique branch names per run (e.g., with timestamps) to fully mitigate.
   if ! gh api "repos/${repo}/git/refs" --method POST \
         --raw-field "ref=refs/heads/${branch}" \
         --raw-field "sha=${base_sha}" --silent 2>/dev/null; then
@@ -121,11 +152,34 @@ sd_deploy_files_via_pr() {
       echo "FAILED no-branch"
       return 1
     fi
+    # Server-side, owner-qualified lookup (see _sd_branch_open_pr): exact, so
+    # no 30-result truncation and no same-named fork PRs to filter out.
+    local branch_pr probe_err probe_msg
+    probe_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
+    if ! branch_pr=$(_sd_branch_open_pr "$repo" "$branch" 2>"$probe_err"); then
+      probe_msg=$(tr '\n' ' ' < "$probe_err"); rm -f "$probe_err"
+      echo "FAILED branch-pr-probe-failed:${branch}${probe_msg:+:${probe_msg}}"
+      return 1
+    fi
+    rm -f "$probe_err"
+    if [[ -n "$branch_pr" ]]; then
+      echo "FAILED branch-in-use:${branch}#${branch_pr}"
+      return 1
+    fi
+    local reset_err reset_msg
+    reset_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
+    if ! gh api "repos/${repo}/git/refs/heads/${branch}" --method PATCH \
+          --raw-field "sha=${base_sha}" -F force=true --silent 2>"$reset_err"; then
+      reset_msg=$(tr '\n' ' ' < "$reset_err"); rm -f "$reset_err"
+      echo "FAILED branch-reset-failed:${branch}${reset_msg:+:${reset_msg}}"
+      return 1
+    fi
+    rm -f "$reset_err"
   fi
 
   # 5. PUT each file verbatim onto the branch. The blob SHA is looked up per file
   #    on the branch so both create (absent → empty SHA) and update (drifted stub)
-  #    work, whether the branch is fresh or reused. Errors are NOT swallowed: a
+  #    work, whether the branch is fresh or reset. Errors are NOT swallowed: a
   #    read failure that yields an empty SHA would make the subsequent PUT omit
   #    `sha` and 422 against an existing file — the exact opaque failure in #864.
   local path local_file branch_sha encoded j err_file get_rc get_msg put_msg

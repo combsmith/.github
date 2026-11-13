@@ -23,7 +23,13 @@ args="$*"
 case "$sub" in
   pr)
     case "${1:-}" in
-      list)   printf '%s' "${GH_EXISTING_PR:-}" ;;
+      list)
+        # The label-keyed idempotency check.
+        if [ "${GH_PR_LIST_RC:-0}" -ne 0 ]; then
+          printf '%s\n' "${GH_PR_LIST_ERR:-gh: HTTP 401}" >&2
+          exit "${GH_PR_LIST_RC}"
+        fi
+        printf '%s' "${GH_EXISTING_PR:-}" ;;
       create)
         [ "${GH_PR_CREATE_RC:-0}" -ne 0 ] && exit "${GH_PR_CREATE_RC}"
         printf '%s\n' "${GH_PR_URL:-https://github.com/o/r/pull/1}" ;;
@@ -32,7 +38,32 @@ case "$sub" in
   api)
     endpoint="${1:-}"
     case "$endpoint" in
+      */pulls\?*)
+        # "Is the existing sync branch in use?" probe: server-side filtered
+        # list of open PRs. head= (same-repo head), base= (stacked PR) or a
+        # parent-repo lookup (fork -> upstream PR).
+        if [ "${GH_BRANCH_PR_RC:-0}" -ne 0 ]; then
+          [ -n "${GH_BRANCH_PR_ERR:-}" ] && printf '%s\n' "$GH_BRANCH_PR_ERR" >&2
+          exit "${GH_BRANCH_PR_RC}"
+        fi
+        case "$endpoint" in
+          repos/combsmith/upstream/*) printf '%s' "${GH_PARENT_PR:-}" ;;
+          *base=*)                    printf '%s' "${GH_BASE_PR:-}" ;;
+          *head=combsmith:*)          printf '%s' "${GH_BRANCH_PR:-}" ;;
+          *head=*)                    printf '%s' "${GH_FORK_PR:-}" ;;
+          *)                          printf '%s' "${GH_BRANCH_PR:-}" ;;
+        esac ;;
       */git/refs)          exit "${GH_REF_CREATE_RC:-0}" ;;
+      */git/refs/heads/*)
+        # Force-reset of an existing sync branch. When GH_BRANCH_FILES names a
+        # file it models the branch's content: a reset to the base tip drops
+        # every commit a prior run left on it.
+        if [ "${GH_REF_RESET_RC:-0}" -ne 0 ]; then
+          [ -n "${GH_REF_RESET_ERR:-}" ] && printf '%s\n' "$GH_REF_RESET_ERR" >&2
+          exit "${GH_REF_RESET_RC}"
+        fi
+        [ -n "${GH_BRANCH_FILES:-}" ] && printf '' > "$GH_BRANCH_FILES"
+        exit 0 ;;
       */git/ref/heads/*)
         if printf '%s' "$args" | grep -q 'object.sha'; then
           printf '%s' "${GH_BASE_SHA-basesha111}"
@@ -60,11 +91,17 @@ case "$sub" in
           printf '%s\n' "${GH_PUT_ERR:-gh: sha was not supplied (HTTP 422)}" >&2
           exit "${GH_PUT_RC}"
         fi
+        if [ -n "${GH_BRANCH_FILES:-}" ]; then
+          p="${endpoint#*/contents/}"
+          grep -qxF "$p" "$GH_BRANCH_FILES" || printf '%s\n' "$p" >> "$GH_BRANCH_FILES"
+        fi
         exit 0 ;;
       repos/*)
         # repos/<repo>: the default-branch lookup AND the preflight write probe
         # (--jq .permissions.push) both land here — differentiate on the jq arg.
-        if printf '%s' "$args" | grep -q 'permissions.push'; then
+        if printf '%s' "$args" | grep -q '\.parent'; then
+          printf '%s' "${GH_PARENT:-}"
+        elif printf '%s' "$args" | grep -q 'permissions.push'; then
           if [ -n "${GH_PERM_RC:-}" ] && [ "${GH_PERM_RC}" != "0" ]; then
             printf '%s\n' "${GH_PERM_ERR:-gh: Not Found (HTTP 404)}" >&2
             exit "${GH_PERM_RC}"
@@ -194,6 +231,140 @@ deploy() {
 }
 
 # ---------------------------------------------------------------------------
+# Stale same-date branch (combsmith/.github#1296): a prior run's branch —
+# its PR closed — must not leak that run's commits into this run's PR.
+# ---------------------------------------------------------------------------
+@test "stale same-date branch with extra commits and no open PR: PR holds only this run's files" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC   # branch already exists
+  GH_BRANCH_FILES="${TT_TMP}/branch-files"; export GH_BRANCH_FILES
+  # The first run's 5 stubs, plus an agent's later "review fix" commit.
+  printf '%s\n' .github/workflows/a.yml .github/workflows/b.yml \
+    .github/workflows/c.yml .github/workflows/d.yml .github/workflows/e.yml \
+    > "$GH_BRANCH_FILES"
+  run sd_deploy_files_via_pr "combsmith/markets" "standards-sync/workflows-20261011" \
+    "standards-sync" "chore: sync 1 stub" "body" \
+    ".github/workflows/persona-mention.yml" "$LOCAL_FILE"
+  [ "$status" -eq 0 ]
+  [ "$output" = "OPENED https://github.com/o/r/pull/1" ]
+  [ "$(cat "$GH_BRANCH_FILES")" = ".github/workflows/persona-mention.yml" ]
+}
+
+@test "stale branch is force-reset to the default-branch tip before any PUT" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  run deploy
+  [ "$status" -eq 0 ]
+  grep -q 'gh api repos/combsmith/markets/pulls?state=open&per_page=100&head=combsmith:standards-sync/add-to-project --paginate' "$GH_CALLS"
+  grep -q 'gh api repos/combsmith/markets/git/refs/heads/standards-sync/add-to-project --method PATCH --raw-field sha=basesha111 -F force=true' "$GH_CALLS"
+  local reset_line put_line
+  reset_line=$(grep -n 'git/refs/heads/.* --method PATCH' "$GH_CALLS" | head -1 | cut -d: -f1)
+  put_line=$(grep -n 'contents/.* --method PUT' "$GH_CALLS" | head -1 | cut -d: -f1)
+  [ "$reset_line" -lt "$put_line" ]
+}
+
+@test "a freshly created branch is not reset" {
+  run deploy
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c '/pulls?' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "existing branch used by an open (unlabeled) PR fails loudly naming the branch" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_BRANCH_PR="77"; export GH_BRANCH_PR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-in-use:standards-sync/add-to-project#77" ]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'gh pr create' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "existing branch whose PR probe errors is not reset" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_BRANCH_PR_RC="1"; export GH_BRANCH_PR_RC
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-pr-probe-failed:standards-sync/add-to-project" ]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "a failed reset of the stale branch fails loudly naming the branch" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_REF_RESET_RC="1"; export GH_REF_RESET_RC
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-reset-failed:standards-sync/add-to-project" ]
+  [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'gh pr create' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "a failed reset surfaces the API error text when one is available" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_REF_RESET_RC="1"; export GH_REF_RESET_RC
+  GH_REF_RESET_ERR="gh: Cannot force-push (HTTP 422)"; export GH_REF_RESET_ERR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-reset-failed:standards-sync/add-to-project:gh: Cannot force-push (HTTP 422) " ]
+}
+
+# The probe is an owner-qualified server-side query (head=<owner>:<branch>), so
+# a same-named fork PR is never returned (nor truncated by a page limit): with
+# no match for the target repo the deploy proceeds.
+@test "the branch-in-use probe correctly ignores same-named fork PRs but stops on target-repo PRs" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+
+  # A same-named fork PR exists: only an unqualified head query would see it.
+  GH_FORK_PR="77"; export GH_FORK_PR
+  GH_BRANCH_PR=""; export GH_BRANCH_PR
+  run deploy
+  [ "$status" -eq 0 ]
+  [ "$output" = "OPENED https://github.com/o/r/pull/1" ]
+
+  # Model a target-repository PR: probe finds the PR, deployment stops
+  GH_BRANCH_PR="55"; export GH_BRANCH_PR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-in-use:standards-sync/add-to-project#55" ]
+}
+
+@test "an open PR from the target repo on the branch stops the deploy" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_BRANCH_PR="55"; export GH_BRANCH_PR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-in-use:standards-sync/add-to-project#55" ]
+}
+
+@test "an open PR using the branch as its base stops the deploy" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_BASE_PR="66"; export GH_BASE_PR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-in-use:standards-sync/add-to-project#66" ]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "a fork's branch used by a PR against its upstream stops the deploy" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_PARENT="combsmith/upstream"; export GH_PARENT
+  GH_PARENT_PR="88"; export GH_PARENT_PR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED branch-in-use:standards-sync/add-to-project#88" ]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "a branch-probe error surfaces its API error text" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_BRANCH_PR_RC="1"; export GH_BRANCH_PR_RC
+  GH_BRANCH_PR_ERR="gh: Forbidden (HTTP 403)"; export GH_BRANCH_PR_ERR
+  run deploy
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"HTTP 403"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # Update path: file already present on the branch → PUT carries its blob SHA
 # ---------------------------------------------------------------------------
 @test "passes the existing blob sha when updating a drifted stub" {
@@ -311,4 +482,13 @@ deploy() {
   [ "$status" -ne 0 ]
   [[ "$output" == FAILED\ sha-unresolved:* ]]
   ! grep -q 'contents/.* --method PUT' "$GH_CALLS"
+}
+
+@test "a failed open-PR listing fails loudly instead of being treated as no PR" {
+  GH_PR_LIST_RC="1"; export GH_PR_LIST_RC
+  GH_PR_LIST_ERR="gh: HTTP 401"; export GH_PR_LIST_ERR
+  run deploy
+  [ "$status" -ne 0 ]
+  [ "$output" = "FAILED pr-list-failed:gh: HTTP 401 " ]
+  [ "$(grep -c 'git/refs' "$GH_CALLS")" -eq 0 ]
 }
