@@ -3944,6 +3944,13 @@ _idle_rings() {
   [[ "$output" != *"sample floor"*"waived"* ]]
 }
 
+@test "_tier_inflight: a failed run-list read counts as in-flight so the idle waiver fails closed (#1513)" {
+  run env CANARY_RINGS="$RINGS" bash -c \
+    "source '$ORCH' && _agent_run_json() { return 1; } && _tier_inflight dev-lead '' org/a org/b"
+  [ "$status" -eq 0 ]
+  [ "$output" = "2" ]
+}
+
 @test "orchestrator: without the knob an idle ring still SOAKs at sample_min (#1513 opt-in)" {
   _confirm_stub skipped 0
   run env CANARY_RINGS="$(_idle_rings "")" bash "$ORCH" evaluate dev-lead

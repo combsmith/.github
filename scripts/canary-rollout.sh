@@ -1359,9 +1359,13 @@ _tier_sample() {
 # treat a ring with a run in flight as idle: that run may still fail after promotion.
 _tier_inflight() {
   local agent="$1" since="$2"; shift 2
-  local repo json n=0 wf role iwf iraw rc
+  local repo json n=0 wf role iwf iraw rc jrc
   for repo in "$@"; do
-    json="$(_agent_run_json "$agent" "$repo" "$since")"
+    # A failed run-list read is NOT "zero runs": count it as one in-flight run so the idle waiver holds
+    # (fail closed). _tier_sample reads the same lists and reports 0 on a failed read, so without this
+    # an unreadable ring would look idle on the cmd_promote path, which has no fetch-failure flag.
+    jrc=0; json="$(_agent_run_json "$agent" "$repo" "$since")" || jrc=$?
+    if [ "$jrc" -ne 0 ]; then n=$((n + 1)); continue; fi
     n=$(( n + $(jq '[.[]?|select((.conclusion // "")=="")]|length' 2>/dev/null <<< "${json:-[]}" || echo 0) ))
     # A collapsed (ingress-routed) repo: _ingress_agent_runs only emits COMPLETED runs, so an in-flight
     # ingress run is invisible above. Count it from the ingress run list's own `conclusion` instead.
@@ -1375,7 +1379,8 @@ _tier_inflight() {
     [ "$rc" -eq 3 ] || continue
     _reg_ingress_wf; iwf="$_REG_VAL"
     rc=0; iraw="$(_ingress_runs_fetch "$repo" "$iwf" "$since")" || rc=$?
-    [ "$rc" -eq 0 ] || continue
+    [ "$rc" -eq 3 ] && continue   # no ingress workflow on this repo: nothing in flight there
+    if [ "$rc" -ne 0 ]; then n=$((n + 1)); continue; fi   # unreadable ingress list: hold the waiver
     n=$(( n + $(jq --arg since "$since" '[.[]?|select((.conclusion // "")=="")|select($since=="" or (.createdAt // "")>=$since)]|length' 2>/dev/null <<< "${iraw:-[]}" || echo 0) ))
   done
   echo "$n"
