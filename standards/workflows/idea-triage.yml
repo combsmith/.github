@@ -7,7 +7,7 @@
 #   • This file is a THIN CALLER STUB. All triage-dispatch logic lives in the
 #     reusable above.
 #   • You MUST NOT change: the `uses:` ref — it is pinned to the
-#     `idea-triage/v1-stable` channel, a moving tag advanced centrally. Never
+#     `idea-triage/<tier>` channel, a moving tag advanced centrally. Never
 #     repoint it to `@main`, a SHA, or a frozen `@vX`. Do not change the
 #     `secrets:` block.
 #   • You MAY change: the cron schedule if the weekly cadence doesn't suit.
