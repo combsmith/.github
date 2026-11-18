@@ -6306,6 +6306,16 @@ GHEOF
   [ ! -s "$flag" ]
 }
 
+@test "_baseline_daily: zero-padded CANARY_INGRESS_JOBS_MAX=09 is read as decimal 9, not an octal error" {
+  _ingress_stub
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env CANARY_RINGS="$INGRESS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 CANARY_INGRESS_JOBS_MAX=09 _CANARY_UNRESOLVED_FLAG="$flag" \
+    bash -c "source '$ORCH' && _baseline_daily dev-lead 3 org/busy 2>&1"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"value too great for base"* ]]
+  [ ! -s "$flag" ]
+}
+
 @test "_baseline_daily: more runs on the NEWEST day than the cap keeps that day's partial count, never an empty baseline (#1224 liveness)" {
   _ingress_stub
   local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"

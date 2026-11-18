@@ -1116,6 +1116,7 @@ _ingress_agent_runs() {
   # older one, rather than blocking a busy collapsed repo forever. Gating windows stay strict.
   local jobs_max="${CANARY_INGRESS_JOBS_MAX:-300}" nread=0 jrc role_oldest="" skipkind norole_created="" ncr
   case "$jobs_max" in ''|*[!0-9]*) jobs_max=300 ;; esac
+  jobs_max=$((10#$jobs_max))
   [[ "$jobs_max" -lt 1 ]] && jobs_max=300
   # The RUN LIST itself is capped too (`gh run list -L CANARY_INGRESS_RUN_LIMIT`, default 5000). A list
   # that hit its cap AND does not reach back past the window start may be missing older in-window runs,
