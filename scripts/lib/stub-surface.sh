@@ -159,7 +159,10 @@ stub_surface_drift() {
   local canonical="$1" deployed="$2" key="$3" c d
   c="$(stub_extract_blocks "$canonical" "$key" | stub_normalize_surface)"
   d="$(stub_extract_blocks "$deployed" "$key" | stub_normalize_surface)"
-  [[ "$c" = "$d" ]] && return 1 || return 0
+  if [[ "$c" = "$d" ]]; then
+    return 1
+  fi
+  return 0
 }
 
 # stub_any_surface_drift <workflow.yml> <canonical> <deployed> — return 0 when ANY

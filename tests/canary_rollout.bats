@@ -291,6 +291,14 @@ YML
   run _semver_gt 2.1.0 2.1.1; [ "$status" -ne 0 ]
 }
 
+@test "_semver_gt: zero-padded and beyond-int64 components compare correctly" {
+  run _semver_gt 1.08.0 1.9.0; [ "$status" -ne 0 ]
+  run _semver_gt 1.0.99999999999999999999 1.0.9; [ "$status" -eq 0 ]
+  run _semver_gt 1.0.09 1.0.9; [ "$status" -ne 0 ]
+}
+@test "decide_graduated: zero-padded dwell floor is decimal" {
+  [ "$(decide_graduated 9 010 3 3 false 0 0)" = "SOAKING" ]
+}
 @test "max_semver: picks the highest version" {
   [ "$(max_semver 2.0.5 2.1.0 2.0.9)" = "2.1.0" ]
   [ "$(max_semver 1.0.0)" = "1.0.0" ]

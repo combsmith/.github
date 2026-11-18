@@ -53,6 +53,9 @@ setup() {
   [ "$(ss_age_days 1000000 $((1000000 - 86400 * 3 - 5)))" = "3" ]
   [ "$(ss_age_days 1000000 $((1000000 - 86399)))" = "0" ]
 }
+@test "ss_age_days: zero-padded past epoch is read as decimal" {
+  [ "$(ss_age_days 0200000 0100000)" = "1" ]
+}
 @test "ss_age_days: a future timestamp is 0 days, never negative" {
   [ "$(ss_age_days 1000 2000)" = "0" ]
 }

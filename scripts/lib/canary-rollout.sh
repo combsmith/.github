@@ -280,10 +280,17 @@ _semver_gt() {
   local a1=0 a2=0 a3=0 b1=0 b2=0 b3=0
   IFS=. read -r a1 a2 a3 <<< "$1"
   IFS=. read -r b1 b2 b3 <<< "$2"
-  # 10# forces base-10 so a zero-padded component (e.g. "08") is not read as octal.
-  if (( 10#$a1 != 10#$b1 )); then (( 10#$a1 > 10#$b1 )); return; fi
-  if (( 10#$a2 != 10#$b2 )); then (( 10#$a2 > 10#$b2 )); return; fi
-  (( 10#$a3 > 10#$b3 ))
+  # Compare each component as a decimal STRING (strip leading zeros, then length, then lexical):
+  # components are unbounded digit strings, so integer arithmetic could overflow or wrap.
+  local x y
+  for x in a1:b1 a2:b2 a3:b3; do
+    local av="${x%%:*}" bv="${x##*:}"
+    x="${!av}"; y="${!bv}"
+    x="${x#"${x%%[!0]*}"}"; y="${y#"${y%%[!0]*}"}"
+    if [[ ${#x} -ne ${#y} ]]; then [[ ${#x} -gt ${#y} ]]; return; fi
+    if [[ "$x" != "$y" ]]; then [[ "$x" > "$y" ]]; return; fi
+  done
+  return 1
 }
 
 # max_semver <version...> — echo the highest strict MAJOR.MINOR.PATCH among the
@@ -380,7 +387,7 @@ _looks_like_oid() { [[ "$1" =~ ^[0-9a-f]{7,64}$ ]]; }
 # least floor_hours on the source tier, else 0.
 dwell_met() {
   local dwell="${1:-0}" floor="${2:-0}"
-  if [[ "$dwell" -ge "$floor" ]]; then echo 1; else echo 0; fi
+  if (( 10#$dwell >= 10#$floor )); then echo 1; else echo 0; fi
 }
 
 # iso_after <a> <b> — echo "yes" if ISO-8601 UTC timestamp a is at or after b, else

@@ -79,6 +79,8 @@ THIS_REPO="${GITHUB_REPOSITORY:-combsmith/.github}"
 CANARY_MAX_COMMIT_PAGES="${CANARY_MAX_COMMIT_PAGES:-50}"
 if ! [[ "$CANARY_MAX_COMMIT_PAGES" =~ ^[0-9]+$ ]] || [[ "$((10#$CANARY_MAX_COMMIT_PAGES))" -le 0 ]]; then
   CANARY_MAX_COMMIT_PAGES=50
+else
+  CANARY_MAX_COMMIT_PAGES=$((10#$CANARY_MAX_COMMIT_PAGES))  # decimal: "08" is not octal
 fi
 
 # CANARY_PROMOTION_FAILURE_ESCALATE_AFTER — how many CONSECUTIVE scheduled runs a tag write may
@@ -733,7 +735,7 @@ _repo_wf_runs_cached() {
   local attempts="${CANARY_GH_RETRIES:-6}" base="${CANARY_GH_RETRY_SLEEP:-2}" attempt=1
   local ra_cap="${CANARY_GH_RETRY_AFTER_CAP:-900}"
   case "$ra_cap" in ''|*[!0-9]*) ra_cap=900 ;; esac
-  case "$attempts" in ''|*[!0-9]*) attempts=6 ;; esac
+  case "$attempts" in ''|*[!0-9]*) attempts=6 ;; *) attempts=$((10#$attempts)) ;; esac
   case "$base" in ''|*[!0-9]*) base=2 ;; esac
   # Cache hit? A non-empty cache file for this (repo, workflow) — including a cached "[]"
   # for a no-runs / not-found workflow, so it is never re-queried within the sweep.
@@ -993,7 +995,7 @@ _unresolved_flag_path() {
 _run_jobs_json() {
   local repo="$1" id="$2" cachef="" out attempt=1
   local attempts="${3:-${CANARY_GH_RETRIES:-6}}" base="${CANARY_GH_RETRY_SLEEP:-2}" delay span expo
-  case "$attempts" in ''|*[!0-9]*) attempts=6 ;; esac
+  case "$attempts" in ''|*[!0-9]*) attempts=6 ;; *) attempts=$((10#$attempts)) ;; esac
   case "$base" in ''|*[!0-9]*) base=2 ;; esac
   [[ "$attempts" -lt 1 ]] && attempts=1
   if [[ -n "${_RUNS_CACHE_DIR:-}" ]]; then

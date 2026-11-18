@@ -51,7 +51,7 @@ ss_age_days() {
   local now="${1:-}" then="${2:-}"
   [[ "$now" =~ ^[0-9]+$ && "$then" =~ ^[0-9]+$ ]] || return 1
   if [[ "$((10#$then))" -ge "$((10#$now))" ]]; then echo 0; return 0; fi
-  echo $(( (now - then) / 86400 ))
+  echo $(( (10#$now - 10#$then) / 86400 ))
 }
 
 # ss_decision <n_standards_files> <n_workflow_files> <age_days> <max_days>
