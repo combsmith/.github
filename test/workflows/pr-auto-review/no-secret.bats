@@ -74,6 +74,7 @@ setup() {
   while IFS= read -r if_cond; do
     [ "$if_cond" != "UNGUARDED" ] || fail "Found an unguarded step (no if condition)"
     if is_bare_always "$if_cond"; then fail "Found a step guarded only by always(); skips contract violated"; fi
+    if is_output_independent "$if_cond"; then fail "Found a step whose if: can run without a skip/decision output: $if_cond"; fi
   done <<< "$all_later_guards"
 }
 
@@ -83,6 +84,25 @@ is_bare_always() {
   norm="${norm#\$\{\{}"
   norm="${norm%\}\}}"
   [ "$norm" = "always()" ]
+}
+
+# True when an `if:` value can be true without depending on the skip/decision
+# outputs: it never references steps.pr/criteria outputs, or it contains always().
+is_output_independent() {
+  local norm="${1//[[:space:]]/}"
+  [[ "$norm" == *"always()"* ]] && return 0
+  [[ "$norm" == *"steps.pr.outputs."* || "$norm" == *"steps.criteria.outputs."* ]] || return 0
+  return 1
+}
+
+@test "is_output_independent rejects compound and output-free conditions" {
+  is_output_independent '${{ always() || true }}'
+  is_output_independent 'always() || true'
+  is_output_independent "steps.pr.outputs.skip != 'true' || always()"
+  is_output_independent 'true'
+  is_output_independent "github.event_name == 'pull_request'"
+  if is_output_independent "steps.pr.outputs.skip != 'true'"; then false; fi
+  if is_output_independent "steps.criteria.outputs.ready == 'true'"; then false; fi
 }
 
 @test "is_bare_always rejects bare and expression-wrapped always()" {
