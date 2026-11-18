@@ -56,7 +56,15 @@ setup() {
 }
 
 @test "every later step is guarded by the skip output or runs only on a decision" {
-  run yq -r '.jobs.check-and-dispatch.steps[1:][] | .if // "UNGUARDED"' "$WF"
-  [ "$status" -eq 0 ]
-  [[ "$output" != *"UNGUARDED"* ]]
+  step_if() {
+    yq -r ".jobs.check-and-dispatch.steps[] | select(.name == \"$1\") | .if // \"UNGUARDED\"" "$WF"
+  }
+  [ "$(step_if 'Checkout ready-check tooling')" = "steps.pr.outputs.skip != 'true'" ]
+  [ "$(step_if 'Check PR readiness criteria')" = "steps.pr.outputs.skip != 'true'" ]
+  [ "$(step_if 'Dispatch review agent')" = "steps.criteria.outputs.ready == 'true'" ]
+  [ "$(step_if 'decision: dispatched')" = "steps.criteria.outputs.decision == 'dispatched'" ]
+  [ "$(step_if 'decision: skip-draft')" = "steps.pr.outputs.decision == 'skip-draft' || steps.criteria.outputs.decision == 'skip-draft'" ]
+  [ "$(step_if 'decision: skip-checks-pending')" = "steps.criteria.outputs.decision == 'skip-checks-pending'" ]
+  [ "$(step_if 'decision: skip-changes-requested')" = "steps.criteria.outputs.decision == 'skip-changes-requested'" ]
+  [ "$(step_if 'decision: skip-unresolved-threads')" = "steps.criteria.outputs.decision == 'skip-unresolved-threads'" ]
 }
