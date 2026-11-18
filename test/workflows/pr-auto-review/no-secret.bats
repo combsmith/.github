@@ -20,7 +20,7 @@ run_resolve_step() {
   script="$(sed -E 's/\$\{\{[^}]*\}\}//g' <<< "$script")"
   ghout="$(mktemp "$BATS_TEST_TMPDIR/out.XXXXXX")"
   # gh must never be reached on the empty-secret path.
-  run env -i PATH="$BATS_TEST_TMPDIR/nogh:/usr/bin:/bin" GH_TOKEN="$token" GITHUB_OUTPUT="$ghout" bash -c "$script"
+  run env -i PATH="$BATS_TEST_TMPDIR/nogh:/usr/bin:/bin" GH_TOKEN="$token" GITHUB_OUTPUT="$ghout" "$BASH" -c "$script"
   out="$(cat "$ghout")"
 }
 
