@@ -67,4 +67,12 @@ setup() {
   [ "$(step_if 'decision: skip-checks-pending')" = "steps.criteria.outputs.decision == 'skip-checks-pending'" ]
   [ "$(step_if 'decision: skip-changes-requested')" = "steps.criteria.outputs.decision == 'skip-changes-requested'" ]
   [ "$(step_if 'decision: skip-unresolved-threads')" = "steps.criteria.outputs.decision == 'skip-unresolved-threads'" ]
+
+  # Verify all steps after "Resolve PR URL" are guarded — no unconditional or always()
+  local all_later_guards
+  all_later_guards=$(yq -r '.jobs.check-and-dispatch.steps[1:] | .[] | .if // "UNGUARDED"' "$WF")
+  while IFS= read -r if_cond; do
+    [ "$if_cond" != "UNGUARDED" ] || fail "Found an unguarded step (no if condition)"
+    [[ "$if_cond" != "always()" ]] || fail "Found step with if: always() — skips contract violated"
+  done <<< "$all_later_guards"
 }
