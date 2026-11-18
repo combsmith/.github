@@ -73,6 +73,23 @@ setup() {
   all_later_guards=$(yq -r '.jobs.check-and-dispatch.steps[1:] | .[] | .if // "UNGUARDED"' "$WF")
   while IFS= read -r if_cond; do
     [ "$if_cond" != "UNGUARDED" ] || fail "Found an unguarded step (no if condition)"
-    [[ "$if_cond" != "always()" ]] || fail "Found step with if: always() — skips contract violated"
+    if is_bare_always "$if_cond"; then fail "Found a step guarded only by always(); skips contract violated"; fi
   done <<< "$all_later_guards"
+}
+
+# True when an `if:` value is just always(), bare or wrapped in ${{ }}, ignoring whitespace.
+is_bare_always() {
+  local norm="${1//[[:space:]]/}"
+  norm="${norm#\$\{\{}"
+  norm="${norm%\}\}}"
+  [ "$norm" = "always()" ]
+}
+
+@test "is_bare_always rejects bare and expression-wrapped always()" {
+  is_bare_always 'always()'
+  is_bare_always '${{ always() }}'
+  is_bare_always '${{always()}}'
+  is_bare_always '  ${{  always()  }}  '
+  if is_bare_always "steps.pr.outputs.skip != 'true'"; then false; fi
+  if is_bare_always 'UNGUARDED'; then false; fi
 }
