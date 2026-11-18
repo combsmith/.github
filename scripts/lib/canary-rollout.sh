@@ -277,8 +277,12 @@ interface_break() {
 # _semver_gt <a> <b> — return 0 iff semver a is strictly greater than b (compared
 # by major, then minor, then patch). Equal is NOT greater.
 _semver_gt() {
+  # a1..b3 are read via indirect expansion (${!av}) below, which shellcheck cannot see.
+  # shellcheck disable=SC2034
   local a1=0 a2=0 a3=0 b1=0 b2=0 b3=0
+  # shellcheck disable=SC2034
   IFS=. read -r a1 a2 a3 <<< "$1"
+  # shellcheck disable=SC2034
   IFS=. read -r b1 b2 b3 <<< "$2"
   # Compare each component as a decimal STRING (strip leading zeros, then length, then lexical):
   # components are unbounded digit strings, so integer arithmetic could overflow or wrap.
