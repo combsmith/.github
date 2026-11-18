@@ -56,6 +56,9 @@ setup() {
 @test "ss_age_days: a future timestamp is 0 days, never negative" {
   [ "$(ss_age_days 1000 2000)" = "0" ]
 }
+@test "ss_age_days: a zero-padded future epoch compares as decimal, not octal (#1462)" {
+  [ "$(ss_age_days 0800 0900)" = "0" ]
+}
 @test "ss_age_days: a non-numeric input fails instead of guessing" {
   run ss_age_days 1000 ""
   [ "$status" -eq 1 ]

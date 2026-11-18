@@ -152,7 +152,7 @@ da_run_step() {
   local job="$1" step="$2" ws="$3" wd script
   script="${BATS_TEST_TMPDIR}/step.sh"
   da_step_script "$job" "$step" >"$script"
-  [ -s "$script" ] || { echo "step '$step' not found in job '$job'" >&2; return 99; }
+  [[ -s "$script" ]] || { echo "step '$step' not found in job '$job'" >&2; return 99; }
   wd="$(JOB="$job" STEP="$step" yq -r \
     '.jobs[strenv(JOB)].steps[] | select(.name == strenv(STEP)) | .["working-directory"] // ""' \
     "$DA_WORKFLOW")"

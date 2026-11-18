@@ -301,6 +301,11 @@ YML
 @test "max_semver: empty input → empty" {
   [ -z "$(max_semver)" ]
 }
+@test "max_semver: zero-padded components compare as decimal, not octal (#1462)" {
+  [ "$(max_semver 1.08.0 1.7.9)" = "1.08.0" ]
+  [ "$(max_semver 1.09.0 1.10.0)" = "1.10.0" ]
+  [ "$(max_semver 08.0.0 7.9.9)" = "08.0.0" ]
+}
 
 # ── dwell_met ─────────────────────────────────────────────────────────────────
 @test "dwell_met: at/over floor → 1" { [ "$(dwell_met 4 4)" -eq 1 ]; [ "$(dwell_met 9 8)" -eq 1 ]; }
