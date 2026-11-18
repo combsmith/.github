@@ -280,11 +280,10 @@ _semver_gt() {
   local a1=0 a2=0 a3=0 b1=0 b2=0 b3=0
   IFS=. read -r a1 a2 a3 <<< "$1"
   IFS=. read -r b1 b2 b3 <<< "$2"
-  # 10# forces base-10: inside [[ ]] a zero-padded component (e.g. "08") would
-  # otherwise be read as octal, unlike the old [ ] test.
-  if [[ "$((10#$a1))" -ne "$((10#$b1))" ]]; then [[ "$((10#$a1))" -gt "$((10#$b1))" ]]; return $?; fi
-  if [[ "$((10#$a2))" -ne "$((10#$b2))" ]]; then [[ "$((10#$a2))" -gt "$((10#$b2))" ]]; return $?; fi
-  [[ "$((10#$a3))" -gt "$((10#$b3))" ]]
+  # 10# forces base-10 so a zero-padded component (e.g. "08") is not read as octal.
+  if (( 10#$a1 != 10#$b1 )); then (( 10#$a1 > 10#$b1 )); return; fi
+  if (( 10#$a2 != 10#$b2 )); then (( 10#$a2 > 10#$b2 )); return; fi
+  (( 10#$a3 > 10#$b3 ))
 }
 
 # max_semver <version...> — echo the highest strict MAJOR.MINOR.PATCH among the
@@ -417,13 +416,13 @@ run_list_covers() {
 decide_graduated() {
   local dwell="${1:-0}" floor="${2:-0}" sample="${3:-0}" target="${4:-0}"
   local waived="${5:-false}" cum_fail="${6:-0}" cum_startup="${7:-0}"
-  if [[ "$cum_fail" -gt 0 ]] || [[ "$cum_startup" -gt 0 ]]; then
+  if (( 10#$cum_fail > 0 || 10#$cum_startup > 0 )); then
     echo "BLOCKED"; return 0
   fi
   local dwell_ok sample_ok
   dwell_ok=$(dwell_met "$dwell" "$floor")
-  if [[ "$waived" = "true" ]] || [[ "$sample" -ge "$target" ]]; then sample_ok=1; else sample_ok=0; fi
-  if [[ "$dwell_ok" -eq 1 ]] && [[ "$sample_ok" -eq 1 ]]; then
+  if [[ "$waived" = "true" ]] || (( 10#$sample >= 10#$target )); then sample_ok=1; else sample_ok=0; fi
+  if (( dwell_ok == 1 && sample_ok == 1 )); then
     echo "PROMOTE"; return 0
   fi
   echo "SOAKING"
@@ -703,10 +702,10 @@ decide_decision_shift() {
   # Unparseable / non-object / empty → INSUFFICIENT (no decision steps to compare).
   case "$cand_total" in ''|*[!0-9]*) echo "INSUFFICIENT"; return 0 ;; esac
   case "$base_total" in ''|*[!0-9]*) echo "INSUFFICIENT"; return 0 ;; esac
-  if [[ "$cand_total" -lt "$min_c" ]] || [[ "$base_total" -lt "$min_b" ]]; then
+  if (( 10#$cand_total < 10#$min_c || 10#$base_total < 10#$min_b )); then
     echo "INSUFFICIENT"; return 0
   fi
-  if [[ "$cand_total" -eq 0 ]] || [[ "$base_total" -eq 0 ]]; then
+  if (( 10#$cand_total == 0 || 10#$base_total == 0 )); then
     echo "INSUFFICIENT"; return 0
   fi
   # Max absolute per-class share delta, in integer per-mille (round half-up), over the union

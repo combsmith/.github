@@ -66,10 +66,10 @@ ss_age_days() {
 ss_decision() {
   local n="${1:-}" wf="${2:-}" age="${3:-}" max="${4:-}"
   [[ "$n" =~ ^[0-9]+$ && "$wf" =~ ^[0-9]+$ && "$max" =~ ^[0-9]+$ ]] || { echo "UNKNOWN"; return 0; }
-  if [[ "$((10#$n))" -eq 0 ]]; then echo "FRESH"; return 0; fi
-  if [[ "$((10#$wf))" -gt 0 ]]; then echo "STALE workflows"; return 0; fi
+  if (( 10#$n == 0 )); then echo "FRESH"; return 0; fi
+  if (( 10#$wf > 0 )); then echo "STALE workflows"; return 0; fi
   [[ "$age" =~ ^[0-9]+$ ]] || { echo "UNKNOWN"; return 0; }
-  if [[ "$((10#$age))" -gt "$((10#$max))" ]]; then echo "STALE age"; return 0; fi
+  if (( 10#$age > 10#$max )); then echo "STALE age"; return 0; fi
   echo "PENDING"
 }
 
