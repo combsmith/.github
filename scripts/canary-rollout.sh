@@ -734,7 +734,7 @@ _repo_wf_runs_cached() {
   local repo="$1" wf="$2" strict="${3:-0}" limit="${4:-1000}" from="${5:-}" rstatus="${6:-}" out err summary ra delay span expo errfile cachef key
   local attempts="${CANARY_GH_RETRIES:-6}" base="${CANARY_GH_RETRY_SLEEP:-2}" attempt=1
   local ra_cap="${CANARY_GH_RETRY_AFTER_CAP:-900}"
-  case "$ra_cap" in ''|*[!0-9]*) ra_cap=900 ;; esac
+  case "$ra_cap" in ''|*[!0-9]*) ra_cap=900 ;; *) ra_cap=$((10#$ra_cap)) ;; esac
   case "$attempts" in ''|*[!0-9]*) attempts=6 ;; *) attempts=$((10#$attempts)) ;; esac
   case "$base" in ''|*[!0-9]*) base=2 ;; esac
   # Cache hit? A non-empty cache file for this (repo, workflow) — including a cached "[]"

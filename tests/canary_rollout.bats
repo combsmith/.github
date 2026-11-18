@@ -183,6 +183,11 @@ setup() {
   [ "$(promotion_failure_should_escalate 'x' 2)" -eq 0 ]
   [ "$(promotion_failure_should_escalate 2 'y')" -eq 0 ]
 }
+@test "promotion_failure_should_escalate: zero-padded values are read as decimal, not octal" {
+  [ "$(promotion_failure_should_escalate 8 010)" -eq 0 ]
+  [ "$(promotion_failure_should_escalate 10 010)" -eq 1 ]
+  [ "$(promotion_failure_should_escalate 9 09)" -eq 1 ]
+}
 
 # ── commit_page_done: pagination termination decision (#1023) ─────────────────
 @test "commit_page_done: returns 1 (done) when the boundary commit is found" {
