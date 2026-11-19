@@ -300,6 +300,13 @@ deploy() {
   [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
 }
 
+@test "an existing gitignore-baseline/ branch without an open PR is reset, not refused" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  run sd_deploy_files_via_pr combsmith/markets gitignore-baseline/20261119 add-label t b .github/workflows/x.yml "$LOCAL_FILE"
+  [[ "$output" != *"branch-reset-refused"* ]]
+  grep -q 'git/refs/heads/gitignore-baseline/20261119 --method PATCH --raw-field sha=basesha111 -F force=true' "$GH_CALLS"
+}
+
 @test "force-reset logs the discarded head SHA to stderr" {
   GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
   run --separate-stderr sd_deploy_via_pr "combsmith/markets" ".github/workflows/add-to-project.yml" \

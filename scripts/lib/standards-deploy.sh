@@ -175,9 +175,11 @@ sd_deploy_files_via_pr() {
       echo "FAILED branch-in-use:${branch}#${branch_pr}"
       return 1
     fi
-    # Only ever force-reset a sync branch, never the default branch or an
-    # arbitrary caller-supplied ref.
-    if [[ "$branch" != standards-sync/* || "$branch" == "$default_branch" ]]; then
+    # Only ever force-reset a known automation branch (standards-sync/* or the
+    # gitignore-baseline/* sweep used by existing callers), never the default
+    # branch or an arbitrary caller-supplied ref.
+    if [[ "$branch" == "$default_branch" ||
+          ( "$branch" != standards-sync/* && "$branch" != gitignore-baseline/* ) ]]; then
       echo "FAILED branch-reset-refused:${branch}"
       return 1
     fi
