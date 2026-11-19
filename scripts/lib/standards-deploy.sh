@@ -208,7 +208,7 @@ sd_deploy_files_via_pr() {
     j=$(( i + 1 )); path="${!i}"; local_file="${!j}"
 
     # Resolve the file's blob SHA on the branch, capturing stderr and exit code.
-    err_file=$(mktemp)
+    err_file=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
     branch_sha=$(gh api "repos/${repo}/contents/${path}?ref=${branch}" \
       --jq '.sha // ""' 2>"$err_file") && get_rc=0 || get_rc=$?
     if [ "$get_rc" -eq 0 ]; then
@@ -239,7 +239,7 @@ sd_deploy_files_via_pr() {
       --raw-field "branch=${branch}")
     [ -n "$branch_sha" ] && put_args+=(--raw-field "sha=${branch_sha}")
 
-    err_file=$(mktemp)
+    err_file=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
     if ! gh api "repos/${repo}/contents/${path}" "${put_args[@]}" --silent 2>"$err_file"; then
       put_msg=$(tr '\n' ' ' < "$err_file"); rm -f "$err_file"
       echo "FAILED put-failed:${put_msg}"
