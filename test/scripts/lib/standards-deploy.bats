@@ -289,6 +289,17 @@ deploy() {
   [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
 }
 
+@test "reset is refused for a branch outside standards-sync/ and the old head is logged otherwise" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  run sd_deploy_files_via_pr combsmith/markets main add-label t b .github/workflows/x.yml "$LOCAL_FILE"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAILED branch-reset-refused:main"* ]]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+  run sd_deploy_files_via_pr combsmith/markets feature/x add-label t b .github/workflows/x.yml "$LOCAL_FILE"
+  [[ "$output" == *"FAILED branch-reset-refused:feature/x"* ]]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+}
+
 @test "a failed reset of the stale branch fails loudly naming the branch" {
   GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
   GH_REF_RESET_RC="1"; export GH_REF_RESET_RC

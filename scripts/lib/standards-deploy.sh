@@ -52,13 +52,11 @@ sd_deploy_via_pr() {
   sd_deploy_files_via_pr "$repo" "$branch" "$label" "$title" "$body" "$path" "$local_file"
 }
 
-# sd_deploy_files_via_pr <repo> <branch> <label> <title> <body> \
-#                        <path> <local_file> [<path> <local_file> ...]
+# _sd_branch_open_pr <repo> <branch>
 #
-# Deploys one OR MORE files to a repo in a SINGLE labeled PR. A fleet re-sync of
-# N stubs for a repo is therefore N files in one PR, not N PRs. Idempotency is
-# keyed by the label — at most one open sync PR per repo; if one already exists
-# it is reused (skip). Trailing args are (path, local_file) pairs.
+# Prints the number of the first open PR that uses <branch> as its head (same
+# repo, or a fork's PR against its parent) or as its base (stacked PR); prints
+# nothing when none exists. Returns non-zero when any lookup errors.
 _sd_branch_open_pr() {
   local repo="$1" branch="$2" owner="${1%%/*}" parent q found
   local -a queries=(
@@ -77,6 +75,13 @@ _sd_branch_open_pr() {
   return 0
 }
 
+# sd_deploy_files_via_pr <repo> <branch> <label> <title> <body> \
+#                        <path> <local_file> [<path> <local_file> ...]
+#
+# Deploys one OR MORE files to a repo in a SINGLE labeled PR. A fleet re-sync of
+# N stubs for a repo is therefore N files in one PR, not N PRs. Idempotency is
+# keyed by the label — at most one open sync PR per repo; if one already exists
+# it is reused (skip). Trailing args are (path, local_file) pairs.
 sd_deploy_files_via_pr() {
   local repo="$1" branch="$2" label="$3" title="$4" body="$5"
   shift 5
@@ -93,12 +98,16 @@ sd_deploy_files_via_pr() {
   done
 
   # 1. Idempotency — at most one open sync PR per repo, keyed by label.
-  local existing_pr
-  if ! existing_pr=$(gh pr list --repo "$repo" --label "$label" --state open --limit 1000 \
-    --json number --jq '.[0].number // ""' 2>&1); then
-    echo "FAILED pr-list-failed:$(tr '\n' ' ' <<< "$existing_pr")"
+  local existing_pr list_err list_rc
+  list_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
+  existing_pr=$(gh pr list --repo "$repo" --label "$label" --state open --limit 1000 \
+    --json number --jq '.[0].number // ""' 2>"$list_err") && list_rc=0 || list_rc=$?
+  if [ "$list_rc" -ne 0 ]; then
+    echo "FAILED pr-list-failed:$(tr '\n' ' ' < "$list_err")"
+    rm -f "$list_err"
     return 1
   fi
+  rm -f "$list_err"
   if [ -n "$existing_pr" ]; then
     echo "SKIP_PR_OPEN $existing_pr"
     return 0
@@ -166,6 +175,16 @@ sd_deploy_files_via_pr() {
       echo "FAILED branch-in-use:${branch}#${branch_pr}"
       return 1
     fi
+    # Only ever force-reset a sync branch, never the default branch or an
+    # arbitrary caller-supplied ref.
+    if [[ "$branch" != standards-sync/* || "$branch" == "$default_branch" ]]; then
+      echo "FAILED branch-reset-refused:${branch}"
+      return 1
+    fi
+    # Record the head being discarded so an operator can recover dropped commits.
+    local old_head
+    old_head=$(gh api "repos/${repo}/git/ref/heads/${branch}" --jq '.object.sha' 2>/dev/null) || old_head=""
+    echo "standards-deploy: force-resetting ${repo}@${branch} from ${old_head:-unknown} to ${base_sha}" >&2
     local reset_err reset_msg
     reset_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
     if ! gh api "repos/${repo}/git/refs/heads/${branch}" --method PATCH \
