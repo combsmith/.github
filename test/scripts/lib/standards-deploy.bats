@@ -140,7 +140,7 @@ teardown() { tt_cleanup_tmpdir; }
 deploy() {
   sd_deploy_via_pr "combsmith/markets" ".github/workflows/add-to-project.yml" \
     "$LOCAL_FILE" "standards-sync/add-to-project" "standards-sync" \
-    "chore: sync add-to-project.yml" "PR body here"
+    "chore: sync add-to-project.yml" "PR body here" 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -241,7 +241,7 @@ deploy() {
   printf '%s\n' .github/workflows/a.yml .github/workflows/b.yml \
     .github/workflows/c.yml .github/workflows/d.yml .github/workflows/e.yml \
     > "$GH_BRANCH_FILES"
-  run sd_deploy_files_via_pr "combsmith/markets" "standards-sync/workflows-20261011" \
+  run --separate-stderr sd_deploy_files_via_pr "combsmith/markets" "standards-sync/workflows-20261011" \
     "standards-sync" "chore: sync 1 stub" "body" \
     ".github/workflows/persona-mention.yml" "$LOCAL_FILE"
   [ "$status" -eq 0 ]
@@ -298,6 +298,14 @@ deploy() {
   run sd_deploy_files_via_pr combsmith/markets feature/x add-label t b .github/workflows/x.yml "$LOCAL_FILE"
   [[ "$output" == *"FAILED branch-reset-refused:feature/x"* ]]
   [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+}
+
+@test "force-reset logs the discarded head SHA to stderr" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  run --separate-stderr sd_deploy_via_pr "combsmith/markets" ".github/workflows/add-to-project.yml" \
+    "$LOCAL_FILE" "standards-sync/add-to-project" "standards-sync" "t" "b"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"force-resetting combsmith/markets@standards-sync/add-to-project from basesha111 to basesha111"* ]]
 }
 
 @test "a failed reset of the stale branch fails loudly naming the branch" {
