@@ -124,7 +124,7 @@ dependabot_checks_gate() {
         and (if ($r.integration_id | type) == "number"
              then (.checkSuite.app.databaseId? // null) == $r.integration_id
              else ((.checkSuite.app.slug? // "") == "github-actions")
-                  or (($default_apps[$r.context] // null) as $d
+                  or ($default_apps[$r.context] as $d
                       | $d != null
                         and (.checkSuite.app.slug? // "") == $d.slug
                         and (.checkSuite.app.databaseId? // null) == $d.id) end);
