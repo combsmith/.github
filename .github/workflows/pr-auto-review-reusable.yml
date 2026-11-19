@@ -48,6 +48,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT_WORKFLOWS }}
         run: |
           set -euo pipefail
+          # Dependabot-actor and fork pull_request / pull_request_review runs get no
+          # Actions secrets, so GH_PAT_WORKFLOWS is empty. No review can be read or
+          # dispatched without it, so this is a skip, not a failure: the later steps
+          # are all guarded by skip, and the job ends green (#1528). Without this the
+          # tooling checkout failed with "Input required and not supplied: token".
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::notice::GH_PAT_WORKFLOWS is not available to this run (Dependabot or fork PR) — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           case "${{ github.event_name }}" in
             workflow_run)
               # workflow_run fires when a named CI workflow completes (Actions-aware).
