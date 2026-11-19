@@ -403,3 +403,11 @@ assert_no_writes_and_red() {
   TARGET_REPO=nope run bash "$SCRIPT"
   assert_no_writes_and_red
 }
+@test "re-rating an existing finding refreshes its generated severity text" {
+  jq -n --arg g "$(fp 7)" '[{number: 7, labels: [{name: "priority:minor"}],
+    body: ("Severity **low**, reported by CodeRabbit.\n\n### Priority\nLabeled `priority:minor` from the finding'"'"'s severity (`low`).\n\nhuman note\n<!-- coderabbit-audit:key=" + $g + " -->")}]' > "$STUB_DIR/issues/alpha.json"
+  run bash "$SCRIPT"
+  grep -E '^gh issue edit 7 ' "$STUB_LOG" | grep -q -- '--body'
+  grep -E '^gh issue edit 7 ' "$STUB_LOG" | grep -q 'Severity \*\*high\*\*'
+  grep -E '^gh issue edit 7 ' "$STUB_LOG" | grep -q 'human note'
+}

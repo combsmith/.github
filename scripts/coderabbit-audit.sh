@@ -305,7 +305,7 @@ build_issue_index() {
     jq -c --arg repo "$repo" '.[]
       | ((.body // "") | try capture("coderabbit-audit:key=(?<fp>[0-9a-f]{64})").fp catch "") as $fp
       | select($fp != "")
-      | {fingerprint: $fp, repo: $repo, number, labels: ([.labels[]?.name] // [])}' <<< "$list" >> "$out"
+      | {fingerprint: $fp, repo: $repo, number, body: (.body // ""), labels: ([.labels[]?.name] // [])}' <<< "$list" >> "$out"
   done <<< "$names"
   return "$failed"
 }
@@ -409,9 +409,21 @@ $(issue_marker "$fp")
 BODY
 }
 
-# args: <finding json> <existing issue "repo number" or ""> <its labels, comma-separated>
+# Rewrite only the two generated severity lines of an existing issue body, so a
+# re-rated finding does not keep stale severity text. Everything else, including
+# human edits and the marker, passes through untouched.
+# args: <body> <severity> <priority label>
+refresh_severity_text() {
+  local body="$1" sev="$2" prio="$3"
+  sed -E \
+    -e "s/^(Severity \*\*)[a-z]+(\*\*, reported by)/\1${sev}\2/" \
+    -e "s/^(Labeled .)priority:[a-z]+(. from the finding's severity \(.)[a-z]+(.\)\.)/\1${prio}\2${sev}\3/" \
+    <<< "$body"
+}
+
+# args: <finding json> <existing issue "repo number" or ""> <its labels, comma-separated> <its body>
 reconcile_open() {
-  local finding="$1" existing="$2" labels="${3:-}"
+  local finding="$1" existing="$2" labels="${3:-}" old_body="${4:-}" new_body
   local fp id sev scanned owner title prio body min_rank
   fp=$(jq -r '.fingerprint' <<< "$finding")
   id=$(jq -r '.finding_id' <<< "$finding")
@@ -446,7 +458,8 @@ reconcile_open() {
     # Skip edits only when the desired priority is present and no conflicting
     # managed priority is present; otherwise add the desired label if needed
     # and remove present conflicting labels, reporting failures.
-    if [[ "$have" == *",$prio,"* && ${#stale[@]} -eq 0 ]]; then
+    new_body=$(refresh_severity_text "$old_body" "$sev" "$prio")
+    if [[ "$have" == *",$prio,"* && ${#stale[@]} -eq 0 && "$new_body" == "$old_body" ]]; then
       ISSUES_EXISTING=$((ISSUES_EXISTING + 1))
       info "No label update needed for #$number in $repo :: $title"
       return 0
@@ -454,6 +467,12 @@ reconcile_open() {
     if [[ "$have" != *",$prio,"* ]]; then
       if ! gh issue edit "$number" --repo "$ORG/$repo" --add-label "$prio" >/dev/null; then
         warn "$repo: could not add label $prio to #$number"
+        failed=1
+      fi
+    fi
+    if [[ "$new_body" != "$old_body" ]]; then
+      if ! gh issue edit "$number" --repo "$ORG/$repo" --body "$new_body" >/dev/null; then
+        warn "$repo: could not refresh severity text on #$number"
         failed=1
       fi
     fi
@@ -505,14 +524,15 @@ reconcile_closed() {
 
 # args: <issue index ndjson>
 reconcile_all() {
-  local index="$1" finding fp state existing labels failed=0
+  local index="$1" finding fp state existing labels body failed=0
   while IFS= read -r finding; do
     fp=$(jq -r '.fingerprint' <<< "$finding")
     state=$(jq -r '.state' <<< "$finding")
     existing=$(jq -r --arg fp "$fp" 'select(.fingerprint == $fp) | "\(.repo) \(.number)"' "$index" | head -1)
     labels=$(jq -r --arg fp "$fp" 'select(.fingerprint == $fp) | (.labels // []) | join(",")' "$index" | head -1)
+    body=$(jq -rs --arg fp "$fp" 'map(select(.fingerprint == $fp)) | first | .body // ""' "$index")
     if [[ "$state" = "open" ]]; then
-      reconcile_open "$finding" "$existing" "$labels" || failed=1
+      reconcile_open "$finding" "$existing" "$labels" "$body" || failed=1
     elif [[ -n "$existing" ]]; then
       reconcile_closed "$state" "$existing" || failed=1
     fi
