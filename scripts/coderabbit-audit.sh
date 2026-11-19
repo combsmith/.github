@@ -345,7 +345,8 @@ resolve_findings() {
     owner=$(route_owner "$ORG" "$name" "$path" "$text")
     if ! jq -e --arg owner "$owner" 'select(.name == $owner and .archived == false)' "$repos" >/dev/null; then
       owner="$name"
-    elif [[ "$(jq -r --arg o "$owner" 'select(.name == $o) | .has_issues' "$repos" | head -1)" != "true" ]]; then
+    fi
+    if [[ "$(jq -r --arg o "$owner" 'select(.name == $o) | .has_issues' "$repos" | head -1)" != "true" ]]; then
       UNMAPPED=$((UNMAPPED + 1))
       continue
     fi
@@ -354,15 +355,18 @@ resolve_findings() {
       '{fingerprint, finding_id, state, severity: $sev, scanned_repo: $scanned, owner_repo: $owner}' \
       <<< "$row" >> "$tmp"
   done < "$parsed"
-  # The same fingerprint routed to different repos is ambiguous: fail closed
+  # Identify and reject the same fingerprint routed to different repos: fail closed
   # rather than file in a possibly wrong public repo.
-  if [[ "$(jq -s '[group_by(.fingerprint)[] | select((map(.owner_repo) | unique | length) > 1)] | length' "$tmp")" -gt 0 ]]; then
+  local conflicting
+  conflicting=$(jq -s '[group_by(.fingerprint)[] | select((map(.owner_repo) | unique | length) > 1)] | map(.fingerprint)' "$tmp")
+  if [[ "$(jq 'length' <<< "$conflicting")" -gt 0 ]]; then
     warn "a finding fingerprint resolved to more than one owning repo"
     failed=1
   fi
   # One row per fingerprint, preferring an open row so a conflicting fixed or
   # dismissed row cannot close an open finding or file a duplicate issue.
-  jq -s 'group_by(.fingerprint)
+  jq -s --argjson conflict "$conflicting" 'group_by(.fingerprint)
+         | map(select(([.[0].fingerprint] | inside($conflict)) | not))
          | map((map(select(.state == "open")) | first) // .[0])
          | sort_by(.owner_repo, .fingerprint)' "$tmp" > "$FINDINGS_FILE"
   rm -f "$tmp"
