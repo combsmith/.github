@@ -11,6 +11,12 @@ bats_require_minimum_version 1.5.0
 
 SCRIPT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/scripts/coderabbit-audit.sh"
 FP="$(printf 'a%.0s' {1..64})"
+export REPORT_DIR="$(mktemp -d)"
+
+cleanup() {
+  [[ -n "$REPORT_DIR" && -d "$REPORT_DIR" ]] && rm -rf "$REPORT_DIR"
+}
+trap cleanup EXIT
 
 call() {
   local func="$1"

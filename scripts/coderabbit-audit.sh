@@ -327,7 +327,7 @@ resolve_findings() {
     name=$(jq -r --arg id "$id" 'select(.id == $id) | .name' "$repos" | head -1)
     archived=$(jq -r --arg id "$id" 'select(.id == $id) | .archived' "$repos" | head -1)
     has_issues=$(jq -r --arg id "$id" 'select(.id == $id) | .has_issues' "$repos" | head -1)
-    if [[ -z "$name" ]] || [[ "$archived" = "true" ]] || [[ "$has_issues" = "false" ]]; then
+    if [[ -z "$name" ]] || [[ "$archived" = "true" ]] || [[ "$has_issues" != "true" ]]; then
       UNMAPPED=$((UNMAPPED + 1))
       continue
     fi
@@ -345,7 +345,7 @@ resolve_findings() {
     owner=$(route_owner "$ORG" "$name" "$path" "$text")
     if ! jq -e --arg owner "$owner" 'select(.name == $owner and .archived == false)' "$repos" >/dev/null; then
       owner="$name"
-    elif [[ "$(jq -r --arg o "$owner" 'select(.name == $o) | .has_issues' "$repos" | head -1)" = "false" ]]; then
+    elif [[ "$(jq -r --arg o "$owner" 'select(.name == $o) | .has_issues' "$repos" | head -1)" != "true" ]]; then
       UNMAPPED=$((UNMAPPED + 1))
       continue
     fi
