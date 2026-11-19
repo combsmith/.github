@@ -312,8 +312,36 @@ cbf_backfill_repo() {
   body="Adds the org-standard \`secret-scan\` and \`coverage\` jobs to this repo's \`ci.yml\`, copied unchanged from [\`standards/workflows/ci.yml\`](https://github.com/${ORG}/.github/blob/main/standards/workflows/ci.yml). Added here: \`${added_fresh}\`$([[ "$seed_fresh" = true ]] && printf '%s' ", plus a seeded \`.gitleaks.toml\`")."
   body+=$'\n\n'"These produce the \`Secret scan (gitleaks)\` and \`coverage\` checks, which ${ORG}/.github#581 will make **required** in the \`code-quality\` ruleset once every repo reports them. The coverage job stays green until the repo has tests. If you already measure coverage for your stack, replace the coverage step with yours, but keep the job id and \`name: coverage\`."
   body+=$'\n\n'"No other part of \`ci.yml\` is changed. Opened by \`scripts/backfill-ci-quality-jobs.sh\`."
+
+  # Refetch immediately before deploy to close race with intervening edits that may
+  # have occurred during gitleaks check and PR preparation.
+  local ci_deploy new_deploy added_deploy
+  ci_deploy="$(mktemp)"
+  new_deploy="$(mktemp)"
+  cbf_fetch "$repo" ".github/workflows/ci.yml" "$ci_deploy" 2>"$err" && rc=0 || rc=$?
+  if (( rc != 0 )); then
+    echo "FAILED ${repo} refetch-ci-deploy: $(cat "$err")"; rm -rf "$wfdir" "$ci" "$new" "$new_fresh" "$ci_deploy" "$new_deploy" "$err"; return 1
+  fi
+  added_deploy="$(cbf_backfill_file "$ci_deploy" "$new_deploy" "${others[@]}" 2>"$err")" && rc=0 || rc=$?
+  if (( rc == 2 )); then
+    echo "CONFLICT ${repo} — job id(s) $(cat "$err") already used for a different check name; fix by hand"
+    rm -rf "$wfdir" "$ci" "$new" "$new_fresh" "$ci_deploy" "$new_deploy" "$err"; return 0
+  elif (( rc != 0 )); then
+    echo "FAILED ${repo} refill-deploy: $(cat "$err")"; rm -rf "$wfdir" "$ci" "$new" "$new_fresh" "$ci_deploy" "$new_deploy" "$err"; return 1
+  fi
+  rm -f "$ci_deploy"
+  if [[ -z "$added_deploy" ]]; then
+    echo "OK ${repo} — secret-scan and coverage already present"
+    rm -rf "$wfdir" "$ci" "$new" "$new_fresh" "$new_deploy" "$err"; return 0
+  fi
+  files=(".github/workflows/ci.yml" "$new_deploy")
+
+  if [[ "$seed_fresh" = true ]]; then
+    files+=(".gitleaks.toml" "$CBF_TEMPLATE_GITLEAKS")
+  fi
+
   outcome="$(sd_deploy_files_via_pr "$repo" "$CBF_BRANCH" "$CBF_LABEL" "$title" "$body" "${files[@]}")" && rc=0 || rc=$?
-  rm -rf "$wfdir" "$ci" "$new" "$new_fresh" "$err"
+  rm -rf "$wfdir" "$ci" "$new" "$new_fresh" "$new_deploy" "$err"
   echo "${outcome%% *} ${repo} ${outcome#* }"
   return "$rc"
 }
