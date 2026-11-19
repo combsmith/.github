@@ -152,11 +152,22 @@ sd_deploy_files_via_pr() {
   #    it holds only what this run writes. Otherwise, or if the probe or reset
   #    errors, fail loudly naming the branch rather than build on unknown commits.
   #    NOTE: A small race window exists between the open-PR check and the reset,
-  #    where concurrent same-day runs could interfere. Callers should use
-  #    unique branch names per run (e.g., with timestamps) to fully mitigate.
+  #    where overlapping same-day runs could interfere. Callers use date-based
+  #    branch names, so what prevents overlap is the workflow's
+  #    `concurrency: group: standards-deploy` (cancel-in-progress false). It is
+  #    not enforced in code; hardening is tracked in #1335.
+  local create_err create_msg
+  create_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
   if ! gh api "repos/${repo}/git/refs" --method POST \
         --raw-field "ref=refs/heads/${branch}" \
-        --raw-field "sha=${base_sha}" --silent 2>/dev/null; then
+        --raw-field "sha=${base_sha}" --silent 2>"$create_err"; then
+    create_msg=$(tr '\n' ' ' < "$create_err"); rm -f "$create_err"
+    # Only HTTP 422 "Reference already exists" means the branch exists; any
+    # other failure (403, 5xx, rate limit, network) is a real error.
+    if ! grep -qiE '422|already exists' <<<"$create_msg"; then
+      echo "FAILED branch-create-failed:${branch}${create_msg:+:${create_msg}}"
+      return 1
+    fi
     if ! gh api "repos/${repo}/git/ref/heads/${branch}" --silent 2>/dev/null; then
       echo "FAILED no-branch"
       return 1
@@ -196,6 +207,8 @@ sd_deploy_files_via_pr() {
       return 1
     fi
     rm -f "$reset_err"
+  else
+    rm -f "$create_err"
   fi
 
   # 5. PUT each file verbatim onto the branch. The blob SHA is looked up per file

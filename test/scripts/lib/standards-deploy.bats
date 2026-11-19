@@ -53,7 +53,11 @@ case "$sub" in
           *head=*)                    printf '%s' "${GH_FORK_PR:-}" ;;
           *)                          printf '%s' "${GH_BRANCH_PR:-}" ;;
         esac ;;
-      */git/refs)          exit "${GH_REF_CREATE_RC:-0}" ;;
+      */git/refs)
+        if [ "${GH_REF_CREATE_RC:-0}" -ne 0 ]; then
+          printf '%s\n' "${GH_REF_CREATE_ERR:-gh: Reference already exists (HTTP 422)}" >&2
+        fi
+        exit "${GH_REF_CREATE_RC:-0}" ;;
       */git/refs/heads/*)
         # Force-reset of an existing sync branch. When GH_BRANCH_FILES names a
         # file it models the branch's content: a reset to the base tip drops
@@ -66,7 +70,11 @@ case "$sub" in
         exit 0 ;;
       */git/ref/heads/*)
         if printf '%s' "$args" | grep -q 'object.sha'; then
-          printf '%s' "${GH_BASE_SHA-basesha111}"
+          if printf '%s' "$args" | grep -q 'heads/standards-sync\|heads/gitignore-baseline\|heads/feature'; then
+            printf '%s' "${GH_OLD_HEAD-${GH_BASE_SHA-basesha111}}"
+          else
+            printf '%s' "${GH_BASE_SHA-basesha111}"
+          fi
         else
           exit "${GH_REF_EXISTS_RC:-0}"
         fi ;;
@@ -289,13 +297,14 @@ deploy() {
   [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
 }
 
-@test "reset is refused for a branch outside standards-sync/ and the old head is logged otherwise" {
+@test "reset is refused for a branch outside the automation prefixes" {
   GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
   run sd_deploy_files_via_pr combsmith/markets main add-label t b .github/workflows/x.yml "$LOCAL_FILE"
   [ "$status" -ne 0 ]
   [[ "$output" == *"FAILED branch-reset-refused:main"* ]]
   [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
   run sd_deploy_files_via_pr combsmith/markets feature/x add-label t b .github/workflows/x.yml "$LOCAL_FILE"
+  [ "$status" -ne 0 ]
   [[ "$output" == *"FAILED branch-reset-refused:feature/x"* ]]
   [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
 }
@@ -309,10 +318,21 @@ deploy() {
 
 @test "force-reset logs the discarded head SHA to stderr" {
   GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_OLD_HEAD="oldhead222"; export GH_OLD_HEAD
   run --separate-stderr sd_deploy_via_pr "combsmith/markets" ".github/workflows/add-to-project.yml" \
     "$LOCAL_FILE" "standards-sync/add-to-project" "standards-sync" "t" "b"
   [ "$status" -eq 0 ]
-  [[ "$stderr" == *"force-resetting combsmith/markets@standards-sync/add-to-project from basesha111 to basesha111"* ]]
+  [[ "$stderr" == *"force-resetting combsmith/markets@standards-sync/add-to-project from oldhead222 to basesha111"* ]]
+}
+
+@test "a non-422 failure creating the branch fails loudly and is not treated as existing" {
+  GH_REF_CREATE_RC="1"; export GH_REF_CREATE_RC
+  GH_REF_CREATE_ERR="gh: Forbidden (HTTP 403)"; export GH_REF_CREATE_ERR
+  run deploy
+  [ "$status" -ne 0 ]
+  [[ "$output" == "FAILED branch-create-failed:standards-sync/add-to-project:"*"403"* ]]
+  [ "$(grep -c -- '--method PATCH' "$GH_CALLS")" -eq 0 ]
+  [ "$(grep -c 'contents/.* --method PUT' "$GH_CALLS")" -eq 0 ]
 }
 
 @test "a failed reset of the stale branch fails loudly naming the branch" {
