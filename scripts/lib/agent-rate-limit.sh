@@ -97,7 +97,7 @@ arl_config_path() {
 # arl_now — current epoch seconds, honoring the $SOURCE_NOW test override.
 # ---------------------------------------------------------------------------
 arl_now() {
-  if [ -n "${SOURCE_NOW:-}" ]; then
+  if [[ -n "${SOURCE_NOW:-}" ]]; then
     printf '%s' "$SOURCE_NOW"
     return 0
   fi
@@ -110,7 +110,7 @@ arl_now() {
 # even when DRY_RUN is explicitly set to "false" (not merely unset).
 # ---------------------------------------------------------------------------
 arl_is_dry_run() {
-  [ "${DRY_RUN:-false}" = "true" ] || [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]
+  [[ "${DRY_RUN:-false}" = "true" ]] || [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,11 @@ arl_is_dry_run() {
 arl_sanitize_int() {
   local value="${1:-}" fallback="${2:-0}"
   if [[ "$value" =~ ^[0-9]+$ ]]; then
-    printf '%s' "$value"
+    # Strip leading zeros textually (no arithmetic, so arbitrarily long digit
+    # strings cannot overflow) so zero-padded input ("08") is not read as
+    # invalid octal by later [[ -ge ]] comparisons.
+    value="${value#"${value%%[!0]*}"}"
+    printf '%s' "${value:-0}"
   else
     printf '%s' "$fallback"
   fi
@@ -154,7 +158,7 @@ arl_is_exempt_label() {
   local IFS=','
   for label in $labels_csv; do
     label="${label// /}"
-    [ -z "$label" ] && continue
+    [[ -z "$label" ]] && continue
     if jq -e --arg l "$label" '(.exempt_labels // []) | index($l) != null' "$config" >/dev/null 2>&1; then
       return 0
     fi
@@ -175,7 +179,8 @@ arl_agent_threshold() {
   value="$(jq -er --arg t "$agent_type" --arg k "$key" \
     '(.agent_types[$t][$k])? // empty' "$config" 2>/dev/null || printf '')"
   if [[ "$value" =~ ^[0-9]+$ ]]; then
-    printf '%s' "$value"
+    # Force base 10 so zero-padded config values are not read as octal.
+    printf '%s' "$((10#$value))"
   fi
 }
 
@@ -228,7 +233,7 @@ arl_admission_decision() {
 
   # 1. Concurrency — hard cap on simultaneous runs of this type (counted, never
   #    cancelled; ADR §5).
-  if [ -n "$max" ] && [ "$max" -gt 0 ] && [ "$concurrent" -ge "$max" ]; then
+  if [[ -n "$max" ]] && [[ "$max" -gt 0 ]] && [[ "$concurrent" -ge "$max" ]]; then
     decision="defer"
     reason="concurrency ${concurrent}/${max} at or over max_concurrent_runs"
   fi
@@ -236,26 +241,26 @@ arl_admission_decision() {
   # 2. Cooldown — minimum quiet interval since the last run (kills dispatch
   #    races; ADR §5). Skipped when disabled (0) or when there is no last run.
   #    A future last_run (elapsed < 0) is malformed state — fail open (allow).
-  if [ "$decision" = "allow" ] && [ -n "$cooldown" ] && [ "$cooldown" -gt 0 ] && [ "$last_run" -gt 0 ]; then
+  if [[ "$decision" = "allow" ]] && [[ -n "$cooldown" ]] && [[ "$cooldown" -gt 0 ]] && [[ "$last_run" -gt 0 ]]; then
     local elapsed=$(( now - last_run ))
     local window=$(( cooldown * 60 ))
-    if [ "$elapsed" -lt 0 ]; then
+    if [[ "$elapsed" -lt 0 ]]; then
       arl_log "warning: last_run_epoch is in the future — skipping cooldown check (degraded allow)"
-    elif [ "$elapsed" -lt "$window" ]; then
+    elif [[ "$elapsed" -lt "$window" ]]; then
       decision="defer"
       reason="cooldown ${elapsed}s/${window}s since last run has not elapsed"
     fi
   fi
 
   # 3. Daily budget — runs (dispatches for initiative-driver) per rolling 24h.
-  if [ "$decision" = "allow" ] && [ -n "$daily" ] && [ "$daily" -gt 0 ] && [ "$daily_count" -ge "$daily" ]; then
+  if [[ "$decision" = "allow" ]] && [[ -n "$daily" ]] && [[ "$daily" -gt 0 ]] && [[ "$daily_count" -ge "$daily" ]]; then
     decision="defer"
     reason="daily budget ${daily_count}/${daily} at or over daily_run_budget"
   fi
 
   arl_log "admission for '${agent_type}': ${decision} (${reason})"
   printf 'decision=%s\n' "$decision"
-  [ "$decision" = "allow" ] && return 0
+  [[ "$decision" = "allow" ]] && return 0
   return 1
 }
 
@@ -296,15 +301,19 @@ arl_breaker_decision() {
   local threshold backoff
   threshold="$(arl_breaker_threshold "$agent_type" consecutive_failure_threshold)"
   backoff="$(arl_breaker_threshold "$agent_type" backoff_minutes)"
+  # Leading-zero digit strings (e.g. "08") are valid config; force base 10 so bash
+  # arithmetic does not reject them as octal.
+  if [[ "$threshold" =~ ^[0-9]+$ ]]; then threshold=$((10#$threshold)); fi
+  if [[ "$backoff" =~ ^[0-9]+$ ]]; then backoff=$((10#$backoff)); fi
 
   # Malformed / missing breaker config -> cannot evaluate -> allow (never block).
-  if [ -z "$threshold" ] || [ "$threshold" -le 0 ]; then
+  if ! [[ "$threshold" =~ ^[0-9]+$ ]] || [[ "$threshold" -le 0 ]]; then
     arl_log "breaker for '${agent_type}': state=closed (no usable consecutive_failure_threshold — allowing)"
     printf 'decision=allow\n'
     return 0
   fi
 
-  if [ "$failures" -lt "$threshold" ]; then
+  if [[ "$failures" -lt "$threshold" ]]; then
     arl_log "breaker for '${agent_type}': state=closed (${failures}/${threshold} consecutive failures)"
     printf 'decision=allow\n'
     return 0
@@ -312,14 +321,14 @@ arl_breaker_decision() {
 
   # Breaker has tripped. Without a usable backoff we cannot time a half-open
   # probe; degrade to allow rather than block indefinitely on bad config.
-  if [ -z "$backoff" ] || [ "$backoff" -le 0 ]; then
+  if ! [[ "$backoff" =~ ^[0-9]+$ ]] || [[ "$backoff" -le 0 ]]; then
     arl_log "breaker for '${agent_type}': state=open but no usable backoff_minutes — allowing (degraded)"
     printf 'decision=allow\n'
     return 0
   fi
 
   # Just tripped (no opened timestamp recorded yet) -> open, defer.
-  if [ "$opened" -le 0 ]; then
+  if [[ "$opened" -le 0 ]]; then
     arl_log "breaker for '${agent_type}': state=open (${failures}/${threshold} failures, just tripped)"
     printf 'decision=defer\n'
     return 1
@@ -327,12 +336,12 @@ arl_breaker_decision() {
 
   local elapsed=$(( now - opened ))
   local window=$(( backoff * 60 ))
-  if [ "$elapsed" -lt 0 ]; then
+  if [[ "$elapsed" -lt 0 ]]; then
     arl_log "breaker for '${agent_type}': warning: breaker_opened_epoch is in the future — failing open (degraded allow)"
     printf 'decision=allow\n'
     return 0
   fi
-  if [ "$elapsed" -lt "$window" ]; then
+  if [[ "$elapsed" -lt "$window" ]]; then
     arl_log "breaker for '${agent_type}': state=open (backoff ${elapsed}s/${window}s not elapsed)"
     printf 'decision=defer\n'
     return 1
@@ -341,7 +350,7 @@ arl_breaker_decision() {
   # Half-open: allow one probe, but defer if a probe was already dispatched within
   # the backoff window (reduces the race window for simultaneous callers; callers
   # must record probe_dispatched_epoch in state after a probe is granted).
-  if [ "$probe_dispatched" -gt 0 ] && [ $(( now - probe_dispatched )) -lt "$window" ]; then
+  if [[ "$probe_dispatched" -gt 0 ]] && [[ $(( now - probe_dispatched )) -lt "$window" ]]; then
     arl_log "breaker for '${agent_type}': state=half-open but probe already dispatched — deferring"
     printf 'decision=defer\n'
     return 1
@@ -404,13 +413,13 @@ arl_state_path() {
 arl_load_state() {
   local path
   path="$(arl_state_path)"
-  if [ -z "$path" ] || [ ! -f "$path" ]; then
+  if [[ -z "$path" ]] || [[ ! -f "$path" ]]; then
     printf '{}'
     return 0
   fi
   local raw
   raw="$(cat "$path" 2>/dev/null || printf '')"
-  if [ -z "$raw" ] || ! jq -e . <<<"$raw" >/dev/null 2>&1; then
+  if [[ -z "$raw" ]] || ! jq -e . <<<"$raw" >/dev/null 2>&1; then
     arl_log "warning: agent-rate-limit state at '$path' is missing or malformed — treating as empty"
     printf '{}'
     return 0
@@ -426,7 +435,7 @@ arl_load_state() {
 arl_state_field() {
   local state_json="$1" agent_type="$2" field="$3" fallback="${4:-0}" value
   value=""
-  if [ -n "$state_json" ]; then
+  if [[ -n "$state_json" ]]; then
     value="$(jq -er --arg t "$agent_type" --arg f "$field" \
       '(.[$t][$f])? // empty' <<<"$state_json" 2>/dev/null || printf '')"
   fi
@@ -444,17 +453,17 @@ _arl_gh_run_list() {
   local workflow="$1" repo="$2" limit="$3" status="${4:-}" out err errfile rc=0
   local json_fields="databaseId,status,conclusion,createdAt"
   local -a args=(run list --workflow "$workflow" --json "$json_fields" --limit "$limit")
-  [ -n "$repo" ] && args+=(--repo "$repo")
-  [ -n "$status" ] && args+=(--status "$status")
+  [[ -n "$repo" ]] && args+=(--repo "$repo")
+  [[ -n "$status" ]] && args+=(--status "$status")
   errfile="$(mktemp)"
   out="$(gh "${args[@]}" 2>"$errfile")" || rc=$?
   err="$(cat "$errfile" 2>/dev/null || true)"
   rm -f "$errfile"
-  if [ "$rc" -ne 0 ]; then
-    [ "$(agent_ingress_gh_error_kind "$err" workflow-only)" = "missing" ] && return 3
+  if [[ "$rc" -ne 0 ]]; then
+    [[ "$(agent_ingress_gh_error_kind "$err" workflow-only)" = "missing" ]] && return 3
     return 1
   fi
-  if [ -z "$out" ] || ! jq -e 'type == "array"' <<<"$out" >/dev/null 2>&1; then
+  if [[ -z "$out" ]] || ! jq -e 'type == "array"' <<<"$out" >/dev/null 2>&1; then
     return 1
   fi
   printf '%s' "$out"
@@ -517,7 +526,7 @@ arl_resolve_agent_runs() {
         return 1
         ;;
       *)
-        if [ -z "$records" ]; then
+        if [[ -z "$records" ]]; then
           arl_log "UNRESOLVED: neither workflow '${workflow}' nor ${AGENT_INGRESS_WORKFLOW} exists in ${where} — '${role}' runs cannot be counted (refusing to read this as zero)"
           printf '[]'
           return 3
@@ -532,17 +541,17 @@ arl_resolve_agent_runs() {
     role_count="$(jq -r 'length' <<<"$role_runs" 2>/dev/null || printf '0')"
     batch_count="$(jq -r 'length' <<<"$page_runs" 2>/dev/null || printf '0')"
 
-    if [ "$inflight_only" = "true" ] || [ "$cap_hit" = "true" ] \
-      || [ "$role_count" -ge "$limit" ] || [ "$batch_count" -lt "$fetch_limit" ]; then
-      [ "$skipped_runs" -gt 0 ] && arl_log "warning: ${skipped_runs} ${AGENT_INGRESS_WORKFLOW} run(s) in ${where} had unreadable jobs and were NOT counted (degraded)"
+    if [[ "$inflight_only" = "true" ]] || [[ "$cap_hit" = "true" ]] \
+      || [[ "$role_count" -ge "$limit" ]] || [[ "$batch_count" -lt "$fetch_limit" ]]; then
+      [[ "$skipped_runs" -gt 0 ]] && arl_log "warning: ${skipped_runs} ${AGENT_INGRESS_WORKFLOW} run(s) in ${where} had unreadable jobs and were NOT counted (degraded)"
       # Every jobs read failed: nothing was resolved, so this is a transient
       # no-data outcome (degrades to 0), not a resolved-empty history.
-      if [ -z "$records" ] && [ "$skipped_runs" -gt 0 ]; then
+      if [[ -z "$records" ]] && [[ "$skipped_runs" -gt 0 ]]; then
         printf '[]'
         return 1
       fi
       printf '%s' "$role_runs"
-      if [ "$role_runs" = "[]" ] && ! _arl_ingress_declares_role "$role" "$api_repo"; then
+      if [[ "$role_runs" = "[]" ]] && ! _arl_ingress_declares_role "$role" "$api_repo"; then
         arl_log "UNRESOLVED: ${AGENT_INGRESS_WORKFLOW} in ${where} declares no '${role}' job — '${role}' runs cannot be counted (refusing to read this as zero)"
         return 3
       fi
@@ -559,14 +568,14 @@ arl_resolve_agent_runs() {
 # _arl_gh_run_list (0 ok / 1 transient / 3 permanently missing).
 _arl_fetch_ingress_page() {
   local repo="$1" limit="$2" inflight_only="$3" st out rc acc="[]"
-  if [ "$inflight_only" != "true" ]; then
+  if [[ "$inflight_only" != "true" ]]; then
     _arl_gh_run_list "$AGENT_INGRESS_WORKFLOW" "$repo" "$limit"
     return $?
   fi
   for st in queued in_progress; do
     rc=0
     out="$(_arl_gh_run_list "$AGENT_INGRESS_WORKFLOW" "$repo" "$limit" "$st")" || rc=$?
-    [ "$rc" -ne 0 ] && return "$rc"
+    [[ "$rc" -ne 0 ]] && return "$rc"
     acc="$(jq -sc 'add' <<<"${acc}${out}")"
   done
   printf '%s' "$acc"
@@ -580,12 +589,12 @@ _arl_fetch_ingress_page() {
 # cap.
 _arl_ingest_ingress_runs() {
   local id status created jobs_out filter='.'
-  [ "$inflight_only" = "true" ] && filter='map(select((.status // "") != "completed"))'
+  [[ "$inflight_only" = "true" ]] && filter='map(select((.status // "") != "completed"))'
   while IFS=$'\t' read -r id status created; do
     [[ "$id" =~ ^[0-9]+$ ]] || continue
     case "$seen" in *" ${id} "*) continue ;; esac
     seen+="${id} "
-    if [ "$jobs_reads" -ge "$jobs_cap" ]; then
+    if [[ "$jobs_reads" -ge "$jobs_cap" ]]; then
       cap_hit=true
       arl_log "warning: ${AGENT_INGRESS_WORKFLOW} jobs-read cap (${jobs_cap}, AGENT_INGRESS_MAX_JOBS_READS) hit in ${where} — history is TRUNCATED, '${role}' runs beyond it are not counted (degraded)"
       break
@@ -593,7 +602,7 @@ _arl_ingest_ingress_runs() {
     jobs_reads=$(( jobs_reads + 1 ))
     jobs_out="$(gh api "repos/${api_repo}/actions/runs/${id}/jobs?per_page=100" 2>/dev/null \
       | jq -c '[.jobs[]? | {name, status, conclusion}]' 2>/dev/null || true)"
-    if [ -z "$jobs_out" ]; then
+    if [[ -z "$jobs_out" ]]; then
       arl_log "warning: jobs of ${AGENT_INGRESS_WORKFLOW} run ${id} in ${where} were unreadable — skipping that run (degraded)"
       skipped_runs=$(( skipped_runs + 1 ))
       continue
@@ -612,7 +621,7 @@ _arl_ingress_declares_role() {
   raw="$(gh api "repos/${api_repo}/contents/.github/workflows/${AGENT_INGRESS_WORKFLOW}" 2>/dev/null || true)"
   content="$(jq -r 'select(.type == "file" and .encoding == "base64") | .content // empty' <<<"$raw" 2>/dev/null \
     | base64 -d 2>/dev/null || true)"
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     arl_log "warning: could not verify ${AGENT_INGRESS_WORKFLOW} in ${api_repo} — treating '${role}' as declared (degraded)"
     return 0
   fi
@@ -645,12 +654,12 @@ arl_count_concurrent_runs() {
 
   # The current repo first, then any additional repos for org-wide enforcement.
   local -a repos=("")
-  if [ -n "${AGENT_RATE_LIMITS_ORG_REPOS:-}" ]; then
+  if [[ -n "${AGENT_RATE_LIMITS_ORG_REPOS:-}" ]]; then
     local -a _arl_repos
     IFS=',' read -ra _arl_repos <<< "$AGENT_RATE_LIMITS_ORG_REPOS"
     for repo in "${_arl_repos[@]}"; do
       repo="${repo// /}"
-      [ -n "$repo" ] && repos+=("$repo")
+      [[ -n "$repo" ]] && repos+=("$repo")
     done
   fi
 
@@ -667,7 +676,7 @@ arl_count_concurrent_runs() {
         arl_log "warning: run enumeration for '${agent_type}'${repo:+ in ${repo}} returned no data (treating concurrency as 0)"
         ;;
       *)
-        if [ -z "$repo" ]; then
+        if [[ -z "$repo" ]]; then
           unresolved+=" <current repo>"
         else
           arl_log "warning: '${agent_type}' runs in ${repo} are unresolved (no workflow / ingress role job) — counting 0 for that repo"
@@ -676,7 +685,7 @@ arl_count_concurrent_runs() {
     esac
   done
 
-  if [ -n "$unresolved" ]; then
+  if [[ -n "$unresolved" ]]; then
     arl_log "UNRESOLVED: concurrency for '${agent_type}' cannot be counted in:${unresolved} — reporting unresolved, not 0"
     printf 'unresolved'
     return 3
@@ -785,12 +794,12 @@ arl_token_claude_priority() {
 # ---------------------------------------------------------------------------
 arl_token_priority_rank() {
   local agent_type="$1" a
-  if [ "$(arl_token_claude_priority)" != "true" ]; then
+  if [[ "$(arl_token_claude_priority)" != "true" ]]; then
     printf '0'
     return 0
   fi
   for a in $ARL_TOKEN_CLAUDE_AGENTS; do
-    if [ "$a" = "$agent_type" ]; then
+    if [[ "$a" = "$agent_type" ]]; then
       printf '0'
       return 0
     fi
@@ -809,13 +818,13 @@ arl_token_priority_rank() {
 # ---------------------------------------------------------------------------
 arl_token_fetch_envelope() {
   local raw=""
-  if [ -n "${AGENT_TOKEN_BUDGET_TELEMETRY_CMD:-}" ]; then
+  if [[ -n "${AGENT_TOKEN_BUDGET_TELEMETRY_CMD:-}" ]]; then
     local _timeout="${AGENT_TOKEN_BUDGET_TELEMETRY_TIMEOUT:-10}"
     raw="$(timeout "$_timeout" bash -c "$AGENT_TOKEN_BUDGET_TELEMETRY_CMD" 2>/dev/null || printf '')"
-  elif [ -n "${AGENT_TOKEN_BUDGET_TELEMETRY_FILE:-}" ] && [ -f "${AGENT_TOKEN_BUDGET_TELEMETRY_FILE}" ]; then
+  elif [[ -n "${AGENT_TOKEN_BUDGET_TELEMETRY_FILE:-}" ]] && [[ -f "${AGENT_TOKEN_BUDGET_TELEMETRY_FILE}" ]]; then
     raw="$(cat "$AGENT_TOKEN_BUDGET_TELEMETRY_FILE" 2>/dev/null || printf '')"
   fi
-  if [ -z "$raw" ] || ! jq -e . <<<"$raw" >/dev/null 2>&1; then
+  if [[ -z "$raw" ]] || ! jq -e . <<<"$raw" >/dev/null 2>&1; then
     printf '{"status":0}'
     return 0
   fi
@@ -880,25 +889,26 @@ arl_token_budget_decision() {
   threshold="${2:-}"
   pause_worthy="${3:-}"
 
-  if [ "$pause_worthy" != "true" ]; then
+  if [[ "$pause_worthy" != "true" ]]; then
     arl_log "token-budget: window is not pause-worthy — allowing (scope guard)"
     printf 'decision=allow\n'
     return 0
   fi
-  if ! [[ "$threshold" =~ ^[0-9]+$ ]] || [ "$threshold" -le 0 ]; then
+  if [[ "$threshold" =~ ^[0-9]+$ ]]; then threshold=$((10#$threshold)); fi
+  if ! [[ "$threshold" =~ ^[0-9]+$ ]] || [[ "$threshold" -le 0 ]]; then
     arl_log "token-budget: no usable pause_threshold_pct — allowing (degraded)"
     printf 'decision=allow\n'
     return 0
   fi
 
   local decision="allow" reason="budget ${percent}% under ${threshold}% threshold"
-  if [ "$percent" -ge "$threshold" ]; then
+  if [[ "$percent" -ge "$threshold" ]]; then
     decision="defer"
     reason="budget ${percent}% at or over ${threshold}% threshold"
   fi
   arl_log "token-budget decision: ${decision} (${reason})"
   printf 'decision=%s\n' "$decision"
-  [ "$decision" = "allow" ] && return 0
+  [[ "$decision" = "allow" ]] && return 0
   return 1
 }
 
@@ -930,23 +940,23 @@ arl_token_transport_decision() {
   # blocks (ADR §7). An observation timestamp (observed_at) or absolute deadline
   # (retry_until) in the envelope guards against a stale file deferring forever:
   # if the deadline has already passed, treat it as expired degraded telemetry.
-  if [ "$status" -eq 429 ]; then
+  if [[ "$status" -eq 429 ]]; then
     retry_after="$(arl_sanitize_int "$(jq -r '.retry_after? // 0' <<<"$envelope" 2>/dev/null || printf '0')")"
-    if [ "$retry_after" -gt 0 ]; then
+    if [[ "$retry_after" -gt 0 ]]; then
       local retry_deadline observed_at
       retry_deadline="$(arl_sanitize_int "$(jq -r '.retry_until? // 0' <<<"$envelope" 2>/dev/null || printf '0')")"
-      if [ "$retry_deadline" -eq 0 ]; then
+      if [[ "$retry_deadline" -eq 0 ]]; then
         observed_at="$(arl_sanitize_int "$(jq -r '.observed_at? // 0' <<<"$envelope" 2>/dev/null || printf '0')")"
-        if [ "$observed_at" -gt 0 ]; then
+        if [[ "$observed_at" -gt 0 ]]; then
           retry_deadline=$(( observed_at + retry_after ))
         fi
       fi
-      if [ "$retry_deadline" -eq 0 ]; then
+      if [[ "$retry_deadline" -eq 0 ]]; then
         arl_log "warning: token-budget 429 has no deadline anchor (no retry_until/observed_at) — treating as stale, allowing dispatch (degraded)"
         printf 'allow'
         return 0
       fi
-      if [ "$now" -ge "$retry_deadline" ]; then
+      if [[ "$now" -ge "$retry_deadline" ]]; then
         arl_log "warning: token-budget 429 retry window expired (deadline=${retry_deadline}, now=${now}) — allowing dispatch (degraded)"
         printf 'allow'
         return 0
@@ -958,7 +968,7 @@ arl_token_transport_decision() {
   fi
 
   # Any other non-200 fails safe: allow-with-warning.
-  if [ "$status" -ne 200 ]; then
+  if [[ "$status" -ne 200 ]]; then
     arl_log "warning: token-budget telemetry unavailable (status=${status}) — allowing dispatch (degraded)"
     printf 'allow'
     return 0
@@ -988,13 +998,13 @@ arl_token_budget_gate() {
 
   local pause_worthy threshold
   pause_worthy="$(arl_token_window_pause_worthy "$window")"
-  if [ "$pause_worthy" != "true" ]; then
+  if [[ "$pause_worthy" != "true" ]]; then
     arl_log "token-budget: window '${window}' is not pause-worthy — allowing (scope guard)"
     printf 'decision=allow\n'
     return 0
   fi
   threshold="$(arl_token_pause_threshold "$window")"
-  if [ -z "$threshold" ]; then
+  if [[ -z "$threshold" ]]; then
     arl_log "token-budget: no configured pause_threshold_pct for '${window}' — allowing (degraded)"
     printf 'decision=allow\n'
     return 0
@@ -1014,7 +1024,7 @@ arl_token_budget_gate() {
 
   body="$(jq -c '.body? // {}' <<<"$envelope" 2>/dev/null || printf '{}')"
 
-  if [ "$(arl_token_window_active "$body" "$window")" = "false" ]; then
+  if [[ "$(arl_token_window_active "$body" "$window")" = "false" ]]; then
     arl_log "token-budget: window '${window}' is not active — allowing (not binding)"
     printf 'decision=allow\n'
     return 0
@@ -1022,7 +1032,7 @@ arl_token_budget_gate() {
 
   local percent
   percent="$(arl_token_extract_percent "$body" "$window")"
-  if [ -z "$percent" ]; then
+  if [[ -z "$percent" ]]; then
     arl_log "warning: token-budget telemetry has no '${window}' window entry — allowing dispatch (degraded)"
     printf 'decision=allow\n'
     return 0
@@ -1089,7 +1099,7 @@ arl_token_glide_enabled() {
   local config value
   config="$(arl_config_path)"
   value=""
-  if [ -n "$config" ]; then
+  if [[ -n "$config" ]]; then
     value="$(jq -r '(.org_wide.token_budget.limits.weekly_all.enabled)? // "false"' "$config" 2>/dev/null || printf 'false')"
   fi
   case "$value" in
@@ -1106,7 +1116,7 @@ arl_token_glide_enabled() {
 # ---------------------------------------------------------------------------
 arl_token_iso_to_epoch() {
   local iso="${1:-}" epoch
-  [ -z "$iso" ] && return 0
+  [[ -z "$iso" ]] && return 0
   # Require an explicit timezone offset (Z or ±HH:MM) so date -d does not
   # silently interpret a timezone-less value as local time.
   if [[ ! "$iso" =~ (Z|[+-][0-9]{2}:[0-9]{2})$ ]]; then
@@ -1120,7 +1130,14 @@ arl_token_iso_to_epoch() {
   # timestamp near midnight, whose UTC date is the day before or after.
   local reconstructed_date
   reconstructed_date="$(date -u -d "${iso:0:10}" +%Y-%m-%d 2>/dev/null || printf '')"
-  [ "$reconstructed_date" = "${iso:0:10}" ] || return 0
+  local offset_re="([+-])([0-9]{2}):([0-9]{2})$"
+  if [[ "$iso" =~ $offset_re ]]; then
+    # Reject out-of-range offsets (e.g. +24:00, +00:60) that date would silently normalise.
+    if (( 10#${BASH_REMATCH[2]} > 23 || 10#${BASH_REMATCH[3]} > 59 )); then
+      return 0
+    fi
+  fi
+  [[ "$reconstructed_date" = "${iso:0:10}" ]] || return 0
   printf '%s' "$epoch"
 }
 
@@ -1135,7 +1152,7 @@ arl_token_days_until_reset() {
   reset="$(arl_sanitize_int "${1:-}")"
   now="$(arl_sanitize_int "${2:-}")"
   diff=$(( reset - now ))
-  if [ "$diff" -le 0 ]; then
+  if [[ "$diff" -le 0 ]]; then
     printf '0'
     return 0
   fi
@@ -1157,8 +1174,8 @@ arl_token_glide_threshold() {
   floor="$(arl_sanitize_int "${3:-}")"
   ceiling="$(arl_sanitize_int "${4:-}")"
   raw=$(( ceiling - reserve * days ))
-  if [ "$raw" -gt "$ceiling" ]; then raw="$ceiling"; fi
-  if [ "$raw" -lt "$floor" ]; then raw="$floor"; fi
+  if [[ "$raw" -gt "$ceiling" ]]; then raw="$ceiling"; fi
+  if [[ "$raw" -lt "$floor" ]]; then raw="$floor"; fi
   printf '%s' "$raw"
 }
 
@@ -1182,7 +1199,7 @@ arl_token_extract_resets_at() {
         else null end )
     | if . == null then empty else . end
   ' <<<"$body" 2>/dev/null || printf '')"
-  if [ -n "$value" ]; then
+  if [[ -n "$value" ]]; then
     printf '%s' "$value"
   fi
 }
@@ -1232,14 +1249,14 @@ arl_token_weekly_glide_gate() {
 
   # 1. Config-level arm — inert until a maintainer enables it in config, even
   #    when the integration env flag is on (staged dry-run rollout, AC #7).
-  if [ "$(arl_token_glide_enabled)" != "true" ]; then
+  if [[ "$(arl_token_glide_enabled)" != "true" ]]; then
     arl_log "token-budget weekly-glide: not enabled in config (weekly_all.enabled) — allowing (inert)"
     printf 'decision=allow\n'
     return 0
   fi
 
   # 2. Scope guard — only the account-wide window is pause-worthy (ADR §2.5).
-  if [ "$(arl_token_window_pause_worthy "$window")" != "true" ]; then
+  if [[ "$(arl_token_window_pause_worthy "$window")" != "true" ]]; then
     arl_log "token-budget weekly-glide: window '${window}' is not pause-worthy — allowing (scope guard)"
     printf 'decision=allow\n'
     return 0
@@ -1251,7 +1268,7 @@ arl_token_weekly_glide_gate() {
   reserve="$(arl_token_glide_reserve)"
   floor="$(arl_token_glide_floor)"
   ceiling="$(arl_token_glide_ceiling)"
-  if [ -z "$reserve" ] || [ -z "$floor" ] || [ -z "$ceiling" ]; then
+  if [[ -z "$reserve" ]] || [[ -z "$floor" ]] || [[ -z "$ceiling" ]]; then
     arl_log "token-budget weekly-glide: incomplete glide config (reserve/floor/ceiling) — allowing (degraded)"
     printf 'decision=allow\n'
     return 0
@@ -1271,7 +1288,7 @@ arl_token_weekly_glide_gate() {
   body="$(jq -c '.body? // {}' <<<"$envelope" 2>/dev/null || printf '{}')"
 
   # 6. An inactive window is not binding.
-  if [ "$(arl_token_window_active "$body" "$window")" = "false" ]; then
+  if [[ "$(arl_token_window_active "$body" "$window")" = "false" ]]; then
     arl_log "token-budget weekly-glide: window '${window}' is not active — allowing (not binding)"
     printf 'decision=allow\n'
     return 0
@@ -1280,7 +1297,7 @@ arl_token_weekly_glide_gate() {
   # 7. Missing percent -> cannot evaluate -> allow-with-warning (AC #5).
   local percent
   percent="$(arl_token_extract_percent "$body" "$window")"
-  if [ -z "$percent" ]; then
+  if [[ -z "$percent" ]]; then
     arl_log "warning: token-budget weekly-glide telemetry has no '${window}' window entry — allowing dispatch (degraded)"
     printf 'decision=allow\n'
     return 0
@@ -1290,13 +1307,13 @@ arl_token_weekly_glide_gate() {
   #    hardcoded weekday (AC #2). A missing/unparseable value fails safe.
   local resets_at reset_epoch
   resets_at="$(arl_token_extract_resets_at "$body" "$window")"
-  if [ -z "$resets_at" ]; then
+  if [[ -z "$resets_at" ]]; then
     arl_log "warning: token-budget weekly-glide telemetry has no resets_at for '${window}' — allowing dispatch (degraded)"
     printf 'decision=allow\n'
     return 0
   fi
   reset_epoch="$(arl_token_iso_to_epoch "$resets_at")"
-  if [ -z "$reset_epoch" ]; then
+  if [[ -z "$reset_epoch" ]]; then
     arl_log "warning: token-budget weekly-glide could not parse resets_at='${resets_at}' — allowing dispatch (degraded)"
     printf 'decision=allow\n'
     return 0
@@ -1311,7 +1328,7 @@ arl_token_weekly_glide_gate() {
   # `|| true`: the pure core returns non-zero on defer; the decision rides in
   # stdout — neutralize the exit so a `set -e` caller is not aborted here.
   decision_out="$(arl_token_budget_decision "$percent" "$threshold" "true")" || true
-  if [ "$decision_out" = "decision=defer" ]; then
+  if [[ "$decision_out" = "decision=defer" ]]; then
     arl_log "token-budget weekly-glide TRIP: $(arl_token_glide_trip_reason "$percent" "$threshold" "$days" "$resets_at")"
     printf 'decision=defer\n'
     return 1
@@ -1362,7 +1379,7 @@ arl_finish() {
   arl_log "decision=${decision} for '${agent_type}' (${reason})"
   printf 'decision=%s\n' "$decision"
 
-  [ "$decision" = "allow" ] && return 0
+  [[ "$decision" = "allow" ]] && return 0
   return 1
 }
 
@@ -1386,7 +1403,7 @@ arl_finish() {
 # ---------------------------------------------------------------------------
 arl_admission_gate() {
   local agent_type="${1:-}" actor="${2:-}" labels="${3:-}"
-  if [ -z "$agent_type" ]; then
+  if [[ -z "$agent_type" ]]; then
     arl_log "error: arl_admission_gate requires an <agent_type> argument"
     return 2
   fi
@@ -1395,18 +1412,18 @@ arl_admission_gate() {
   #    the config source must never stop the fleet.
   local config
   config="$(arl_config_path)"
-  if [ ! -f "$config" ] || ! jq -e . "$config" >/dev/null 2>&1; then
+  if [[ ! -f "$config" ]] || ! jq -e . "$config" >/dev/null 2>&1; then
     arl_log "warning: config at '$config' is missing or malformed — allowing dispatch (degraded)"
     arl_finish "$agent_type" "allow" "config unreadable — degraded allow"
     return $?
   fi
 
   # 2. Exempt actors and exempt labels are always allowed and never counted.
-  if [ -n "$actor" ] && arl_is_exempt_actor "$actor"; then
+  if [[ -n "$actor" ]] && arl_is_exempt_actor "$actor"; then
     arl_finish "$agent_type" "allow" "actor '${actor}' is exempt (not subject to the limits)"
     return $?
   fi
-  if [ -n "$labels" ] && arl_is_exempt_label "$labels"; then
+  if [[ -n "$labels" ]] && arl_is_exempt_label "$labels"; then
     arl_finish "$agent_type" "allow" "run carries an exempt label (not subject to the limits)"
     return $?
   fi
@@ -1419,11 +1436,11 @@ arl_admission_gate() {
   #     admission check. `|| true`: the decision rides in captured stdout and a
   #     defer returns non-zero — neutralize it so a `set -e` caller is not
   #     aborted before the decision is emitted.
-  if [ "${AGENT_TOKEN_BUDGET_ENABLED:-false}" = "true" ]; then
+  if [[ "${AGENT_TOKEN_BUDGET_ENABLED:-false}" = "true" ]]; then
     local token_decision glide_decision shared_envelope
     shared_envelope="$(arl_token_fetch_envelope)"
     token_decision="$(arl_token_budget_gate session "$shared_envelope")" || true
-    if [ "$token_decision" = "decision=defer" ]; then
+    if [[ "$token_decision" = "decision=defer" ]]; then
       arl_log "token-budget escalation: $(arl_token_breaker_marker session) — add to tracking issue/PR body, remove when cleared"
       arl_finish "$agent_type" "defer" "org-wide token-budget breaker is open (5-hour Claude session window at/over threshold)"
       return $?
@@ -1435,7 +1452,7 @@ arl_admission_gate() {
     #     it inert until sign-off even when this env flag is on. `|| true`: the
     #     decision rides in captured stdout and a defer returns non-zero.
     glide_decision="$(arl_token_weekly_glide_gate "$shared_envelope")" || true
-    if [ "$glide_decision" = "decision=defer" ]; then
+    if [[ "$glide_decision" = "decision=defer" ]]; then
       arl_log "token-budget escalation: $(arl_token_breaker_marker weekly_all) — add to tracking issue/PR body, remove when cleared"
       arl_finish "$agent_type" "defer" "org-wide token-budget breaker is open (7-day Claude weekly window over glide-path threshold)"
       return $?
@@ -1457,7 +1474,7 @@ arl_admission_gate() {
   #    aborted at this assignment before the decision is emitted.
   local breaker
   breaker="$(arl_breaker_decision "$agent_type" "$failures" "$opened" "$now" "$probe_dispatched")" || true
-  if [ "$breaker" != "decision=allow" ]; then
+  if [[ "$breaker" != "decision=allow" ]]; then
     arl_finish "$agent_type" "defer" "consecutive-failure breaker is open"
     return $?
   fi
@@ -1467,7 +1484,7 @@ arl_admission_gate() {
   concurrent="$(arl_count_concurrent_runs "$agent_type")" || concurrent_rc=$?
   # An UNRESOLVED count (no workflow and no agent-ingress.yml role job to count —
   # #1226) fails CLOSED: reading it as 0 would never throttle that repo.
-  if [ "$concurrent_rc" -eq 3 ]; then
+  if [[ "$concurrent_rc" -eq 3 ]]; then
     arl_finish "$agent_type" "defer" "concurrency unresolved — no '${agent_type}' workflow and no ${AGENT_INGRESS_WORKFLOW} to count role jobs from (failing closed)"
     return $?
   fi
@@ -1477,7 +1494,7 @@ arl_admission_gate() {
   # Reset daily_count when the recorded window is more than 24 h old so
   # yesterday's usage cannot block runs indefinitely. Callers are expected to
   # persist daily_window_start alongside daily_count when recording a dispatch.
-  if [ "$daily_window_start" -gt 0 ] && [ $(( now - daily_window_start )) -ge 86400 ]; then
+  if [[ "$daily_window_start" -gt 0 ]] && [[ $(( now - daily_window_start )) -ge 86400 ]]; then
     arl_log "daily window for '${agent_type}' expired ($(( now - daily_window_start ))s) — resetting daily_count"
     daily_count=0
   fi
@@ -1491,7 +1508,7 @@ arl_admission_gate() {
   # Deployment or Environments lock) — that belongs to Phase-4 wiring, not this
   # guard-only library.
   admission="$(arl_admission_decision "$agent_type" "$concurrent" "$last_run" "$daily_count" "$now")" || true
-  if [ "$admission" = "decision=allow" ]; then
+  if [[ "$admission" = "decision=allow" ]]; then
     arl_finish "$agent_type" "allow" "under all limits with a clean breaker"
     return $?
   fi
