@@ -102,12 +102,18 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           # Only what update-branch, the merge and the merge gate need: the
           # gate reads every check run and commit status with this token, as
-          # callers grant GITHUB_TOKEN no checks or statuses scope. Requesting
-          # a permission the App lacks fails this step (no workflows here).
+          # callers grant GITHUB_TOKEN no checks or statuses scope. workflows:
+          # write is needed because nearly every Dependabot PR here bumps an
+          # action pin inside .github/workflows/*.yml, and GitHub refuses to let
+          # an App merge (or update-branch) a change to a workflow file without
+          # it ("refusing to allow a GitHub App to create or update workflow").
+          # Requesting a permission the App lacks fails this step, so the App
+          # must be granted Workflows: Read and write first.
           permission-contents: write
           permission-pull-requests: write
           permission-checks: read
           permission-statuses: read
+          permission-workflows: write
 
       - name: Explain a failed app token
         if: ${{ failure() && steps.app-token.outcome == 'failure' }}
