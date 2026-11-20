@@ -48,15 +48,27 @@ DEPENDABOT_AGENT_JOB_RE='^(dev-lead / .+|pr-auto-review / .+|pr-review / review|
 #   other check run on the head commit COMPLETED as success, neutral or skipped,
 #   every commit status is success, at least one such check was reported, and
 #   every required check is present as a check run from the required app: the
-#   app the rule's integration_id names, or GitHub Actions when it names none.
+#   app the rule's integration_id names, or, when it names none, GitHub Actions
+#   or the one app GitHub itself reports that context from (CodeQL from code
+#   scanning's github-advanced-security app, id 57789; see
+#   DEPENDABOT_DEFAULT_CHECK_APPS).
 #   A commit status, or a run from any other app or with an unreadable app,
 #   does not count. Anything else — failure, cancelled,
 #   timed_out, action_required, stale, startup_failure, pending, missing, or more
 #   contexts than one page — blocks.
+# Required checks whose rule names no app (integration_id) but which GitHub
+# itself reports from a fixed app, not from Actions: context -> {slug, id}.
+# CodeQL default setup posts its "CodeQL" check from github-advanced-security
+# (app id 57789), so a repo that requires CodeQL without naming the app could
+# never pass the Actions-only fallback, and no Dependabot PR merged after
+# the #1399 gate shipped on 2026-11-04. Both the slug and the id must match.
+DEPENDABOT_DEFAULT_CHECK_APPS='{"CodeQL":{"slug":"github-advanced-security","id":57789}}'
+
 dependabot_checks_gate() {
   local pr_json="$1" required_json="${2:-[]}" expected="${3:-}" out verdict reason
 
   out=$(jq -r --argjson required "$required_json" --arg expected "$expected" \
+      --argjson default_apps "$DEPENDABOT_DEFAULT_CHECK_APPS" \
       --arg agent_re "$DEPENDABOT_AGENT_JOB_RE" '
     (if has("data") then .data.repository.pullRequest else . end) as $pr
     | ($pr.headRefOid // "") as $head
@@ -103,14 +115,19 @@ dependabot_checks_gate() {
         and (name_of | test($agent_re))
         and (name_of as $n | [$required[] | if type == "object" then .context else . end] | index($n) | not);
       # A required check counts only as a CheckRun from the app the rule names
-      # (integration_id), or from GitHub Actions when it names none. A commit
-      # status, or a run from any other app or with an unreadable app, with the
-      # same name does not satisfy it.
+      # (integration_id). When it names none: from GitHub Actions, or from the
+      # one fixed app GitHub reports that context from ($default_apps; both
+      # slug and id must match). A commit status, or a run from any other app
+      # or with an unreadable app, with the same name does not satisfy it.
       def satisfies($r):
         .__typename == "CheckRun" and name_of == $r.context
         and (if ($r.integration_id | type) == "number"
              then (.checkSuite.app.databaseId? // null) == $r.integration_id
-             else (.checkSuite.app.slug? // "") == "github-actions" end);
+             else ((.checkSuite.app.slug? // "") == "github-actions")
+                  or ($default_apps[$r.context] as $d
+                      | $d != null
+                        and (.checkSuite.app.slug? // "") == $d.slug
+                        and (.checkSuite.app.databaseId? // null) == $d.id) end);
       ([$required[] | if type == "object" then . else {context: ., integration_id: null} end]) as $req
     | ([$req[] | . as $r | select([$nodes[] | satisfies($r)] | any | not) | .context]) as $missing
     | ([$nodes[] | select(agent_job | not)]) as $counted
