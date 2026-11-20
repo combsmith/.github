@@ -234,10 +234,10 @@ creating a self-sustaining chain that serializes Dependabot PR merges.
 
 **GitHub App permission requirement:** The `combsmith-dependabot-automrg` GitHub App
 must have the `workflows` permission (Read and write), and the rebase workflow requests
-it on its token. Without it GitHub refuses, with *"refusing to allow a GitHub App to
-create or update workflow"*, both the merge of any PR that changes a workflow file
-(nearly every GitHub Actions bump) and an `update-branch` that brings workflow changes
-from `main`. Grant it in the GitHub App settings: Settings → GitHub Apps →
+it on its token. Without it, GitHub refuses both the merge of any PR that changes a
+workflow file (nearly every GitHub Actions bump) and an `update-branch` that brings
+workflow changes from `main`, with *"refusing to allow a GitHub App to create or update
+workflow"*. Grant it in the GitHub App settings: Settings → GitHub Apps →
 combsmith-dependabot-automrg → Permissions → Workflows → Read and write, then accept
 the updated permissions on the org installation.
 
