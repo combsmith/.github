@@ -433,6 +433,12 @@ template_requires_s7635_marker() {
   grep -qE '^[[:space:]]*secrets:[[:space:]]+inherit([[:space:]]|$)' "$1"
 }
 
+# stub_has_inherited_secrets — 0 if the stub content on stdin carries a real
+# `secrets: inherit` YAML line.
+stub_has_inherited_secrets() {
+  grep -qE '^[[:space:]]*secrets:[[:space:]]+inherit([[:space:]]|$)'
+}
+
 # stub_has_s7635_marker — 0 if the stub content on stdin carries the
 # `# NOSONAR(githubactions:S7635)` marker on a real `secrets: inherit` line.
 stub_has_s7635_marker() {
@@ -601,6 +607,70 @@ merge_guarded_surfaces() {
   return 0
 }
 
+# stub_has_stale_stable_header <existing_content> <template> <repo> -> 0 if the stub carries a
+# comment naming its agent's stable channel (`<base>/stable`, `<base>/v<M>-stable`,
+# `<base> stable channel`) that the template no longer carries (#1297). Such a header
+# contradicts a ring pin; the pin alone is compliant, so without this check the sweep
+# would never ship the comment-only header fix to existing ring repos. In ring repos,
+# even a currently stable-pinned stub must migrate its header because the in-place
+# repin will change the pin to ring, leaving the header contradictory.
+stub_has_stale_stable_header() {
+  local existing="$1" template="$2" repo="$3" base re tier
+  base="$(reusable_base_of "$template")"
+  [[ -n "$base" ]] || return 1
+  re="^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)"
+  grep -qE "$re" <<< "$existing" || return 1
+  # A stable-pinned stub's header agrees with its pin, BUT only when the repo is
+  # stable-tier. In ring-managed repos, a stable-pinned stub is itself an anomaly
+  # that the repin will fix; the header must migrate too, so don't exempt in ring.
+  if ring_is_ring_reusable "$base" && [[ -n "$repo" ]]; then
+    tier="$(ring_tier_for_repo "$base" "$repo" 2>/dev/null)" || tier=""
+    # Ring-managed repo with a tier: the stub should be ring-pinned, so the header
+    # is stale regardless of the current pin.
+    if [[ -n "$tier" ]] && [[ "$tier" != "stable" ]]; then
+      # The template may still carry the stable wording; ring renders (ring_repin_uses)
+      # and the header cleanup neutralize it, so the template never exempts a ring repo.
+      return 0  # Flag as stale
+    fi
+  fi
+  ! grep -qE "$re" "$template" || return 1
+  # Non-ring reusable or stable-tier repo: apply the exemption (don't flag if
+  # the stub is stable-pinned, since the header agrees with the pin).
+  ! grep -qE "^[[:space:]]*uses:.*@${base}/(v[0-9]+-)?stable([[:space:]]|\$)" <<< "$existing"
+}
+
+# strip_stale_stable_header <base> [<template>] -> stdin minus the stale stable-channel
+# header. With <template>, the stub's whole leading comment block (everything above the
+# first top-level YAML key) is replaced by the template's canonical, tier-neutral header,
+# so a multiline legacy bullet is never left half-deleted. The body is kept verbatim, so
+# per-repo edits (e.g. workflow_run.workflows) survive and the next sweep sees no stale
+# header (#1297). Without <template>, only the lines naming the stable channel are dropped.
+strip_stale_stable_header() {
+  local base="$1" template="${2:-}"
+  if [[ -n "$template" && -r "$template" ]]; then
+    # Body comment blocks (consecutive comment lines) that name the stable channel are
+    # dropped whole too, so a legacy `# Pinned to the moving ... stable channel` block under
+    # `jobs:` does not survive and keep the detector true forever.
+    awk -v tpl="$template" -v base="$base" -v re="^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)" '
+      BEGIN {
+        while ((getline l < tpl) > 0) { if (l ~ /^[^#[:space:]]/) break; hdr = hdr l "\n" }
+        # The template header may still name the stable channel; render it tier-neutral
+        # (same wording as ring_repin_uses) so cleanup never reinstalls it.
+        gsub(base "/(v[0-9]+-)?stable", base "/<tier>", hdr)
+        gsub(base " stable channel", base "/<tier> channel", hdr)
+      }
+      function flush() { if (!stale) printf "%s", blk; blk = ""; stale = 0 }
+      !body && /^[^#[:space:]]/ { body = 1; printf "%s", hdr }
+      body && /^[[:space:]]*#/ { blk = blk $0 "\n"; if ($0 ~ re) stale = 1; next }
+      body { flush(); print; next }
+      END { if (body) flush() }
+    '
+    return 0
+  fi
+  grep -vE "^[[:space:]]*#.*(${base}/(v[0-9]+-)?stable|${base} stable channel)" || true
+}
+
+
 # is_already_compliant <existing_content> <template> <repo> -> 0 if the deployed
 # stub needs no re-deploy. A stub is compliant only when it is BOTH pin-compliant
 # (is_pin_compliant, below) AND — when its template carries a real `secrets: inherit`
@@ -615,7 +685,8 @@ merge_guarded_surfaces() {
 # rendered at the repo's tier channel (stub_body_matches_template): its callers
 # predate the template and carry per-repo edits, which are drift. So must every stub
 # in a FULL_BODY_COMPARE_REPOS repo (repo-template, #1285) other than a
-# BODY_PRESERVING_WORKFLOWS one, whose per-repo body is never re-synced.
+# BODY_PRESERVING_WORKFLOWS or PRESENT_ONLY_WORKFLOWS one, whose per-repo body is
+# re-pinned in place and never re-synced from the template.
 #
 # A pin-correct stub whose guarded `on:` / `permissions:` / `concurrency:` surface
 # differs from the template is ALSO drift (#1236): the audit flags it
@@ -634,6 +705,7 @@ is_already_compliant() {
      && ! stub_has_s7635_marker <<< "$existing_content"; then
     return 1
   fi
+  stub_has_stale_stable_header "$existing_content" "$template" "$repo" && return 1
   if is_replace_if_present_workflow "$workflow" \
      || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
@@ -925,6 +997,31 @@ deploy_repo() {
         printf '%s\n' "$merged_stub" > "$repin_source"
       else
         repin_source="$template"
+      fi
+    fi
+
+    # Stale stable-channel header (#1297): migrate by editing the stub's OWN body, never
+    # by redeploying the template (that would reset per-repo edits such as
+    # pr-auto-review's workflow_run.workflows). Full-body-compared stubs are exempt —
+    # their drift is already resolved by a template redeploy.
+    if [[ "$DRY_RUN" != "true" && -n "$existing_sha" ]] \
+       && stub_has_stale_stable_header "$existing_content" "$template" "$repo"; then
+      base="$(reusable_base_of "$template")"
+      if [[ "$repin_source" == "$template" ]] && ! is_replace_if_present_workflow "$workflow" \
+         && ! { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; } \
+         && is_pin_compliant "$existing_content" "$template" "$repo" \
+         && ! stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content" \
+         && { ! template_requires_s7635_marker "$template" || stub_has_inherited_secrets < <(printf '%s\n' "$existing_content"); }; then
+        # Keep the existing body only when its guarded surfaces are compliant and it
+        # still forwards `secrets: inherit` where the template does (the marker
+        # injection below cannot add a missing line); a stub with trigger/permission/
+        # secrets drift falls back to the canonical template.
+        repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
+        printf '%s\n' "$existing_content" > "$repin_source"
+      fi
+      if [[ "$repin_source" != "$template" ]]; then
+        strip_stale_stable_header "$base" "$template" < "$repin_source" > "$repin_source.stripped"
+        mv "$repin_source.stripped" "$repin_source"
       fi
     fi
 
