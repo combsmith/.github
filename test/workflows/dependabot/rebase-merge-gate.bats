@@ -56,7 +56,8 @@ _rules_requiring() { # NAME...
   [ "$(yq -r "$step | .\"permission-pull-requests\"" "$REUSABLE")" = "write" ]
   [ "$(yq -r "$step | .\"permission-checks\"" "$REUSABLE")" = "read" ]
   [ "$(yq -r "$step | .\"permission-statuses\"" "$REUSABLE")" = "read" ]
-  [ "$(yq -r "$step | keys | map(select(test(\"^permission-\"))) | length" "$REUSABLE")" = "4" ]
+  [ "$(yq -r "$step | .\"permission-workflows\"" "$REUSABLE")" = "write" ]
+  [ "$(yq -r "$step | keys | map(select(test(\"^permission-\"))) | length" "$REUSABLE")" = "5" ]
 }
 
 @test "rebase: a token that cannot be minted stops the job with the missing App permissions named" {
@@ -64,6 +65,7 @@ _rules_requiring() { # NAME...
   [ "$(yq -r "$step | .if" "$REUSABLE")" = "\${{ failure() && steps.app-token.outcome == 'failure' }}" ]
   run yq -r "$step | .run" "$REUSABLE"
   [[ "$output" == *"checks:read and statuses:read"* ]]
+  [[ "$output" == *"workflows:write"* ]]
   [[ "$output" == *"exit 1"* ]]
 }
 
