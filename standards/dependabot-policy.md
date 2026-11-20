@@ -232,28 +232,30 @@ This workflow fires on every push to `main` (and can be triggered manually via
 Using the app token for merges ensures each merge triggers a new push to `main`,
 creating a self-sustaining chain that serializes Dependabot PR merges.
 
-**GitHub App permission requirement:** The `dependabot-automerge-petry` GitHub App
-must have the `workflows` permission granted. Without it, the `update-branch` API
-call fails with *"refusing to allow a GitHub App to create or update workflow"*
-whenever `main` contains workflow file changes (`.github/workflows/*.yml`) that
-would be merged into the PR branch. Grant the permission in the GitHub App settings:
-Settings → GitHub Apps → dependabot-automerge-petry → Permissions → Workflows → Read & Write.
+**GitHub App permission requirement:** The `combsmith-dependabot-automrg` GitHub App
+must have the `workflows` permission (Read and write), and the rebase workflow requests
+it on its token. Without it, GitHub refuses both the merge of any PR that changes a
+workflow file (nearly every GitHub Actions bump) and an `update-branch` that brings
+workflow changes from `main`, with *"refusing to allow a GitHub App to create or update
+workflow"*. Grant it in the GitHub App settings: Settings → GitHub Apps →
+combsmith-dependabot-automrg → Permissions → Workflows → Read and write, then accept
+the updated permissions on the org installation.
 
 **Chain-stall safety net:** The rebase workflow also runs on a 4-hour schedule
 (`cron: '0 */4 * * *'`) in addition to `push: main` and `workflow_dispatch`.
 This prevents the serialization chain from stalling in repos where no PR merges
 to `main` occur for extended periods, without relying solely on external pushes.
 
-**Fallback merge when `update-branch` fails:** If `update-branch` fails (e.g., the
-GitHub App lacks the `workflows` permission or there are merge conflicts), the
+**Fallback merge when `update-branch` fails:** If `update-branch` fails (e.g., due to merge conflicts), the
 workflow falls through to the direct merge attempt instead of skipping the PR
 permanently. The bypass actor (`bypass_mode: always`) can call `gh api .../merge`
 directly when the branch is behind `main`, provided the PR's own CI has passed
 and `strict_required_status_checks_policy` is `false` for the repo. If a repo
 enforces `strict_required_status_checks_policy: true` (branches must be up to
-date before merge), the fallback direct merge will also fail — granting the
-`dependabot-automerge-petry` App the `workflows` permission so that
-`update-branch` succeeds is the correct resolution in that case.
+date before merge), the fallback direct merge will also fail — ensure the
+`combsmith-dependabot-automrg` App has the `workflows` permission (Read and write)
+granted and accepted; requesting a permission the App lacks fails the token step
+before `update-branch` is attempted.
 
 **Why `update-branch` with APP_TOKEN (not `GITHUB_TOKEN` or `@dependabot rebase`):**
 
@@ -384,14 +386,14 @@ The workflow fails if any known vulnerability is found, blocking the PR from mer
    > using `gh api .../merge` as a bypass was fragile and has been superseded.
 4. Add `workflows/dependency-audit.yml` to `.github/workflows/`.
 5. **GitHub App permissions** — the Dependabot GitHub App requires
-   `contents: write`, `pull_requests: write`, `checks: read` and `statuses: read`.
+   `contents: write`, `pull_requests: write`, `checks: read`, `statuses: read` and
+   `workflows: write`.
    The rebase workflow's merge gate reads check runs and commit statuses with the
    App token; without `checks: read` and `statuses: read` it stops with an error.
    Grant: GitHub App settings → Permissions → Repository, then accept the updated
-   permissions in the org's installed-app settings. The rebase workflow does not
-   request `workflows`, so `update-branch` cannot bring in workflow file changes
-   from `main`; it falls back to a direct merge when strict up-to-date checks
-   are off.
+   permissions in the org's installed-app settings. The rebase workflow requests
+   `workflows: write` because merging a GitHub Actions bump changes a workflow
+   file; its token step fails if the App has not been granted it.
 
 6. **GitHub App secrets** — `APP_ID` and `APP_PRIVATE_KEY` are managed at the
    **organization level** (`gh secret set <name> --org combsmith --visibility all`),
