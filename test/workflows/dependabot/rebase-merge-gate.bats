@@ -65,6 +65,7 @@ _rules_requiring() { # NAME...
   [ "$(yq -r "$step | .if" "$REUSABLE")" = "\${{ failure() && steps.app-token.outcome == 'failure' }}" ]
   run yq -r "$step | .run" "$REUSABLE"
   [[ "$output" == *"checks:read and statuses:read"* ]]
+  [[ "$output" == *"workflows:write"* ]]
   [[ "$output" == *"exit 1"* ]]
 }
 
