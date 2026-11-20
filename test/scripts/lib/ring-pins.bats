@@ -237,6 +237,16 @@ setup() {
   [ -z "$(ring_highest_major 2-next latest '')" ]
 }
 
+@test "ring_highest_major: a zero-padded major compares as decimal, not octal (#1462)" {
+  [ "$(ring_highest_major 09.0.0 8.0.0)" = "09" ]
+  [ "$(ring_highest_major 08.0.0 9.0.0)" = "9" ]
+}
+
+@test "ring_highest_channel_major: a zero-padded major compares as decimal, not octal (#1462)" {
+  [ "$(ring_highest_channel_major 09-stable 8-next)" = "09" ]
+  [ "$(ring_highest_channel_major 08-stable 9-next)" = "9" ]
+}
+
 # ── channel major (#870): the CALLER-CONTRACT major, not the release major ──────
 
 @test "ring_highest_channel_major: picks the highest v<M>-<tier> channel token" {

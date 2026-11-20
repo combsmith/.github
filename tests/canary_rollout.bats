@@ -183,6 +183,11 @@ setup() {
   [ "$(promotion_failure_should_escalate 'x' 2)" -eq 0 ]
   [ "$(promotion_failure_should_escalate 2 'y')" -eq 0 ]
 }
+@test "promotion_failure_should_escalate: zero-padded values are read as decimal, not octal" {
+  [ "$(promotion_failure_should_escalate 8 010)" -eq 0 ]
+  [ "$(promotion_failure_should_escalate 10 010)" -eq 1 ]
+  [ "$(promotion_failure_should_escalate 9 09)" -eq 1 ]
+}
 
 # ── commit_page_done: pagination termination decision (#1023) ─────────────────
 @test "commit_page_done: returns 1 (done) when the boundary commit is found" {
@@ -291,6 +296,14 @@ YML
   run _semver_gt 2.1.0 2.1.1; [ "$status" -ne 0 ]
 }
 
+@test "_semver_gt: zero-padded and beyond-int64 components compare correctly" {
+  run _semver_gt 1.08.0 1.9.0; [ "$status" -ne 0 ]
+  run _semver_gt 1.0.99999999999999999999 1.0.9; [ "$status" -eq 0 ]
+  run _semver_gt 1.0.09 1.0.9; [ "$status" -ne 0 ]
+}
+@test "decide_graduated: zero-padded dwell floor is decimal" {
+  [ "$(decide_graduated 9 010 3 3 false 0 0)" = "SOAKING" ]
+}
 @test "max_semver: picks the highest version" {
   [ "$(max_semver 2.0.5 2.1.0 2.0.9)" = "2.1.0" ]
   [ "$(max_semver 1.0.0)" = "1.0.0" ]
@@ -300,6 +313,11 @@ YML
 }
 @test "max_semver: empty input → empty" {
   [ -z "$(max_semver)" ]
+}
+@test "max_semver: zero-padded components compare as decimal, not octal (#1462)" {
+  [ "$(max_semver 1.08.0 1.7.9)" = "1.08.0" ]
+  [ "$(max_semver 1.09.0 1.10.0)" = "1.10.0" ]
+  [ "$(max_semver 08.0.0 7.9.9)" = "08.0.0" ]
 }
 
 # ── dwell_met ─────────────────────────────────────────────────────────────────
@@ -6290,6 +6308,16 @@ GHEOF
     bash -c "source '$ORCH' && _baseline_daily dev-lead 3 org/busy 2>/dev/null"
   [ "$status" -eq 0 ]
   [ "$output" = "2" ]
+  [ ! -s "$flag" ]
+}
+
+@test "_baseline_daily: zero-padded CANARY_INGRESS_JOBS_MAX=09 is read as decimal 9, not an octal error" {
+  _ingress_stub
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env CANARY_RINGS="$INGRESS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 CANARY_INGRESS_JOBS_MAX=09 _CANARY_UNRESOLVED_FLAG="$flag" \
+    bash -c "source '$ORCH' && _baseline_daily dev-lead 3 org/busy 2>&1"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"value too great for base"* ]]
   [ ! -s "$flag" ]
 }
 
