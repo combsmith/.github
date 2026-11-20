@@ -167,11 +167,43 @@ _ok_nodes() {
 }
 
 @test "checks: a required check with no integration_id falls back to GitHub Actions only" {
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_app_run SonarCloud sonarqubecloud 12345)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"SonarCloud","integration_id":null}]'
+  [ "$status" -eq 1 ]
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"SonarCloud"}]'
+  [ "$status" -eq 1 ]
+}
+
+# CodeQL default setup reports "CodeQL" from github-advanced-security (57789),
+# never from Actions, so a rule naming no app is also satisfied by that app.
+@test "checks: CodeQL required with no integration_id is satisfied by code scanning's app" {
   nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_app_run CodeQL github-advanced-security 57789)]"
   run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"CodeQL","integration_id":null}]'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "checks: CodeQL's default app does not count when the slug or the id differs" {
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_app_run CodeQL github-advanced-security 99999)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
   [ "$status" -eq 1 ]
-  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '[{"context":"CodeQL"}]'
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_app_run CodeQL some-other-app 57789)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
   [ "$status" -eq 1 ]
+}
+
+@test "checks: code scanning's app does not satisfy a required check other than CodeQL" {
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$(tt_app_run SonarCloud github-advanced-security 57789)]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["SonarCloud"]'
+  [ "$status" -eq 1 ]
+}
+
+@test "checks: a neutral CodeQL run from code scanning's app passes" {
+  node=$(jq -cn '{__typename:"CheckRun",name:"CodeQL",status:"COMPLETED",conclusion:"NEUTRAL",checkSuite:{app:{slug:"github-advanced-security",databaseId:57789}}}')
+  nodes="[$(tt_check_run Lint COMPLETED SUCCESS),$node]"
+  run dependabot_checks_gate "$(tt_pr_state "$nodes")" '["CodeQL"]'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }
 
 @test "checks: the Actions run satisfies a required check beside a same-name run from another app" {
