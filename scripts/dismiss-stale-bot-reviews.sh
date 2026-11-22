@@ -257,7 +257,8 @@ process_pr() {
     if [[ "$rc" -eq 1 ]]; then return 0; fi
     if [[ "$rc" -ne 0 ]]; then return 1; fi
 
-    msg="Superseded: dismissed by dismiss-stale-bot-reviews because ${login}'s CHANGES_REQUESTED review was on ${commit_oid} but the PR head is now ${head_oid}. A still-valid finding returns as a fresh review on the new commit."
+    msg="Superseded: dismissed by dismiss-stale-bot-reviews because ${login}'s CHANGES_REQUESTED review was on ${commit_oid} but the PR head is now ${head_oid}."
+    msg+=" A still-valid finding returns as a fresh review on the new commit."
     if [[ "$APPLY" != "true" ]]; then
       echo "[dry-run] would dismiss review ${review_id} by ${login} (on ${commit_oid}, head ${head_oid})"
       would_dismiss=$((would_dismiss + 1))
@@ -293,7 +294,8 @@ process_pr() {
   done <<<"$reviews"
 
   if [[ "$APPLY" != "true" ]]; then
-    echo "dismiss-stale-bot-reviews [dry-run]: examined ${examined} effective review(s), would dismiss ${would_dismiss} stale bot review(s) on ${tag} (head ${head_oid}); no reviews were dismissed"
+    summary="dismiss-stale-bot-reviews [dry-run]: examined ${examined} effective review(s), would dismiss ${would_dismiss} stale bot review(s)"
+    echo "${summary} on ${tag} (head ${head_oid}); no reviews were dismissed"
   else
     echo "dismiss-stale-bot-reviews: examined ${examined} effective review(s), dismissed ${dismissed} stale bot review(s) on ${tag} (head ${head_oid})"
   fi

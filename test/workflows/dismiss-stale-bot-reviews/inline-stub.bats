@@ -67,3 +67,10 @@ assert "dependabot[bot]" in j and "head.repo.full_name" in j
 ' "$TEMPLATE"
   [ "$status" -eq 0 ] || { echo "$output"; false; }
 }
+
+@test "neither stub reads github.event.repository (undefined for schedule events)" {
+  for stub in "$TEMPLATE" "$LOCAL_COPY"; do
+    run grep -nE 'github\.event\.repository|DSBR_OWNER|DSBR_NAME' "$stub"
+    [ "$status" -eq 1 ]
+  done
+}
