@@ -442,6 +442,17 @@ set_unreadable() {
   echo "$output" | grep -q "held for a human by label 'dev-lead:hands-off'"
 }
 
+@test "an earlier mutation failure survives a later hold label stopping the remaining dismissals" {
+  jq '.data.repository.pullRequest.latestOpinionatedReviews.nodes += [{"id":"PRR_stale2","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"copilot-pull-request-reviewer","__typename":"Bot"}}]' \
+    "$D/reviews.json" > "$D/r.tmp" && mv "$D/r.tmp" "$D/reviews.json"
+  : > "$D/envelope.PRR_stale"
+  label_json dev-lead:hands-off > "$D/labels.recheck.3.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'returned a GraphQL errors envelope'
+  echo "$output" | grep -q "held for a human by label 'dev-lead:hands-off'"
+}
+
 @test "unreadable label list on --pr: nothing dismissed, exit 1 (every form)" {
   local f
   for f in "${FORMS[@]}"; do

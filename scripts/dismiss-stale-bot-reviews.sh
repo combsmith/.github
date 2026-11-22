@@ -299,7 +299,7 @@ process_pr() {
     # Revalidate before each mutation. An unreadable head is a FAILURE of this PR
     # (stop mutating, exit non-zero); a head that really moved is a warning.
     rc=0; recheck_head "$head_oid" || rc=$?
-    if [[ "$rc" -eq 1 || "$rc" -eq 3 ]]; then return 0; fi
+    if [[ "$rc" -eq 1 || "$rc" -eq 3 ]]; then [[ "$failed" -eq 0 ]]; return; fi  # keep earlier dismissal failures
     if [[ "$rc" -ne 0 ]]; then return 1; fi
 
     msg="Superseded: dismissed by dismiss-stale-bot-reviews because ${login}'s CHANGES_REQUESTED review was on ${commit_oid} but the PR head is now ${head_oid}."
