@@ -681,7 +681,7 @@ auto-rebase fan-out. Full standard, rationale, and operator runbook:
   [`standards/pr-limits.md` §2.1](https://github.com/combsmith/.github/blob/main/standards/pr-limits.md)).
 
 > **Exempt actors are sanctioned policy, not drift.** `dependabot[bot]`,
-> `OrganizationAdmin`, `@combsmith/org-leads`, the `dependabot-automerge-petry`
+> `OrganizationAdmin`, `@combsmith/org-leads`, the `combsmith-dependabot-automrg`
 > app, and `security`-labeled PRs are on the cap's exempt list — never blocked
 > and never counted. This mirrors the ruleset bypass-actor allowance (see
 > [Ruleset remediation](https://github.com/combsmith/.github/blob/main/standards/ruleset-remediation-runbook.md)):

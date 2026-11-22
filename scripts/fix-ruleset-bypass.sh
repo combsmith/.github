@@ -7,7 +7,7 @@
 #
 # The standard requires that every such ruleset grant `bypass_mode: always` to
 # BOTH:
-#   1. the `dependabot-automerge-petry` GitHub App (Integration, actor_id 3167543)
+#   1. the `combsmith-dependabot-automrg` GitHub App (Integration, actor_id 3167543)
 #   2. the `OrganizationAdmin` role
 #
 # Unlike apply-rulesets.sh (which only manages `pr-quality` and `code-quality`
