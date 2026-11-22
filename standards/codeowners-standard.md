@@ -36,7 +36,7 @@ The legacy direct-listing pattern and extra teams on the `*` catch-all are **for
 
 ```text
 # DO NOT USE — individuals and bot accounts as owners
-* @don-petry @dependabot-automerge-petry
+* @don-petry @combsmith-dependabot-automrg
 
 # DO NOT USE — additional teams on the default '*' catch-all
 * @combsmith/org-leads @combsmith/security-leads
