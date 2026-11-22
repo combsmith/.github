@@ -26,7 +26,9 @@
 
 ### Verification
 
-The stale CodeRabbit review that was blocking PR #1094 has been dismissed. The PR now shows `reviewDecision: APPROVED` and no longer carries the stale blocking review despite having zero unresolved threads and all CI checks passing.
+The stale CodeRabbit review that was blocking PR #1094 has been dismissed. The PR now shows
+`reviewDecision: APPROVED` and no longer carries the stale blocking review despite having zero
+unresolved threads and all CI checks passing.
 
 This satisfies **Criterion 4** of issue #1115: PR #1094 unblocks after the workflow lands and the stale review is dismissed.
 

@@ -76,8 +76,8 @@ jobs:
   persona-mention:
     permissions:
       contents: read        # the reusable checks out its tooling repo — required,
-                            # or the call fails at startup (a reusable is granted
-                            # no more than the caller; persona-standards.md §5)
+                             # or the call fails at startup (a reusable is granted
+                             # no more than the caller; persona-standards.md §5)
       issues: read
       pull-requests: read
     uses: combsmith/.github/.github/workflows/persona-mention-reusable.yml@persona-mention/v1-ring0  # NOSONAR(githubactions:S7637) first-party channel ref
