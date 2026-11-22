@@ -8098,3 +8098,18 @@ GHEOF
   [ "$(idle_sample_waiver 09 010 0 1)" = "false" ]
   [ "$(idle_sample_waiver 010 010 0 1)" = "true" ]
 }
+
+# ── overflow safety: oversized operands must not wrap (review on #1503) ───────
+@test "run_list_covers: operand longer than 18 digits proves nothing" {
+  ! run_list_covers 5 18446744073709551617 "" ""
+  ! run_list_covers 18446744073709551616 18446744073709551617 "" ""
+}
+@test "_is_evicted_run: oversized non-zero count is not an eviction" {
+  ! _is_evicted_run cancelled 18446744073709551616
+  _is_evicted_run cancelled 000
+}
+@test "commit_page_done: malformed or oversized count keeps paginating" {
+  commit_page_done "false" abc 100
+  commit_page_done "false" 18446744073709551617 100
+  ! commit_page_done "false" 42 100
+}

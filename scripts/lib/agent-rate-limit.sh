@@ -126,7 +126,10 @@ arl_sanitize_int() {
     # strings cannot overflow) so zero-padded input ("08") is not read as
     # invalid octal by later [[ -ge ]] comparisons.
     value="${value#"${value%%[!0]*}"}"
-    printf '%s' "${value:-0}"
+    value="${value:-0}"
+    # More than 18 digits would wrap in later [[ ]] arithmetic: clamp.
+    (( ${#value} > 18 )) && value=999999999999999999
+    printf '%s' "$value"
   else
     printf '%s' "$fallback"
   fi

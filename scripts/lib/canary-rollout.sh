@@ -212,7 +212,10 @@ promotion_failure_should_escalate() {
 # exist), else return 0 (keep paginating). Pure: no I/O, unit-testable.
 commit_page_done() {
   local found="$1" count="${2:-0}" per_page="${3:-100}"
-  if [[ "$found" = "true" ]] || [[ "$count" -lt "$per_page" ]]; then return 1; fi
+  [[ "$found" = "true" ]] && return 1
+  # Fail open (keep paginating) unless both operands are 1-18 digit integers.
+  [[ "$count" =~ ^[0-9]{1,18}$ && "$per_page" =~ ^[0-9]{1,18}$ ]] || return 0
+  (( 10#$count < 10#$per_page )) && return 1
   return 0
 }
 
@@ -427,6 +430,8 @@ run_list_covers() {
   local n="${1:-0}" cap="${2:-0}" oldest="${3:-}" since="${4:-}"
   case "$n" in ''|*[!0-9]*) return 1 ;; esac
   case "$cap" in ''|*[!0-9]*) return 1 ;; esac
+  # Longer than 18 digits would wrap in 10# arithmetic: prove nothing.
+  (( ${#n} > 18 || ${#cap} > 18 )) && return 1
   (( 10#$n < 10#$cap )) && return 0
   [[ -n "$since" ]] && [[ -n "$oldest" ]] && [[ "$oldest" < "$since" ]]
 }
@@ -579,7 +584,7 @@ _is_evicted_run() {
   local conclusion="$1" count="$2"
   [[ "$conclusion" = "cancelled" ]] || return 1
   case "$count" in ''|*[!0-9]*) return 1 ;; esac
-  [[ "$count" -eq 0 ]]
+  [[ "$count" =~ ^0+$ ]]
 }
 
 # next_channel_in_order <current_channel> <ordered_channels_csv>

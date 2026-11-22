@@ -556,3 +556,14 @@ stub_concurrent_runs() {
   [[ "$(arl_sanitize_int 08 5)" == "8" ]]
   [[ "$(arl_sanitize_int 08 5)" -ge 8 ]]
 }
+
+@test "breaker: oversized failure count clamps instead of wrapping (defers)" {
+  write_config "dev-lead" 3 5 50 3 30
+  run bash -c "source '$LIB'; arl_breaker_decision dev-lead 9999999999999999999 0 1000000 0"
+  [[ "$output" == *"decision=defer"* ]]
+}
+
+@test "transport: oversized retry_until clamps instead of wrapping (defers)" {
+  run bash -c "source '$LIB'; arl_token_transport_decision '{\"status\":429,\"retry_after\":120,\"retry_until\":9999999999999999999}' 1000 2>/dev/null"
+  [ "$output" = "defer" ]
+}
