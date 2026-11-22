@@ -1742,11 +1742,10 @@ _baseline_daily() {
 # workflow blob differs between the candidate SHA and the prior channel SHA, else 0. Used
 # by triage to confirm a CANDIDATE REGRESSION (#548): a failure whose reusable is identical
 # to the prior version is pre-existing, not introduced by the candidate.
-# MUST be called only when both cand and prior are non-empty; the caller guards this.
 _reusable_differs() {
   local agent="$1" cand="$2" prior="$3" reusable a b host
   reusable="$(_agent_field "$agent" reusable)"
-  [[ -z "$reusable" ]] && { echo 0; return 0; }
+  [[ -z "$reusable" ]] || [[ -z "$cand" ]] || [[ -z "$prior" ]] && { echo 0; return 0; }
   host="$(_agent_field "$agent" host)"; host="${host:-$THIS_REPO}"
   if [[ "$host" = "$THIS_REPO" ]]; then
     # This-repo agent: the reusable blob lives in the local checkout.
@@ -1994,11 +1993,7 @@ _pair_state() {
   done
   local prior="${commit_array[$dst_idx]:--}" differs
   [[ "$prior" = "-" ]] && prior=""
-  if [[ -n "$cand" ]] && [[ -n "$prior" ]]; then
-    differs="$(_reusable_differs "$agent" "$cand" "$prior")"
-  else
-    differs="unknown"
-  fi
+  differs="$(_reusable_differs "$agent" "$cand" "$prior")"
 
   # Cumulative health since this candidate's own cut, across every concrete tier EXCEPT a ring
   # strictly BELOW the source that runs a DIFFERENT (newer) candidate (#1118 AC5): that ring's
