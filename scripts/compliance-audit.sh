@@ -1228,7 +1228,7 @@ check_code_scanning_rule() {
 # The standard (github-settings.md § "Bypass Actors — Required on Every Ruleset
 # Targeting main") requires that EVERY ruleset whose conditions include the
 # default branch grant always-bypass to BOTH:
-#   1. the `dependabot-automerge-petry` GitHub App (Integration, actor_id 3167543)
+#   1. the `combsmith-dependabot-automrg` GitHub App (Integration, actor_id 3167543)
 #   2. the `OrganizationAdmin` role
 # GitHub evaluates bypass eligibility independently per ruleset, so a missing
 # actor on code-quality (or a legacy protect-branches / main ruleset) silently
@@ -1315,15 +1315,15 @@ check_ruleset_bypass_actors() {
       fi
     fi
 
-    # --- dependabot-automerge-petry app -----------------------------------
+    # --- combsmith-dependabot-automrg app ---------------------------------
     if [[ "$dep_always" != "true" ]]; then
       if [[ "$dep_any" = "true" ]]; then
         add_finding "$repo" "rulesets" "ruleset-bypass-dependabot-mode-$slug" "error" \
-          "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants the \`dependabot-automerge-petry\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass but with the wrong mode. \`pull_request\` mode only applies when the bypass actor opens the PR; Dependabot opens its own PRs, so its merge API calls are rejected. Set \`bypass_mode: always\`." \
+          "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants the \`combsmith-dependabot-automrg\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass but with the wrong mode. \`pull_request\` mode only applies when the bypass actor opens the PR; Dependabot opens its own PRs, so its merge API calls are rejected. Set \`bypass_mode: always\`." \
           "$std_ref"
       else
         add_finding "$repo" "rulesets" "ruleset-bypass-dependabot-$slug" "error" \
-          "Ruleset \`$rs_name\` (targets \`$default_branch\`) is missing the required \`dependabot-automerge-petry\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass actor (\`bypass_mode: always\`). Without it, Dependabot auto-merge API calls are rejected by this ruleset — GitHub evaluates bypass per-ruleset, so it must be present on every ruleset targeting the default branch, not only \`pr-quality\`." \
+          "Ruleset \`$rs_name\` (targets \`$default_branch\`) is missing the required \`combsmith-dependabot-automrg\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass actor (\`bypass_mode: always\`). Without it, Dependabot auto-merge API calls are rejected by this ruleset — GitHub evaluates bypass per-ruleset, so it must be present on every ruleset targeting the default branch, not only \`pr-quality\`." \
           "$std_ref"
       fi
     fi
