@@ -298,10 +298,12 @@ sps_score() {
   _sps_load_array typo_words "$text"
   text="$(_sps_list "$config" '.security_sensitive_paths')" || return
   _sps_load_array sec_paths "$text"
-  local pat
+  local pat re_rc
   for pat in "${title_pats[@]}" "${issue_pats[@]}"; do
-    [[ "" =~ $pat ]]
-    (( $? != 2 )) || { _sps_fail "config contains an invalid regular expression: '$pat'"; return; }
+    # Guarded in a conditional: safe under a sourcing caller's errexit.
+    # shellcheck disable=SC2319  # $? is the [[ =~ ]] status (2 = invalid regex), intentionally
+    if [[ "" =~ $pat ]]; then re_rc=0; else re_rc=$?; fi
+    (( re_rc != 2 )) || { _sps_fail "config contains an invalid regular expression: '$pat'"; return; }
   done
 
   # --- gate ------------------------------------------------------------------

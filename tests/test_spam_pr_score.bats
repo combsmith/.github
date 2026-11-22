@@ -325,6 +325,12 @@ field() {
   [ "$status" -eq 2 ]
 }
 
+@test "sourced under errexit: sps_score scores a legit fixture without aborting" {
+  run bash -ec "source '$SCRIPT'; sps_score '$FIX/legit-first-time.json' '$CONFIG'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"scored="* ]]
+}
+
 @test "usage: no mode argument exits non-zero" {
   run "$SCRIPT"
   [ "$status" -eq 64 ]
