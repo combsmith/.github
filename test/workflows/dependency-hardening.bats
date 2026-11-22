@@ -112,6 +112,42 @@ workflow_command_lines() {
   [ "$fail" -eq 0 ]
 }
 
+# combsmith/.github#1380: OpenSSF Scorecard (OSV) flagged 9 advisories against
+# filelock 3.29.7 (pulled in by pip-audit via cachecontrol[filecache]); all are
+# fixed in 4.2.1. Fail loud if any hash-locked requirements file pins it lower.
+@test "no hash-locked requirements file pins a vulnerable filelock (< 4.2.1)" {
+  local fail=0 f line ver
+  for f in "$REPO_ROOT"/scripts/*requirements*.txt; do
+    while IFS= read -r line || [ -n "$line" ]; do
+      # pip treats the name case-insensitively and allows spaces around '=='.
+      [[ "${line,,}" =~ ^[[:space:]]*filelock[[:space:]]*(\[[^]]*\][[:space:]]*)?==[[:space:]]*([^[:space:]\\\;]+) ]] || continue
+      ver="${BASH_REMATCH[2]}"
+      # PEP 440-aware: compare the numeric release segment (zero-padded), then
+      # judge the suffix. sort -V alone is not enough: 4.2.1rc1 sorts after
+      # 4.2.1 although it is a prerelease, and 4.2.1-1 is a valid postrelease.
+      [[ "$ver" =~ ^v?([0-9]+(\.[0-9]+)*)(.*)$ ]] || { echo "UNPARSEABLE filelock==$ver in ${f##*/}"; fail=1; continue; }
+      local rel="${BASH_REMATCH[1]}" suffix="${BASH_REMATCH[3]}" a b c cmp
+      IFS=. read -r a b c _ <<< "$rel"
+      # 10# forces decimal: a component like 09 is not an invalid octal.
+      cmp="$(printf '%08d%08d%08d' "$((10#${a:-0}))" "$((10#${b:-0}))" "$((10#${c:-0}))")"
+      local min="000000040000000200000001" bad=0
+      if [[ "$cmp" < "$min" ]]; then
+        bad=1
+      elif [ "$cmp" = "$min" ]; then
+        # Equal release: only a post release (or local version) is >= 4.2.1.
+        # A dev release of a post release (4.2.1.post1.dev1) is still newer
+        # than 4.2.1 under PEP 440; a bare dev/pre release (4.2.1.dev1, rc1) is not.
+        [[ "$suffix" =~ ^([-_.]?(post|rev|r)[-_.]?[0-9]*|-[0-9]+)([-_.]?dev[-_.]?[0-9]*)?(\+.*)?$ ]] \
+          || [ -z "$suffix" ] || [[ "$suffix" == +* ]] || bad=1
+      fi
+      if [ "$bad" -eq 1 ]; then
+        echo "VULNERABLE filelock==$ver in ${f##*/} (need >= 4.2.1)"; fail=1
+      fi
+    done < "$f"
+  done
+  [ "$fail" -eq 0 ]
+}
+
 # combsmith/.github#1405: npm loads "project" config from the .npmrc of its local
 # prefix (the cwd), so an `npx` run inside the PR checkout lets the scanned PR's
 # own .npmrc pick script-shell / registry for the scanner itself. The AgentShield
