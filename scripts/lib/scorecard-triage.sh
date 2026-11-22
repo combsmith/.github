@@ -32,7 +32,7 @@ scorecard_pinned_actions_only() {
   non_action="$(jq -r \
     '[.details // [] | .[] | select(test("not pinned by hash"; "i")) | select(test("GitHubAction"; "i") | not)] | length' \
     <<<"$row" 2>/dev/null)" || return 1
-  [ "${total:-0}" -gt 0 ] && [ "${non_action:-1}" -eq 0 ]
+  [[ "${total:-0}" -gt 0 ]] && [[ "${non_action:-1}" -eq 0 ]]
 }
 
 # scorecard_issue_prefix <check_name>
@@ -59,5 +59,5 @@ scorecard_issue_title() {
 # in the title and then live for months; without this check they keep saying
 # "(0/10)" long after the score has moved (repo-template#1, #6).
 scorecard_title_is_current() {
-  [ "$1" = "$(scorecard_issue_title "$2" "$3")" ]
+  [[ "$1" = "$(scorecard_issue_title "$2" "$3")" ]]
 }

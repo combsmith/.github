@@ -24,7 +24,7 @@
 # shellcheck shell=bash
 
 # Guard against double-sourcing.
-if [ -n "${_STANDARDS_DEPLOY_SOURCED:-}" ]; then
+if [[ -n "${_STANDARDS_DEPLOY_SOURCED:-}" ]]; then
   return 0 2>/dev/null || true
 fi
 _STANDARDS_DEPLOY_SOURCED=1
@@ -86,7 +86,7 @@ sd_deploy_files_via_pr() {
   local repo="$1" branch="$2" label="$3" title="$4" body="$5"
   shift 5
 
-  if [ "$#" -eq 0 ] || [ $(( $# % 2 )) -ne 0 ]; then
+  if [[ "$#" -eq 0 ]] || [[ $(( $# % 2 )) -ne 0 ]]; then
     echo "FAILED bad-file-args"
     return 1
   fi
@@ -94,7 +94,7 @@ sd_deploy_files_via_pr() {
   # Validate every local file up front, before touching the remote.
   local i
   for (( i = 2; i <= $#; i += 2 )); do
-    if [ ! -f "${!i}" ]; then echo "FAILED missing-local-file"; return 1; fi
+    if [[ ! -f "${!i}" ]]; then echo "FAILED missing-local-file"; return 1; fi
   done
 
   # 1. Idempotency — at most one open sync PR per repo, keyed by label.
@@ -102,13 +102,13 @@ sd_deploy_files_via_pr() {
   list_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
   existing_pr=$(gh pr list --repo "$repo" --label "$label" --state open --limit 1000 \
     --json number --jq '.[0].number // ""' 2>"$list_err") && list_rc=0 || list_rc=$?
-  if [ "$list_rc" -ne 0 ]; then
+  if [[ "$list_rc" -ne 0 ]]; then
     echo "FAILED pr-list-failed:$(tr '\n' ' ' < "$list_err")"
     rm -f "$list_err"
     return 1
   fi
   rm -f "$list_err"
-  if [ -n "$existing_pr" ]; then
+  if [[ -n "$existing_pr" ]]; then
     echo "SKIP_PR_OPEN $existing_pr"
     return 0
   fi
@@ -123,13 +123,13 @@ sd_deploy_files_via_pr() {
   local can_push perm_err perm_rc
   perm_err=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
   can_push=$(gh api "repos/${repo}" --jq '.permissions.push // false' 2>"$perm_err") && perm_rc=0 || perm_rc=$?
-  if [ "$perm_rc" -ne 0 ]; then
+  if [[ "$perm_rc" -ne 0 ]]; then
     local perm_msg; perm_msg=$(tr '\n' ' ' < "$perm_err"); rm -f "$perm_err"
     echo "FAILED perm-probe-failed:${perm_msg}"
     return 1
   fi
   rm -f "$perm_err"
-  if [ "$can_push" != "true" ]; then
+  if [[ "$can_push" != "true" ]]; then
     echo "FAILED no-write-access"
     return 1
   fi
@@ -139,7 +139,7 @@ sd_deploy_files_via_pr() {
   default_branch=$(gh api "repos/${repo}" --jq '.default_branch' 2>/dev/null || echo "main")
   base_sha=$(gh api "repos/${repo}/git/ref/heads/${default_branch}" \
     --jq '.object.sha' 2>/dev/null || true)
-  if [ -z "$base_sha" ]; then
+  if [[ -z "$base_sha" ]]; then
     echo "FAILED no-base-sha"
     return 1
   fi
@@ -224,11 +224,11 @@ sd_deploy_files_via_pr() {
     err_file=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
     branch_sha=$(gh api "repos/${repo}/contents/${path}?ref=${branch}" \
       --jq '.sha // ""' 2>"$err_file") && get_rc=0 || get_rc=$?
-    if [ "$get_rc" -eq 0 ]; then
+    if [[ "$get_rc" -eq 0 ]]; then
       # GET succeeded → the file EXISTS on the branch, so its SHA must resolve.
       # A blank SHA here means we cannot update it safely; a sha-less PUT would
       # 422. Fail loudly rather than mask it.
-      if [ -z "$branch_sha" ]; then
+      if [[ -z "$branch_sha" ]]; then
         rm -f "$err_file"
         echo "FAILED sha-unresolved:${path}"
         return 1
@@ -250,7 +250,7 @@ sd_deploy_files_via_pr() {
       --raw-field "message=${title}"
       --raw-field "content=${encoded}"
       --raw-field "branch=${branch}")
-    [ -n "$branch_sha" ] && put_args+=(--raw-field "sha=${branch_sha}")
+    [[ -n "$branch_sha" ]] && put_args+=(--raw-field "sha=${branch_sha}")
 
     err_file=$(mktemp) || { echo "FAILED mktemp-failed"; return 1; }
     if ! gh api "repos/${repo}/contents/${path}" "${put_args[@]}" --silent 2>"$err_file"; then
@@ -274,7 +274,7 @@ sd_deploy_files_via_pr() {
   local pr_url
   pr_url=$(gh pr create --repo "$repo" --head "$branch" --base "$default_branch" \
     --title "$title" --body "$body" --label "$label" 2>/dev/null || true)
-  if [ -z "$pr_url" ]; then
+  if [[ -z "$pr_url" ]]; then
     echo "FAILED pr-create-failed"
     return 1
   fi
