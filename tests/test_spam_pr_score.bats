@@ -343,7 +343,7 @@ if [ -n "${2:-}" ] && [[ "\$args" == *"${2:-}"* ]]; then echo "stub failure" >&2
 case "\$args" in
   *search/issues*) echo '{"total_count": $1, "incomplete_results": false}' ;;
   *pulls/7/files*) echo '[{"filename":"README.md","additions":1,"deletions":1,"patch":"-The x\n+Teh x"}]' ;;
-  *pulls/7*) echo '{"title":"Update README.md","body":null,"author_association":"NONE","user":{"login":"drive-by","type":"User"},"head":{"ref":"main","repo":{"full_name":"drive-by/repo","default_branch":"main"}},"base":{"repo":{"full_name":"acme/repo"}}}' ;;
+  *pulls/7*) echo '{"changed_files":1,"title":"Update README.md","body":null,"author_association":"NONE","user":{"login":"drive-by","type":"User"},"head":{"ref":"main","repo":{"full_name":"drive-by/repo","default_branch":"main"}},"base":{"repo":{"full_name":"acme/repo"}}}' ;;
   *users/drive-by*) echo '{"created_at":"2026-11-20T00:00:00Z","followers":0,"public_repos":1}' ;;
   *) echo "unexpected gh call: \$args" >&2; exit 1 ;;
 esac
@@ -366,6 +366,46 @@ STUB
   run env PATH="$TMP/bin:$PATH" SPS_NOW="2026-11-22T12:00:00Z" "$SCRIPT" --repo acme/repo --pr 7
   [ "$status" -eq 2 ]
   [[ "$output" != *level=* ]]
+}
+
+@test "fail-closed: an invalid configured regular expression exits non-zero" {
+  cfg="$TMP/config.json"
+  jq '.linked_issue_patterns = ["["]' "$CONFIG" >"$cfg"
+  run "$SCRIPT" --facts "$FIX/pr-1976-style.json" --config "$cfg"
+  [ "$status" -eq 2 ]
+  [[ "$output" != *level=* ]]
+}
+
+@test "glue: a rename out of a security-sensitive path escalates" {
+  make_gh_stub 0
+  sed -i 's|"filename":"README.md",|"filename":"README.md","previous_filename":".github/workflows/ci.yml",|' "$TMP/bin/gh"
+  run env PATH="$TMP/bin:$PATH" SPS_NOW="2026-11-22T12:00:00Z" "$SCRIPT" --repo acme/repo --pr 7
+  [ "$status" -eq 0 ]
+  [ "$(field escalate)" = "true" ]
+  [ "$(field auto_close_eligible)" = "false" ]
+}
+
+@test "glue: an incomplete file inventory fails closed" {
+  make_gh_stub 0
+  sed -i 's|"changed_files":1|"changed_files":2|' "$TMP/bin/gh"
+  run env PATH="$TMP/bin:$PATH" SPS_NOW="2026-11-22T12:00:00Z" "$SCRIPT" --repo acme/repo --pr 7
+  [ "$status" -eq 2 ]
+}
+
+@test "glue: a deleted head repo is not exempted for a CONTRIBUTOR" {
+  make_gh_stub 0
+  sed -i 's|"author_association":"NONE"|"author_association":"CONTRIBUTOR"|; s|"repo":{"full_name":"drive-by/repo","default_branch":"main"}|"repo":null|' "$TMP/bin/gh"
+  run env PATH="$TMP/bin:$PATH" SPS_NOW="2026-11-22T12:00:00Z" "$SCRIPT" --repo acme/repo --pr 7
+  [ "$status" -eq 2 ]
+}
+
+@test "glue: a very large patch does not hit the argument-size limit" {
+  make_gh_stub 0
+  head -c 200000 /dev/zero | tr '\0' 'a' \
+    | jq -Rs '[{filename:"README.md",additions:1,deletions:0,patch:("+"+.)}]' >"$TMP/files.json"
+  sed -i "s|^  \*pulls/7/files\*).*|  *pulls/7/files*) cat '$TMP/files.json' ;;|" "$TMP/bin/gh"
+  run env PATH="$TMP/bin:$PATH" SPS_NOW="2026-11-22T12:00:00Z" "$SCRIPT" --repo acme/repo --pr 7
+  [ "$status" -eq 0 ]
 }
 
 # --- lint (AC8) ---------------------------------------------------------------

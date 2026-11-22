@@ -133,11 +133,11 @@ _sps_list() {
 # _sps_load_array <name> <lines> — split newline-separated text into an array
 # (an empty text yields an empty array, not one empty element).
 _sps_load_array() {
-  local -n _arr="$1"
-  _arr=()
-  local line
-  while IFS= read -r line; do
-    [[ -n "$line" ]] && _arr+=("$line")
+  local -n _sps_load_arr="$1"
+  _sps_load_arr=()
+  local _sps_load_line
+  while IFS= read -r _sps_load_line; do
+    [[ -n "$_sps_load_line" ]] && _sps_load_arr+=("$_sps_load_line")
   done <<<"$2"
   return 0
 }
@@ -174,10 +174,12 @@ _sps_ere_any() {
   restore="$(shopt -p nocasematch)"
   shopt -s nocasematch
   for pat in "$@"; do
-    if [[ "$subject" =~ $pat ]]; then
-      rc=0
-      break
-    fi
+    [[ "$subject" =~ $pat ]]
+    case $? in
+      0) rc=0; break ;;
+      1) ;;
+      *) rc=2; break ;;
+    esac
   done
   eval "$restore"
   return "$rc"
@@ -186,17 +188,9 @@ _sps_ere_any() {
 # _sps_strip_html_comments — remove <!-- ... --> spans (template help text)
 # from a body so references inside them do not count as linked issues.
 _sps_strip_html_comments() {
-  local s="$1" out=""
-  while [[ "$s" == *"<!--"* ]]; do
-    out+="${s%%<!--*}"
-    s="${s#*<!--}"
-    if [[ "$s" == *"-->"* ]]; then
-      s="${s#*-->}"
-    else
-      s=""
-    fi
-  done
-  printf '%s' "$out$s"
+  # Terminated spans first (non-greedy), then an unterminated `<!--` drops the
+  # rest of the body. If jq fails, fail closed via empty output + status.
+  jq -nr --arg s "$1" '$s | gsub("(?s)<!--.*?-->"; "") | gsub("(?s)<!--.*$"; "")'
 }
 
 _sps_epoch() {
@@ -304,6 +298,11 @@ sps_score() {
   _sps_load_array typo_words "$text"
   text="$(_sps_list "$config" '.security_sensitive_paths')" || return
   _sps_load_array sec_paths "$text"
+  local pat
+  for pat in "${title_pats[@]}" "${issue_pats[@]}"; do
+    [[ "" =~ $pat ]]
+    (( $? != 2 )) || { _sps_fail "config contains an invalid regular expression: '$pat'"; return; }
+  done
 
   # --- gate ------------------------------------------------------------------
   local assoc author_type is_fork gate
@@ -369,8 +368,11 @@ sps_score() {
     _sps_glob_match "$p" "${doc_paths[@]}" >/dev/null || { all_docs=0; break; }
   done
   local changed=$(( total_add > total_del ? total_add : total_del ))
+  local visible_body
+  visible_body="$(_sps_strip_html_comments "$body")" \
+    || { _sps_fail "could not strip HTML comments from the PR body"; return; }
   if (( all_docs && changed <= small_max )) \
-    && ! _sps_ere_any "$(_sps_strip_html_comments "$body")" "${issue_pats[@]}"; then
+    && ! _sps_ere_any "$visible_body" "${issue_pats[@]}"; then
     fired[small_doc_diff_no_issue]=1
   fi
 
@@ -404,7 +406,9 @@ sps_score() {
   if (( raw >= high )); then level=high; elif (( raw >= medium )); then level=medium; fi
 
   local escalate=false reason=""
-  for p in "${paths[@]}"; do
+  local -a prev_paths
+  _sps_load_array prev_paths "$(jq -r '.files[] | (.previous_filename // empty | select(type == "string"))' <<<"$facts")"
+  for p in "${paths[@]}" "${prev_paths[@]}"; do
     if _sps_glob_match "$p" "${sec_paths[@]}" >/dev/null; then
       escalate=true
       reason="security-sensitive-path:$p"
@@ -435,7 +439,9 @@ sps_gather_facts() {
   pr_json="$(gh api "repos/$repo/pulls/$pr")" || { _sps_fail "gh: cannot read PR $repo#$pr"; return; }
   gate_facts="$(jq -e '{
       author_association, author_type: .user.type,
-      is_fork: (.head.repo != null and .head.repo.full_name != .base.repo.full_name)
+      # a deleted head repo (null) counts as a fork so the gate cannot exempt it;
+      # the unavailable-head check below then fails closed.
+      is_fork: (.head.repo == null or .head.repo.full_name != .base.repo.full_name)
     }' <<<"$pr_json" 2>/dev/null)" || { _sps_fail "cannot parse PR $repo#$pr"; return; }
   gate="$(sps_gate "$(jq -r '.author_type // ""' <<<"$gate_facts")" \
                    "$(jq -r '.author_association // ""' <<<"$gate_facts")" \
@@ -454,8 +460,13 @@ sps_gather_facts() {
   user_json="$(gh api "users/$login")" || { _sps_fail "gh: cannot read user $login"; return; }
   files_json="$(gh api --paginate "repos/$repo/pulls/$pr/files?per_page=100")" \
     || { _sps_fail "gh: cannot read files of $repo#$pr"; return; }
-  files_json="$(jq -s 'add | map({path: .filename, additions, deletions, patch: (.patch // null)})' <<<"$files_json")" \
+  files_json="$(jq -s 'add | map({path: .filename, additions, deletions, patch: (.patch // null)}
+        + (if (.previous_filename | type) == "string" then {previous_filename} else {} end))' <<<"$files_json")" \
     || { _sps_fail "cannot parse files of $repo#$pr"; return; }
+  # The files endpoint caps at 3,000 entries; an incomplete inventory could hide
+  # a security-sensitive path, so require it to match the PR's changed_files.
+  jq -e --argjson n "$(jq -r '.changed_files' <<<"$pr_json")" 'length == $n' <<<"$files_json" >/dev/null 2>&1 \
+    || { _sps_fail "file inventory of $repo#$pr is incomplete (changed_files mismatch)"; return; }
   since="$(jq -nr --arg now "$now" '$now | fromdateiso8601 - 86400 | todate')" \
     || { _sps_fail "invalid SPS_NOW '$now'"; return; }
   search_json="$(gh api -X GET search/issues \
@@ -464,9 +475,20 @@ sps_gather_facts() {
   jq -e '.incomplete_results == false and (.total_count | type == "number")' <<<"$search_json" >/dev/null \
     || { _sps_fail "burst search for $login returned incomplete results"; return; }
 
-  jq -n --argjson pr "$pr_json" --argjson user "$user_json" --argjson files "$files_json" \
-        --argjson search "$search_json" --argjson gate "$gate_facts" --arg now "$now" '
-    $gate + {
+  # Large documents (patches) travel via temp files, never argv (ARG_MAX).
+  local tmp
+  tmp="$(mktemp -d)" || { _sps_fail "cannot create temp dir"; return; }
+  printf '%s' "$pr_json" >"$tmp/pr.json"
+  printf '%s' "$user_json" >"$tmp/user.json"
+  printf '%s' "$files_json" >"$tmp/files.json"
+  printf '%s' "$search_json" >"$tmp/search.json"
+  printf '%s' "$gate_facts" >"$tmp/gate.json"
+  local assembled rc=0
+  assembled="$(jq -n --slurpfile pr "$tmp/pr.json" --slurpfile user "$tmp/user.json" \
+        --slurpfile files "$tmp/files.json" --slurpfile search "$tmp/search.json" \
+        --slurpfile gate "$tmp/gate.json" --arg now "$now" '
+    $pr[0] as $pr | $user[0] as $user | $search[0] as $search |
+    $gate[0] + {
       title: $pr.title,
       body: $pr.body,
       head_ref: $pr.head.ref,
@@ -474,10 +496,13 @@ sps_gather_facts() {
       author_created_at: $user.created_at,
       author_followers: $user.followers,
       author_public_repos: $user.public_repos,
-      files: $files,
+      files: $files[0],
       org_open_prs_24h: $search.total_count,
       now: $now
-    }' || { _sps_fail "cannot assemble facts for $repo#$pr"; return; }
+    }')" || rc=$?
+  rm -rf "$tmp"
+  (( rc == 0 )) || { _sps_fail "cannot assemble facts for $repo#$pr"; return; }
+  printf '%s\n' "$assembled"
 }
 
 # ---------------------------------------------------------------------------
