@@ -151,8 +151,9 @@ jobs:
             if listed=$(gh run list --repo "${REPO}" --workflow feature-ideation.yml \
               --event workflow_dispatch --created ">=${dispatched_at}" \
               --limit 50 --json displayTitle,url) &&
-              urls=$(jq -r --arg t "${title}" '.[] | select(.displayTitle == $t) | .url' <<<"${listed}"); then
-              count=$(grep -c . <<<"${urls}" || true)
+              matches=$(jq --arg t "${title}" '[.[] | select(.displayTitle == $t)]' <<<"${listed}") &&
+              count=$(jq 'length' <<<"${matches}") &&
+              urls=$(jq -r '.[].url' <<<"${matches}"); then
               found="found ${count} runs titled '${title}'"
               [ "${count}" -eq 0 ] || break
             else
