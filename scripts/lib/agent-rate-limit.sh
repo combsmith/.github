@@ -143,10 +143,7 @@ arl_sanitize_int() {
 arl_is_exempt_actor() {
   local actor="$1" config
   config="$(arl_config_path)"
-  # Match the exact actor, or the actor with a trailing "[bot]" stripped: a
-  # GitHub App's github.actor is "<slug>[bot]" while the config lists the bare
-  # App name (required by the config test), so both forms must be exempt.
-  if jq -e --arg a "$actor" '(.exempt_actors // []) | (index($a) != null) or (index($a | sub("\\[bot\\]$"; "")) != null)' "$config" >/dev/null 2>&1; then
+  if jq -e --arg a "$actor" '(.exempt_actors // []) | index($a) != null' "$config" >/dev/null 2>&1; then
     return 0
   fi
   return 1

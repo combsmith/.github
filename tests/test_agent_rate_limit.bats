@@ -143,17 +143,6 @@ stub_concurrent_runs() {
   [ "$status" -eq 0 ]
 }
 
-@test "arl_is_exempt_actor matches a bare App name against its [bot]-suffixed actor" {
-  export AGENT_RATE_LIMITS_CONFIG="$TMP/agent-rate-limits.json"
-  jq -n '{ exempt_actors: ["combsmith-dependabot-automrg"], exempt_labels: [] }' >"$AGENT_RATE_LIMITS_CONFIG"
-  run bash -c "source '$LIB'; arl_is_exempt_actor 'combsmith-dependabot-automrg[bot]'"
-  [ "$status" -eq 0 ]
-  run bash -c "source '$LIB'; arl_is_exempt_actor 'combsmith-dependabot-automrg'"
-  [ "$status" -eq 0 ]
-  run bash -c "source '$LIB'; arl_is_exempt_actor 'other-app[bot]'"
-  [ "$status" -eq 1 ]
-}
-
 @test "arl_is_exempt_actor is false for a non-exempt actor" {
   write_config "dev-lead" 3 5 50 3 30
   run bash -c "source '$LIB'; arl_is_exempt_actor 'donpetry-bot'"
