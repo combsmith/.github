@@ -23,7 +23,7 @@
 # shellcheck shell=bash
 
 # Guard against double-sourcing.
-if [ -n "${_STANDARDS_RELEASE_SOURCED:-}" ]; then
+if [[ -n "${_STANDARDS_RELEASE_SOURCED:-}" ]]; then
   return 0 2>/dev/null || true
 fi
 _STANDARDS_RELEASE_SOURCED=1
@@ -114,24 +114,24 @@ sr_semver_gt() {
   b_patch="${b#*.}"
 
   # Compare major: by length first, then lexically
-  if [ ${#a_major} -ne ${#b_major} ]; then
-    [ ${#a_major} -gt ${#b_major} ]; return
+  if [[ ${#a_major} -ne ${#b_major} ]]; then
+    [[ ${#a_major} -gt ${#b_major} ]]; return
   fi
   if [[ "$a_major" != "$b_major" ]]; then
     [[ "$a_major" > "$b_major" ]]; return
   fi
 
   # Compare minor: by length first, then lexically
-  if [ ${#a_minor} -ne ${#b_minor} ]; then
-    [ ${#a_minor} -gt ${#b_minor} ]; return
+  if [[ ${#a_minor} -ne ${#b_minor} ]]; then
+    [[ ${#a_minor} -gt ${#b_minor} ]]; return
   fi
   if [[ "$a_minor" != "$b_minor" ]]; then
     [[ "$a_minor" > "$b_minor" ]]; return
   fi
 
   # Compare patch: by length first, then lexically
-  if [ ${#a_patch} -ne ${#b_patch} ]; then
-    [ ${#a_patch} -gt ${#b_patch} ]; return
+  if [[ ${#a_patch} -ne ${#b_patch} ]]; then
+    [[ ${#a_patch} -gt ${#b_patch} ]]; return
   fi
   [[ "$a_patch" > "$b_patch" ]]
 }
@@ -142,7 +142,7 @@ sr_max_version() {
   local v hi=""
   for v in "$@"; do
     sr_valid_version "$v" || continue
-    if [ -z "$hi" ] || sr_semver_gt "$v" "$hi"; then hi="$v"; fi
+    if [[ -z "$hi" ]] || sr_semver_gt "$v" "$hi"; then hi="$v"; fi
   done
   printf '%s' "$hi"
 }
@@ -164,15 +164,15 @@ sr_current_and_previous() {
     sr_valid_version "$v" || continue
     seen=0
     local u
-    for u in "${valid[@]+"${valid[@]}"}"; do [ "$u" = "$v" ] && { seen=1; break; }; done
-    [ "$seen" -eq 0 ] && valid+=("$v")
+    for u in "${valid[@]+"${valid[@]}"}"; do [[ "$u" = "$v" ]] && { seen=1; break; }; done
+    [[ "$seen" -eq 0 ]] && valid+=("$v")
   done
   local current previous=""
   current="$(sr_max_version "${valid[@]+"${valid[@]}"}")"
-  if [ -n "$current" ]; then
+  if [[ -n "$current" ]]; then
     # previous = highest of the remaining versions strictly below current.
     local rest=()
-    for v in "${valid[@]+"${valid[@]}"}"; do [ "$v" != "$current" ] && rest+=("$v"); done
+    for v in "${valid[@]+"${valid[@]}"}"; do [[ "$v" != "$current" ]] && rest+=("$v"); done
     previous="$(sr_max_version "${rest[@]+"${rest[@]}"}")"
   fi
   # Line-terminated: the orchestrator consumes this with `read`, which needs the
@@ -193,8 +193,8 @@ sr_current_and_previous() {
 #             rollout.sh's refusal to re-point a tag that resolves elsewhere).
 sr_cut_decision() {
   local existing="${1:-}" requested="${2:-}"
-  if [ -z "$existing" ]; then echo "CREATE"; return 0; fi
-  if [ "$existing" = "$requested" ]; then echo "NOOP"; return 0; fi
+  if [[ -z "$existing" ]]; then echo "CREATE"; return 0; fi
+  if [[ "$existing" = "$requested" ]]; then echo "NOOP"; return 0; fi
   echo "REFUSE"; return 0
 }
 
@@ -215,9 +215,9 @@ sr_cut_decision() {
 sr_consumer_verdict() {
   local rc="${1:-}" out="${2:-}" expect="${3:-}" reject="${4:-}"
   if ! [[ "$rc" =~ ^[0-9]+$ ]]; then echo "FAIL not-run"; return 0; fi
-  if [ "$rc" -ne 0 ]; then echo "FAIL exit-$rc"; return 0; fi
-  if [ -z "$out" ] || [ ! -r "$out" ]; then echo "FAIL output-unreadable"; return 0; fi
-  if [ -n "$reject" ] && grep -Eq -- "$reject" "$out"; then echo "FAIL rejected-output"; return 0; fi
-  if [ -n "$expect" ] && ! grep -Eq -- "$expect" "$out"; then echo "FAIL expected-output-missing"; return 0; fi
+  if (( 10#$rc != 0 )); then echo "FAIL exit-$rc"; return 0; fi
+  if [[ -z "$out" ]] || [[ ! -r "$out" ]]; then echo "FAIL output-unreadable"; return 0; fi
+  if [[ -n "$reject" ]] && grep -Eq -- "$reject" "$out"; then echo "FAIL rejected-output"; return 0; fi
+  if [[ -n "$expect" ]] && ! grep -Eq -- "$expect" "$out"; then echo "FAIL expected-output-missing"; return 0; fi
   echo "PASS"
 }
