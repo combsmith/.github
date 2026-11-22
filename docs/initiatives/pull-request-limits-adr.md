@@ -140,7 +140,7 @@ the standing queue that the auto-rebase fan-out has to service.
 |---|---|
 | `dependabot[bot]` | Already capped per-ecosystem; security PRs must never be starved. |
 | `OrganizationAdmin` / `@combsmith/org-leads` | Human break-glass and maintainer PRs. |
-| `dependabot-automerge-petry` (App) | Operates on existing PRs (merge/approve), does not add to the queue. |
+| `combsmith-dependabot-automrg` (App) | Operates on existing PRs (merge/approve), does not add to the queue. |
 | Security/hotfix-labeled PRs (e.g. `security`) | Urgent fixes must bypass any throttle. |
 
 Final values, the exact tier boundaries, and whether to use a single org-wide

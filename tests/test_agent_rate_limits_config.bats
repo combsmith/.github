@@ -216,6 +216,17 @@ AGENT_TYPES=(dev-lead compliance-audit feature-ideation initiative-driver)
   [ "$output" = "true" ]
 }
 
+@test "Dependabot auto-merge App uses its current name in both exempt-actor lists (#1545)" {
+  # The App was renamed with the org (app_id 3167543). The entry stays the bare
+  # name (no [bot] suffix) in both files, which must keep the same set.
+  run jq -e '.exempt_actors | index("combsmith-dependabot-automrg") != null' "$CONFIG"
+  [ "$status" -eq 0 ]
+  [ "$output" = "true" ]
+  run jq -e '.exempt_actors | index("combsmith-dependabot-automrg") != null' "$PR_LIMITS"
+  [ "$status" -eq 0 ]
+  [ "$output" = "true" ]
+}
+
 @test "org-leads break-glass actor is present in the exempt-actor list" {
   run jq -e '.exempt_actors | index("@combsmith/org-leads") != null' "$CONFIG"
   [ "$status" -eq 0 ]
