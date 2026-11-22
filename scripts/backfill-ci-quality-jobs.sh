@@ -226,7 +226,11 @@ cbf_needs_seed() {
   return 1
 }
 
-# cbf_backfill_repo <owner/repo> — print one outcome line; non-zero on FAILED.
+# cbf_backfill_repo <owner/repo> — backfill secret-scan and coverage jobs into ci.yml.
+# Fetches the repo's ci.yml and other workflows, adds missing jobs via standards
+# templates, seeds .gitleaks.toml if needed, and opens a standards-sync PR on success.
+# Prints one outcome line (OK/PLAN/OPENED/SKIP_PR_OPEN/NO_CI/CONFLICT/FAILED).
+# Non-zero on FAILED outcome only.
 cbf_backfill_repo() {
   local repo="$1" ci new added rc=0 err files=() seed=false outcome
   ci="$(mktemp)"; new="$(mktemp)"; err="$(mktemp)"
@@ -354,7 +358,11 @@ cbf_check_names() {
     --jq '.check_runs[] | select(.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") | .name'
 }
 
-# cbf_verify_repo <owner/repo> — print PASS or MISSING <contexts>; non-zero unless PASS.
+# cbf_verify_repo <owner/repo> — verify both required checks pass on the repo's default branch.
+# Reads check runs on the default-branch tip. If either required check is missing
+# or not passing, falls back to the head of the most recent merged PR (for repos
+# running CI only on pull_request). Prints PASS on success; MISSING <contexts>
+# otherwise. Returns 0 on PASS, non-zero on MISSING.
 cbf_verify_repo() {
   local repo="$1" branch sha names entry check missing=() pr_sha
   branch="$(gh api "repos/${repo}" --jq '.default_branch')" || { echo "MISSING ${repo} (cannot read repo)"; return 1; }
@@ -396,7 +404,9 @@ cbf_verify_repo() {
   return 1
 }
 
-# cbf_fleet_repos — list owner/repo, limiting to repos covered by the ruleset (excludes archived, GHSA forks, FLEET_EXCLUDE).
+# cbf_fleet_repos — list repos covered by the code-quality ruleset.
+# Queries the organization's repos, filters using classify_fleet_repos to exclude
+# archived repos, GHSA forks, and those in FLEET_EXCLUDE. Prints owner/repo per line.
 cbf_fleet_repos() {
   local repos_json classified action repo
   repos_json="$(gh repo list "$ORG" --json name,isArchived,isPrivate,hasIssuesEnabled --limit 1000)" \
@@ -408,7 +418,10 @@ cbf_fleet_repos() {
   return 0
 }
 
-# cbf_main — parse arguments and run backfill or verification for each target repository, reporting outcomes and failures.
+# cbf_main — entry point; parse arguments and run backfill or verify across repos.
+# Accepts --repo <owner/repo>, --all, --verify, and --dry-run flags. Dispatches to
+# cbf_backfill_repo or cbf_verify_repo for each target. Requires yq for backfill.
+# Prints summary of outcomes; exits non-zero if any repository fails or verification is not met.
 cbf_main() {
   local target="" all=false verify=false
   while (( $# > 0 )); do
