@@ -6,10 +6,16 @@
 # that let an unfilled PR template score 0/5 missing — the regression that
 # allowed petry-projects/.github-private#1976 through automation.
 #
+# Also gates the deterministic spam-PR scorer that consumes those signals
+# (story #1203): scripts/spam-pr-score.sh, its config
+# standards/spam-pr-guard.json, and the frozen fixtures under
+# tests/fixtures/spam-pr-guard/. The scorer needs jq, which ubuntu-latest
+# ships preinstalled.
+#
 # Pattern mirrors .github/workflows/agents-md-rules-tests.yml: pinned
 # actions/checkout, path-filtered triggers, read-only token, bats runner.
-# ShellCheck for the lib itself is covered by this workflow's bats "passes
-# shellcheck" case AND by ci.yml's org-wide ShellCheck job over scripts/**.
+# ShellCheck for the lib and the scorer is covered by this workflow's bats "passes
+# shellcheck" cases AND by ci.yml's org-wide ShellCheck job over scripts/**.
 
 name: Safety Checks Tests
 
@@ -19,6 +25,10 @@ on:
       - 'scripts/lib/safety-checks.sh'
       - 'tests/test_safety_checks.bats'
       - 'tests/fixtures/safety-checks/**'
+      - 'scripts/spam-pr-score.sh'
+      - 'standards/spam-pr-guard.json'
+      - 'tests/test_spam_pr_score.bats'
+      - 'tests/fixtures/spam-pr-guard/**'
       - '.github/workflows/safety-checks-tests.yml'
   push:
     branches:
@@ -27,6 +37,10 @@ on:
       - 'scripts/lib/safety-checks.sh'
       - 'tests/test_safety_checks.bats'
       - 'tests/fixtures/safety-checks/**'
+      - 'scripts/spam-pr-score.sh'
+      - 'standards/spam-pr-guard.json'
+      - 'tests/test_spam_pr_score.bats'
+      - 'tests/fixtures/spam-pr-guard/**'
       - '.github/workflows/safety-checks-tests.yml'
 
 permissions: {}
@@ -73,4 +87,4 @@ jobs:
 
       - name: Run bats suite
         run: |
-          bats --print-output-on-failure tests/test_safety_checks.bats
+          bats --print-output-on-failure tests/test_safety_checks.bats tests/test_spam_pr_score.bats

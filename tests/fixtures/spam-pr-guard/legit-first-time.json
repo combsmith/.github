@@ -1,0 +1,30 @@
+{
+  "_note": "FROZEN counterfactual (story #1203 AC7). A legitimate first-time contributor: descriptive title, filled template linking an issue, a real code+test change, an established account. Only the fork-default-branch signal fires (many genuine contributors PR from their fork main). Expected raw points 1 -- asserted on the raw total, never on a mutable threshold.",
+  "title": "Fix off-by-one in pagination cursor for the list endpoint",
+  "body": "Closes #42\n\n## Problem\n\nThe list endpoint skips the last item of every page because the cursor is advanced one past the final element.\n\n## Risk\n\nLow: the change is confined to cursor arithmetic and is covered by a new unit test.\n\n## Test Plan\n\nAdded a table-driven test over page sizes 1, 2 and 50; ran the full suite locally.\n\n## Rollback\n\nRevert this commit.\n\n## Monitoring\n\nWatch the list endpoint error rate after deploy.\n",
+  "author_login": "first-timer-example",
+  "author_type": "User",
+  "author_association": "FIRST_TIME_CONTRIBUTOR",
+  "is_fork": true,
+  "head_ref": "main",
+  "head_repo_default_branch": "main",
+  "author_created_at": "2022-03-14T08:30:00Z",
+  "author_followers": 12,
+  "author_public_repos": 23,
+  "files": [
+    {
+      "path": "src/pagination.go",
+      "additions": 5,
+      "deletions": 2,
+      "patch": "@@ -10,7 +10,10 @@\n-\tnext := cursor + pageSize + 1\n+\tnext := cursor + pageSize\n"
+    },
+    {
+      "path": "src/pagination_test.go",
+      "additions": 20,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,20 @@\n+package pagination\n"
+    }
+  ],
+  "org_open_prs_24h": 1,
+  "now": "2026-11-22T12:00:00Z"
+}
