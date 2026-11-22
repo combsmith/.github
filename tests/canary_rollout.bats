@@ -183,6 +183,32 @@ setup() {
   [ "$(promotion_failure_next_count '' failed)" -eq 1 ]
   [ "$(promotion_failure_next_count 'x' failed)" -eq 1 ]
 }
+@test "promotion_failure_should_escalate: zero-padded operands compare as decimal" {
+  run promotion_failure_should_escalate 8 08
+  [ "$status" -eq 0 ]
+  [[ "$output" == "1" ]]
+  run promotion_failure_should_escalate 08 09
+  [ "$status" -eq 0 ]
+  [[ "$output" == "0" ]]
+}
+
+@test "_ingress_run_limit: an oversized (>9 digit) value falls back to 5000 instead of wrapping" {
+  run env CANARY_INGRESS_RUN_LIMIT=99999999999999999999 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "5000" ]]
+  run env CANARY_INGRESS_RUN_LIMIT=010 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [[ "$output" == "10" ]]
+}
+
+@test "_ingress_run_limit: a long zero-padded value is normalized before the length guard" {
+  run env CANARY_INGRESS_RUN_LIMIT=00000000001 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "1" ]]
+  run env CANARY_INGRESS_RUN_LIMIT=0000000000 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "5000" ]]
+}
+
 @test "promotion_failure_should_escalate: fires only at/after the threshold" {
   [ "$(promotion_failure_should_escalate 1 2)" -eq 0 ]
   [ "$(promotion_failure_should_escalate 2 2)" -eq 1 ]
@@ -1583,6 +1609,22 @@ GITEOF
   [[ "$output" == *"DRY-RUN"* ]]
   [[ "$output" == *"PRE_EXISTING"* ]]
   [[ "$output" != *"not promoting"* ]]
+}
+
+@test "orchestrator: --allow-pre-existing stays soak_unmet on an oversized sample target (no 2^63 wrap)" {
+  _graduated_stub 3 2 failure 0
+  local R="$BATS_TEST_TMPDIR/oversize-target.json"
+  jq '.agents["dev-lead"].gate.transitions["next->ring0"].sample_min = 18446744073709551616' "$RINGS" > "$R"
+  run env CANARY_RINGS="$R" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [[ "$output" != *"DRY-RUN"* ]]
+}
+
+@test "orchestrator: --allow-pre-existing stays soak_unmet on an oversized dwell floor (no 2^63 wrap)" {
+  _graduated_stub 3 2 failure 0
+  local R="$BATS_TEST_TMPDIR/oversize-floor.json"
+  jq '.agents["dev-lead"].gate.transitions["next->ring0"].dwell_hours = 18446744073709551616' "$RINGS" > "$R"
+  run env CANARY_RINGS="$R" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [[ "$output" != *"DRY-RUN"* ]]
 }
 
 @test "orchestrator: promote --allow-pre-existing REFUSES a BLOCKED+REGRESSION frontier" {
@@ -8114,4 +8156,14 @@ GHEOF
   commit_page_done "false" abc 100
   commit_page_done "false" 18446744073709551617 100
   ! commit_page_done "false" 42 100
+}
+
+# ── leading-zero env values are decimal, not octal (review on #1506) ──────────
+@test "CANARY_MAX_COMMIT_PAGES: leading-zero values are read as decimal" {
+  run env CANARY_MAX_COMMIT_PAGES=010 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "10" ]]
+  run env CANARY_MAX_COMMIT_PAGES=08 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "8" ]]
+  run env CANARY_MAX_COMMIT_PAGES=000 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "50" ]]
 }
