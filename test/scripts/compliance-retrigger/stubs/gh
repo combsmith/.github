@@ -23,6 +23,8 @@
 #   GH_STUB_SEARCH_ZERO_EXIT_ERROR_TIMES — number of initial search/issues calls
 #                            that should return error JSON with exit 0, exercising
 #                            the caller's zero-exit error-response validation.
+#   GH_STUB_SEARCH_BODY — if set, returned verbatim as the search/issues body
+#                            (instead of an empty result).
 
 set -euo pipefail
 
@@ -84,6 +86,10 @@ for arg in "$@"; do
           printf '{"message":"API rate limit exceeded","documentation_url":"https://docs.github.com/rest"}\n'
           exit 1
         fi
+      fi
+      if [ -n "${GH_STUB_SEARCH_BODY+x}" ]; then
+        printf '%s' "$GH_STUB_SEARCH_BODY"
+        exit 0
       fi
       printf '{"total_count":0,"items":[]}\n'
       exit 0
