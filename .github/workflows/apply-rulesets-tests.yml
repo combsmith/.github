@@ -2,7 +2,10 @@
 # org tooling that replaced the retired detection-based builder (#580 / #575).
 # Gates: shellcheck (applier) + bats (behavior + the anti-divergence guard on the
 # codified standards/rulesets/*.json). Also covers the companion
-# scripts/fix-ruleset-bypass.sh (dry-run payload output safety, #1388).
+# scripts/fix-ruleset-bypass.sh (dry-run payload output safety, #1388) and
+# scripts/backfill-ci-quality-jobs.sh (the secret-scan/coverage fleet backfill and
+# the gate for requiring them in code-quality.json, #581). The backfill tests use
+# yq, which ubuntu-latest has preinstalled.
 name: Apply Rulesets Tests
 
 on:
@@ -16,6 +19,11 @@ on:
       - 'standards/rulesets/**'
       - 'test/scripts/apply-rulesets/**'
       - 'test/scripts/fix-ruleset-bypass/**'
+      - 'scripts/backfill-ci-quality-jobs.sh'
+      - 'scripts/lib/standards-deploy.sh'
+      - 'standards/workflows/ci.yml'
+      - 'standards/gitleaks.toml'
+      - 'test/scripts/backfill-ci-quality-jobs/**'
       - '.github/workflows/apply-rulesets-tests.yml'
   push:
     branches: [main]
@@ -28,6 +36,11 @@ on:
       - 'standards/rulesets/**'
       - 'test/scripts/apply-rulesets/**'
       - 'test/scripts/fix-ruleset-bypass/**'
+      - 'scripts/backfill-ci-quality-jobs.sh'
+      - 'scripts/lib/standards-deploy.sh'
+      - 'standards/workflows/ci.yml'
+      - 'standards/gitleaks.toml'
+      - 'test/scripts/backfill-ci-quality-jobs/**'
       - '.github/workflows/apply-rulesets-tests.yml'
 
 permissions: {}
@@ -54,7 +67,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends bats shellcheck jq
 
       - name: shellcheck
-        run: shellcheck --severity=warning -x scripts/apply-rulesets.sh scripts/fix-ruleset-bypass.sh scripts/lib/required-checks.sh
+        run: shellcheck --severity=warning -x scripts/apply-rulesets.sh scripts/fix-ruleset-bypass.sh scripts/lib/required-checks.sh scripts/backfill-ci-quality-jobs.sh
 
       - name: bats
-        run: bats --print-output-on-failure test/scripts/apply-rulesets/ test/scripts/fix-ruleset-bypass/ test/scripts/lib/required-checks.bats
+        run: bats --print-output-on-failure test/scripts/apply-rulesets/ test/scripts/fix-ruleset-bypass/ test/scripts/lib/required-checks.bats test/scripts/backfill-ci-quality-jobs/
