@@ -124,8 +124,13 @@ _dep_ids() {
 RENAME_ALLOWLIST=()
 
 @test "no tracked file refers to the App by its old name (outside the allowlist)" {
+  if ! command -v git >/dev/null 2>&1; then
+    skip "git command not found"
+  fi
   cd "$REPO_ROOT"
-  git rev-parse --is-inside-work-tree >/dev/null
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    skip "Not in a git repository"
+  fi
   hits="$(git grep -I -i -F "$OLD_APP_NAME" -- . || true)"
   unexpected=""
   while IFS= read -r line; do
