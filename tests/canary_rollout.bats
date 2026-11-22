@@ -8101,8 +8101,10 @@ GHEOF
 
 # ── overflow safety: oversized operands must not wrap (review on #1503) ───────
 @test "run_list_covers: operand longer than 18 digits proves nothing" {
-  ! run_list_covers 5 18446744073709551617 "" ""
-  ! run_list_covers 18446744073709551616 18446744073709551617 "" ""
+  run run_list_covers 5 18446744073709551617 "" ""
+  [ "$status" -ne 0 ]
+  run run_list_covers 18446744073709551616 18446744073709551617 "" ""
+  [ "$status" -ne 0 ]
 }
 @test "_is_evicted_run: oversized non-zero count is not an eviction" {
   ! _is_evicted_run cancelled 18446744073709551616
