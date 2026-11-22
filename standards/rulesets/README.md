@@ -26,7 +26,7 @@ these rulesets are enforced.
 | [`duplicate-decl-gate.json`](duplicate-decl-gate.json) | `duplicate-decl-gate` | `~DEFAULT_BRANCH` | Required status check `duplicate-decl-gate` — the #1485 corruption-class merge backstop. **Targeted** to the reusable-hosting meta-repos only (see below) |
 
 `pr-quality` / `code-quality` carry the two mandatory bypass actors —
-`OrganizationAdmin` and the `dependabot-automerge-petry` Integration app (id
+`OrganizationAdmin` and the `combsmith-dependabot-automrg` Integration app (id
 `3167543`), both `bypass_mode: always`. `release-channel-tags` additionally grants
 bypass to the **release-manager** Integration app (id `4193127`) so channel promotion
 and dev-lead autocut can move channel tags.

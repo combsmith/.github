@@ -31,7 +31,7 @@ for the policy this enforces:
   `protect-branches` and ad-hoc `main` rulesets are deprecated and must be
   migrated into the two sanctioned rulesets and removed.
 - **Every ruleset targeting the default branch** must grant `bypass_mode: always`
-  to both `OrganizationAdmin` and the `dependabot-automerge-petry` app
+  to both `OrganizationAdmin` and the `combsmith-dependabot-automrg` app
   (Integration `3167543`). GitHub evaluates bypass per ruleset, so a duplicate
   ruleset is a second place every bypass actor must be kept in sync.
 
