@@ -137,7 +137,7 @@ as policy, not drift.
 | `dependabot[bot]` | actor | Already bounded per-ecosystem by `open-pull-requests-limit` (see §5). Security update PRs must never be starved by a general throttle. |
 | `OrganizationAdmin` | actor | Human break-glass / admin PRs. |
 | `@combsmith/org-leads` | actor | Maintainer PRs — human review traffic, not automation backlog. |
-| `dependabot-automerge-petry` | actor (App) | Operates on *existing* PRs (approve / merge); it does not add to the open-PR queue. |
+| `combsmith-dependabot-automrg` | actor (App) | Operates on *existing* PRs (approve / merge); it does not add to the open-PR queue. |
 | `security` | label | Urgent security / hotfix PRs bypass any throttle. |
 
 To change this list, follow the runbook in §6.2.

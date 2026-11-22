@@ -7,7 +7,7 @@ set -euo pipefail
 #   • repo settings + security/GHAS + secret-scanning push protection come from
 #     scripts/apply-repo-settings.sh (which sources scripts/lib/push-protection.sh)
 #   • the two sanctioned fleet rulesets — pr-quality + code-quality, each carrying
-#     the mandatory bypass actors dependabot-automerge-petry (Integration app) +
+#     the mandatory bypass actors combsmith-dependabot-automrg (Integration app) +
 #     OrganizationAdmin, both bypass_mode "always" — come from
 #     scripts/apply-rulesets.sh, which sources them from combsmith/.github
 #     (standards/rulesets/*.json, relocated there under #575). Required status
