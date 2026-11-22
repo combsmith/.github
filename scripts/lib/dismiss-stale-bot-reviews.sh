@@ -21,19 +21,32 @@
 #      never dismissed, #1115 out-of-scope);
 #   3. it sits on a commit that is NO LONGER the PR head (superseded). A still-
 #      valid finding on the current head is left in place; it returns as a fresh
-#      CHANGES_REQUESTED on the new SHA when a bot re-reviews.
+#      CHANGES_REQUESTED on the new SHA when a bot re-reviews;
+#   4. that same bot has NO review thread that is still open and current
+#      (isResolved == false AND isOutdated == false, started by the same login,
+#      compared after `[bot]` normalization). A bot's live finding on the current
+#      head must not be dismissed along with its review (.github-private#2570).
 
 # Default allow-list of bot review authors whose stale CHANGES_REQUESTED reviews
 # may be dismissed. Matches the AI code reviewers this org runs (CodeRabbit +
 # Copilot). Override wholesale via DSBR_BOT_ALLOWLIST (comma-separated logins) or
 # the optional CSV argument to the predicates below — an explicit list REPLACES
 # this default so an operator has full, tight control over what may be dismissed.
+#
+# The defaults are the GraphQL login form (no `[bot]` suffix): the orchestrator
+# reads `author.login` over GraphQL, which returns `coderabbitai`, not the REST
+# `coderabbitai[bot]`. Matching normalizes one trailing `[bot]` on both sides, so
+# an operator list may use either form.
 DSBR_DEFAULT_ALLOWLIST=(
-  "coderabbitai[bot]"
-  "coderabbit[bot]"
-  "copilot[bot]"
-  "copilot-pull-request-reviewer[bot]"
+  "coderabbitai"
+  "copilot-pull-request-reviewer"
 )
+
+# dsbr_norm_login <login> — strip ONE trailing `[bot]` so the GraphQL and REST
+# forms of a bot login compare equal.
+dsbr_norm_login() {
+  printf '%s' "${1%\[bot\]}"
+}
 
 # dsbr_resolve_allowlist [csv] — print the active allow-list, one login per line.
 # Precedence: explicit CSV arg > DSBR_BOT_ALLOWLIST env > built-in default. A
@@ -70,20 +83,38 @@ dsbr_is_allowlisted_bot() {
   local -A allowed_bots=()
   local allowed
   while IFS= read -r allowed; do
-    allowed_bots["$allowed"]=1
+    allowed_bots["$(dsbr_norm_login "$allowed")"]=1
   done < <(dsbr_resolve_allowlist "$csv")
-  [[ -n "${allowed_bots[$login]:-}" ]]
+  login="$(dsbr_norm_login "$login")"
+  [[ -n "$login" ]] && [[ -n "${allowed_bots[$login]:-}" ]]
 }
 
-# dsbr_should_dismiss <state> <review_oid> <head_oid> <login> <author_type> [allowlist_csv]
+# dsbr_bot_has_open_thread <login> <threads_tsv>
+#   0 if <threads_tsv> (one TAB-separated record per review thread:
+#   isResolved, isOutdated, first-comment author login) holds a thread by the same
+#   login (after `[bot]` normalization) that is unresolved AND not outdated.
+dsbr_bot_has_open_thread() {
+  local login resolved outdated author
+  login="$(dsbr_norm_login "$1")"
+  while IFS=$'\t' read -r resolved outdated author; do
+    [[ -n "$resolved" ]] || continue
+    [[ "$resolved" = "false" ]] && [[ "$outdated" = "false" ]] || continue
+    [[ "$(dsbr_norm_login "$author")" = "$login" ]] && return 0
+  done <<<"$2"
+  return 1
+}
+
+# dsbr_should_dismiss <state> <review_oid> <head_oid> <login> <author_type> [allowlist_csv] [threads_tsv]
 #   0 (dismiss) iff the review is an allow-listed bot's CHANGES_REQUESTED sitting
-#   on a superseded commit; non-zero (keep) otherwise. Fail-closed: a missing
+#   on a superseded commit AND that bot has no open, current review thread (see
+#   dsbr_bot_has_open_thread); non-zero (keep) otherwise. Fail-closed: a missing
 #   review_oid or head_oid cannot prove the review is superseded, so it is kept.
 dsbr_should_dismiss() {
-  local state="$1" review_oid="$2" head_oid="$3" login="$4" author_type="$5" csv="${6:-}"
+  local state="$1" review_oid="$2" head_oid="$3" login="$4" author_type="$5" csv="${6:-}" threads="${7:-}"
   [[ "$state" = "CHANGES_REQUESTED" ]] || return 1
   [[ -n "$review_oid" ]] && [[ -n "$head_oid" ]] || return 1
   [[ "$review_oid" != "$head_oid" ]] || return 1
   dsbr_is_allowlisted_bot "$login" "$author_type" "$csv" || return 1
+  ! dsbr_bot_has_open_thread "$login" "$threads" || return 1
   return 0
 }

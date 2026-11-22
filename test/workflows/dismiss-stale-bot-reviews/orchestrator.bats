@@ -1,13 +1,19 @@
 #!/usr/bin/env bats
 # Integration tests for scripts/dismiss-stale-bot-reviews.sh — the thin I/O glue
-# (#1115). These exercise the WHOLE decision path (GraphQL read → pure core →
-# dismissal mutation) with a fake `gh`, so a regression in how the glue feeds the
-# core surfaces here, not only in the pure-core unit tests.
+# (#1115). They exercise the WHOLE path (GraphQL reads → pure core → dismissal
+# mutation) with a fake `gh` that behaves like the real one: it exits NON-ZERO on
+# failure (the real `gh api graphql` does on an errors envelope).
 #
 # Fixture PR (mirrors #1094): head is 8e5bc8db; an allow-listed bot's
 # CHANGES_REQUESTED sits on the superseded aca48dc4 and MUST be dismissed, while
 # a same-bot review on the current head, a human review, and a bot APPROVE must
-# all be left alone.
+# all be left alone. Bot logins use the GraphQL form (`coderabbitai`, no [bot]).
+#
+# Fake gh response files live in $D. For a call of kind K (reviews, threads,
+# recheck, sweep) with PR number N and cursor C it serves the first existing of
+#   K.prN.C.json  K.prN.json  K.C.json  K.json
+# A file K.fail makes that kind exit 1. Mutations log `DISMISS <id>` to $GH_LOG;
+# fail.<id> makes that mutation exit 1, envelope.<id> returns an errors envelope.
 
 REPO_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/../../.." && pwd)"
 ORCH="${REPO_ROOT}/scripts/dismiss-stale-bot-reviews.sh"
@@ -15,32 +21,52 @@ ORCH="${REPO_ROOT}/scripts/dismiss-stale-bot-reviews.sh"
 setup() {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   TT_TMP="$(mktemp -d)"
-  GH_LOG="${TT_TMP}/gh.log"; export GH_LOG
-  DSBR_RESPONSE="${TT_TMP}/response.json"; export DSBR_RESPONSE
-  cat > "$DSBR_RESPONSE" <<'JSON'
+  D="${TT_TMP}/d"; mkdir -p "$D"; export D
+  GH_LOG="${TT_TMP}/gh.log"; export GH_LOG; : > "$GH_LOG"
+  DSBR_RETRY_UNIT=0; export DSBR_RETRY_UNIT
+  cat > "$D/reviews.json" <<'JSON'
 {"data":{"repository":{"pullRequest":{
   "headRefOid":"8e5bc8db",
-  "latestOpinionatedReviews":{"nodes":[
-    {"id":"PRR_stale","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}},
-    {"id":"PRR_head","state":"CHANGES_REQUESTED","commit":{"oid":"8e5bc8db"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}},
+  "latestOpinionatedReviews":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
+    {"id":"PRR_stale","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai","__typename":"Bot"}},
     {"id":"PRR_human","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"don-petry","__typename":"User"}},
-    {"id":"PRR_approved","state":"APPROVED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}
+    {"id":"PRR_approved","state":"APPROVED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai","__typename":"Bot"}}
   ]}
 }}}}
 JSON
-  # Fake gh: a mutation call (args mention dismissPullRequestReview) logs the
-  # dismissed review id; any other graphql call returns the canned read response.
+  cat > "$D/threads.json" <<'JSON'
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}
+JSON
+  echo '{"data":{"repository":{"pullRequest":{"headRefOid":"8e5bc8db"}}}}' > "$D/recheck.json"
   local bin="${TT_TMP}/bin"; mkdir -p "$bin"
   cat > "$bin/gh" <<'STUB'
 #!/usr/bin/env bash
-if printf '%s\0' "$@" | grep -qz 'dismissPullRequestReview'; then
-  for a in "$@"; do
-    case "$a" in id=*) printf 'DISMISS %s\n' "${a#id=}" >> "$GH_LOG" ;; esac
-  done
+all="$*"
+num="" cur=""
+for a in "$@"; do
+  case "$a" in number=*) num="${a#number=}" ;; cursor=*) cur="${a#cursor=}" ;; esac
+done
+[ "$cur" = "null" ] && cur=""
+if [[ "$all" == *dismissPullRequestReview* ]]; then
+  id=""
+  for a in "$@"; do case "$a" in id=*) id="${a#id=}" ;; esac; done
+  printf 'DISMISS %s\n' "$id" >> "$GH_LOG"
+  if [ -e "$D/fail.$id" ]; then echo 'GraphQL: mutation failed' >&2; exit 1; fi
+  if [ -e "$D/envelope.$id" ]; then printf '{"errors":[{"message":"review already dismissed"}]}'; exit 0; fi
   printf '{"data":{"dismissPullRequestReview":{"pullRequestReview":{"id":"x","state":"DISMISSED"}}}}'
   exit 0
 fi
-cat "$DSBR_RESPONSE"
+if   [[ "$all" == *reviewThreads* ]]; then kind=threads
+elif [[ "$all" == *latestOpinionatedReviews* ]]; then kind=reviews
+elif [[ "$all" == *reviewDecision* ]]; then kind=sweep
+else kind=recheck; fi
+printf 'READ %s pr=%s cursor=%s\n' "$kind" "$num" "$cur" >> "$GH_LOG"
+if [ -e "$D/$kind.fail.pr$num" ] || [ -e "$D/$kind.fail" ]; then echo 'gh: failed' >&2; exit 1; fi
+for f in "$kind.pr$num.$cur.json" "$kind.pr$num.json" "$kind.$cur.json" "$kind.json"; do
+  [ -n "$cur" ] || case "$f" in *..json) continue ;; esac
+  if [ -e "$D/$f" ]; then cat "$D/$f"; exit 0; fi
+done
+echo "fake gh: no fixture for $kind pr=$num cursor=$cur" >&2; exit 1
 STUB
   chmod +x "$bin/gh"
   PATH="${bin}:${PATH}"; export PATH
@@ -48,183 +74,240 @@ STUB
 
 teardown() { rm -rf "${TT_TMP:-/nonexistent}"; }
 
+dismissed() { grep '^DISMISS ' "$GH_LOG" | sort | tr '\n' ' '; }
+
 @test "dismisses ONLY the stale allow-listed bot review; leaves head/human/approved" {
+  # add a same-bot review on the CURRENT head: must be kept
+  jq '.data.repository.pullRequest.latestOpinionatedReviews.nodes += [{"id":"PRR_head","state":"CHANGES_REQUESTED","commit":{"oid":"8e5bc8db"},"author":{"login":"coderabbitai","__typename":"Bot"}}]' \
+    "$D/reviews.json" > "$D/r.tmp" && mv "$D/r.tmp" "$D/reviews.json"
   run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
   [ "$status" -eq 0 ]
-  # Assert the script's summary output before the log-inspecting `run grep` calls
-  # below overwrite bats's $output.
   echo "$output" | grep -q 'dismissed 1 stale bot review'
-  # exactly one dismissal, and it is the superseded bot review
-  [ "$(grep -c '^DISMISS ' "$GH_LOG")" -eq 1 ]
-  grep -qx 'DISMISS PRR_stale' "$GH_LOG"
-  # the still-valid head review, the human review, and the approve are untouched.
-  # Assert grep's exact "no match" status (1), not any non-zero: a status of 2
-  # (e.g. a missing log file) would otherwise pass this negative check falsely.
-  run grep -q 'DISMISS PRR_head' "$GH_LOG"
-  [ "$status" -eq 1 ]
-  run grep -q 'DISMISS PRR_human' "$GH_LOG"
-  [ "$status" -eq 1 ]
-  run grep -q 'DISMISS PRR_approved' "$GH_LOG"
-  [ "$status" -eq 1 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale " ]
+}
+
+@test "the [bot]-suffixed login form is also dismissed" {
+  sed -i 's/"coderabbitai"/"coderabbitai[bot]"/' "$D/reviews.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale " ]
+}
+
+@test "a User whose login is coderabbitai is kept" {
+  sed -i 's/"login":"coderabbitai","__typename":"Bot"/"login":"coderabbitai","__typename":"User"/' "$D/reviews.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  [ -z "$(dismissed)" ]
 }
 
 @test "dry-run examines but dismisses nothing (no mutation)" {
   run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --dry-run
   [ "$status" -eq 0 ]
-  # Assert the dry-run output before the `run grep` below overwrites $output.
   echo "$output" | grep -q '\[dry-run\] would dismiss review PRR_stale'
-  # The dry-run summary must report the candidate as WOULD-dismiss, never as an
-  # actual dismissal — a candidate that was not mutated must stay out of the
-  # dismissed count so operators/automation consuming the summary are not misled
-  # (#1116). Assert the would-dismiss phrasing and that "dismissed 1" never appears.
   echo "$output" | grep -q 'would dismiss 1 stale bot review'
   echo "$output" | grep -q 'no reviews were dismissed'
-  run grep -q 'dismissed 1 stale bot review' <<<"$output"
-  [ "$status" -eq 1 ]
-  # No mutation ran, so the log may not exist; touch it to guarantee the target
-  # is present, then assert grep's exact "no match" status (1) — not a status of
-  # 2 from a missing file, which would let a real dismissal slip through.
-  touch "$GH_LOG"
-  run grep -q '^DISMISS ' "$GH_LOG"
-  [ "$status" -eq 1 ]
+  [ -z "$(dismissed)" ]
 }
 
-@test "queries latestOpinionatedReviews so a trailing COMMENTED cannot mask a stale CHANGES_REQUESTED" {
-  # Regression for #1116: latestReviews returns each reviewer's most-recent review
-  # of ANY kind, so a bot COMMENTED submitted after its CHANGES_REQUESTED would
-  # hide the still-blocking change request and it would never be dismissed. The
-  # glue must query latestOpinionatedReviews (each reviewer's latest APPROVED/
-  # CHANGES_REQUESTED). Capture the GraphQL query text and assert the field used.
+@test "queries latestOpinionatedReviews, never latestReviews" {
   local qlog="${TT_TMP}/query.log"
-  cat > "${TT_TMP}/bin/gh" <<STUB
-#!/usr/bin/env bash
-printf '%s\n' "\$@" >> "${qlog}"
-if printf '%s\0' "\$@" | grep -qz 'dismissPullRequestReview'; then
-  printf '{"data":{"dismissPullRequestReview":{"pullRequestReview":{"id":"x","state":"DISMISSED"}}}}'
-  exit 0
-fi
-cat "\$DSBR_RESPONSE"
-STUB
+  mv "${TT_TMP}/bin/gh" "${TT_TMP}/bin/gh.real"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >> "%s"\nexec "%s/bin/gh.real" "$@"\n' "$qlog" "$TT_TMP" > "${TT_TMP}/bin/gh"
   chmod +x "${TT_TMP}/bin/gh"
-
   run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094
   [ "$status" -eq 0 ]
-  # The read query pins the opinionated connection and never the plain one.
   grep -q 'latestOpinionatedReviews' "$qlog"
   run grep -qE 'latestReviews\b' "$qlog"
   [ "$status" -eq 1 ]
 }
 
-@test "pages latestOpinionatedReviews: dismisses a stale bot review found only on page 2" {
-  # A stale allow-listed bot CHANGES_REQUESTED sits beyond the first 100-review
-  # page. A single unpaginated read would drop it (fail-open, #1116); the glue
-  # must follow pageInfo.endCursor and still dismiss it.
-  DSBR_PAGE1="${TT_TMP}/page1.json"; export DSBR_PAGE1
-  DSBR_PAGE2="${TT_TMP}/page2.json"; export DSBR_PAGE2
-  cat > "$DSBR_PAGE1" <<'JSON'
-{"data":{"repository":{"pullRequest":{
-  "headRefOid":"8e5bc8db",
-  "latestOpinionatedReviews":{
-    "pageInfo":{"hasNextPage":true,"endCursor":"CURSOR2"},
-    "nodes":[
-      {"id":"PRR_head_p1","state":"CHANGES_REQUESTED","commit":{"oid":"8e5bc8db"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}
-    ]
-  }
-}}}}
+@test "pages reviews: dismisses a stale bot review found only on page 2" {
+  cat > "$D/reviews.json" <<'JSON'
+{"data":{"repository":{"pullRequest":{"headRefOid":"8e5bc8db","latestOpinionatedReviews":{
+  "pageInfo":{"hasNextPage":true,"endCursor":"CURSOR2"},"nodes":[
+  {"id":"PRR_head_p1","state":"CHANGES_REQUESTED","commit":{"oid":"8e5bc8db"},"author":{"login":"coderabbitai","__typename":"Bot"}}]}}}}}
 JSON
-  cat > "$DSBR_PAGE2" <<'JSON'
-{"data":{"repository":{"pullRequest":{
-  "headRefOid":"8e5bc8db",
-  "latestOpinionatedReviews":{
-    "pageInfo":{"hasNextPage":false,"endCursor":null},
-    "nodes":[
-      {"id":"PRR_stale_p2","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}
-    ]
-  }
-}}}}
+  cat > "$D/reviews.CURSOR2.json" <<'JSON'
+{"data":{"repository":{"pullRequest":{"headRefOid":"8e5bc8db","latestOpinionatedReviews":{
+  "pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
+  {"id":"PRR_stale_p2","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai","__typename":"Bot"}}]}}}}}
 JSON
-  # Fake gh: dismissal logs the id; a read returns page 2 when the endCursor is
-  # presented, else page 1.
-  cat > "${TT_TMP}/bin/gh" <<'STUB'
-#!/usr/bin/env bash
-if printf '%s\0' "$@" | grep -qz 'dismissPullRequestReview'; then
-  for a in "$@"; do
-    case "$a" in id=*) printf 'DISMISS %s\n' "${a#id=}" >> "$GH_LOG" ;; esac
-  done
-  printf '{"data":{"dismissPullRequestReview":{"pullRequestReview":{"id":"x","state":"DISMISSED"}}}}'
-  exit 0
-fi
-for a in "$@"; do
-  case "$a" in cursor=CURSOR2) cat "$DSBR_PAGE2"; exit 0 ;; esac
-done
-cat "$DSBR_PAGE1"
-STUB
-  chmod +x "${TT_TMP}/bin/gh"
-
   run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
   [ "$status" -eq 0 ]
-  # Assert the paginated summary before the `run grep` below overwrites $output.
   echo "$output" | grep -q 'examined 2 effective review(s), dismissed 1 stale bot review'
-  # the page-2 stale review is dismissed; the page-1 head review is left alone
-  [ "$(grep -c '^DISMISS ' "$GH_LOG")" -eq 1 ]
-  grep -qx 'DISMISS PRR_stale_p2' "$GH_LOG"
-  run grep -q 'DISMISS PRR_head_p1' "$GH_LOG"
-  [ "$status" -eq 1 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale_p2 " ]
 }
 
-@test "no-op when the PR head moves between the read and the dismissal loop" {
-  # The paginated read sees head 8e5bc8db with a stale allow-listed bot review on
-  # the superseded aca48dc4, but a force-push moves the head before the mutation
-  # loop. The revalidation re-read returns the new head, so the run must dismiss
-  # nothing rather than clear a review that may sit on the new head (#1116).
-  cat > "${TT_TMP}/bin/gh" <<'STUB'
-#!/usr/bin/env bash
-if printf '%s\0' "$@" | grep -qz 'dismissPullRequestReview'; then
-  for a in "$@"; do case "$a" in id=*) printf 'DISMISS %s\n' "${a#id=}" >> "$GH_LOG" ;; esac; done
-  printf '{"data":{"dismissPullRequestReview":{"pullRequestReview":{"id":"x","state":"DISMISSED"}}}}'
-  exit 0
-fi
-# The paginated read requests latestOpinionatedReviews; the revalidation re-read does not.
-if printf '%s\0' "$@" | grep -qz 'latestOpinionatedReviews'; then
-  printf '%s' '{"data":{"repository":{"pullRequest":{"headRefOid":"8e5bc8db","latestOpinionatedReviews":{"nodes":[{"id":"PRR_stale","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}]}}}}}'
-  exit 0
-fi
-printf '%s' '{"data":{"repository":{"pullRequest":{"headRefOid":"deadbeef"}}}}'
-STUB
-  chmod +x "${TT_TMP}/bin/gh"
+@test "a non-advancing pagination cursor is an error, not an endless loop" {
+  jq '.data.repository.pullRequest.latestOpinionatedReviews.pageInfo = {"hasNextPage":true,"endCursor":"CURSOR2"}' \
+    "$D/reviews.json" > "$D/reviews.json.tmp" && mv "$D/reviews.json.tmp" "$D/reviews.json"
+  cp "$D/reviews.json" "$D/reviews.CURSOR2.json"
+  run timeout 30 env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'non-advancing cursor'
+  [ -z "$(dismissed)" ]
+}
 
-  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094
+@test "an open current thread by the same bot keeps its review" {
+  cat > "$D/threads.json" <<'JSON'
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
+  {"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}
+JSON
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  [ -z "$(dismissed)" ]
+}
+
+@test "resolved, outdated and other-author threads do not keep the review" {
+  cat > "$D/threads.json" <<'JSON'
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
+  {"isResolved":true,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}},
+  {"isResolved":false,"isOutdated":true,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}},
+  {"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"don-petry"}}]}}]}}}}}
+JSON
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale " ]
+}
+
+@test "an open current thread on page 2 keeps the review" {
+  cat > "$D/threads.json" <<'JSON'
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"TC2"},"nodes":[
+  {"isResolved":true,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}
+JSON
+  cat > "$D/threads.TC2.json" <<'JSON'
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
+  {"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"coderabbitai[bot]"}}]}}]}}}}}
+JSON
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  [ -z "$(dismissed)" ]
+}
+
+@test "a thread read error dismisses nothing and fails the run" {
+  : > "$D/threads.fail"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'review threads'
+  [ -z "$(dismissed)" ]
+}
+
+@test "a thread errors envelope dismisses nothing and fails the run" {
+  echo '{"errors":[{"message":"rate limited"}]}' > "$D/threads.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 1 ]
+  [ -z "$(dismissed)" ]
+}
+
+@test "no-op (exit 0) when the PR head really moves before the dismissal loop" {
+  echo '{"data":{"repository":{"pullRequest":{"headRefOid":"deadbeef"}}}}' > "$D/recheck.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'PR head moved from 8e5bc8db to deadbeef'
-  # nothing was dismissed
-  touch "$GH_LOG"
-  run grep -q '^DISMISS ' "$GH_LOG"
-  [ "$status" -eq 1 ]
+  [ -z "$(dismissed)" ]
 }
 
-@test "does not report a dismissal when the mutation returns a GraphQL errors envelope" {
-  # GitHub can return HTTP 200 with an `errors` envelope (e.g. the review was
-  # already dismissed by another actor) and gh exits 0. The glue must not count
-  # that as a dismissal or the review may still block the PR (#1116).
-  cat > "${TT_TMP}/bin/gh" <<'STUB'
-#!/usr/bin/env bash
-if printf '%s\0' "$@" | grep -qz 'dismissPullRequestReview'; then
-  printf '%s' '{"errors":[{"message":"review already dismissed"}]}'
-  exit 0
-fi
-cat "$DSBR_RESPONSE"
-STUB
-  chmod +x "${TT_TMP}/bin/gh"
-
+@test "an unreadable head recheck is a failure, not a moved head" {
+  : > "$D/recheck.fail"
   run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+  ! echo "$output" | grep -q 'head moved'
+  [ -z "$(dismissed)" ]
+}
+
+@test "a head recheck errors envelope is a failure" {
+  echo '{"errors":[{"message":"rate limited"}]}' > "$D/recheck.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'rechecking head'
+  [ -z "$(dismissed)" ]
+}
+
+@test "a failed mutation does not stop the next candidate; the run exits non-zero" {
+  jq '.data.repository.pullRequest.latestOpinionatedReviews.nodes = [
+    {"id":"PRR_a","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"coderabbitai","__typename":"Bot"}},
+    {"id":"PRR_b","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"copilot-pull-request-reviewer","__typename":"Bot"}}]' \
+    "$D/reviews.json" > "$D/r.tmp" && mv "$D/r.tmp" "$D/reviews.json"
+  : > "$D/fail.PRR_a"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q '::error::dismissal of review PRR_a'
+  echo "$output" | grep -q 'Dismissed stale review PRR_b'
+  grep -qx 'DISMISS PRR_b' "$GH_LOG"
+}
+
+@test "a mutation errors envelope is counted as a failure, not a dismissal" {
+  : > "$D/envelope.PRR_stale"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 1 ]
   echo "$output" | grep -q 'returned a GraphQL errors envelope'
-  # the phantom dismissal is not counted
   echo "$output" | grep -q 'dismissed 0 stale bot review'
 }
 
-@test "requires --owner, --name and --pr" {
+@test "requires --owner, --name and one of --pr / --sweep" {
   run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github
   [ "$status" -ne 0 ]
   echo "$output" | grep -q 'required'
+}
+
+# ── --sweep ─────────────────────────────────────────────────────────────────
+
+sweep_fixtures() {
+  # page 1: #1 (not blocked), #2 (blocked). page 2: #3 (blocked), #4 (blocked, fails).
+  cat > "$D/sweep.json" <<'JSON'
+{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"SW2"},"nodes":[
+  {"number":1,"reviewDecision":"APPROVED"},{"number":2,"reviewDecision":"CHANGES_REQUESTED"}]}}}}
+JSON
+  cat > "$D/sweep.SW2.json" <<'JSON'
+{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
+  {"number":3,"reviewDecision":"CHANGES_REQUESTED"},{"number":4,"reviewDecision":"CHANGES_REQUESTED"}]}}}}
+JSON
+  local n
+  for n in 2 3 4; do
+    sed "s/PRR_stale/PRR_stale_$n/; s/PRR_human/PRR_human_$n/; s/PRR_approved/PRR_approved_$n/" "$D/reviews.json" > "$D/reviews.pr$n.json"
+  done
+}
+
+@test "sweep: dismisses on a second page of PRs and skips a PR not blocked by CHANGES_REQUESTED" {
+  sweep_fixtures
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep --apply
+  [ "$status" -eq 0 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale_2 DISMISS PRR_stale_3 DISMISS PRR_stale_4 " ]
+  # PR #1 (APPROVED) was never read
+  ! grep -q 'pr=1 ' "$GH_LOG"
+  echo "$output" | grep -q 'checked 4 open PR(s), 3 blocked by CHANGES_REQUESTED, 0 failed'
+}
+
+@test "sweep: keeps human and on-head reviews" {
+  sweep_fixtures
+  jq '.data.repository.pullRequest.latestOpinionatedReviews.nodes = [
+    {"id":"H","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"don-petry","__typename":"User"}},
+    {"id":"O","state":"CHANGES_REQUESTED","commit":{"oid":"8e5bc8db"},"author":{"login":"coderabbitai","__typename":"Bot"}}]' \
+    "$D/reviews.json" > "$D/reviews.pr2.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep --apply
+  [ "$status" -eq 0 ]
+  ! grep -qE 'DISMISS (H|O)$' "$GH_LOG"
+  grep -qx 'DISMISS PRR_stale_3' "$GH_LOG"
+}
+
+@test "sweep: continues after one PR fails and exits non-zero" {
+  sweep_fixtures
+  : > "$D/reviews.fail.pr2"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep --apply
+  [ "$status" -eq 1 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale_3 DISMISS PRR_stale_4 " ]
+  echo "$output" | grep -q '3 blocked by CHANGES_REQUESTED, 1 failed'
+}
+
+@test "sweep: dry-run dismisses nothing" {
+  sweep_fixtures
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep
+  [ "$status" -eq 0 ]
+  [ -z "$(dismissed)" ]
+}
+
+@test "sweep: an unreadable PR list fails the run" {
+  : > "$D/sweep.fail"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep --apply
+  [ "$status" -eq 1 ]
 }

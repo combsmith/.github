@@ -25,12 +25,12 @@ OLD="aca48dc4"    # the commit the stale review sits on (superseded)
 # ── dsbr_should_dismiss — the core AC #5 decision ────────────────────────────
 
 @test "dismiss: allow-listed bot CHANGES_REQUESTED on a superseded commit" {
-  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai[bot]" Bot
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" Bot
   [ "$status" -eq 0 ]
 }
 
 @test "keep: allow-listed bot CHANGES_REQUESTED on the CURRENT head (still valid)" {
-  run dsbr_should_dismiss CHANGES_REQUESTED "$HEAD" "$HEAD" "coderabbitai[bot]" Bot
+  run dsbr_should_dismiss CHANGES_REQUESTED "$HEAD" "$HEAD" "coderabbitai" Bot
   [ "$status" -eq 1 ]
 }
 
@@ -40,70 +40,117 @@ OLD="aca48dc4"    # the commit the stale review sits on (superseded)
 }
 
 @test "keep: a non-allow-listed bot is never dismissed even when superseded" {
-  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "some-random[bot]" Bot
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "some-random" Bot
   [ "$status" -eq 1 ]
 }
 
 @test "keep: an APPROVED review on a superseded commit is not dismissed" {
-  run dsbr_should_dismiss APPROVED "$OLD" "$HEAD" "coderabbitai[bot]" Bot
+  run dsbr_should_dismiss APPROVED "$OLD" "$HEAD" "coderabbitai" Bot
   [ "$status" -eq 1 ]
 }
 
 @test "keep: a COMMENTED review is not dismissed" {
-  run dsbr_should_dismiss COMMENTED "$OLD" "$HEAD" "coderabbitai[bot]" Bot
+  run dsbr_should_dismiss COMMENTED "$OLD" "$HEAD" "coderabbitai" Bot
   [ "$status" -eq 1 ]
 }
 
 @test "keep: empty head oid is a no-op (fail-closed, cannot prove superseded)" {
-  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "" "coderabbitai[bot]" Bot
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "" "coderabbitai" Bot
   [ "$status" -eq 1 ]
 }
 
 @test "keep: empty review oid is a no-op (fail-closed)" {
-  run dsbr_should_dismiss CHANGES_REQUESTED "" "$HEAD" "coderabbitai[bot]" Bot
+  run dsbr_should_dismiss CHANGES_REQUESTED "" "$HEAD" "coderabbitai" Bot
   [ "$status" -eq 1 ]
 }
 
 @test "dismiss: copilot review bot on a superseded commit" {
-  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "copilot-pull-request-reviewer[bot]" Bot
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "copilot-pull-request-reviewer" Bot
   [ "$status" -eq 0 ]
 }
 
 # ── dsbr_is_allowlisted_bot — allow-list + bot-only gate ─────────────────────
 
 @test "allowlist: a default-list bot with Bot type is allow-listed" {
-  run dsbr_is_allowlisted_bot "coderabbitai[bot]" Bot
+  run dsbr_is_allowlisted_bot "coderabbitai" Bot
   [ "$status" -eq 0 ]
 }
 
 @test "allowlist: a human login is NOT allow-listed even if added to the list" {
   # Bot-only gate: author_type must be Bot. A User login is rejected regardless.
-  run dsbr_is_allowlisted_bot "don-petry" User "don-petry,coderabbitai[bot]"
+  run dsbr_is_allowlisted_bot "don-petry" User "don-petry,coderabbitai"
   [ "$status" -eq 1 ]
 }
 
 @test "allowlist: an unknown bot is not allow-listed" {
-  run dsbr_is_allowlisted_bot "renovate[bot]" Bot "coderabbitai[bot]"
+  run dsbr_is_allowlisted_bot "renovate" Bot "coderabbitai"
   [ "$status" -eq 1 ]
 }
 
 @test "allowlist: explicit CSV override replaces the default list" {
   # renovate is not in the default list; supplying it via CSV allow-lists it.
-  run dsbr_is_allowlisted_bot "renovate[bot]" Bot "renovate[bot]"
+  run dsbr_is_allowlisted_bot "renovate" Bot "renovate[bot]"
   [ "$status" -eq 0 ]
   # and a default-list bot is NOT accepted once an explicit CSV is supplied.
-  run dsbr_is_allowlisted_bot "coderabbitai[bot]" Bot "renovate[bot]"
+  run dsbr_is_allowlisted_bot "coderabbitai" Bot "renovate[bot]"
   [ "$status" -eq 1 ]
 }
 
 @test "allowlist: DSBR_BOT_ALLOWLIST env overrides the default list" {
-  DSBR_BOT_ALLOWLIST="renovate[bot]" run dsbr_is_allowlisted_bot "renovate[bot]" Bot
+  DSBR_BOT_ALLOWLIST="renovate[bot]" run dsbr_is_allowlisted_bot "renovate" Bot
   [ "$status" -eq 0 ]
-  DSBR_BOT_ALLOWLIST="renovate[bot]" run dsbr_is_allowlisted_bot "coderabbitai[bot]" Bot
+  DSBR_BOT_ALLOWLIST="renovate[bot]" run dsbr_is_allowlisted_bot "coderabbitai" Bot
   [ "$status" -eq 1 ]
 }
 
 @test "allowlist: whitespace around CSV entries is trimmed" {
-  run dsbr_is_allowlisted_bot "coderabbitai[bot]" Bot " foo[bot] , coderabbitai[bot] "
+  run dsbr_is_allowlisted_bot "coderabbitai" Bot " foo[bot] , coderabbitai[bot] "
+  [ "$status" -eq 0 ]
+}
+
+# ── GraphQL login form, [bot] normalization, 4th condition (open threads) ────
+
+@test "allowlist: the GraphQL login (no [bot] suffix) matches the default list" {
+  run dsbr_is_allowlisted_bot "coderabbitai" Bot
+  [ "$status" -eq 0 ]
+  run dsbr_is_allowlisted_bot "copilot-pull-request-reviewer" Bot
+  [ "$status" -eq 0 ]
+}
+
+@test "allowlist: the REST [bot] login also matches" {
+  run dsbr_is_allowlisted_bot "coderabbitai[bot]" Bot
+  [ "$status" -eq 0 ]
+}
+
+@test "allowlist: a User whose login is coderabbitai is kept" {
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" User
+  [ "$status" -eq 1 ]
+}
+
+@test "keep: an allow-listed bot's CHANGES_REQUESTED on the current head is kept" {
+  run dsbr_should_dismiss CHANGES_REQUESTED "$HEAD" "$HEAD" "coderabbitai" Bot
+  [ "$status" -eq 1 ]
+}
+
+@test "threads: an open current thread by that bot keeps the review" {
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" Bot "" $'false\tfalse\tcoderabbitai'
+  [ "$status" -eq 1 ]
+  # same bot, REST-form login on the thread
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" Bot "" $'false\tfalse\tcoderabbitai[bot]'
+  [ "$status" -eq 1 ]
+}
+
+@test "threads: a resolved thread does not keep the review" {
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" Bot "" $'true\tfalse\tcoderabbitai'
+  [ "$status" -eq 0 ]
+}
+
+@test "threads: an outdated thread does not keep the review" {
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" Bot "" $'false\ttrue\tcoderabbitai'
+  [ "$status" -eq 0 ]
+}
+
+@test "threads: an open current thread by someone else does not keep the review" {
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" Bot "" $'false\tfalse\tdon-petry'
   [ "$status" -eq 0 ]
 }
