@@ -39,7 +39,7 @@ agent_ingress_role_for_workflow() {
 # agent_ingress_is_ingress_workflow <workflow> — 0 iff <workflow> (a path or
 # basename) is the collapsed ingress workflow file.
 agent_ingress_is_ingress_workflow() {
-  [ -n "${1:-}" ] && [ "${1##*/}" = "$AGENT_INGRESS_WORKFLOW" ]
+  [[ -n "${1:-}" ]] && [[ "${1##*/}" = "$AGENT_INGRESS_WORKFLOW" ]]
 }
 
 # agent_ingress_has_role_job <role> — read a workflow YAML on stdin; 0 iff it
@@ -51,7 +51,7 @@ agent_ingress_is_ingress_workflow() {
 # never does. CRLF-tolerant.
 agent_ingress_has_role_job() {
   local role="${1:-}"
-  [ -n "$role" ] || return 1
+  [[ -n "$role" ]] || return 1
   awk -v role="$role" '
     BEGIN { injobs = 0; found = 0; indent = -1 }
     { sub(/\r$/, "") }
@@ -124,7 +124,7 @@ agent_ingress_gh_error_kind() {
   case "$err" in
     *"could not find any workflow"*) printf 'missing\n' ;;
     *"HTTP 404"*|*"Not Found"*)
-      if [ "$mode" = "workflow-only" ]; then printf 'transient\n'; else printf 'missing\n'; fi
+      if [[ "$mode" = "workflow-only" ]]; then printf 'transient\n'; else printf 'missing\n'; fi
       ;;
     *) printf 'transient\n' ;;
   esac
