@@ -11,9 +11,10 @@
 #     *approvals*), so it persists on a superseded commit and blocks reviewDecision
 #     forever (#617 blocker 3). This workflow dismisses such reviews once a NEWER
 #     commit has been pushed.
-#   • The two scripts are INLINED below as quoted heredocs, byte for byte, and run
-#     from $RUNNER_TEMP — there is no checkout and no tag to depend on, so this one
-#     file is self-sufficient. The tested source is the two scripts named above;
+#   • The two scripts are INLINED below as quoted heredocs, byte for byte, each
+#     written by its own step (a `run` value is limited to 21,000 characters) and
+#     run from $RUNNER_TEMP — there is no checkout and no tag to depend on, so this
+#     one file is self-sufficient. A failed writing step fails the job. The tested source is the two scripts named above;
 #     test/workflows/dismiss-stale-bot-reviews/inline-stub.bats fails if either
 #     heredoc differs from its script. Edit the scripts, then regenerate the
 #     heredocs — never edit them here.
@@ -28,6 +29,10 @@
 #     fail). Those PRs are covered by the timed sweep, which runs with a writable
 #     token. The job-level `permissions:` block (pull-requests: write) is required
 #     to dismiss a review; removing it breaks the dismissal.
+#   • HELD PRs are skipped: a PR labeled `needs-human-review`, `dev-lead:needs-human`
+#     or `dev-lead:hands-off` (case-insensitive, whole name) keeps every review, on
+#     the PR events and in the sweep alike. An unreadable label list dismisses
+#     nothing and fails the run. The label set is fixed; no variable changes it.
 #   • BOT-ONLY by design: human reviews are never dismissed. To change the bot
 #     allow-list, set the DSBR_BOT_ALLOWLIST repo/org variable (comma-separated
 #     logins, with or without a `[bot]` suffix) — it REPLACES the default list.
@@ -81,17 +86,7 @@ jobs:
     permissions:
       pull-requests: write   # dismissPullRequestReview via GITHUB_TOKEN
     steps:
-      - name: Dismiss stale allow-listed bot reviews on superseded commits
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # Empty for schedule/workflow_dispatch → sweep mode.
-          DSBR_PR: ${{ github.event.pull_request.number }}
-          # Optional wholesale override of the bot allow-list (comma-separated
-          # logins). Unset → the decision core's built-in CodeRabbit/Copilot list.
-          DSBR_BOT_ALLOWLIST: ${{ vars.DSBR_BOT_ALLOWLIST }}
-          # Dry-run when the repo variable or the dispatch input says "true".
-          DSBR_DRY_RUN: ${{ vars.DSBR_DRY_RUN }}
-          DSBR_DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+      - name: Write the orchestrator script
         run: |
           set -euo pipefail
           dir="$RUNNER_TEMP/dsbr/scripts"
@@ -108,6 +103,10 @@ jobs:
           # Usage:
           #   dismiss-stale-bot-reviews.sh --owner <owner> --name <repo> --pr <number> [--apply]
           #   dismiss-stale-bot-reviews.sh --owner <owner> --name <repo> --sweep [--apply]
+          #
+          # A PR carrying a hold label (needs-human-review, dev-lead:needs-human,
+          # dev-lead:hands-off) is skipped on both paths: nothing is dismissed and the run
+          # is not failed. An unreadable label list dismisses nothing and fails the run.
           #
           # --sweep pages through ALL open PRs and runs the same decision on each PR whose
           # reviewDecision is CHANGES_REQUESTED. One PR's failure never stops the others.
@@ -155,7 +154,7 @@ jobs:
               --sweep) SWEEP=true; shift ;;
               --apply) APPLY=true; shift ;;
               --dry-run) shift ;; # dry-run is the default; flag is a no-op for explicitness
-              -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+              -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
               *) echo "::error::unknown argument: $1" >&2; exit 1 ;;
             esac
           done
@@ -178,6 +177,7 @@ jobs:
             repository(owner:$owner, name:$name) {
               pullRequest(number:$number) {
                 headRefOid
+                labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
                 latestOpinionatedReviews(first: 100, after: $cursor) {
                   pageInfo { hasNextPage endCursor }
                   nodes {
@@ -213,7 +213,10 @@ jobs:
 
           # shellcheck disable=SC2016  # GraphQL variables, not shell expansions
           HEAD_QUERY='query($owner:String!, $name:String!, $number:Int!) {
-            repository(owner:$owner, name:$name) { pullRequest(number:$number) { headRefOid } }
+            repository(owner:$owner, name:$name) { pullRequest(number:$number) {
+              headRefOid
+              labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
+            } }
           }'
 
           # shellcheck disable=SC2016  # GraphQL variables, not shell expansions
@@ -256,10 +259,31 @@ jobs:
             gh_api_retry gh api graphql -f query="$query" "${cursor_arg[@]}" -f owner="$OWNER" -f name="$NAME" "$@"
           }
 
+          # Number of PRs skipped this run because they carry a hold label.
+          HELD_COUNT=0
+
+          # read_labels <response> — print the PR's label names, one per line, and return 0.
+          # Returns 1 when the list is unreadable: malformed JSON, labels null or missing,
+          # nodes not a list, a non-string name, or hasNextPage not exactly false. An empty
+          # nodes list is readable. (No `-e`: an empty list prints nothing, which is fine.)
+          read_labels() {
+            jq -r '
+              .data.repository.pullRequest.labels
+              | if type == "object"
+                  and (.pageInfo | type == "object") and (.pageInfo.hasNextPage == false)
+                  and (.nodes | type == "array")
+                  and all(.nodes[]; type == "object" and (.name | type == "string"))
+                then .nodes[].name
+                else error("unreadable labels")
+                end
+            ' <<<"$1" 2>/dev/null
+          }
+
           # process_pr <number> — returns 0 (handled, incl. nothing to do / head moved) or 1
           # (an error occurred; the caller exits non-zero at the end).
           process_pr() {
             local pr="$1" tag="${OWNER}/${NAME}#${1}"
+            local labels="" hold=""
             local head_oid="" reviews="" threads="" cursor="" first=true response page next rc
 
             # ---- reviews (paged) ----
@@ -271,9 +295,17 @@ jobs:
                 return 1
               fi
               if [[ "$first" = "true" ]]; then
-                head_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$response")"
+                head_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$response")" || {
+                  echo "::error::malformed reviews response for ${tag}" >&2; return 1; }
                 if [[ -z "$head_oid" ]]; then
                   echo "::warning::could not resolve head oid for ${tag} (PR not found or not accessible); nothing to do"
+                  return 0
+                fi
+                labels="$(read_labels "$response")" || {
+                  echo "::error::could not read the labels of ${tag}; dismissing nothing" >&2; return 1; }
+                if hold="$(dsbr_hold_label "$labels")"; then
+                  echo "::notice::${tag} is held for a human by label '${hold}'; dismissing nothing"
+                  HELD_COUNT=$((HELD_COUNT + 1))
                   return 0
                 fi
                 first=false
@@ -319,9 +351,10 @@ jobs:
               cursor="$next"
             done
 
-            # recheck_head <expected> — 0 same head, 1 head moved (warned), 2 unreadable.
+            # recheck_head <expected> — 0 same head, 1 head moved (warned), 2 unreadable
+            # (head or labels), 3 a hold label appeared (noticed, counted).
             recheck_head() {
-              local resp live
+              local resp live live_labels live_hold
               resp="$(gh_api_retry gh api graphql -f query="$HEAD_QUERY" \
                 -f owner="$OWNER" -f name="$NAME" -F number="$pr")" || {
                 echo "::error::could not re-read the head for ${tag}" >&2; return 2; }
@@ -331,6 +364,13 @@ jobs:
               fi
               live="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$resp")"
               [[ -n "$live" ]] || { echo "::error::head oid for ${tag} is unreadable on recheck" >&2; return 2; }
+              live_labels="$(read_labels "$resp")" || {
+                echo "::error::could not read the labels of ${tag} on recheck; dismissing nothing" >&2; return 2; }
+              if live_hold="$(dsbr_hold_label "$live_labels")"; then
+                echo "::notice::${tag} is held for a human by label '${live_hold}'; dismissing nothing more"
+                HELD_COUNT=$((HELD_COUNT + 1))
+                return 3
+              fi
               if [[ "$live" != "$1" ]]; then
                 echo "::warning::PR head moved from ${1} to ${live} for ${tag}; skipping remaining dismissals to avoid clearing a review on the new head"
                 return 1
@@ -341,19 +381,19 @@ jobs:
             # Revalidate the head before applying anything (it can move between the read and
             # the mutations, e.g. a force-push restoring a previously reviewed commit).
             rc=0; recheck_head "$head_oid" || rc=$?
-            [[ "$rc" -eq 0 ]] || { [[ "$rc" -eq 1 ]] && return 0 || return 1; }
+            [[ "$rc" -eq 0 ]] || { [[ "$rc" -eq 1 || "$rc" -eq 3 ]] && return 0 || return 1; }
 
             local dismissed=0 would_dismiss=0 examined=0 failed=0
             local review_id state commit_oid login author_type msg mutation_resp new_state
             while IFS=$'\t' read -r review_id state commit_oid login author_type; do
               [[ -n "$review_id" ]] || continue
               examined=$((examined + 1))
-              dsbr_should_dismiss "$state" "$commit_oid" "$head_oid" "$login" "$author_type" "" "$threads" || continue
+              dsbr_should_dismiss "$state" "$commit_oid" "$head_oid" "$login" "$author_type" "" "$threads" "$labels" || continue
 
               # Revalidate before each mutation. An unreadable head is a FAILURE of this PR
               # (stop mutating, exit non-zero); a head that really moved is a warning.
               rc=0; recheck_head "$head_oid" || rc=$?
-              if [[ "$rc" -eq 1 ]]; then return 0; fi
+              if [[ "$rc" -eq 1 || "$rc" -eq 3 ]]; then return 0; fi
               if [[ "$rc" -ne 0 ]]; then return 1; fi
 
               msg="Superseded: dismissed by dismiss-stale-bot-reviews because ${login}'s CHANGES_REQUESTED review was on ${commit_oid} but the PR head is now ${head_oid}."
@@ -405,6 +445,7 @@ jobs:
           sweep() {
             local cursor="" response page next rc number checked=0 blocked=0 failed=0
             local -a numbers=()
+            HELD_COUNT=0
             while true; do
               response="$(gql_page "$SWEEP_QUERY" "$cursor")" || {
                 echo "::error::could not list open PRs for ${OWNER}/${NAME}" >&2; return 1; }
@@ -437,7 +478,7 @@ jobs:
                 failed=$((failed + 1))
               fi
             done
-            echo "dismiss-stale-bot-reviews sweep: checked ${checked} open PR(s), ${blocked} blocked by CHANGES_REQUESTED, ${failed} failed on ${OWNER}/${NAME}"
+            echo "dismiss-stale-bot-reviews sweep: checked ${checked} open PR(s), ${blocked} blocked by CHANGES_REQUESTED, ${failed} failed on ${OWNER}/${NAME}, ${HELD_COUNT} held by a label"
             [[ "$failed" -eq 0 ]]
           }
 
@@ -447,6 +488,11 @@ jobs:
             process_pr "$PR"
           fi
           DSBR_ORCHESTRATOR_EOF
+      - name: Write the decision core
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/dsbr/scripts"
+          mkdir -p "$dir/lib"
           cat > "$dir/lib/dismiss-stale-bot-reviews.sh" <<'DSBR_CORE_EOF'
           #!/usr/bin/env bash
           # dismiss-stale-bot-reviews.sh (lib) — PURE decision core for the
@@ -475,7 +521,11 @@ jobs:
           #   4. that same bot has NO review thread that is still open and current
           #      (isResolved == false AND isOutdated == false, started by the same login,
           #      compared after `[bot]` normalization). A bot's live finding on the current
-          #      head must not be dismissed along with its review (.github-private#2570).
+          #      head must not be dismissed along with its review (.github-private#2570);
+          #   5. the PR carries NO hold label (`needs-human-review`, `dev-lead:needs-human`,
+          #      `dev-lead:hands-off`, compared case-insensitively on the whole name). A PR
+          #      held for a human keeps every review as it is. The set is fixed: no variable
+          #      narrows or extends it (see dsbr_hold_label).
 
           # Default allow-list of bot review authors whose stale CHANGES_REQUESTED reviews
           # may be dismissed. Matches the AI code reviewers this org runs (CodeRabbit +
@@ -518,6 +568,32 @@ jobs:
             done
           }
 
+          # The fixed set of labels that hold a PR for a human. Deliberately NOT overridable.
+          DSBR_HOLD_LABELS=(
+            "needs-human-review"
+            "dev-lead:needs-human"
+            "dev-lead:hands-off"
+          )
+
+          # dsbr_hold_label <newline-separated label names>
+          #   Prints the first hold label found and returns 0; returns 1 (prints nothing)
+          #   when none of the names is a hold label. The comparison is case-insensitive on
+          #   the exact whole name, so `size:XL` and `needs-human-review-later` are not holds.
+          dsbr_hold_label() {
+            local name lc hold
+            while IFS= read -r name; do
+              [[ -n "$name" ]] || continue
+              lc="${name,,}"
+              for hold in "${DSBR_HOLD_LABELS[@]}"; do
+                if [[ "$lc" = "$hold" ]]; then
+                  printf '%s\n' "$hold"
+                  return 0
+                fi
+              done
+            done <<<"$1"
+            return 1
+          }
+
           # dsbr_is_allowlisted_bot <login> <author_type> [allowlist_csv]
           #   0 if the review author is an allow-listed BOT, non-zero otherwise.
           #   The author_type (GraphQL review author __typename) MUST be "Bot": this is the
@@ -554,21 +630,38 @@ jobs:
             return 1
           }
 
-          # dsbr_should_dismiss <state> <review_oid> <head_oid> <login> <author_type> [allowlist_csv] [threads_tsv]
+          # dsbr_should_dismiss <state> <review_oid> <head_oid> <login> <author_type> [allowlist_csv] [threads_tsv] [labels]
           #   0 (dismiss) iff the review is an allow-listed bot's CHANGES_REQUESTED sitting
           #   on a superseded commit AND that bot has no open, current review thread (see
-          #   dsbr_bot_has_open_thread); non-zero (keep) otherwise. Fail-closed: a missing
+          #   dsbr_bot_has_open_thread) AND the PR carries no hold label (see
+          #   dsbr_hold_label; <labels> is newline-separated); non-zero (keep) otherwise. Fail-closed: a missing
           #   review_oid or head_oid cannot prove the review is superseded, so it is kept.
           dsbr_should_dismiss() {
-            local state="$1" review_oid="$2" head_oid="$3" login="$4" author_type="$5" csv="${6:-}" threads="${7:-}"
+            local state="$1" review_oid="$2" head_oid="$3" login="$4" author_type="$5" csv="${6:-}" threads="${7:-}" labels="${8:-}"
             [[ "$state" = "CHANGES_REQUESTED" ]] || return 1
             [[ -n "$review_oid" ]] && [[ -n "$head_oid" ]] || return 1
             [[ "$review_oid" != "$head_oid" ]] || return 1
             dsbr_is_allowlisted_bot "$login" "$author_type" "$csv" || return 1
             ! dsbr_bot_has_open_thread "$login" "$threads" || return 1
+            ! dsbr_hold_label "$labels" >/dev/null || return 1
             return 0
           }
           DSBR_CORE_EOF
+      - name: Dismiss stale allow-listed bot reviews on superseded commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Empty for schedule/workflow_dispatch → sweep mode.
+          DSBR_PR: ${{ github.event.pull_request.number }}
+          # Optional wholesale override of the bot allow-list (comma-separated
+          # logins). Unset → the decision core's built-in CodeRabbit/Copilot list.
+          DSBR_BOT_ALLOWLIST: ${{ vars.DSBR_BOT_ALLOWLIST }}
+          # Dry-run when the repo variable or the dispatch input says "true".
+          DSBR_DRY_RUN: ${{ vars.DSBR_DRY_RUN }}
+          DSBR_DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/dsbr/scripts"
+          mkdir -p "$dir/lib"
           for f in "$dir/dismiss-stale-bot-reviews.sh" "$dir/lib/dismiss-stale-bot-reviews.sh"; do
             if [ ! -s "$f" ]; then
               echo "::error::inlined script missing or empty: $f"

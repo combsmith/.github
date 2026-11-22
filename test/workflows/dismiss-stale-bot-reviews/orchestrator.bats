@@ -62,9 +62,34 @@ elif [[ "$all" == *reviewDecision* ]]; then kind=sweep
 else kind=recheck; fi
 printf 'READ %s pr=%s cursor=%s\n' "$kind" "$num" "$cur" >> "$GH_LOG"
 if [ -e "$D/$kind.fail.pr$num" ] || [ -e "$D/$kind.fail" ]; then echo 'gh: failed' >&2; exit 1; fi
+# Label fixtures (reviews and recheck responses only). The label list is injected
+# into a response that has no `labels` key, so older fixtures stay valid:
+#   reviews: labels.prN.json, labels.json
+#   recheck: labels.recheck.prN.json, labels.recheck.<call#>.json, labels.recheck.json
+# default is an empty, readable list. labels.missing.<kind> leaves the key out;
+# malformed.<kind>[.prN] serves a body that is not JSON.
+default_labels='{"pageInfo":{"hasNextPage":false},"nodes":[]}'
+serve() {
+  if [ -e "$D/malformed.$kind.pr$num" ] || [ -e "$D/malformed.$kind" ]; then echo 'not json{'; exit 0; fi
+  if [ "$kind" = reviews ] || [ "$kind" = recheck ]; then
+    lf=""
+    if [ "$kind" = recheck ]; then
+      n=$(( $(cat "$D/recheck.count" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$D/recheck.count"
+      cands=("labels.recheck.pr$num.json" "labels.recheck.$n.json" "labels.recheck.json")
+    else
+      cands=("labels.pr$num.json" "labels.json")
+    fi
+    for c in "${cands[@]}"; do [ -e "$D/$c" ] && { lf="$D/$c"; break; }; done
+    L="$default_labels"; [ -z "$lf" ] || L="$(cat "$lf")"
+    if [ -e "$D/labels.missing.$kind" ]; then cat "$1"; exit 0; fi
+    jq -c --argjson L "$L" 'if (.data.repository.pullRequest | type == "object") and (.data.repository.pullRequest | has("labels") | not) then .data.repository.pullRequest.labels = $L else . end' "$1"
+    exit 0
+  fi
+  cat "$1"
+}
 for f in "$kind.pr$num.$cur.json" "$kind.pr$num.json" "$kind.$cur.json" "$kind.json"; do
   [ -n "$cur" ] || case "$f" in *..json) continue ;; esac
-  if [ -e "$D/$f" ]; then cat "$D/$f"; exit 0; fi
+  if [ -e "$D/$f" ]; then serve "$D/$f"; exit 0; fi
 done
 echo "fake gh: no fixture for $kind pr=$num cursor=$cur" >&2; exit 1
 STUB
@@ -310,4 +335,165 @@ JSON
   : > "$D/sweep.fail"
   run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep --apply
   [ "$status" -eq 1 ]
+}
+
+# ---- hold labels (#1115): needs-human-review, dev-lead:needs-human, dev-lead:hands-off ----
+
+HOLDS=(needs-human-review dev-lead:needs-human dev-lead:hands-off)
+
+label_json() { # <name>... -> readable label list
+  local out="" n
+  for n in "$@"; do out+="${out:+,}{\"name\":\"$n\"}"; done
+  printf '{"pageInfo":{"hasNextPage":false},"nodes":[%s]}' "$out"
+}
+
+# unreadable forms: each is "<tag>" understood by set_unreadable
+FORMS=(envelope null missing nodes-missing nodes-null bad-name next-page next-missing pageinfo-missing malformed)
+
+# set_unreadable <kind: reviews|recheck> <form> [pr]
+set_unreadable() {
+  local kind="$1" form="$2" pr="${3:-}" file suffix=""
+  [ -z "$pr" ] || suffix=".pr$pr"
+  if [ "$kind" = reviews ]; then file="$D/labels${suffix}.json"; else file="$D/labels.recheck${suffix}.json"; fi
+  case "$form" in
+    envelope)
+      if [ "$kind" = reviews ]; then
+        echo '{"errors":[{"message":"boom"}]}' > "$D/reviews${suffix}.json"
+      else
+        echo '{"errors":[{"message":"boom"}]}' > "$D/recheck${suffix}.json"
+      fi ;;
+    null) echo 'null' > "$file" ;;
+    missing) : > "$D/labels.missing.$kind" ;;
+    nodes-missing) echo '{"pageInfo":{"hasNextPage":false}}' > "$file" ;;
+    nodes-null) echo '{"pageInfo":{"hasNextPage":false},"nodes":null}' > "$file" ;;
+    bad-name) echo '{"pageInfo":{"hasNextPage":false},"nodes":[{"name":7}]}' > "$file" ;;
+    next-page) echo '{"pageInfo":{"hasNextPage":true},"nodes":[]}' > "$file" ;;
+    next-missing) echo '{"pageInfo":{},"nodes":[]}' > "$file" ;;
+    pageinfo-missing) echo '{"nodes":[]}' > "$file" ;;
+    malformed) : > "$D/malformed.$kind${suffix}" ;;
+  esac
+}
+
+@test "hold label on --pr --apply: each of the three holds dismisses nothing and exits 0" {
+  local h
+  for h in "${HOLDS[@]}"; do
+    : > "$GH_LOG"
+    label_json size:L "$h" > "$D/labels.json"
+    run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -q "::notice::.*combsmith/.github#1094 is held for a human by label '$h'"
+    [ -z "$(dismissed)" ]
+  done
+}
+
+@test "hold label match is case-insensitive" {
+  label_json "Needs-Human-Review" > "$D/labels.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  [ -z "$(dismissed)" ]
+}
+
+@test "a label that is not a hold does not hold the PR" {
+  label_json size:XL needs-human-review-later "dev-lead:needs-human-x" > "$D/labels.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale " ]
+}
+
+@test "hold label on --sweep --apply: held PR untouched, unheld PR still dismissed, held counted" {
+  local h
+  for h in "${HOLDS[@]}"; do
+    : > "$GH_LOG"; rm -f "$D"/labels*.json
+    sweep_fixtures
+    label_json "$h" > "$D/labels.pr2.json"
+    run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep --apply
+    [ "$status" -eq 0 ]
+    [ "$(dismissed)" = "DISMISS PRR_stale_3 DISMISS PRR_stale_4 " ]
+    echo "$output" | grep -q "is held for a human by label '$h'"
+    echo "$output" | grep -q '0 failed on combsmith/.github, 1 held by a label'
+  done
+}
+
+@test "sweep: another label does not hold" {
+  sweep_fixtures
+  label_json size:XL > "$D/labels.pr2.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep --apply
+  [ "$status" -eq 0 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale_2 DISMISS PRR_stale_3 DISMISS PRR_stale_4 " ]
+  echo "$output" | grep -q '0 failed on combsmith/.github, 0 held by a label'
+}
+
+@test "a hold label that appears only at the first recheck holds the PR" {
+  label_json needs-human-review > "$D/labels.recheck.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'held for a human by label'
+  [ -z "$(dismissed)" ]
+}
+
+@test "a hold label that appears between two candidates stops the remaining dismissals" {
+  jq '.data.repository.pullRequest.latestOpinionatedReviews.nodes += [{"id":"PRR_stale2","state":"CHANGES_REQUESTED","commit":{"oid":"aca48dc4"},"author":{"login":"copilot-pull-request-reviewer","__typename":"Bot"}}]' \
+    "$D/reviews.json" > "$D/r.tmp" && mv "$D/r.tmp" "$D/reviews.json"
+  # recheck calls: 1 = before the loop, 2 = first candidate, 3 = second candidate
+  label_json dev-lead:hands-off > "$D/labels.recheck.3.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale " ]
+  echo "$output" | grep -q "held for a human by label 'dev-lead:hands-off'"
+}
+
+@test "unreadable label list on --pr: nothing dismissed, exit 1 (every form)" {
+  local f
+  for f in "${FORMS[@]}"; do
+    rm -f "$D"/labels*.json "$D"/labels.missing.* "$D"/malformed.* "$D/reviews.pr1094.json"
+    : > "$GH_LOG"
+    set_unreadable reviews "$f"
+    run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+    [ "$status" -eq 1 ] || { echo "form $f: status $status: $output"; false; }
+    [ -z "$(dismissed)" ] || { echo "form $f dismissed"; false; }
+  done
+}
+
+@test "unreadable label list at recheck on --pr: nothing dismissed, exit 1 (every form)" {
+  local f
+  for f in "${FORMS[@]}"; do
+    rm -f "$D"/labels*.json "$D"/labels.missing.* "$D"/malformed.*
+    echo '{"data":{"repository":{"pullRequest":{"headRefOid":"8e5bc8db"}}}}' > "$D/recheck.json"
+    : > "$GH_LOG"
+    set_unreadable recheck "$f"
+    run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+    [ "$status" -eq 1 ] || { echo "form $f: status $status: $output"; false; }
+    [ -z "$(dismissed)" ] || { echo "form $f dismissed"; false; }
+  done
+}
+
+@test "sweep: an unreadable label list fails the run, other PRs still dismissed (every form)" {
+  local f
+  for f in "${FORMS[@]}"; do
+    rm -f "$D"/labels*.json "$D"/labels.missing.* "$D"/malformed.* "$D"/reviews.pr*.json "$D"/recheck.pr*.json
+    : > "$GH_LOG"
+    sweep_fixtures
+    set_unreadable reviews "$f" 2
+    # the missing form applies to every PR; the others are per PR #2
+    run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep --apply
+    [ "$status" -eq 1 ] || { echo "form $f: status $status: $output"; false; }
+    ! grep -q 'DISMISS PRR_stale_2$' "$GH_LOG" || { echo "form $f dismissed PR 2"; false; }
+    if [ "$f" != missing ]; then grep -qx 'DISMISS PRR_stale_3' "$GH_LOG" || { echo "form $f: PR 3 not dismissed"; false; }; fi
+  done
+}
+
+@test "sweep: an unreadable label list at recheck fails the run" {
+  sweep_fixtures
+  set_unreadable recheck bad-name 2
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --sweep --apply
+  [ "$status" -eq 1 ]
+  ! grep -q 'DISMISS PRR_stale_2$' "$GH_LOG"
+  grep -qx 'DISMISS PRR_stale_3' "$GH_LOG"
+}
+
+@test "an empty label list is readable and does not hold" {
+  echo '{"pageInfo":{"hasNextPage":false},"nodes":[]}' > "$D/labels.json"
+  run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply
+  [ "$status" -eq 0 ]
+  [ "$(dismissed)" = "DISMISS PRR_stale " ]
 }

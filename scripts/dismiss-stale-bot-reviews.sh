@@ -10,6 +10,10 @@
 #   dismiss-stale-bot-reviews.sh --owner <owner> --name <repo> --pr <number> [--apply]
 #   dismiss-stale-bot-reviews.sh --owner <owner> --name <repo> --sweep [--apply]
 #
+# A PR carrying a hold label (needs-human-review, dev-lead:needs-human,
+# dev-lead:hands-off) is skipped on both paths: nothing is dismissed and the run
+# is not failed. An unreadable label list dismisses nothing and fails the run.
+#
 # --sweep pages through ALL open PRs and runs the same decision on each PR whose
 # reviewDecision is CHANGES_REQUESTED. One PR's failure never stops the others.
 #
@@ -56,7 +60,7 @@ while [[ $# -gt 0 ]]; do
     --sweep) SWEEP=true; shift ;;
     --apply) APPLY=true; shift ;;
     --dry-run) shift ;; # dry-run is the default; flag is a no-op for explicitness
-    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "::error::unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -79,6 +83,7 @@ query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
   repository(owner:$owner, name:$name) {
     pullRequest(number:$number) {
       headRefOid
+      labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
       latestOpinionatedReviews(first: 100, after: $cursor) {
         pageInfo { hasNextPage endCursor }
         nodes {
@@ -114,7 +119,10 @@ GRAPHQL
 
 # shellcheck disable=SC2016  # GraphQL variables, not shell expansions
 HEAD_QUERY='query($owner:String!, $name:String!, $number:Int!) {
-  repository(owner:$owner, name:$name) { pullRequest(number:$number) { headRefOid } }
+  repository(owner:$owner, name:$name) { pullRequest(number:$number) {
+    headRefOid
+    labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
+  } }
 }'
 
 # shellcheck disable=SC2016  # GraphQL variables, not shell expansions
@@ -157,10 +165,31 @@ gql_page() {
   gh_api_retry gh api graphql -f query="$query" "${cursor_arg[@]}" -f owner="$OWNER" -f name="$NAME" "$@"
 }
 
+# Number of PRs skipped this run because they carry a hold label.
+HELD_COUNT=0
+
+# read_labels <response> — print the PR's label names, one per line, and return 0.
+# Returns 1 when the list is unreadable: malformed JSON, labels null or missing,
+# nodes not a list, a non-string name, or hasNextPage not exactly false. An empty
+# nodes list is readable. (No `-e`: an empty list prints nothing, which is fine.)
+read_labels() {
+  jq -r '
+    .data.repository.pullRequest.labels
+    | if type == "object"
+        and (.pageInfo | type == "object") and (.pageInfo.hasNextPage == false)
+        and (.nodes | type == "array")
+        and all(.nodes[]; type == "object" and (.name | type == "string"))
+      then .nodes[].name
+      else error("unreadable labels")
+      end
+  ' <<<"$1" 2>/dev/null
+}
+
 # process_pr <number> — returns 0 (handled, incl. nothing to do / head moved) or 1
 # (an error occurred; the caller exits non-zero at the end).
 process_pr() {
   local pr="$1" tag="${OWNER}/${NAME}#${1}"
+  local labels="" hold=""
   local head_oid="" reviews="" threads="" cursor="" first=true response page next rc
 
   # ---- reviews (paged) ----
@@ -172,9 +201,17 @@ process_pr() {
       return 1
     fi
     if [[ "$first" = "true" ]]; then
-      head_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$response")"
+      head_oid="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$response")" || {
+        echo "::error::malformed reviews response for ${tag}" >&2; return 1; }
       if [[ -z "$head_oid" ]]; then
         echo "::warning::could not resolve head oid for ${tag} (PR not found or not accessible); nothing to do"
+        return 0
+      fi
+      labels="$(read_labels "$response")" || {
+        echo "::error::could not read the labels of ${tag}; dismissing nothing" >&2; return 1; }
+      if hold="$(dsbr_hold_label "$labels")"; then
+        echo "::notice::${tag} is held for a human by label '${hold}'; dismissing nothing"
+        HELD_COUNT=$((HELD_COUNT + 1))
         return 0
       fi
       first=false
@@ -220,9 +257,10 @@ process_pr() {
     cursor="$next"
   done
 
-  # recheck_head <expected> — 0 same head, 1 head moved (warned), 2 unreadable.
+  # recheck_head <expected> — 0 same head, 1 head moved (warned), 2 unreadable
+  # (head or labels), 3 a hold label appeared (noticed, counted).
   recheck_head() {
-    local resp live
+    local resp live live_labels live_hold
     resp="$(gh_api_retry gh api graphql -f query="$HEAD_QUERY" \
       -f owner="$OWNER" -f name="$NAME" -F number="$pr")" || {
       echo "::error::could not re-read the head for ${tag}" >&2; return 2; }
@@ -232,6 +270,13 @@ process_pr() {
     fi
     live="$(jq -r '.data.repository.pullRequest.headRefOid // ""' <<<"$resp")"
     [[ -n "$live" ]] || { echo "::error::head oid for ${tag} is unreadable on recheck" >&2; return 2; }
+    live_labels="$(read_labels "$resp")" || {
+      echo "::error::could not read the labels of ${tag} on recheck; dismissing nothing" >&2; return 2; }
+    if live_hold="$(dsbr_hold_label "$live_labels")"; then
+      echo "::notice::${tag} is held for a human by label '${live_hold}'; dismissing nothing more"
+      HELD_COUNT=$((HELD_COUNT + 1))
+      return 3
+    fi
     if [[ "$live" != "$1" ]]; then
       echo "::warning::PR head moved from ${1} to ${live} for ${tag}; skipping remaining dismissals to avoid clearing a review on the new head"
       return 1
@@ -242,19 +287,19 @@ process_pr() {
   # Revalidate the head before applying anything (it can move between the read and
   # the mutations, e.g. a force-push restoring a previously reviewed commit).
   rc=0; recheck_head "$head_oid" || rc=$?
-  [[ "$rc" -eq 0 ]] || { [[ "$rc" -eq 1 ]] && return 0 || return 1; }
+  [[ "$rc" -eq 0 ]] || { [[ "$rc" -eq 1 || "$rc" -eq 3 ]] && return 0 || return 1; }
 
   local dismissed=0 would_dismiss=0 examined=0 failed=0
   local review_id state commit_oid login author_type msg mutation_resp new_state
   while IFS=$'\t' read -r review_id state commit_oid login author_type; do
     [[ -n "$review_id" ]] || continue
     examined=$((examined + 1))
-    dsbr_should_dismiss "$state" "$commit_oid" "$head_oid" "$login" "$author_type" "" "$threads" || continue
+    dsbr_should_dismiss "$state" "$commit_oid" "$head_oid" "$login" "$author_type" "" "$threads" "$labels" || continue
 
     # Revalidate before each mutation. An unreadable head is a FAILURE of this PR
     # (stop mutating, exit non-zero); a head that really moved is a warning.
     rc=0; recheck_head "$head_oid" || rc=$?
-    if [[ "$rc" -eq 1 ]]; then return 0; fi
+    if [[ "$rc" -eq 1 || "$rc" -eq 3 ]]; then return 0; fi
     if [[ "$rc" -ne 0 ]]; then return 1; fi
 
     msg="Superseded: dismissed by dismiss-stale-bot-reviews because ${login}'s CHANGES_REQUESTED review was on ${commit_oid} but the PR head is now ${head_oid}."
@@ -306,6 +351,7 @@ process_pr() {
 sweep() {
   local cursor="" response page next rc number checked=0 blocked=0 failed=0
   local -a numbers=()
+  HELD_COUNT=0
   while true; do
     response="$(gql_page "$SWEEP_QUERY" "$cursor")" || {
       echo "::error::could not list open PRs for ${OWNER}/${NAME}" >&2; return 1; }
@@ -338,7 +384,7 @@ sweep() {
       failed=$((failed + 1))
     fi
   done
-  echo "dismiss-stale-bot-reviews sweep: checked ${checked} open PR(s), ${blocked} blocked by CHANGES_REQUESTED, ${failed} failed on ${OWNER}/${NAME}"
+  echo "dismiss-stale-bot-reviews sweep: checked ${checked} open PR(s), ${blocked} blocked by CHANGES_REQUESTED, ${failed} failed on ${OWNER}/${NAME}, ${HELD_COUNT} held by a label"
   [[ "$failed" -eq 0 ]]
 }
 

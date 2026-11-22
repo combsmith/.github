@@ -43,14 +43,34 @@ extract_heredoc() {
   done
 }
 
-@test "run block carries no expression and a missing script is an error" {
+@test "every run step is under 21,000 characters and carries no expression (both copies)" {
   run python3 -c '
 import sys, yaml
-d = yaml.safe_load(open(sys.argv[1]))
-run = d["jobs"]["dismiss"]["steps"][0]["run"]
-assert "${{" not in run, "run block contains an expression"
-assert "::error::inlined script missing" in run
-' "$TEMPLATE"
+for path in sys.argv[1:]:
+    steps = yaml.safe_load(open(path))["jobs"]["dismiss"]["steps"]
+    assert len(steps) >= 3, path + ": expected the scripts split across steps"
+    for st in steps:
+        run = st["run"]
+        assert len(run) < 21000, "%s: step %r run is %d characters" % (path, st["name"], len(run))
+        assert "${{" not in run, "%s: step %r run contains an expression" % (path, st["name"])
+' "$TEMPLATE" "$LOCAL_COPY"
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+}
+
+@test "a missing script is an error; env only on the last step; no step may continue on error" {
+  run python3 -c '
+import sys, yaml
+for path in sys.argv[1:]:
+    steps = yaml.safe_load(open(path))["jobs"]["dismiss"]["steps"]
+    assert "::error::inlined script missing" in steps[-1]["run"]
+    for st in steps[:-1]:
+        assert "env" not in st, "env on an early step: " + st["name"]
+        assert "continue-on-error" not in st
+    env = steps[-1]["env"]
+    for k in ("GH_TOKEN", "DSBR_PR", "DSBR_BOT_ALLOWLIST", "DSBR_DRY_RUN", "DSBR_DISPATCH_DRY_RUN"):
+        assert k in env, k
+    assert "bash \"$dir/dismiss-stale-bot-reviews.sh\"" in steps[-1]["run"]
+' "$TEMPLATE" "$LOCAL_COPY"
   [ "$status" -eq 0 ] || { echo "$output"; false; }
 }
 

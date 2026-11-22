@@ -154,3 +154,55 @@ OLD="aca48dc4"    # the commit the stale review sits on (superseded)
   run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" Bot "" $'false\tfalse\tdon-petry'
   [ "$status" -eq 0 ]
 }
+
+# ── hold labels (condition 5) ────────────────────────────────────────────────
+
+@test "hold label: each of the three fixed labels is reported" {
+  local h
+  for h in needs-human-review dev-lead:needs-human dev-lead:hands-off; do
+    run dsbr_hold_label "$h"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$h" ]
+  done
+}
+
+@test "hold label: matching is case-insensitive; the canonical name is printed" {
+  run dsbr_hold_label "Needs-Human-Review"
+  [ "$status" -eq 0 ]
+  [ "$output" = "needs-human-review" ]
+  run dsbr_hold_label "DEV-LEAD:HANDS-OFF"
+  [ "$status" -eq 0 ]
+  [ "$output" = "dev-lead:hands-off" ]
+}
+
+@test "hold label: a longer name containing a hold label is not a hold" {
+  run dsbr_hold_label $'needs-human-review-later\nxdev-lead:hands-off\ndev-lead:needs-human:2\nsize:XL'
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
+
+@test "hold label: an empty list is not a hold" {
+  run dsbr_hold_label ""
+  [ "$status" -eq 1 ]
+}
+
+@test "hold label: the hold label is found when it comes last among several" {
+  run dsbr_hold_label $'size:L\nbug\nstandards-sync\ndev-lead:needs-human'
+  [ "$status" -eq 0 ]
+  [ "$output" = "dev-lead:needs-human" ]
+}
+
+@test "hold label: the set is not narrowed by a variable" {
+  DSBR_BOT_ALLOWLIST="x" DSBR_HOLD_LABELS_CSV="" run dsbr_hold_label "needs-human-review"
+  [ "$status" -eq 0 ]
+}
+
+@test "dismiss: a hold label keeps an otherwise-stale review" {
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" Bot "" "" $'size:L\nneeds-human-review'
+  [ "$status" -eq 1 ]
+}
+
+@test "dismiss: a non-hold label list still dismisses" {
+  run dsbr_should_dismiss CHANGES_REQUESTED "$OLD" "$HEAD" "coderabbitai" Bot "" "" $'size:L\nbug'
+  [ "$status" -eq 0 ]
+}

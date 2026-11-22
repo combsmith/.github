@@ -25,7 +25,11 @@
 #   4. that same bot has NO review thread that is still open and current
 #      (isResolved == false AND isOutdated == false, started by the same login,
 #      compared after `[bot]` normalization). A bot's live finding on the current
-#      head must not be dismissed along with its review (.github-private#2570).
+#      head must not be dismissed along with its review (.github-private#2570);
+#   5. the PR carries NO hold label (`needs-human-review`, `dev-lead:needs-human`,
+#      `dev-lead:hands-off`, compared case-insensitively on the whole name). A PR
+#      held for a human keeps every review as it is. The set is fixed: no variable
+#      narrows or extends it (see dsbr_hold_label).
 
 # Default allow-list of bot review authors whose stale CHANGES_REQUESTED reviews
 # may be dismissed. Matches the AI code reviewers this org runs (CodeRabbit +
@@ -68,6 +72,32 @@ dsbr_resolve_allowlist() {
   done
 }
 
+# The fixed set of labels that hold a PR for a human. Deliberately NOT overridable.
+DSBR_HOLD_LABELS=(
+  "needs-human-review"
+  "dev-lead:needs-human"
+  "dev-lead:hands-off"
+)
+
+# dsbr_hold_label <newline-separated label names>
+#   Prints the first hold label found and returns 0; returns 1 (prints nothing)
+#   when none of the names is a hold label. The comparison is case-insensitive on
+#   the exact whole name, so `size:XL` and `needs-human-review-later` are not holds.
+dsbr_hold_label() {
+  local name lc hold
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    lc="${name,,}"
+    for hold in "${DSBR_HOLD_LABELS[@]}"; do
+      if [[ "$lc" = "$hold" ]]; then
+        printf '%s\n' "$hold"
+        return 0
+      fi
+    done
+  done <<<"$1"
+  return 1
+}
+
 # dsbr_is_allowlisted_bot <login> <author_type> [allowlist_csv]
 #   0 if the review author is an allow-listed BOT, non-zero otherwise.
 #   The author_type (GraphQL review author __typename) MUST be "Bot": this is the
@@ -104,17 +134,19 @@ dsbr_bot_has_open_thread() {
   return 1
 }
 
-# dsbr_should_dismiss <state> <review_oid> <head_oid> <login> <author_type> [allowlist_csv] [threads_tsv]
+# dsbr_should_dismiss <state> <review_oid> <head_oid> <login> <author_type> [allowlist_csv] [threads_tsv] [labels]
 #   0 (dismiss) iff the review is an allow-listed bot's CHANGES_REQUESTED sitting
 #   on a superseded commit AND that bot has no open, current review thread (see
-#   dsbr_bot_has_open_thread); non-zero (keep) otherwise. Fail-closed: a missing
+#   dsbr_bot_has_open_thread) AND the PR carries no hold label (see
+#   dsbr_hold_label; <labels> is newline-separated); non-zero (keep) otherwise. Fail-closed: a missing
 #   review_oid or head_oid cannot prove the review is superseded, so it is kept.
 dsbr_should_dismiss() {
-  local state="$1" review_oid="$2" head_oid="$3" login="$4" author_type="$5" csv="${6:-}" threads="${7:-}"
+  local state="$1" review_oid="$2" head_oid="$3" login="$4" author_type="$5" csv="${6:-}" threads="${7:-}" labels="${8:-}"
   [[ "$state" = "CHANGES_REQUESTED" ]] || return 1
   [[ -n "$review_oid" ]] && [[ -n "$head_oid" ]] || return 1
   [[ "$review_oid" != "$head_oid" ]] || return 1
   dsbr_is_allowlisted_bot "$login" "$author_type" "$csv" || return 1
   ! dsbr_bot_has_open_thread "$login" "$threads" || return 1
+  ! dsbr_hold_label "$labels" >/dev/null || return 1
   return 0
 }
