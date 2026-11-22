@@ -1611,6 +1611,22 @@ GITEOF
   [[ "$output" != *"not promoting"* ]]
 }
 
+@test "orchestrator: --allow-pre-existing stays soak_unmet on an oversized sample target (no 2^63 wrap)" {
+  _graduated_stub 3 2 failure 0
+  local R="$BATS_TEST_TMPDIR/oversize-target.json"
+  jq '.agents["dev-lead"].gate.transitions["next->ring0"].sample_min = 18446744073709551616' "$RINGS" > "$R"
+  run env CANARY_RINGS="$R" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [[ "$output" != *"DRY-RUN"* ]]
+}
+
+@test "orchestrator: --allow-pre-existing stays soak_unmet on an oversized dwell floor (no 2^63 wrap)" {
+  _graduated_stub 3 2 failure 0
+  local R="$BATS_TEST_TMPDIR/oversize-floor.json"
+  jq '.agents["dev-lead"].gate.transitions["next->ring0"].dwell_hours = 18446744073709551616' "$RINGS" > "$R"
+  run env CANARY_RINGS="$R" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [[ "$output" != *"DRY-RUN"* ]]
+}
+
 @test "orchestrator: promote --allow-pre-existing REFUSES a BLOCKED+REGRESSION frontier" {
   _graduated_stub 3 2 failure 1
   run env CANARY_RINGS="$RINGS" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run

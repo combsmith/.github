@@ -1745,8 +1745,7 @@ _baseline_daily() {
 _reusable_differs() {
   local agent="$1" cand="$2" prior="$3" reusable a b host
   reusable="$(_agent_field "$agent" reusable)"
-  [[ -z "$reusable" ]] && { echo 0; return 0; }
-  [[ -z "$cand" ]] || [[ -z "$prior" ]] && { echo 1; return 0; }
+  [[ -z "$reusable" ]] || [[ -z "$cand" ]] || [[ -z "$prior" ]] && { echo 0; return 0; }
   host="$(_agent_field "$agent" host)"; host="${host:-$THIS_REPO}"
   if [[ "$host" = "$THIS_REPO" ]]; then
     # This-repo agent: the reusable blob lives in the local checkout.
@@ -2421,7 +2420,9 @@ cmd_promote() {
     # only once that pair's dwell floor AND sample target are met (a waived sample has target 0) —
     # it removes the environmental block, never the soak. REGRESSION/SUSPECT were refused above.
     if [[ "$state" = "BLOCKED" ]] && [[ "$triage" = "PRE_EXISTING" ]] && [[ "$allow_pre" = true ]] && [[ "$advance" != true ]]; then
-      if [[ "$_dwell" =~ ^[0-9]+$ && "$_floor" =~ ^[0-9]+$ && "$_sample" =~ ^[0-9]+$ && "$_target" =~ ^[0-9]+$ ]] \
+      # Bound each operand to 18 digits: $((10#n)) wraps past 2^63, so an oversized target/floor
+      # would read as 0 and fail open. A non-match stays soak_unmet.
+      if [[ "$_dwell" =~ ^[0-9]{1,18}$ && "$_floor" =~ ^[0-9]{1,18}$ && "$_sample" =~ ^[0-9]{1,18}$ && "$_target" =~ ^[0-9]{1,18}$ ]] \
          && [[ "$((10#$_dwell))" -ge "$((10#$_floor))" ]] && [[ "$((10#$_sample))" -ge "$((10#$_target))" ]]; then
         advance=true; via_allow_pre=true
       else
