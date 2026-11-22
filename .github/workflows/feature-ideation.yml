@@ -173,6 +173,7 @@ jobs:
           fi
           body="An analyst run is enhancing this idea: ${urls}"
           for attempt in 1 2 3; do
+            # shellcheck disable=SC2016 # $id/$body are GraphQL variables, intentionally literal
             if gh api graphql \
               -f query='mutation($id: ID!, $body: String!) { addDiscussionComment(input: {discussionId: $id, body: $body}) { comment { id } } }' \
               -f id="${DISCUSSION_ID}" -f body="${body}" >/dev/null; then
