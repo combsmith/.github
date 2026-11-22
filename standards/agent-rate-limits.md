@@ -343,7 +343,7 @@ treat them as policy, not drift.
 | `dependabot[bot]` | actor | Already bounded per-ecosystem by `open-pull-requests-limit`; security update runs must never be starved by a general throttle. |
 | `OrganizationAdmin` | actor | Human break-glass / admin runs. |
 | `@combsmith/org-leads` | actor | Maintainer traffic — human review, not automation backlog. |
-| `dependabot-automerge-petry` | actor (App) | Operates on *existing* PRs; it does not add agentic run volume. |
+| `combsmith-dependabot-automrg` | actor (App) | Operates on *existing* PRs; it does not add agentic run volume. |
 | `security` | label | Urgent security / hotfix work bypasses any throttle. |
 
 To change this list, follow the runbook in §7.2. Keep this table in sync with the
