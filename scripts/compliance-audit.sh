@@ -619,9 +619,9 @@ check_reusable_workflows_disabled() {
     local decoded_on
     decoded_on=$(sed -E "s/^([\"']on[\"'])[[:space:]]*:/on:/" <<<"$decoded")
     on_line=$(grep -m1 '^on:' <<<"$decoded_on" || true)
-    if echo "$on_line" | grep -qE '^on:[[:space:]]+[a-zA-Z_]+[[:space:]]*(#.*)?$'; then
-      # Inline scalar: on: workflow_call
-      triggers=$(echo "$on_line" | sed 's/^on:[[:space:]]*//' | sed 's/[[:space:]]*#.*//' | tr -d '[:space:]')
+    if echo "$on_line" | grep -qE '^on:[[:space:]]+["'"'"']?[a-zA-Z_]+["'"'"']?[[:space:]]*(#.*)?$'; then
+      # Inline scalar: on: workflow_call (bare or quoted)
+      triggers=$(echo "$on_line" | sed 's/^on:[[:space:]]*//' | sed 's/[[:space:]]*#.*//' | tr -d "[:space:]\"'")
     elif echo "$on_line" | grep -qE '^on:[[:space:]]*\['; then
       # Inline sequence: on: [workflow_call, push]
       triggers=$(echo "$on_line" | sed 's/^on:[[:space:]]*//' | tr -d '[]"'"'"' ' | tr ',' '\n' | tr -d '[:space:]')
@@ -630,8 +630,8 @@ check_reusable_workflows_disabled() {
       triggers=$(awk '
         /^on:/                     { inblock=1; next }
         inblock && /^[^[:space:]#]/ { exit }          # dedent -> left the on: block
-        inblock && /^  [a-zA-Z_]/  {                   # exactly-2-space-indented key
-          key=$1; sub(/:.*/,"",key); gsub(/[[:space:]]/,"",key); print key
+        inblock && /^  ["'"'"'a-zA-Z_]/ {                # exactly-2-space-indented key (bare or quoted)
+          key=$1; sub(/:.*/,"",key); gsub(/[[:space:]"'"'"']/,"",key); print key
         }
       ' <<<"$decoded_on")
     fi
