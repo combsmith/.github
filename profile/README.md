@@ -84,8 +84,8 @@ All repositories in this org follow shared engineering standards defined in
 - **[Standards Versioning](https://github.com/combsmith/.github/blob/main/standards/standards-versioning.md)** — The two tag forms; cutting a release;
   N-1 resolvability; opting in and staying out.
 
-- **[Commercial Support](https://github.com/combsmith/.github/blob/main/standards/commercial-support-standard.md)** — Standard commercial support,
-  enterprise SLA tiers, custom MCP engineering, and dual-licensing language provided through CombSmith LLC.
+- **[Commercial Support](https://github.com/combsmith/.github/blob/main/standards/commercial-support-standard.md)** — Purpose and scope; canonical
+  README section; standard commercial offerings and rate card; repository adoption guidelines.
 
 ---
 
