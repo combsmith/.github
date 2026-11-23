@@ -568,3 +568,44 @@ _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
   run dependabot_required_contexts 'garbage'
   [ "$status" -eq 1 ]
 }
+
+# ── dependabot_squash_body (#1572) ──────────────────────────────────────────
+# Once a repo squashes with the pull request body (#1568), a Dependabot merge
+# would copy upstream release notes into main. The body is fixed instead.
+
+@test "squash body: a bump title gives package, versions and the link (#1572)" {
+  run dependabot_squash_body 'chore(deps): Bump SonarSource/sonarqube-scan-action from 8.4.1 to 8.5.0' 'https://github.com/combsmith/.github/pull/1554'
+  [ "$status" -eq 0 ]
+  [ "$output" = $'Bumps SonarSource/sonarqube-scan-action from 8.4.1 to 8.5.0.\n\nhttps://github.com/combsmith/.github/pull/1554' ]
+}
+
+@test "squash body: a lower-case bump with a directory suffix keeps only the package and versions (#1572)" {
+  run dependabot_squash_body 'build(deps-dev): bump @types/node from 22.1.0 to 22.2.0 in /web' 'https://github.com/o/r/pull/9'
+  [ "$output" = $'Bumps @types/node from 22.1.0 to 22.2.0.\n\nhttps://github.com/o/r/pull/9' ]
+}
+
+@test "squash body: a grouped update gives the generic line (#1572)" {
+  run dependabot_squash_body 'Bump the npm_and_yarn group across 1 directory with 3 updates' 'https://github.com/o/r/pull/9'
+  [ "$output" = $'Dependency update by Dependabot.\n\nhttps://github.com/o/r/pull/9' ]
+}
+
+@test "squash body: tokens with shell or markdown characters are not copied (#1572)" {
+  run dependabot_squash_body 'Bump $(id) from 1.0 to 2.0' 'https://github.com/o/r/pull/9'
+  [[ "$output" == "Dependency update by Dependabot."* ]]
+  run dependabot_squash_body 'Bump lib from 1.0 to 2.0<!--x-->' 'https://github.com/o/r/pull/9'
+  [[ "$output" == "Dependency update by Dependabot."* ]]
+  [[ "$output" != *'$(id)'* && "$output" != *'<!--'* ]]
+}
+
+@test "squash body: a link that is not a github.com pull request is dropped (#1572)" {
+  run dependabot_squash_body 'Bump lib from 1.0 to 2.0' 'https://evil.example/pull/9'
+  [ "$output" = 'Bumps lib from 1.0 to 2.0.' ]
+  run dependabot_squash_body 'Bump lib from 1.0 to 2.0' ''
+  [ "$output" = 'Bumps lib from 1.0 to 2.0.' ]
+}
+
+@test "squash body: an empty title still prints a body (#1572)" {
+  run dependabot_squash_body '' ''
+  [ "$status" -eq 0 ]
+  [ "$output" = 'Dependency update by Dependabot.' ]
+}
