@@ -589,6 +589,11 @@ _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
   [ "$output" = $'Bumps python from f6fe8f2 to 7ac9a3b.\n\nhttps://github.com/o/r/pull/9' ]
 }
 
+@test "squash body: a Maven group:artifact name is kept (#1572)" {
+  run dependabot_squash_body 'Bump org.slf4j:slf4j-api from 2.0.16 to 2.0.17' 'https://github.com/o/r/pull/9'
+  [ "$output" = $'Bumps org.slf4j:slf4j-api from 2.0.16 to 2.0.17.\n\nhttps://github.com/o/r/pull/9' ]
+}
+
 @test "squash body: a grouped update gives the generic line (#1572)" {
   run dependabot_squash_body 'Bump the npm_and_yarn group across 1 directory with 3 updates' 'https://github.com/o/r/pull/9'
   [ "$output" = $'Dependency update by Dependabot.\n\nhttps://github.com/o/r/pull/9' ]

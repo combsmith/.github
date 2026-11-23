@@ -274,11 +274,11 @@ dependabot_required_contexts() {
 #
 #   Reads only "bump PACKAGE from OLD to NEW" in TITLE (any case, after an
 #   optional conventional prefix, backticks removed), and keeps each token only when it is plain
-#   (letters, digits and @ / . _ + -). A title that does not parse that way,
+#   (letters, digits and @ / . _ + : -; the colon for Maven group:artifact). A title that does not parse that way,
 #   e.g. a grouped update, gives a generic line. PR_URL is kept only when it is
 #   a github.com pull request link. Always prints a body; never fails.
 dependabot_squash_body() {
-  local LC_ALL=C title="${1:-}" url="${2:-}" tok='[A-Za-z0-9@/._+-]+' line
+  local LC_ALL=C title="${1:-}" url="${2:-}" tok='[A-Za-z0-9@/._+:-]+' line
   # Docker digests and submodules quote the versions: "from `f6fe8f2` to `7ac9a3b`".
   title="${title//\`/}"
   local re="(^|[[:space:]])[Bb][Uu][Mm][Pp][[:space:]]+(${tok})[[:space:]]+from[[:space:]]+(${tok})[[:space:]]+to[[:space:]]+(${tok})([[:space:]]|$)"
