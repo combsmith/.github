@@ -5932,6 +5932,15 @@ GITEOF
   ! grep -q "tag=persona-mention/v2" "$GH_LOG"
 }
 
+@test "orchestrator: autocut — a script-only hyphenated type! (ci-fix!:) is a major, as on the scoped path (#1571)" {
+  local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"ci-fix!: drop the legacy retrigger path"}}]}'
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=persona-mention/v2.0.0 " "$GH_LOG"
+}
+
 # ── _gh_move_tag: create the ref when the PATCH reports 422 "Reference does not exist" ──
 # A promotion into a channel that has never been tagged (e.g. persona-mention/ring0,
 # apply-repo-settings) PATCHes a nonexistent ref, which GitHub answers 422 "Reference does not

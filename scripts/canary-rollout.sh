@@ -3644,7 +3644,7 @@ _autocut_range_signals() {
     if (.commits | type) != "array" then error("no commits array") else . end
     | (.commits | map(.commit.message // "")) as $msgs
     | {
-        b: any($msgs[]; test("^\\w+(\\([^)]*\\))?!:")),
+        b: any($msgs[]; test("^[\\w-]+(\\([^)]*\\))?!:")),
         f: any($msgs[]; test("^feat(\\([^)]*\\))?:"))
       }
     | "\(if .b then 1 else 0 end) \(if .f then 1 else 0 end)"
