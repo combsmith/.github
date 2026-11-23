@@ -1,5 +1,6 @@
 # Tests for the pull request body marker check (scripts/lib/pr-body-markers.sh,
-# scripts/check-pr-body-markers.sh; issue #1571). Gates: shellcheck + bats.
+# scripts/check-pr-body-markers.sh, and the reusable workflow and its caller; issue #1571).
+# Gates: shellcheck + bats.
 name: PR Body Markers Tests
 
 on:
@@ -9,6 +10,7 @@ on:
       - 'scripts/check-pr-body-markers.sh'
       - 'test/scripts/pr-body-markers/**'
       - '.github/workflows/pr-body-markers.yml'
+      - '.github/workflows/pr-body-markers-reusable.yml'
       - '.github/workflows/pr-body-markers-tests.yml'
   push:
     branches: [main]
@@ -17,6 +19,7 @@ on:
       - 'scripts/check-pr-body-markers.sh'
       - 'test/scripts/pr-body-markers/**'
       - '.github/workflows/pr-body-markers.yml'
+      - '.github/workflows/pr-body-markers-reusable.yml'
       - '.github/workflows/pr-body-markers-tests.yml'
 
 permissions: {}
@@ -38,7 +41,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install bats, shellcheck
+      - name: Install bats, shellcheck (yq is preinstalled on the runner)
         run: |
           set -euo pipefail
           sudo apt-get update -qq
