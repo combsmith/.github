@@ -118,7 +118,7 @@ _run_check() {
 @test "static guard: no \$decoded pipeline into an early-exit reader" {
   # grep -q / grep -m / awk …exit / | head stop reading early and EPIPE the
   # writer. Use a here-string (<<<\"\$decoded\") instead.
-  run grep -nE '"\$decoded" \| (grep -[A-Za-z]*[qm]|awk .*exit)' "$SCRIPT"
+  run grep -nE '(\$decoded|printf.*decoded).*\|.*(grep -[A-Za-z]*[qm]|awk .*exit|head)' "$SCRIPT"
   [ "$status" -eq 1 ]
   [ -z "$output" ]
 }

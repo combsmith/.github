@@ -610,7 +610,7 @@ check_reusable_workflows_disabled() {
     # Handles block form, inline scalar (`on: workflow_call`), and
     # inline sequence (`on: [workflow_call, push]`).
     local triggers on_line
-    # Here-strings, not `echo "$decoded" | …`: grep -m1 and the awk `exit`
+    # Here-strings, not an echo-into-pipe of the decoded text: grep -m1 and the awk `exit`
     # below stop reading early, and the writer's next chunk then fails with
     # EPIPE ("echo: write error: Broken pipe"). Under `set -euo pipefail` that
     # aborted the whole audit (#1343). `|| true`: a workflow with no bare
@@ -1964,9 +1964,9 @@ check_workflow_permissions() {
     if ! grep -qE '^permissions:' <<<"$decoded"; then
       # Count jobs and check if the single job has job-level permissions
       local job_count
-      job_count=$(echo "$decoded" | grep -cE '^  [a-zA-Z_-]+:$' || echo "0")
+      job_count=$(grep -cE '^  [a-zA-Z_-]+:$' <<<"$decoded" || echo "0")
       local has_job_perms
-      has_job_perms=$(echo "$decoded" | grep -cE '^    permissions:' || echo "0")
+      has_job_perms=$(grep -cE '^    permissions:' <<<"$decoded" || echo "0")
       if [[ "$job_count" -gt 1 ]] || [[ "$has_job_perms" -eq 0 ]]; then
         add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "missing-permissions-$wf" "warning" \
           "Workflow \`$wf\` missing top-level \`permissions:\` declaration (least-privilege policy)" \
@@ -2070,9 +2070,8 @@ ring_major_form_acceptable() {
   local esc_reusable; esc_reusable=$(escape_ere "$reusable")
 
   local pinned_ref
-  pinned_ref=$(printf '%s\n' "$decoded" \
-    | sed -nE "s#^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@([^[:space:]]+).*#\\1#p" \
-    | head -n1)
+  pinned_ref=$(sed -nE "s#^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@([^[:space:]]+).*#\\1#p" <<<"$decoded")
+  pinned_ref=${pinned_ref%%$'\n'*}
   [[ -n "$pinned_ref" ]] || return 1
 
   local pinned_major; pinned_major=$(ring_pinned_major "$pinned_ref")
@@ -2176,9 +2175,8 @@ check_centralized_workflow_stubs() {
     local esc_reusable pinned_ref="" pin_rc=0
     esc_reusable=$(escape_ere "$reusable")
     if [[ "$is_ring" = 1 ]]; then
-      pinned_ref=$(printf '%s\n' "$decoded" \
-        | sed -nE "s#^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@([^[:space:]]+).*#\\1#p" \
-        | head -n1)
+      pinned_ref=$(sed -nE "s#^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@([^[:space:]]+).*#\\1#p" <<<"$decoded")
+      pinned_ref=${pinned_ref%%$'\n'*}
       ring_pin_current "$ORG/.github" "$chan" "$repo" "$pinned_ref" || pin_rc=$?
     fi
     # With no channel tag cut yet, ring_pin_current expects (and accepts) the bare
@@ -2275,7 +2273,8 @@ check_dev_lead_stub() {
       "standards/ci-standards.md#dev-lead-agent"
   else
     local dl_pinned dl_rc=0
-    dl_pinned=$(printf '%s\n' "$decoded" | sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@(dev-lead/[^[:space:]]+).*#\1#p' | head -n1)
+    dl_pinned=$(sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@(dev-lead/[^[:space:]]+).*#\1#p' <<<"$decoded")
+    dl_pinned=${dl_pinned%%$'\n'*}
     ring_pin_current "$ORG/.github-private" "dev-lead" "$repo" "$dl_pinned" || dl_rc=$?
     if [[ "$dl_rc" -eq 1 ]] && [[ "${RING_EXPECTED_RESOLVABLE:-1}" = 0 ]]; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "$check_id" "error" \
@@ -2297,7 +2296,7 @@ check_dev_lead_stub() {
   #    Must match the uses: channel exactly — including its major (if present).
   #    When uses is a v-form (e.g. v3-stable), agent_ref must match it.
   #    When uses is bare (e.g. stable), agent_ref must also be bare.
-  uses_channel=$(printf '%s\n' "$decoded" | sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(v[0-9]+-(stable|next|ring[0-9]+))([[:space:]]|$).*#\1#p')
+  uses_channel=$(sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(v[0-9]+-(stable|next|ring[0-9]+))([[:space:]]|$).*#\1#p' <<<"$decoded")
   if [[ -n "$uses_channel" ]]; then
     if ! grep -qE "^[[:space:]]*agent_ref:[[:space:]]*dev-lead/$uses_channel([[:space:]]|$)" <<<"$decoded"; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "dev-lead-stub-agent-ref" "error" \
@@ -2306,7 +2305,7 @@ check_dev_lead_stub() {
     fi
   else
     local bare_channel
-    bare_channel=$(printf '%s\n' "$decoded" | sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(stable|next|ring[0-9]+)([[:space:]]|$).*#\1#p')
+    bare_channel=$(sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(stable|next|ring[0-9]+)([[:space:]]|$).*#\1#p' <<<"$decoded")
     if [[ -n "$bare_channel" ]] \
       && ! grep -qE "^[[:space:]]*agent_ref:[[:space:]]*dev-lead/$bare_channel([[:space:]]|$)" <<<"$decoded"; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "dev-lead-stub-agent-ref" "error" \
