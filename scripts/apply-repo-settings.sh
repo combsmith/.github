@@ -39,15 +39,32 @@ DRY_RUN="${DRY_RUN:-false}"
 SQUASH_PR_BODY_LIST="${SQUASH_PR_BODY_LIST:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/standards/squash-pr-body-repos.json}"
 
 # squash_message_for <repo> — PR_BODY for a repo on the opt-in list, else COMMIT_MESSAGES.
-# A missing or unreadable list leaves every repo on COMMIT_MESSAGES.
+# A missing or unreadable list leaves every repo on COMMIT_MESSAGES. A readable list that is
+# not {"repos": [<string>...]} is a configuration error: return non-zero rather than guess,
+# so an enrolled repo is never rolled back to COMMIT_MESSAGES by a malformed file.
 squash_message_for() {
-  local repo="$1"
-  if [[ -r "$SQUASH_PR_BODY_LIST" ]] &&
-    jq -e --arg r "$repo" '(.repos // []) | index($r) != null' "$SQUASH_PR_BODY_LIST" >/dev/null 2>&1; then
-    echo PR_BODY
-  else
+  local repo="$1" rc
+  if [[ ! -r "$SQUASH_PR_BODY_LIST" ]]; then
     echo COMMIT_MESSAGES
+    return 0
   fi
+  if jq -e --arg r "$repo" '
+      if (.repos | type == "array") and all(.repos[]; type == "string")
+      then any(.repos[]; . == $r)
+      else error("repos must be an array of repository-name strings")
+      end' "$SQUASH_PR_BODY_LIST" >/dev/null 2>&1; then
+    echo PR_BODY
+    return 0
+  else
+    rc=$?
+  fi
+  # jq -e: 1 = evaluated to false (not on the list); anything else = invalid JSON or schema.
+  if [[ "$rc" -eq 1 ]]; then
+    echo COMMIT_MESSAGES
+    return 0
+  fi
+  err "Invalid squash opt-in list $SQUASH_PR_BODY_LIST — expected {\"repos\": [\"name\", ...]}"
+  return 1
 }
 
 # The standard label set — the fixed set (STANDARD_LABEL_SPECS), the persona
@@ -247,7 +264,10 @@ apply_settings() {
   local squash_title squash_msg want_msg
   squash_title=$(printf '%s' "$current" | jq -r '.squash_merge_commit_title // "null"')
   squash_msg=$(printf '%s' "$current" | jq -r '.squash_merge_commit_message // "null"')
-  want_msg=$(squash_message_for "$repo")
+  if ! want_msg=$(squash_message_for "$repo"); then
+    err "Cannot determine the squash message setting for $ORG/$repo"
+    return 1
+  fi
   if [[ "$squash_title" != "PR_TITLE" ]] || [[ "$squash_msg" != "$want_msg" ]]; then
     info "  squash_merge_commit_title: $squash_title → PR_TITLE"
     info "  squash_merge_commit_message: $squash_msg → $want_msg"

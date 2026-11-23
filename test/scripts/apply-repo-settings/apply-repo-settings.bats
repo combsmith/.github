@@ -463,7 +463,7 @@ _squash_list() {
 @test "the shipped opt-in list seeds software-factory, which already squashes with the body (issue #1568)" {
   local shipped; shipped="$(dirname "$APPLY")/../standards/squash-pr-body-repos.json"
   [ "$SQUASH_PR_BODY_LIST" -ef "$shipped" ]           # the script reads the shipped list by default
-  [ "$(jq -c '.repos' "$shipped")" = '["software-factory"]' ]
+  jq -e '.repos | index("software-factory")' "$shipped" > /dev/null
 }
 
 @test "off the list, a repo on commit messages is left alone (issue #1568)" {
@@ -478,6 +478,31 @@ _squash_list() {
 @test "with no readable list, every repo keeps commit messages (issue #1568)" {
   SQUASH_PR_BODY_LIST="$BATS_TEST_TMPDIR/absent.json"
   [ "$(squash_message_for acme)" = COMMIT_MESSAGES ]
+}
+
+@test "a malformed opt-in list is an error, not a silent reset to commit messages (issue #1568)" {
+  SQUASH_PR_BODY_LIST="$BATS_TEST_TMPDIR/bad.json"
+  printf '{not json' > "$SQUASH_PR_BODY_LIST"
+  run squash_message_for acme
+  [ "$status" -ne 0 ]
+  gh() { printf '%s\n' "$*" >> "$CALLS"; printf '{}'; }
+  run apply_settings acme "$(_settings_json PR_TITLE PR_BODY)"
+  [ "$status" -eq 1 ]
+  touch "$CALLS"; ! grep -q 'PATCH' "$CALLS"
+}
+
+@test "an opt-in list whose repos is not an array of strings is rejected (issue #1568)" {
+  SQUASH_PR_BODY_LIST="$BATS_TEST_TMPDIR/bad.json"
+  printf '{"repos":"other-acme"}' > "$SQUASH_PR_BODY_LIST"
+  run squash_message_for acme
+  [ "$status" -ne 0 ]
+  printf '{"repos":[1]}' > "$SQUASH_PR_BODY_LIST"
+  run squash_message_for acme
+  [ "$status" -ne 0 ]
+  printf '{"repos":[]}' > "$SQUASH_PR_BODY_LIST"
+  run squash_message_for acme
+  [ "$status" -eq 0 ]
+  [ "$output" = COMMIT_MESSAGES ]
 }
 
 @test "on the list, a repo on commit messages moves to the body, title and message together (issue #1568)" {
