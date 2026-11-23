@@ -615,7 +615,10 @@ check_reusable_workflows_disabled() {
     # EPIPE ("echo: write error: Broken pipe"). Under `set -euo pipefail` that
     # aborted the whole audit (#1343). `|| true`: a workflow with no bare
     # top-level `on:` line (e.g. `"on":`) must not abort it either.
-    on_line=$(grep -m1 '^on:' <<<"$decoded" || true)
+    # Normalise a quoted trigger key ("on": / 'on':) to bare `on:` for the parsing below.
+    local decoded_on
+    decoded_on=$(sed -E "s/^([\"']on[\"'])[[:space:]]*:/on:/" <<<"$decoded")
+    on_line=$(grep -m1 '^on:' <<<"$decoded_on" || true)
     if echo "$on_line" | grep -qE '^on:[[:space:]]+[a-zA-Z_]+[[:space:]]*(#.*)?$'; then
       # Inline scalar: on: workflow_call
       triggers=$(echo "$on_line" | sed 's/^on:[[:space:]]*//' | sed 's/[[:space:]]*#.*//' | tr -d '[:space:]')
@@ -630,7 +633,7 @@ check_reusable_workflows_disabled() {
         inblock && /^  [a-zA-Z_]/  {                   # exactly-2-space-indented key
           key=$1; sub(/:.*/,"",key); gsub(/[[:space:]]/,"",key); print key
         }
-      ' <<<"$decoded")
+      ' <<<"$decoded_on")
     fi
 
     # Pure reusable = workflow_call present AND no other trigger key.

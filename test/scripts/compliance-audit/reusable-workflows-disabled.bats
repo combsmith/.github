@@ -15,6 +15,7 @@ bats_require_minimum_version 1.5.0
 _extract_triggers() {
   local decoded="$1"
   local on_line
+  decoded=$(sed -E "s/^([\"']on[\"'])[[:space:]]*:/on:/" <<<"$decoded")
   on_line=$(echo "$decoded" | grep -m1 '^on:')
   if echo "$on_line" | grep -qE '^on:[[:space:]]+[a-zA-Z_]+[[:space:]]*(#.*)?$'; then
     echo "$on_line" | sed 's/^on:[[:space:]]*//' | sed 's/[[:space:]]*#.*//' | tr -d '[:space:]'
@@ -60,6 +61,12 @@ _should_flag() {
   wf=$(printf 'on:\n  workflow_call:\n    inputs:\n      repo:\n        type: string\n')
   run _is_pure_reusable "$wf"
   [ "$status" -eq 0 ]
+}
+
+@test "quoted key: '\"on\":' workflow_call-only is a pure reusable" {
+  local wf
+  wf=$(printf '"on":\n  workflow_call:\n    inputs:\n      repo:\n        type: string\n')
+  _is_pure_reusable "$wf"
 }
 
 @test "block form: workflow_call + push is a hybrid (not pure reusable)" {
