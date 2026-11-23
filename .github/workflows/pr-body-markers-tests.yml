@@ -1,5 +1,5 @@
 # Tests for the pull request body marker check (scripts/lib/pr-body-markers.sh,
-# scripts/check-pr-body-markers.sh, and the reusable workflow and its caller; issue #1571).
+# scripts/check-pr-body-markers.sh, and its workflow; issue #1571).
 # Gates: shellcheck + bats.
 name: PR Body Markers Tests
 
@@ -11,7 +11,6 @@ on:
       - 'standards/canary-rings.json'
       - 'test/scripts/pr-body-markers/**'
       - '.github/workflows/pr-body-markers.yml'
-      - '.github/workflows/pr-body-markers-reusable.yml'
       - '.github/workflows/pr-body-markers-tests.yml'
   push:
     branches: [main]
@@ -21,7 +20,6 @@ on:
       - 'standards/canary-rings.json'
       - 'test/scripts/pr-body-markers/**'
       - '.github/workflows/pr-body-markers.yml'
-      - '.github/workflows/pr-body-markers-reusable.yml'
       - '.github/workflows/pr-body-markers-tests.yml'
 
 permissions: {}
