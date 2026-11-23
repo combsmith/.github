@@ -460,10 +460,10 @@ _squash_list() {
   jq -n '{repos: $ARGS.positional}' --args "$@" > "$SQUASH_PR_BODY_LIST"
 }
 
-@test "the shipped opt-in list is empty, so no repo is moved to the pull request body (issue #1568)" {
+@test "the shipped opt-in list seeds software-factory, which already squashes with the body (issue #1568)" {
   local shipped; shipped="$(dirname "$APPLY")/../standards/squash-pr-body-repos.json"
   [ "$SQUASH_PR_BODY_LIST" -ef "$shipped" ]           # the script reads the shipped list by default
-  [ "$(jq -c '.repos' "$shipped")" = '[]' ]
+  [ "$(jq -c '.repos' "$shipped")" = '["software-factory"]' ]
 }
 
 @test "off the list, a repo on commit messages is left alone (issue #1568)" {
