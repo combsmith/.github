@@ -93,6 +93,8 @@
   "security_sensitive_paths": [
     ".github/workflows/*",
     ".github/actions/*",
+    ".github/scripts/*",
+    "*/.github/scripts/*",
     "*/.github/workflows/*",
     ".github/CODEOWNERS",
     "CODEOWNERS",
@@ -105,6 +107,8 @@
     "*Secret*",
     "*SECRET*",
     "*credential*",
+    "*Credential*",
+    "*CREDENTIAL*",
     "*.pem",
     "*.key",
     "*.p12",
@@ -120,9 +124,13 @@
     "*/bootstrap.sh",
     "scripts/*",
     "Makefile",
+    "*/Makefile",
     "package.json",
+    "*/package.json",
     "setup.py",
+    "*/setup.py",
     "pyproject.toml",
+    "*/pyproject.toml",
     ".npmrc",
     ".pypirc"
   ]

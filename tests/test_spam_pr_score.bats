@@ -200,6 +200,8 @@ field() {
 @test "signal: a linked issue suppresses the small docs diff signal" {
   f="$(variant pr-1976-style.json '.body = "Fixes #12\n" + .body')"
   run "$SCRIPT" --facts "$f"
+  [ "$status" -eq 0 ]
+  [ "$(field raw_score)" -ge 0 ]
   [[ "$(field signals)" != *small_doc_diff_no_issue* ]]
 }
 
@@ -212,12 +214,16 @@ field() {
 @test "signal: a larger docs diff does not fire small_doc_diff_no_issue" {
   f="$(variant pr-1976-style.json '.files[0].additions = 4')"
   run "$SCRIPT" --facts "$f"
+  [ "$status" -eq 0 ]
+  [ "$(field raw_score)" -ge 0 ]
   [[ "$(field signals)" != *small_doc_diff_no_issue* ]]
 }
 
 @test "signal: a typo already present in the removed line is not introduced" {
   f="$(variant pr-1976-style.json '.files[0].patch = "-Teh old line\n+Teh new line"')"
   run "$SCRIPT" --facts "$f"
+  [ "$status" -eq 0 ]
+  [ "$(field raw_score)" -ge 0 ]
   [[ "$(field signals)" != *typo_introduced* ]]
 }
 
@@ -231,6 +237,8 @@ field() {
 @test "signal: a new account WITH activity does not fire new_account_no_activity" {
   f="$(variant pr-1976-style.json '.author_followers = 5')"
   run "$SCRIPT" --facts "$f"
+  [ "$status" -eq 0 ]
+  [ "$(field raw_score)" -ge 0 ]
   [[ "$(field signals)" != *new_account_no_activity* ]]
 }
 

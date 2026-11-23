@@ -95,14 +95,15 @@ _sps_fail() {
 }
 
 # _sps_get <json> <path-filter> <kind> — print one typed value or fail closed.
-# kind: string | nullable-string | bool | int (non-negative integer).
+# kind: string | nullable-string | bool | int (non-negative integer <= 1000000,
+# so sums of weights can never overflow Bash arithmetic).
 _sps_get() {
   local json="$1" path="$2" kind="$3" check
   case "$kind" in
     string)          check='type == "string"' ;;
     nullable-string) check='type == "string" or . == null' ;;
     bool)            check='type == "boolean"' ;;
-    int)             check='type == "number" and . >= 0 and . == floor' ;;
+    int)             check='type == "number" and . >= 0 and . <= 1000000 and . == floor' ;;
     *) _sps_fail "internal: unknown kind '$kind'"; return ;;
   esac
   # Walk to the parent object and require the final key to be PRESENT, so a
@@ -296,6 +297,10 @@ sps_score() {
   _sps_load_array issue_pats "$text"
   text="$(_sps_list "$config" '.typo_words')" || return
   _sps_load_array typo_words "$text"
+  local tw
+  for tw in "${typo_words[@]}"; do
+    [[ "$tw" =~ ^[[:alnum:]_-]+$ ]] || { _sps_fail "config typo_words entry '$tw' is not a plain word"; return; }
+  done
   text="$(_sps_list "$config" '.security_sensitive_paths')" || return
   _sps_load_array sec_paths "$text"
   local pat re_rc
