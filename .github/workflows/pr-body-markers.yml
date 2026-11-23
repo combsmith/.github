@@ -40,10 +40,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_COMMIT_COUNT: ${{ github.event.pull_request.commits }}
         run: |
           set -euo pipefail
           gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
             --jq '.[].commit.message' > "${RUNNER_TEMP}/pr-commit-messages.txt"
+          # The commits endpoint caps at 250 even paginated: fail closed on an incomplete list.
+          collected="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" --jq '.[].sha' | wc -l)"
+          if [ "${collected}" -ne "${PR_COMMIT_COUNT}" ]; then
+            echo "::error::collected ${collected} of ${PR_COMMIT_COUNT} commits; the list is incomplete, so the marker check cannot vouch for it"
+            exit 1
+          fi
       - name: Refuse breaking and skip-CI markers in the title, body and commits
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
