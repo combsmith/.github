@@ -5344,7 +5344,8 @@ GITEOF
 
 # ── autocut breaking-change detection (#712, epic #1083 pillar 2) ──────────────
 # When autocut cuts a candidate it now CLASSIFIES the change: a conventional-commit
-# `!`/`BREAKING CHANGE` on a commit touching the reusable, or a workflow_call interface
+# `!` in the subject of a commit touching the reusable (a `BREAKING CHANGE:` body line is not
+# read, #1571), or a workflow_call interface
 # break (removed/renamed/newly-required input, removed secret) auto-produces a MAJOR
 # (seeding a fresh v<newmajor>-next per F4); a non-breaking `feat` → minor, `fix` → patch;
 # any signal-fetch error fails safe to patch. The `.agents[a].autocut.bump` knob overrides.
@@ -5583,8 +5584,8 @@ YML
 # ── autocut bump-signal scoping + pagination + fail-safe (#1023 defect 1) ───────
 # Signals are derived ONLY from commits touching a WATCHED path (reusable + optional
 # .agents[a].autocut.watched_paths[]), and the range is ENUMERATED with pagination + a `since`
-# window instead of trusting one capped response. An unrelated feat!/BREAKING outside the watched
-# paths must NOT raise the bump; a BREAKING beyond the first page's cap MUST still be detected;
+# window instead of trusting one capped response. An unrelated feat! outside the watched
+# paths must NOT raise the bump; a feat! beyond the first page's cap MUST still be detected;
 # and a range that cannot be enumerated fails safe to MAJOR (loudly), never silently to patch.
 #
 # The stub serves the reusable path's commit list PER PAGE (re-<n>.json) and, for any OTHER
@@ -5701,7 +5702,8 @@ _filler_page() { jq -nc '[range(100)|{sha:("f\(.)"),commit:{message:"chore: fill
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   grep -q "git/tags .*tag=dev-lead/v2.2.0 " "$GH_LOG"       # minor, from the feat subject
-  ! grep -q "tag=dev-lead/v3" "$GH_LOG"                     # the footer alone is not a major
+  run grep -q "tag=dev-lead/v3" "$GH_LOG"                     # the footer alone is not a major
+  [ "$status" -ne 0 ]
 }
 
 @test "orchestrator: autocut — a BREAKING-CHANGE footer on a fix is a patch, not a major (#1571)" {
@@ -5712,7 +5714,8 @@ _filler_page() { jq -nc '[range(100)|{sha:("f\(.)"),commit:{message:"chore: fill
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   grep -q "git/tags .*tag=dev-lead/v2.1.1 " "$GH_LOG"
-  ! grep -q "tag=dev-lead/v3" "$GH_LOG"
+  run grep -q "tag=dev-lead/v3" "$GH_LOG"
+  [ "$status" -ne 0 ]
 }
 
 @test "orchestrator: autocut — an UNRESOLVABLE range fails safe to MAJOR (loudly), never silently to patch (#1023)" {
@@ -5929,7 +5932,8 @@ GITEOF
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   grep -q "git/tags .*tag=persona-mention/v1.3.0 " "$GH_LOG"
-  ! grep -q "tag=persona-mention/v2" "$GH_LOG"
+  run grep -q "tag=persona-mention/v2" "$GH_LOG"
+  [ "$status" -ne 0 ]
 }
 
 @test "orchestrator: autocut — a script-only hyphenated type! (ci-fix!:) is a major, as on the scoped path (#1571)" {

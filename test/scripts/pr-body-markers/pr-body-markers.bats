@@ -46,7 +46,24 @@ setup() {
 @test "findings: a footer without the title's bang is refused (#1571)" {
   run pr_body_marker_findings 'feat(canary): make the input required (#1)' $'## Why\n\nx\n\nBREAKING CHANGE: the input is required'
   [ "$status" -eq 1 ]
-  [[ "$output" == breaking-footer-without-bang:* ]]
+  [[ "$output" == "breaking-footer-without-bang: the body has"* ]]
+}
+
+@test "findings: a footer in a branch commit message without the title's bang is refused (#1571)" {
+  # Under a commit-messages squash setting the branch's messages become the squash body.
+  run pr_body_marker_findings 'feat(canary): make the input required (#1)' 'a clean body' \
+    $'feat: tidy\n\nfix: make the input required\n\nBREAKING CHANGE: the input is required'
+  [ "$status" -eq 1 ]
+  [[ "$output" == "breaking-footer-without-bang: a commit message has"* ]]
+  run pr_body_marker_findings 'feat(canary)!: make the input required (#1)' 'a clean body' \
+    $'fix: x\n\nBREAKING CHANGE: y'
+  [ "$status" -eq 0 ]
+}
+
+@test "findings: a skip-CI marker in a branch commit message is refused (#1571)" {
+  run pr_body_marker_findings 'docs: x (#1)' 'a clean body' $'docs: wip [ci skip]'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"skip-ci-marker: '[ci skip]'"* ]]
 }
 
 @test "findings: a footer with the title's bang passes (#1571)" {
@@ -84,7 +101,7 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "the org default template, unfilled, passes the check (#1571)" {
+@test "a body quoting the guidance mid-line, inside a comment, passes (#1571)" {
   local body
   body=$'<!--\nBreaking change? Put `!` after the scope in the title.\nA `BREAKING CHANGE:` line is not read.\n-->\n\n## Why\n\n## What changed\n'
   run pr_body_marker_findings 'docs: x (#1)' "$body"
@@ -98,6 +115,16 @@ setup() {
   run env PR_TITLE='feat: x (#1)' PR_BODY='a clean body' bash "$CHECK"
   [ "$status" -eq 0 ]
   [[ "$output" == *"pr-body-markers: clean"* ]]
+}
+
+@test "CLI: reads the commit messages from PR_COMMITS_FILE (#1571)" {
+  local f="$BATS_TEST_TMPDIR/commits.txt"
+  printf 'fix: x\n\nBREAKING CHANGE: y\n' > "$f"
+  run env PR_TITLE='fix: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$f" bash "$CHECK"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::breaking-footer-without-bang: a commit message has"* ]]
+  run env PR_TITLE='fix: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$BATS_TEST_TMPDIR/missing" bash "$CHECK"
+  [ "$status" -eq 2 ]
 }
 
 @test "CLI: an empty or missing body passes (#1571)" {

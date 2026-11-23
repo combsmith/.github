@@ -3,8 +3,9 @@
 # (issue #1571, under the prose ADR in #1565). No external calls; safe to `source` from the
 # CLI (scripts/check-pr-body-markers.sh) or a bats test.
 #
-# Once a repo's squash message is the pull request body (#1568), the body lands on main as the
-# commit message. Two markers in it then act on their own:
+# The squash commit message is the pull request body once a repo opts in (#1568), and the branch's
+# commit messages until then. Either way that text lands on main, and two markers in it act on
+# their own:
 #   - A `BREAKING CHANGE:` line. The canary autocut no longer reads it (#1571): only the title's
 #     `!` marks a breaking change. A body that carries the footer without the `!` would ship a
 #     breaking change as a minor or a patch, so it is refused.
@@ -14,7 +15,8 @@
 # pr_title_marks_breaking <title> — 0 when the title is a conventional-commit `!` subject
 # (`type!:` or `type(scope)!:`), the same form the autocut reads.
 pr_title_marks_breaking() {
-  [[ "${1:-}" =~ ^[A-Za-z0-9_-]+(\([^\)]*\))?!: ]]
+  local re='^[A-Za-z0-9_-]+(\([^)]*\))?!:'
+  [[ "${1:-}" =~ $re ]]
 }
 
 # pr_body_has_breaking_footer <body> — 0 when a line of the body starts (after optional
@@ -32,18 +34,25 @@ pr_skip_ci_markers() {
     | sed -E 's/^[[:space:]]+//' || true
 }
 
-# pr_body_marker_findings <title> <body> — print one finding per line; return 1 when there is
-# any, 0 when the title and body are clean.
+# pr_body_marker_findings <title> <body> [<commit messages>] — print one finding per line;
+# return 1 when there is any, 0 when all are clean. <commit messages> is the branch's commit
+# messages, concatenated: under a commit-messages squash setting they become the squash body, so
+# they are held to the same two rules as the body.
 pr_body_marker_findings() {
-  local title="${1:-}" body="${2:-}" found=0 marker
-  if pr_body_has_breaking_footer "$body" && ! pr_title_marks_breaking "$title"; then
-    printf '%s\n' "breaking-footer-without-bang: the body has a BREAKING CHANGE: line but the title has no '!'. Put '!' after the type or scope in the title (feat(area)!: ...), or drop the line."
-    found=1
+  local title="${1:-}" body="${2:-}" commits="${3:-}" found=0 marker where
+  if ! pr_title_marks_breaking "$title"; then
+    for where in "the body" "a commit message"; do
+      if [[ "$where" = "the body" ]]; then marker="$body"; else marker="$commits"; fi
+      if pr_body_has_breaking_footer "$marker"; then
+        printf '%s\n' "breaking-footer-without-bang: $where has a BREAKING CHANGE: line but the title has no '!'. Put '!' after the type or scope in the title (feat(area)!: ...), or drop the line."
+        found=1
+      fi
+    done
   fi
   while IFS= read -r marker; do
     [[ -n "$marker" ]] || continue
-    printf '%s\n' "skip-ci-marker: '$marker' in the title or body would skip the checks on main once this is the squash message. Remove it."
+    printf '%s\n' "skip-ci-marker: '$marker' in the title, body or a commit message would skip the checks on main once it is in the squash message. Remove it."
     found=1
-  done < <(pr_skip_ci_markers "$title"$'\n'"$body")
+  done < <(pr_skip_ci_markers "$title"$'\n'"$body"$'\n'"$commits")
   return "$found"
 }

@@ -1,14 +1,18 @@
 name: pr-body-markers
 
-# Fails a pull request whose title and body carry a marker that would act on its own once the
-# body is the squash commit message (issue #1571, prose ADR #1565, opt-in list #1568):
+# Fails a pull request whose title, body or branch commit messages carry a marker that would act
+# on its own once in the squash commit message (issue #1571, prose ADR #1565, opt-in list #1568).
+# The squash message is the body in a repo that opted in, and the commit messages until then:
 #   - a BREAKING CHANGE: line without '!' in the title (the canary autocut reads only the '!'), or
 #   - a skip-CI marker, which would land the merge on main with its push checks skipped.
 # The logic lives in the pure scripts/lib/pr-body-markers.sh (bats-gated by
 # pr-body-markers-tests.yml); this workflow is thin glue. The title and body reach the script
-# through the environment only, never interpolated into the run block.
+# through the environment only, never interpolated into the run block; the commit messages are
+# read with the job token into a file.
 #
-# Runs on every pull request, and again when the title or body is edited.
+# Runs on every pull request, and again when the title or body is edited. Advisory: no ruleset
+# requires it yet, and a pull request runs its own copy of the script, so it guards against
+# honest mistakes, not a determined author.
 
 on:
   pull_request:
@@ -26,12 +30,23 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Refuse breaking and skip-CI markers in the title and body
+      - name: Read the branch's commit messages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
+            --jq '.[].commit.message' > "${RUNNER_TEMP}/pr-commit-messages.txt"
+      - name: Refuse breaking and skip-CI markers in the title, body and commits
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          PR_COMMITS_FILE: ${{ runner.temp }}/pr-commit-messages.txt
         run: bash scripts/check-pr-body-markers.sh
