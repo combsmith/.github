@@ -14,14 +14,18 @@ setup() {
   REPO_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/../../.." && pwd)"
   SCRIPT="${REPO_ROOT}/scripts/deploy-standard-workflows.sh"
   TEMPLATE="${REPO_ROOT}/standards/workflows/dismiss-stale-bot-reviews.yml"
-  # Source the script for its functions; main() is guarded so nothing runs.
-  # shellcheck disable=SC1090
-  source "$SCRIPT" >/dev/null 2>&1
+}
+
+# Run is_pin_compliant in a child shell: sourcing the script in the test process
+# would clobber bats' EXIT trap and leak `set -euo pipefail`. main() is guarded,
+# so sourcing runs nothing.
+run_compliant() {
+  run bash -c 'source "$1" >/dev/null 2>&1; set +e; shift; is_pin_compliant "$@"' _ "$SCRIPT" "$@"
 }
 
 @test "self-contained stub identical to the template is compliant" {
   local existing; existing="$(cat "$TEMPLATE")"
-  run is_pin_compliant "$existing" "$TEMPLATE" "somerepo"
+  run_compliant "$existing" "$TEMPLATE" "somerepo"
   [ "$status" -eq 0 ]
 }
 
@@ -31,14 +35,14 @@ setup() {
   # compare must flag it as drift so the fix redeploys.
   local drifted
   drifted="$(sed 's/types: \[synchronize\]/types: [synchronize, opened]/' "$TEMPLATE")"
-  run is_pin_compliant "$drifted" "$TEMPLATE" "somerepo"
+  run_compliant "$drifted" "$TEMPLATE" "somerepo"
   [ "$status" -eq 1 ]
 }
 
 @test "self-contained stub with drifted permissions is NOT compliant" {
   local drifted
   drifted="$(sed '/pull-requests:/s/: write/: read/' "$TEMPLATE")"
-  run is_pin_compliant "$drifted" "$TEMPLATE" "somerepo"
+  run_compliant "$drifted" "$TEMPLATE" "somerepo"
   [ "$status" -eq 1 ]
 }
 
@@ -47,6 +51,6 @@ setup() {
   # the template only by line endings must still be compliant (no churn).
   local crlf
   crlf="$(sed "s/\$/$(printf '\r')/" "$TEMPLATE")"
-  run is_pin_compliant "$crlf" "$TEMPLATE" "somerepo"
+  run_compliant "$crlf" "$TEMPLATE" "somerepo"
   [ "$status" -eq 0 ]
 }

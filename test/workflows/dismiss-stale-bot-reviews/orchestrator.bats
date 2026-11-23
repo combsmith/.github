@@ -457,6 +457,9 @@ set_unreadable() {
   local f
   for f in "${FORMS[@]}"; do
     rm -f "$D"/labels*.json "$D"/labels.missing.* "$D"/malformed.* "$D/reviews.pr1094.json"
+    # the envelope form overwrites reviews.json; restore it so every form reaches the label read
+    [ -e "$D/reviews.pristine.json" ] || cp "$D/reviews.json" "$D/reviews.pristine.json"
+    cp "$D/reviews.pristine.json" "$D/reviews.json"
     : > "$GH_LOG"
     set_unreadable reviews "$f"
     run env GH_TOKEN=x bash "$ORCH" --owner combsmith --name .github --pr 1094 --apply

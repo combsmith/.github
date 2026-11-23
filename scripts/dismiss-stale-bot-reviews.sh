@@ -147,8 +147,9 @@ gql_errors() {
 # an empty or non-advancing cursor), which would loop forever or truncate results.
 next_cursor() {
   local response="$1" path="$2" current="$3" has_next end_cursor
-  has_next="$(jq -r "${path}.pageInfo.hasNextPage // false" <<<"$response")"
-  [[ "$has_next" = "true" ]] || return 1
+  has_next="$(jq -r "${path}.pageInfo.hasNextPage | if type == \"boolean\" then tostring else \"invalid\" end" <<<"$response" 2>/dev/null || echo invalid)"
+  [[ "$has_next" = "false" ]] && return 1
+  [[ "$has_next" = "true" ]] || return 2
   end_cursor="$(jq -r "${path}.pageInfo.endCursor // \"\"" <<<"$response")"
   if [[ -z "$end_cursor" ]] || [[ "$end_cursor" = "$current" ]]; then
     return 2

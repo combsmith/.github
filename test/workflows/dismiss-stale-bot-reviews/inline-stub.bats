@@ -83,7 +83,8 @@ assert on["pull_request_review"]["types"] == ["submitted"]
 assert on["schedule"][0]["cron"] == "23 */4 * * *"
 assert on["workflow_dispatch"]["inputs"]["dry_run"]["type"] == "boolean"
 j = d["jobs"]["dismiss"]["if"]
-assert "dependabot[bot]" in j and "head.repo.full_name" in j
+assert "github.event.pull_request.head.repo.full_name == github.repository" in j, j
+assert j.count("!= '"'"'dependabot[bot]'"'"'") == 2, j
 ' "$TEMPLATE"
   [ "$status" -eq 0 ] || { echo "$output"; false; }
 }
