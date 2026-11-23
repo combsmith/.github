@@ -619,7 +619,7 @@ is_already_compliant() {
      || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
   fi
-  if ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
+  if ! is_skipped_repo "$repo" \
      && stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content"; then
     return 1
   fi
@@ -880,7 +880,11 @@ deploy_repo() {
         mode="repin-in-place"
         if [[ "$DRY_RUN" != "true" ]]; then
           repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
-          printf '%s\n' "$existing_content" > "$repin_source"
+          # Merge the canonical guarded surfaces (on:/permissions/concurrency) into the
+          # repo's OWN body so fleet copies pick up surface fixes (e.g. #1576's bridge
+          # concurrency group) while project_context is preserved. No-op when no drift.
+          merge_guarded_surfaces "$workflow" "$(< "$template")" "$existing_content" > "$repin_source"
+          printf '\n' >> "$repin_source"
         fi
       fi
     elif [[ -n "$existing_sha" ]] && ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
