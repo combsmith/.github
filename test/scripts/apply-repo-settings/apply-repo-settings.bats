@@ -439,8 +439,43 @@ _stub_apply_steps() {
   gh() { [[ "$*" == *PATCH*"repos/$ORG/acme"* ]] && return 1; printf '{}'; }
   # repo_json is compliant except has_issues=false, so exactly one PATCH is attempted.
   run apply_settings acme \
-    '{"allow_auto_merge":true,"delete_branch_on_merge":true,"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,"has_discussions":true,"has_issues":false,"has_wiki":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}'
+    '{"allow_auto_merge":true,"delete_branch_on_merge":true,"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,"has_discussions":true,"has_issues":false,"has_wiki":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"PR_BODY"}'
   [ "$status" -eq 1 ]
+}
+
+# ── Squash commits take the pull request's title and body (issue #1568) ──────────
+# docs/initiatives/pull-request-and-commit-prose-adr.md: the squash commit is the
+# reviewed title and body, so the standard is PR_TITLE + PR_BODY, not the branch's
+# commit messages. GitHub accepts PR_BODY only beside PR_TITLE.
+
+# _settings_json <squash title> <squash message> — a repo compliant in every other setting.
+_settings_json() {
+  printf '{"allow_auto_merge":true,"delete_branch_on_merge":true,"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,"has_discussions":true,"has_issues":true,"has_wiki":false,"squash_merge_commit_title":"%s","squash_merge_commit_message":"%s"}' "$1" "$2"
+}
+
+@test "apply_settings moves a squash message of commit messages to the pull request body (issue #1568)" {
+  gh() { printf '%s\n' "$*" >> "$CALLS"; printf '{}'; }
+  run apply_settings acme "$(_settings_json PR_TITLE COMMIT_MESSAGES)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"squash_merge_commit_message: COMMIT_MESSAGES → PR_BODY"* ]]
+  grep -q "PATCH repos/$ORG/acme .*squash_merge_commit_message=PR_BODY" "$CALLS"
+  ! grep -q 'COMMIT_MESSAGES' "$CALLS"
+}
+
+@test "apply_settings sets the squash title beside the body when the title differs (issue #1568)" {
+  gh() { printf '%s\n' "$*" >> "$CALLS"; printf '{}'; }
+  run apply_settings acme "$(_settings_json COMMIT_OR_PR_TITLE COMMIT_MESSAGES)"
+  [ "$status" -eq 0 ]
+  grep -q "PATCH repos/$ORG/acme .*squash_merge_commit_title=PR_TITLE.*squash_merge_commit_message=PR_BODY" "$CALLS"
+}
+
+@test "apply_settings leaves a repo already on the pull request's title and body alone (issue #1568)" {
+  gh() { printf '%s\n' "$*" >> "$CALLS"; printf '{}'; }
+  run apply_settings acme "$(_settings_json PR_TITLE PR_BODY)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"squash_merge_commit_message: already PR_BODY"* ]]
+  [[ "$output" == *"already fully compliant"* ]]
+  ! grep -q 'PATCH' "$CALLS" 2>/dev/null
 }
 
 # ── AC6: three more steps must be able to REPORT failure ────────────────────────

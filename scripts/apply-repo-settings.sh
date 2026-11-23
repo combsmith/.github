@@ -235,14 +235,17 @@ apply_settings() {
     ok "  squash_merge_commit_title: already PR_TITLE"
   fi
 
+  # The squash commit's message is the pull request's body, the reviewed text
+  # (docs/initiatives/pull-request-and-commit-prose-adr.md, issue #1568). GitHub
+  # accepts PR_BODY only beside the PR_TITLE title set above.
   local squash_msg
   squash_msg=$(printf '%s' "$current" | jq -r '.squash_merge_commit_message // "null"')
-  if [[ "$squash_msg" != "COMMIT_MESSAGES" ]]; then
-    info "  squash_merge_commit_message: $squash_msg → COMMIT_MESSAGES"
+  if [[ "$squash_msg" != "PR_BODY" ]]; then
+    info "  squash_merge_commit_message: $squash_msg → PR_BODY"
     needs_patch=true
-    patch_args+=(-f squash_merge_commit_message=COMMIT_MESSAGES)
+    patch_args+=(-f squash_merge_commit_message=PR_BODY)
   else
-    ok "  squash_merge_commit_message: already COMMIT_MESSAGES"
+    ok "  squash_merge_commit_message: already PR_BODY"
   fi
 
   if [[ "$needs_patch" = false ]]; then

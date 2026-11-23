@@ -61,7 +61,7 @@ configuration — see the [Advanced Security (GHAS) Standard](advanced-security.
 | **Allow auto-merge** | `true` | Required for Dependabot auto-merge workflow |
 | **Automatically delete head branches** | `true` | Clean up merged branches automatically |
 | **Default squash merge commit title** | `PR_TITLE` | Clean, descriptive commit history |
-| **Default squash merge commit message** | Commit messages (`COMMIT_MESSAGES`) | Preserves individual commit messages |
+| **Default squash merge commit message** | Pull request body (`PR_BODY`) | The reviewed body becomes the commit message ([ADR](../docs/initiatives/pull-request-and-commit-prose-adr.md)); GitHub accepts it only beside `PR_TITLE` |
 
 > **Note:** While merge commits and rebase merging are enabled at the repository
 > level, the `pr-quality` ruleset enforces **squash-only** merges. The repo-level
