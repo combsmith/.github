@@ -32,8 +32,9 @@ reached a median of about 1,060 words, two thirds of it restating code, before i
 The area replaces a type such as `feat:`, which tells a reader less. One exception: a repo whose release tooling reads
 Conventional Commits types keeps the type, as `feat(area): plain verb phrase (#issue)`, and marks a breaking change
 `feat(area)!:`. Today that is this repo and `.github-private`. Their canary autocut (`scripts/canary-rollout.sh`) reads
-`feat:` at the start of the squash subject for a minor bump. It reads `!:` there, or a `BREAKING CHANGE:` line anywhere
-in the message, for a major one.
+`feat:` at the start of the squash subject for a minor bump, and `!:` there for a major one. Only the title's `!` (and
+the autocut's `workflow_call` interface check) marks a breaking change: a `BREAKING CHANGE:` line in the body is not
+read, and a check fails a body that has one without the `!` (#1571).
 
 ### Pull request bodies
 
@@ -116,9 +117,8 @@ names its own four headings, so software-factory keeps "Record and protected edi
 - **Squash message.** [#1568](https://github.com/combsmith/.github/issues/1568) lets a repo on an opt-in list,
   `standards/squash-pr-body-repos.json`, move to `PR_BODY`; every other repo stays on `COMMIT_MESSAGES`. Until a repo is
   listed, a run of `apply-repo-settings.sh` keeps it on commit messages, and would reset software-factory, which uses
-  `PR_BODY`. With `PR_BODY`, a `BREAKING CHANGE:` line anywhere in the body, even inside a comment, forces a
-  major cut, and a footer in a branch commit no longer reaches main. So repos move to the body by an opt-in list, one
-  at a time after a dry run, with this repo and `.github-private` last.
+  `PR_BODY`. With `PR_BODY`, a footer in a branch commit no longer reaches main. So repos move to the body by an opt-in
+  list, one at a time after a dry run, with this repo and `.github-private` last.
 - **Org template.** This ADR adds `.github/pull_request_template.md` with the four headings, as the org's default.
 - **Agents (`.github-private`).** dev-lead's titles and body builder, and pr-review's description triage, move to these
   rules. The exception for Conventional Commits types can go once the autocut takes its bump from elsewhere.
