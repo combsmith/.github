@@ -83,4 +83,22 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_COMMITS_FILE: ${{ runner.temp }}/pr-commit-messages.txt
-        run: bash .pr-body-markers-tooling/scripts/check-pr-body-markers.sh
+        # Exit 1 is the checker's verdict on the PR's content; it is recorded and failed in the next
+        # step, so a rejection carries its own failed-step name (the canary gate's benign class,
+        # standards/canary-rings.json). Any other non-zero exit is a checker fault and fails here.
+        run: |
+          rc=0
+          bash .pr-body-markers-tooling/scripts/check-pr-body-markers.sh || rc=$?
+          if [ "${rc}" -eq 1 ]; then
+            : > "${RUNNER_TEMP}/pr-body-markers-rejected"
+          elif [ "${rc}" -ne 0 ]; then
+            exit "${rc}"
+          fi
+
+      - name: Reject the pull request content that carries a marker
+        if: ${{ github.event.pull_request }}
+        run: |
+          if [ -e "${RUNNER_TEMP}/pr-body-markers-rejected" ]; then
+            echo "::error::the pull request's title, body or commit messages carry a refused marker (see the findings above)"
+            exit 1
+          fi

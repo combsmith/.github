@@ -79,3 +79,13 @@ setup() {
   run yq -r '.concurrency.group' "$CALLER"
   [ "$output" = 'pr-body-markers-${{ github.event.pull_request.number || github.ref }}' ]
 }
+
+@test "reusable: a marker rejection fails its own step, so the canary gate can class it (#1573)" {
+  local step="Reject the pull request content that carries a marker"
+  run yq -r ".jobs.markers.steps[] | select(.name == \"$step\") | .run" "$REUSABLE"
+  [ "$status" -eq 0 ]
+  grep -q 'exit 1' <<< "$output"
+  # the registry's benign class names exactly that step, and only that one
+  run jq -r '.agents."pr-body-markers".gate.benign_failure_classes | map(.step) | join("|")' "$REPO_ROOT/standards/canary-rings.json"
+  [ "$output" = "$step" ]
+}

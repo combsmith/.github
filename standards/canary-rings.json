@@ -1150,7 +1150,15 @@
         "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
         "baseline_window_days": 14,
         "baseline_spike_cap_multiple": 3,
-        "benign_failure_classes": [],
+        "benign_failure_classes": [
+          {
+            "id": "marker-rejection-of-pr-content",
+            "workflow": "pr-body-markers",
+            "step": "Reject the pull request content that carries a marker",
+            "reason": "#1573 review — this step fails only after the checker ran to completion and returned exit 1, its verdict that a pull request's title, body or commit messages carry a refused marker. That is a correct rejection of the PR's content, not a rollout fault, and fixing the PR cannot clear it from the candidate window. A checker crash (any other exit) fails the earlier check step and still counts, so it blocks promotion. Marked version_independent because the verdict depends on the PR content, not on the candidate; the trade-off is that a candidate whose checker wrongly returned exit 1 would be excluded too, which the bats suite on the checker guards against.",
+            "version_independent": true
+          }
+        ],
         "control": {
           "allow_pre_existing": false
         },
