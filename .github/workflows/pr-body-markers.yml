@@ -43,10 +43,12 @@ jobs:
           PR_COMMIT_COUNT: ${{ github.event.pull_request.commits }}
         run: |
           set -euo pipefail
+          # One read: the messages and the count come from the same response.
           gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
-            --jq '.[].commit.message' > "${RUNNER_TEMP}/pr-commit-messages.txt"
+            --jq '.[] | {sha, message: .commit.message}' > "${RUNNER_TEMP}/pr-commits.jsonl"
+          jq -r '.message' "${RUNNER_TEMP}/pr-commits.jsonl" > "${RUNNER_TEMP}/pr-commit-messages.txt"
           # The commits endpoint caps at 250 even paginated: fail closed on an incomplete list.
-          collected="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" --jq '.[].sha' | wc -l)"
+          collected="$(jq -s 'length' "${RUNNER_TEMP}/pr-commits.jsonl")"
           if [ "${collected}" -ne "${PR_COMMIT_COUNT}" ]; then
             echo "::error::collected ${collected} of ${PR_COMMIT_COUNT} commits; the list is incomplete, so the marker check cannot vouch for it"
             exit 1
