@@ -300,9 +300,11 @@ sps_score() {
   _sps_load_array sec_paths "$text"
   local pat re_rc
   for pat in "${title_pats[@]}" "${issue_pats[@]}"; do
-    # Guarded in a conditional: safe under a sourcing caller's errexit.
+    # Errexit-safe: capture invalid-regex exit status (2) with || operator,
+    # which prevents 'set -e' in a caller from terminating on the [[ ]] result.
+    re_rc=0
     # shellcheck disable=SC2319  # $? is the [[ =~ ]] status (2 = invalid regex), intentionally
-    if [[ "" =~ $pat ]]; then re_rc=0; else re_rc=$?; fi
+    [[ "" =~ $pat ]] || re_rc=$?
     (( re_rc != 2 )) || { _sps_fail "config contains an invalid regular expression: '$pat'"; return; }
   done
 
