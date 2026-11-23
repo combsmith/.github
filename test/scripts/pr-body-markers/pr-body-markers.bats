@@ -127,6 +127,15 @@ setup() {
   [ "$status" -eq 2 ]
 }
 
+@test "CLI: a footer at the top of a body far larger than a pipe buffer is still found (#1571)" {
+  # Through the commits file: an environment variable that large would pass Linux's per-argument limit.
+  local f="$BATS_TEST_TMPDIR/big.txt"
+  { printf 'fix: x\n\nBREAKING CHANGE: y\n'; head -c 300000 /dev/zero | tr '\0' 'x'; } > "$f"
+  run env PR_TITLE='feat: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$f" bash "$CHECK"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"breaking-footer-without-bang"* ]]
+}
+
 @test "CLI: an empty or missing body passes (#1571)" {
   run env -u PR_BODY PR_TITLE='docs: x (#1)' bash "$CHECK"
   [ "$status" -eq 0 ]

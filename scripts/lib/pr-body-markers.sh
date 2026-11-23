@@ -22,16 +22,18 @@ pr_title_marks_breaking() {
 # pr_body_has_breaking_footer <body> — 0 when a line of the body starts (after optional
 # indentation) with `BREAKING CHANGE:` or `BREAKING-CHANGE:`. HTML comments are not exempt: a
 # body squash message keeps them, so the line reaches main all the same.
+# A here-string, not a pipe: under `pipefail`, `grep -q` exiting at an early match could kill the
+# writer with SIGPIPE on a large input and turn a found footer into "none".
 pr_body_has_breaking_footer() {
-  printf '%s\n' "${1:-}" | grep -qE '^[[:space:]]*BREAKING[ -]CHANGE:'
+  grep -qE '^[[:space:]]*BREAKING[ -]CHANGE:' <<< "${1:-}"
 }
 
 # pr_skip_ci_markers <text> — print each skip-CI marker found in <text>, one per line, as it
 # appears (case-insensitive match). Covers the five bracket markers GitHub honours and the
 # `skip-checks: true` trailer.
 pr_skip_ci_markers() {
-  printf '%s\n' "${1:-}" | grep -oiE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|^[[:space:]]*skip-checks:[[:space:]]*true' \
-    | sed -E 's/^[[:space:]]+//' || true
+  { grep -oiE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|^[[:space:]]*skip-checks:[[:space:]]*true' <<< "${1:-}" || true; } \
+    | sed -E 's/^[[:space:]]+//'
 }
 
 # pr_body_marker_findings <title> <body> [<commit messages>] — print one finding per line;
