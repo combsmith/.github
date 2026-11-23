@@ -610,7 +610,12 @@ check_reusable_workflows_disabled() {
     # Handles block form, inline scalar (`on: workflow_call`), and
     # inline sequence (`on: [workflow_call, push]`).
     local triggers on_line
-    on_line=$(echo "$decoded" | grep -m1 '^on:')
+    # Here-strings, not `echo "$decoded" | …`: grep -m1 and the awk `exit`
+    # below stop reading early, and the writer's next chunk then fails with
+    # EPIPE ("echo: write error: Broken pipe"). Under `set -euo pipefail` that
+    # aborted the whole audit (#1343). `|| true`: a workflow with no bare
+    # top-level `on:` line (e.g. `"on":`) must not abort it either.
+    on_line=$(grep -m1 '^on:' <<<"$decoded" || true)
     if echo "$on_line" | grep -qE '^on:[[:space:]]+[a-zA-Z_]+[[:space:]]*(#.*)?$'; then
       # Inline scalar: on: workflow_call
       triggers=$(echo "$on_line" | sed 's/^on:[[:space:]]*//' | sed 's/[[:space:]]*#.*//' | tr -d '[:space:]')
@@ -619,13 +624,13 @@ check_reusable_workflows_disabled() {
       triggers=$(echo "$on_line" | sed 's/^on:[[:space:]]*//' | tr -d '[]"'"'"' ' | tr ',' '\n' | tr -d '[:space:]')
     else
       # Block form: on:\n  key:\n  ...
-      triggers=$(echo "$decoded" | awk '
+      triggers=$(awk '
         /^on:/                     { inblock=1; next }
         inblock && /^[^[:space:]#]/ { exit }          # dedent -> left the on: block
         inblock && /^  [a-zA-Z_]/  {                   # exactly-2-space-indented key
           key=$1; sub(/:.*/,"",key); gsub(/[[:space:]]/,"",key); print key
         }
-      ')
+      ' <<<"$decoded")
     fi
 
     # Pure reusable = workflow_call present AND no other trigger key.
@@ -680,7 +685,7 @@ check_dependabot_config() {
 
   # Check github-actions ecosystem entry exists
   # Accept both double-quoted ("github-actions") and single-quoted ('github-actions') YAML values.
-  if ! echo "$decoded" | grep -qE "package-ecosystem:[[:space:]]*(\"github-actions\"|'github-actions')"; then
+  if ! grep -qE "package-ecosystem:[[:space:]]*(\"github-actions\"|'github-actions')" <<<"$decoded"; then
     add_finding "$repo" "dependabot" "missing-github-actions-ecosystem" "error" \
       "Dependabot config missing \`github-actions\` ecosystem entry" \
       "standards/dependabot-policy.md#github-actions-all-repos"
@@ -690,11 +695,13 @@ check_dependabot_config() {
   # Extract ecosystem blocks and check limits.
   # Accept both double-quoted and single-quoted YAML string values.
   for eco in npm pip gomod cargo terraform; do
-    if echo "$decoded" | grep -qE "package-ecosystem:[[:space:]]*(\"$eco\"|'$eco')"; then
+    if grep -qE "package-ecosystem:[[:space:]]*(\"$eco\"|'$eco')" <<<"$decoded"; then
       # Check if this ecosystem has limit: 0
       # Simple heuristic: find the ecosystem line and look for limit in the next ~10 lines
       local block
-      block=$(echo "$decoded" | awk "/package-ecosystem:.*(\"$eco\"|'$eco')/{found=1} found{print; if(/package-ecosystem:/ && NR>1 && !/(\"$eco\"|'$eco')/) exit}" | head -15)
+      # Here-string + in-awk 15-line cap (was `| head -15`): both early exits
+      # would otherwise EPIPE the upstream writer under pipefail (#1343).
+      block=$(awk "/package-ecosystem:.*(\"$eco\"|'$eco')/{found=1} found{print; if(++n>=15 || (/package-ecosystem:/ && NR>1 && !/(\"$eco\"|'$eco')/)) exit}" <<<"$decoded")
       local limit
       limit=$(echo "$block" | grep 'open-pull-requests-limit:' | head -1 | grep -oE '[0-9]+' || echo "")
       if [[ -n "$limit" ]] && [[ "$limit" != "0" ]]; then
@@ -707,12 +714,12 @@ check_dependabot_config() {
 
   # Check for required labels in dependabot config.
   # Accept both double-quoted and single-quoted YAML string values.
-  if ! echo "$decoded" | grep -qE '("security"|'"'"'security'"'"')'; then
+  if ! grep -qE '("security"|'"'"'security'"'"')' <<<"$decoded"; then
     add_finding "$repo" "dependabot" "missing-security-label" "warning" \
       "Dependabot config missing \`security\` label on updates" \
       "standards/dependabot-policy.md#policy"
   fi
-  if ! echo "$decoded" | grep -qE '("dependencies"|'"'"'dependencies'"'"')'; then
+  if ! grep -qE '("dependencies"|'"'"'dependencies'"'"')' <<<"$decoded"; then
     add_finding "$repo" "dependabot" "missing-dependencies-label" "warning" \
       "Dependabot config missing \`dependencies\` label on updates" \
       "standards/dependabot-policy.md#policy"
@@ -1954,7 +1961,7 @@ check_workflow_permissions() {
 
     # Check if the workflow has a top-level permissions key
     # Single-job workflows may define permissions at job level instead
-    if ! echo "$decoded" | grep -qE '^permissions:'; then
+    if ! grep -qE '^permissions:' <<<"$decoded"; then
       # Count jobs and check if the single job has job-level permissions
       local job_count
       job_count=$(echo "$decoded" | grep -cE '^  [a-zA-Z_-]+:$' || echo "0")
@@ -1994,8 +2001,8 @@ check_ci_concurrency() {
   # Only flag workflows that have a concurrency block but are missing github.sha.
   # Workflows with no concurrency block at all are not flagged here (they may be
   # intentionally unbounded for reasons outside this check's scope).
-  if echo "$decoded" | grep -qE '^concurrency:'; then
-    if ! echo "$decoded" | grep -qE 'group:.*github\.sha'; then
+  if grep -qE '^concurrency:' <<<"$decoded"; then
+    if ! grep -qE 'group:.*github\.sha' <<<"$decoded"; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "ci-concurrency-missing-sha" "warning" \
         "The \`ci.yml\` concurrency group does not include \`github.sha\`. A per-ref group with \`cancel-in-progress: true\` can leave the HEAD commit with no CI results when pushes arrive in quick succession. Update to: \`group: ci-\${{ github.ref }}-\${{ github.sha }}\`." \
         "standards/ci-standards.md#1-ci-pipeline-ciyml"
@@ -2041,7 +2048,7 @@ stub_pin_acceptable() {
   done
 
   local expected="combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@(${alt})"
-  printf '%s\n' "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*${expected}([[:space:]]|$)"
+  grep -qE "^[[:space:]]*uses:[[:space:]]*${expected}([[:space:]]|$)" <<<"$decoded"
 }
 
 # ring_major_form_acceptable <decoded> <reusable-basename> <channel-base> <repo>
@@ -2205,9 +2212,9 @@ check_centralized_workflow_stubs() {
     fi
     if [[ "$is_ring" = 1 ]] && ring_vform_tier_aligned "$pinned_ref" "$chan" "$repo"; then
       why="pins \`${pinned_ref}\`; expected \`${expected_pin}\` — a superseded channel major is drift (promotion no longer moves it)"
-    elif [[ "$bare_ok" = 0 ]] && echo "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@"; then
+    elif [[ "$bare_ok" = 0 ]] && grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\\.github/\\.github/workflows/${esc_reusable}\\.yml@" <<<"$decoded"; then
       why="references the reusable but is not pinned to the major-scoped channel \`@${expected_pin}\` (org standard — a bare \`@${canonical}\` tier pin is drift)"
-    elif echo "$decoded" | grep -qF "combsmith/.github/.github/workflows/${reusable}"; then
+    elif grep -qF "combsmith/.github/.github/workflows/${reusable}" <<<"$decoded"; then
       why="references the reusable but the \`uses:\` line does not match the canonical stub"
     else
       why="is an inline copy instead of a thin caller stub — re-sync from \`standards/workflows/${wf}\`"
@@ -2262,7 +2269,7 @@ check_dev_lead_stub() {
   #    (ring_pin_current, the same verdict the deploy sweep uses). A pin on a
   #    superseded major (e.g. `dev-lead/v1-stable` once `dev-lead/v139-stable`
   #    exists) or on another repo's tier is drift; a failed tag probe fails closed.
-  if ! printf '%s\n' "$decoded" | grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\\.github-private/\\.github/workflows/dev-lead-reusable\\.yml@dev-lead/(v[0-9]+-)?(stable|next|ring[0-9]+)([[:space:]]|$)"; then
+  if ! grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\\.github-private/\\.github/workflows/dev-lead-reusable\\.yml@dev-lead/(v[0-9]+-)?(stable|next|ring[0-9]+)([[:space:]]|$)" <<<"$decoded"; then
     add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "$check_id" "error" \
       "The \`dev-lead.yml\` caller stub must pin a \`dev-lead\` channel tag — \`combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v<M>-<channel>\` where <channel> is \`stable\` (default), \`next\`, or \`ring<N>\`. A bare \`dev-lead/<channel>\` tier pin is allowed when the agent has no channel tags. Re-sync from \`standards/workflows/dev-lead.yml\`." \
       "standards/ci-standards.md#dev-lead-agent"
@@ -2292,7 +2299,7 @@ check_dev_lead_stub() {
   #    When uses is bare (e.g. stable), agent_ref must also be bare.
   uses_channel=$(printf '%s\n' "$decoded" | sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(v[0-9]+-(stable|next|ring[0-9]+))([[:space:]]|$).*#\1#p')
   if [[ -n "$uses_channel" ]]; then
-    if ! printf '%s\n' "$decoded" | grep -qE "^[[:space:]]*agent_ref:[[:space:]]*dev-lead/$uses_channel([[:space:]]|$)"; then
+    if ! grep -qE "^[[:space:]]*agent_ref:[[:space:]]*dev-lead/$uses_channel([[:space:]]|$)" <<<"$decoded"; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "dev-lead-stub-agent-ref" "error" \
         "The \`dev-lead.yml\` caller stub must pass \`with: agent_ref: dev-lead/$uses_channel\` to match the pinned channel \`$uses_channel\`. Re-sync from \`standards/workflows/dev-lead.yml\`." \
         "standards/ci-standards.md#dev-lead-agent"
@@ -2301,7 +2308,7 @@ check_dev_lead_stub() {
     local bare_channel
     bare_channel=$(printf '%s\n' "$decoded" | sed -nE 's#^[[:space:]]*uses:[[:space:]]*combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/(stable|next|ring[0-9]+)([[:space:]]|$).*#\1#p')
     if [[ -n "$bare_channel" ]] \
-      && ! printf '%s\n' "$decoded" | grep -qE "^[[:space:]]*agent_ref:[[:space:]]*dev-lead/$bare_channel([[:space:]]|$)"; then
+      && ! grep -qE "^[[:space:]]*agent_ref:[[:space:]]*dev-lead/$bare_channel([[:space:]]|$)" <<<"$decoded"; then
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "dev-lead-stub-agent-ref" "error" \
         "The \`dev-lead.yml\` caller stub must pass \`with: agent_ref: dev-lead/$bare_channel\` to match the pinned channel \`$bare_channel\`. Re-sync from \`standards/workflows/dev-lead.yml\`." \
         "standards/ci-standards.md#dev-lead-agent"
@@ -2309,14 +2316,14 @@ check_dev_lead_stub() {
   fi
 
   # 3) No per-stub concurrency block — concurrency is owned by the reusable.
-  if echo "$decoded" | grep -qE "^concurrency:"; then
+  if grep -qE "^concurrency:" <<<"$decoded"; then
     add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "dev-lead-stub-concurrency" "warning" \
       "The \`dev-lead.yml\` stub defines its own \`concurrency:\` block. Concurrency is centralized in the reusable (per-issue/per-PR lanes); a per-stub block drifts and can cancel issue pickups. Remove it — see combsmith/.github#402." \
       "standards/ci-standards.md#dev-lead-agent"
   fi
 
   # 4) Caller permissions must grant `statuses: read`.
-  if ! echo "$decoded" | grep -qE "^[[:space:]]*statuses:[[:space:]]*read([[:space:]]|$)"; then
+  if ! grep -qE "^[[:space:]]*statuses:[[:space:]]*read([[:space:]]|$)" <<<"$decoded"; then
     add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "dev-lead-stub-statuses-perm" "error" \
       "The \`dev-lead.yml\` stub is missing \`statuses: read\` in \`jobs.dev-lead.permissions\`. The reusable requests it (since #435), so without it every run fails at startup (\`startup_failure\`). Add \`statuses: read\`." \
       "standards/ci-standards.md#dev-lead-agent"
@@ -2575,7 +2582,7 @@ check_claude_md() {
   local decoded
   decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
 
-  if ! echo "$decoded" | grep -qi 'AGENTS\.md'; then
+  if ! grep -qi 'AGENTS\.md' <<<"$decoded"; then
     add_finding "$repo" "standards" "claude-md-missing-agents-ref" "error" \
       "\`CLAUDE.md\` does not reference \`AGENTS.md\`" \
       "AGENTS.md"
@@ -2657,7 +2664,7 @@ check_agents_md() {
     #   1. Any path containing .github/AGENTS.md (relative link text or path reference)
     #   2. GitHub blob URL format: /combsmith/.github/blob/<ref>/AGENTS.md (in href)
     # Both are treated as references to the org-level standards file.
-    if ! echo "$decoded" | grep -qE '(\.github/AGENTS\.md|combsmith/\.github/blob/.+/AGENTS\.md)'; then
+    if ! grep -qE '(\.github/AGENTS\.md|combsmith/\.github/blob/.+/AGENTS\.md)' <<<"$decoded"; then
       add_finding "$repo" "standards" "agents-md-missing-org-ref" "error" \
         "\`AGENTS.md\` does not reference the org-level \`.github/AGENTS.md\` standards" \
         "AGENTS.md"
