@@ -1,0 +1,31 @@
+<!--
+Title: `area: plain verb phrase (#issue)`, at most 72 characters, one change.
+This body becomes the squash commit's message, so write it in full before the first review.
+Rules: docs/initiatives/pull-request-and-commit-prose-adr.md in combsmith/.github.
+-->
+
+## Why
+
+<!-- One or two plain sentences: what was wrong or missing, and what a user would notice. Link the issue. -->
+
+## What changed
+
+- <!-- area or file: what -->
+
+## What to look at
+
+<!-- What a reviewer should check, and what this change leaves out. -->
+
+- Risk: <!-- low, medium or high, and why in a few words -->
+- Rollback: <!-- usually "revert this pull request", or what cannot be undone -->
+- Monitoring: <!-- the check or signal that shows a problem, or "none needed" -->
+
+## Decisions and protected edits
+
+<!-- The decision record this pull request adds, or "none". Any protected edit, and who approved it. -->
+
+<details><summary>Checks and reviews</summary>
+
+<!-- Tests and checks run. Each reviewer's findings, taken or declined, with reasons. -->
+
+</details>

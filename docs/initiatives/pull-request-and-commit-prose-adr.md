@@ -1,9 +1,9 @@
 # ADR: Pull requests, commits and issues say what changed in plain words
 
-- **Status:** Proposed (pending the Maintainer's sign-off on each rule and on the follow-ons under Consequences)
+- **Status:** Accepted (2026-11-23, the Maintainer)
 - **Date:** 2026-11-22
 - **Issue:** [#1565](https://github.com/combsmith/.github/issues/1565)
-- **Scope:** documentation only. No setting, ruleset, template or workflow changes here.
+- **Scope:** this ADR and the org's default pull request template. No setting, ruleset or workflow changes here.
 - **Reference implementation:** [combsmith/software-factory](https://github.com/combsmith/software-factory), which has held these rules since 2026-11-21.
 
 **Verdict:** every repo titles a pull request `area: plain verb phrase (#issue)` and writes its body to one short
@@ -48,18 +48,24 @@ Four headings, each once, in this order, each over some text:
 Then a collapsed `<details>` block, "Checks and reviews": the tests run, and each reviewer's findings taken or declined,
 with reasons. Tallies go there, not above it.
 
+The org's default template, `.github/pull_request_template.md` in this repo, holds these headings. GitHub uses it for
+every repo in the org that has no template of its own, this repo included. software-factory and `.github-private` keep
+their own.
+
 pr-review's triage escalates a body that lacks three of problem, risk, test plan, rollback and monitoring. Until it
 reads these headings, say risk, rollback and monitoring in one line each under What to look at.
 
-Once a pull request has been approved, any edit to its title or body holds the merge until a reviewer approves again.
-They become the commit, so the final text is reviewed without closing and reopening the pull request.
+Once a pull request has been approved, an edit to its title or body needs a new approval before it merges. They become
+the commit, so the final text must be reviewed. software-factory holds this with a check. Elsewhere no setting does, so
+whoever edits dismisses the approval and asks for a new review.
 
 ### Commits
 
 - Squash-merge only, as `pr-quality` already enforces.
 - The squash commit's title is the pull request's title, and its message is the body: `squash_merge_commit_title` is
-  `PR_TITLE` and `squash_merge_commit_message` is `PR_BODY`. The standard sets the message to `COMMIT_MESSAGES` today;
-  this ADR proposes `PR_BODY`, so the reviewed text is what lands.
+  `PR_TITLE` and `squash_merge_commit_message` is `PR_BODY`. The standard set the message to `COMMIT_MESSAGES`;
+  [#1568](https://github.com/combsmith/.github/issues/1568) moves it to `PR_BODY`. These settings give only the
+  default text, which the person merging can edit. Merge with the default, so the reviewed text is what lands.
 - A commit on a branch is plain too: one short line that says what changed.
 
 ### Issue titles
@@ -104,12 +110,12 @@ names its own four headings, so software-factory keeps "Record and protected edi
 
 ## Consequences
 
-- **Squash message (Maintainer).** Change `standards/github-settings.md` and `scripts/apply-repo-settings.sh`, with its
-  bats test, from `COMMIT_MESSAGES` to `PR_BODY`, then apply it to the fleet. Until then, a run of
-  `apply-repo-settings.sh` would reset software-factory, which uses `PR_BODY`, to `COMMIT_MESSAGES`. With `PR_BODY`, the
-  canary autocut reads its signals from the title and body alone, so its owner should confirm the bump rules still hold.
-- **Org template (Maintainer).** Add `.github/pull_request_template.md` here with the four headings. As the org's
-  default community health file, it applies to every repo without a template of its own.
+- **Squash message.** [#1568](https://github.com/combsmith/.github/issues/1568) changes `standards/github-settings.md`
+  and `scripts/apply-repo-settings.sh`, with its bats test, from `COMMIT_MESSAGES` to `PR_BODY`. The Maintainer then
+  applies it to the fleet. Until that change merges, a run of `apply-repo-settings.sh` would reset software-factory,
+  which uses `PR_BODY`. With `PR_BODY`, the canary autocut reads its signals from the title and body alone, so its owner
+  should confirm the bump rules still hold.
+- **Org template.** This ADR adds `.github/pull_request_template.md` with the four headings, as the org's default.
 - **Agents (`.github-private`).** dev-lead's titles and body builder, and pr-review's description triage, move to these
   rules. The exception for Conventional Commits types can go once the autocut takes its bump from elsewhere.
 - **The check.** One pull request here adds the reusable workflow and its stub; each repo then opts in.
