@@ -25,7 +25,10 @@ _extract_triggers() {
     echo "$decoded" | awk '
       /^on:/                     { inblock=1; next }
       inblock && /^[^[:space:]#]/ { exit }
-      inblock && /^  ["'"'"'a-zA-Z_]/ {
+      inblock && /^[[:space:]]+["'"'"'a-zA-Z_]/ {
+        match($0, /^[[:space:]]+/); ind=RLENGTH
+        if (base == 0) base=ind
+        if (ind != base) next
         key=$1; sub(/:.*/,"",key); gsub(/[[:space:]"'"'"']/,"",key); print key
       }
     '
@@ -84,6 +87,19 @@ _should_flag() {
 @test "quoted event keys: workflow_call + push is a hybrid" {
   local wf
   wf=$(printf '"on":\n  "workflow_call":\n  "push":\n')
+  run _is_pure_reusable "$wf"
+  [ "$status" -eq 1 ]
+}
+
+@test "four-space event-key indentation: quoted on + workflow_call is a pure reusable" {
+  local wf
+  wf=$(printf '"on":\n    "workflow_call":\n        inputs:\n            repo:\n                type: string\n')
+  _is_pure_reusable "$wf"
+}
+
+@test "four-space event-key indentation: workflow_call + push is a hybrid" {
+  local wf
+  wf=$(printf 'on:\n    workflow_call:\n    push:\n        branches: [main]\n')
   run _is_pure_reusable "$wf"
   [ "$status" -eq 1 ]
 }

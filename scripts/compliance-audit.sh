@@ -630,7 +630,10 @@ check_reusable_workflows_disabled() {
       triggers=$(awk '
         /^on:/                     { inblock=1; next }
         inblock && /^[^[:space:]#]/ { exit }          # dedent -> left the on: block
-        inblock && /^  ["'"'"'a-zA-Z_]/ {                # exactly-2-space-indented key (bare or quoted)
+        inblock && /^[[:space:]]+["'"'"'a-zA-Z_]/ {      # indented key (bare or quoted)
+          match($0, /^[[:space:]]+/); ind=RLENGTH
+          if (base == 0) base=ind                       # event-key indent = first key (any width)
+          if (ind != base) next                         # deeper nested keys are not events
           key=$1; sub(/:.*/,"",key); gsub(/[[:space:]"'"'"']/,"",key); print key
         }
       ' <<<"$decoded_on")
