@@ -1446,7 +1446,12 @@ skipping the bot's own creations, and run only when the author has write access
 (read from the repository permission API; the event's `author_association` does
 not mark private org members as maintainers) — re-invokes the workflow via
 `workflow_dispatch` with the job's `GITHUB_TOKEN` (`actions: write`; this needs no
-personal token), forwarding the Discussion number as the `target_discussion` input. The re-dispatched run puts the reusable in
+personal token), forwarding the Discussion number as the `target_discussion` input.
+The dispatched run is titled `Feature ideation for Discussion <n>` (the stub's
+`run-name:`); the bridge then links that run on the Idea with a comment, using
+`discussions: write` granted to the `redispatch` job only. It links only when exactly
+one run has that exact title, and otherwise warns. A failed lookup or post warns and
+does not fail the job. The re-dispatched run puts the reusable in
 **single-idea enhancement mode**: it researches and refines that one new idea and
 posts a single enhancement comment, rather than running the broad scan.
 Enhancement is a comment (which does not re-fire `created`), so there is no
