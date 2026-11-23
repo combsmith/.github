@@ -34,6 +34,22 @@ fi
 ORG="${ORG:-combsmith}"
 DRY_RUN="${DRY_RUN:-false}"
 
+# The repos whose squash message is the pull request's body (issue #1568). Off for every
+# repo not listed, so a release of this script changes no repo until one is added.
+SQUASH_PR_BODY_LIST="${SQUASH_PR_BODY_LIST:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/standards/squash-pr-body-repos.json}"
+
+# squash_message_for <repo> — PR_BODY for a repo on the opt-in list, else COMMIT_MESSAGES.
+# A missing or unreadable list leaves every repo on COMMIT_MESSAGES.
+squash_message_for() {
+  local repo="$1"
+  if [[ -r "$SQUASH_PR_BODY_LIST" ]] &&
+    jq -e --arg r "$repo" '(.repos // []) | index($r) != null' "$SQUASH_PR_BODY_LIST" >/dev/null 2>&1; then
+    echo PR_BODY
+  else
+    echo COMMIT_MESSAGES
+  fi
+}
+
 # The standard label set — the fixed set (STANDARD_LABEL_SPECS), the persona
 # manifest source, the opt-out family colour, and persona_opt_out_label_configs
 # — all live in scripts/lib/labels.sh, the single source of truth shared with
@@ -224,28 +240,22 @@ apply_settings() {
     fi
   done
 
-  # Check string settings separately (jq -f flag for strings)
-  local squash_title
+  # The squash commit's title and message (docs/initiatives/pull-request-and-commit-prose-adr.md,
+  # issue #1568). The message is the pull request's body only for a repo on the opt-in list
+  # (squash_message_for); every other repo keeps commit messages. GitHub needs the title
+  # whenever the message is sent, so the two are always sent together.
+  local squash_title squash_msg want_msg
   squash_title=$(printf '%s' "$current" | jq -r '.squash_merge_commit_title // "null"')
-  if [[ "$squash_title" != "PR_TITLE" ]]; then
+  squash_msg=$(printf '%s' "$current" | jq -r '.squash_merge_commit_message // "null"')
+  want_msg=$(squash_message_for "$repo")
+  if [[ "$squash_title" != "PR_TITLE" ]] || [[ "$squash_msg" != "$want_msg" ]]; then
     info "  squash_merge_commit_title: $squash_title → PR_TITLE"
+    info "  squash_merge_commit_message: $squash_msg → $want_msg"
     needs_patch=true
-    patch_args+=(-f squash_merge_commit_title=PR_TITLE)
+    patch_args+=(-f squash_merge_commit_title=PR_TITLE -f "squash_merge_commit_message=$want_msg")
   else
     ok "  squash_merge_commit_title: already PR_TITLE"
-  fi
-
-  # The squash commit's message is the pull request's body, the reviewed text
-  # (docs/initiatives/pull-request-and-commit-prose-adr.md, issue #1568). GitHub
-  # accepts PR_BODY only beside the PR_TITLE title set above.
-  local squash_msg
-  squash_msg=$(printf '%s' "$current" | jq -r '.squash_merge_commit_message // "null"')
-  if [[ "$squash_msg" != "PR_BODY" ]]; then
-    info "  squash_merge_commit_message: $squash_msg → PR_BODY"
-    needs_patch=true
-    patch_args+=(-f squash_merge_commit_message=PR_BODY)
-  else
-    ok "  squash_merge_commit_message: already PR_BODY"
+    ok "  squash_merge_commit_message: already $want_msg"
   fi
 
   if [[ "$needs_patch" = false ]]; then
