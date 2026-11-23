@@ -87,5 +87,15 @@ setup() {
   grep -q 'exit 1' <<< "$output"
   # the registry's benign class names exactly that step, and only that one
   run jq -r '.agents."pr-body-markers".gate.benign_failure_classes | map(.step) | join("|")' "$REPO_ROOT/standards/canary-rings.json"
-  [ "$output" = "$step" ]
+  [ "$output" = "^${step}\$" ]
+  # not version_independent: a candidate that wrongly refuses fails this same step
+  run jq -r '.agents."pr-body-markers".gate.benign_failure_classes | map(.version_independent // false) | join("|")' "$REPO_ROOT/standards/canary-rings.json"
+  [ "$output" = "false" ]
+}
+
+@test "registry: every path the agent watches exists (#1571)" {
+  local rings="$REPO_ROOT/standards/canary-rings.json" p
+  while IFS= read -r p; do
+    [ -f "$REPO_ROOT/$p" ] || { echo "missing: $p"; return 1; }
+  done < <(jq -r '.agents["pr-body-markers"] | (.agent_ref_paths + .autocut.watched_paths) | unique | .[]' "$rings")
 }

@@ -18,8 +18,9 @@
 # exercised on its own pull request.
 #
 # A merge_group event carries no pull request: the job passes without reading anything, so a
-# ruleset that later requires this check cannot hold a merge queue. Advisory today: no ruleset
-# requires it.
+# ruleset that later requires this check cannot hold a merge queue. That pass does not re-read
+# the queued pull request, so a body edited after it was queued is judged only by its own
+# `edited` run. Advisory today: no ruleset requires it.
 
 name: PR Body Markers (Reusable)
 
