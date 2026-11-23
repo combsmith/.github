@@ -1,7 +1,9 @@
+<!-- markdownlint-disable-file MD041 -->
 <!--
 Title: `area: plain verb phrase (#issue)`, at most 72 characters, one change.
 In combsmith/.github and combsmith/.github-private, keep the type: `feat(area): plain verb phrase (#issue)`.
-Breaking change? Put `!` after the type in the title. A `BREAKING CHANGE:` line here is not read.
+Breaking change? Put `!` after the scope in the title: `feat(area)!: plain verb phrase (#issue)`.
+A `BREAKING CHANGE:` line is read only when it reaches a commit message the autocut scans, so rely on the `!`.
 This body is meant to become the squash commit's message. Whoever merges can edit it, so check the message before merging.
 This text becomes permanent public history: no secrets, tokens or raw logs. Security findings: count only.
 Rules: docs/initiatives/pull-request-and-commit-prose-adr.md in combsmith/.github.
