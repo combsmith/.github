@@ -30,9 +30,10 @@ reached a median of about 1,060 words, two thirds of it restating code, before i
 - No name from inside the code: no backticks, `snake_case`, record or trial numbers, or schema ids.
 
 The area replaces a type such as `feat:`, which tells a reader less. One exception: a repo whose release tooling reads
-Conventional Commits types keeps the type, as `feat(area): plain verb phrase (#issue)`. Today that is this repo and
-`.github-private`, whose canary autocut reads `feat:` for a minor bump and `!:` for a major one
-(`scripts/canary-rollout.sh`).
+Conventional Commits types keeps the type, as `feat(area): plain verb phrase (#issue)`, and marks a breaking change
+`feat(area)!:`. Today that is this repo and `.github-private`. Their canary autocut (`scripts/canary-rollout.sh`) reads
+`feat:` at the start of the squash subject for a minor bump. It reads `!:` there, or a `BREAKING CHANGE:` line anywhere
+in the message, for a major one.
 
 ### Pull request bodies
 
@@ -57,14 +58,16 @@ reads these headings, say risk, rollback and monitoring in one line each under W
 
 Once a pull request has been approved, an edit to its title or body needs a new approval before it merges. They become
 the commit, so the final text must be reviewed. software-factory holds this with a check. Elsewhere no setting does, so
-whoever edits dismisses the approval and asks for a new review.
+whoever edits dismisses the approval and asks for a new review. An editor who may not dismiss it asks someone who may.
+
+The body is permanent public history: no secrets, tokens or raw logs, and security findings by count only.
 
 ### Commits
 
 - Squash-merge only, as `pr-quality` already enforces.
 - The squash commit's title is the pull request's title, and its message is the body: `squash_merge_commit_title` is
   `PR_TITLE` and `squash_merge_commit_message` is `PR_BODY`. The standard set the message to `COMMIT_MESSAGES`;
-  [#1568](https://github.com/combsmith/.github/issues/1568) moves it to `PR_BODY`. These settings give only the
+  [#1568](https://github.com/combsmith/.github/issues/1568) moves repos to `PR_BODY` one at a time. These settings give only the
   default text, which the person merging can edit. Merge with the default, so the reviewed text is what lands.
 - A commit on a branch is plain too: one short line that says what changed.
 
@@ -100,7 +103,7 @@ in plain words stays the reviewer's call. software-factory is the reference:
 | Both run in the required check from the base branch, so a pull request cannot loosen its own check; ones opened before a cutover are skipped | `tools/commits_are_the_maintainers.py` |
 | A desk command checks a draft before opening: `python3 -m tools.pr_title "TITLE"`, or `--body FILE` | `tools/pr_title.py`, `main()` |
 | A record's title and its word budget | `tools/check_context.py` |
-| A body edited after approval holds the merge until a person approves | `kernel/`, software-factory's decision core |
+| A title or body edited after approval holds the merge until a person approves | `kernel/`, software-factory's decision core |
 
 For the org, this repo would offer a reusable workflow and a caller stub in `standards/workflows/`. As AGENTS.md asks,
 its logic lives in a pure script with bats tests, and the workflow is thin glue. It runs on `pull_request` and
@@ -110,11 +113,12 @@ names its own four headings, so software-factory keeps "Record and protected edi
 
 ## Consequences
 
-- **Squash message.** [#1568](https://github.com/combsmith/.github/issues/1568) changes `standards/github-settings.md`
-  and `scripts/apply-repo-settings.sh`, with its bats test, from `COMMIT_MESSAGES` to `PR_BODY`. The Maintainer then
-  applies it to the fleet. Until that change merges, a run of `apply-repo-settings.sh` would reset software-factory,
-  which uses `PR_BODY`. With `PR_BODY`, the canary autocut reads its signals from the title and body alone, so its owner
-  should confirm the bump rules still hold.
+- **Squash message.** [#1568](https://github.com/combsmith/.github/issues/1568) lets a repo on an opt-in list,
+  `standards/squash-pr-body-repos.json`, move to `PR_BODY`; every other repo stays on `COMMIT_MESSAGES`. Until a repo is
+  listed, a run of `apply-repo-settings.sh` keeps it on commit messages, and would reset software-factory, which uses
+  `PR_BODY`. With `PR_BODY`, a `BREAKING CHANGE:` line anywhere in the body, even inside a comment, forces a
+  major cut, and a footer in a branch commit no longer reaches main. So repos move to the body by an opt-in list, one
+  at a time after a dry run, with this repo and `.github-private` last.
 - **Org template.** This ADR adds `.github/pull_request_template.md` with the four headings, as the org's default.
 - **Agents (`.github-private`).** dev-lead's titles and body builder, and pr-review's description triage, move to these
   rules. The exception for Conventional Commits types can go once the autocut takes its bump from elsewhere.

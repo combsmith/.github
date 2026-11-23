@@ -1,6 +1,9 @@
 <!--
 Title: `area: plain verb phrase (#issue)`, at most 72 characters, one change.
-This body becomes the squash commit's message, so write it in full before the first review.
+In combsmith/.github and combsmith/.github-private, keep the type: `feat(area): plain verb phrase (#issue)`.
+Breaking change? Put `!` after the type in the title. A `BREAKING CHANGE:` line here is not read.
+This body is meant to become the squash commit's message. Whoever merges can edit it, so check the message before merging.
+This text becomes permanent public history: no secrets, tokens or raw logs. Security findings: count only.
 Rules: docs/initiatives/pull-request-and-commit-prose-adr.md in combsmith/.github.
 -->
 

@@ -1,0 +1,5 @@
+# The org's default pull request template (.github/pull_request_template.md) is a PR body,
+# so it starts at ## by design (PR bodies have no H1 title). Every other rule from the
+# root .markdownlint-cli2.yaml still applies here.
+config:
+  MD041: false
