@@ -96,6 +96,7 @@
     ".github/scripts/*",
     "*/.github/scripts/*",
     "*/.github/workflows/*",
+    "*/.github/actions/*",
     ".github/CODEOWNERS",
     "CODEOWNERS",
     ".github/dependabot.yml",
