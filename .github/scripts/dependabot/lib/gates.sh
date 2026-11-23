@@ -273,12 +273,14 @@ dependabot_required_contexts() {
 #   (#1568), those would land on main.
 #
 #   Reads only "bump PACKAGE from OLD to NEW" in TITLE (any case, after an
-#   optional conventional prefix), and keeps each token only when it is plain
+#   optional conventional prefix, backticks removed), and keeps each token only when it is plain
 #   (letters, digits and @ / . _ + -). A title that does not parse that way,
 #   e.g. a grouped update, gives a generic line. PR_URL is kept only when it is
 #   a github.com pull request link. Always prints a body; never fails.
 dependabot_squash_body() {
-  local title="${1:-}" url="${2:-}" tok='[A-Za-z0-9@/._+-]+' line
+  local LC_ALL=C title="${1:-}" url="${2:-}" tok='[A-Za-z0-9@/._+-]+' line
+  # Docker digests and submodules quote the versions: "from `f6fe8f2` to `7ac9a3b`".
+  title="${title//\`/}"
   local re="(^|[[:space:]])[Bb][Uu][Mm][Pp][[:space:]]+(${tok})[[:space:]]+from[[:space:]]+(${tok})[[:space:]]+to[[:space:]]+(${tok})([[:space:]]|$)"
   if [[ "$title" =~ $re ]]; then
     line="Bumps ${BASH_REMATCH[2]} from ${BASH_REMATCH[3]} to ${BASH_REMATCH[4]}."

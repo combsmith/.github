@@ -584,6 +584,11 @@ _dep_commit() { tt_commit "$1" 'dependabot[bot]' web-flow true 1; }
   [ "$output" = $'Bumps @types/node from 22.1.0 to 22.2.0.\n\nhttps://github.com/o/r/pull/9' ]
 }
 
+@test "squash body: backticked digests are read without the backticks (#1572)" {
+  run dependabot_squash_body 'Bump python from `f6fe8f2` to `7ac9a3b` in /docker' 'https://github.com/o/r/pull/9'
+  [ "$output" = $'Bumps python from f6fe8f2 to 7ac9a3b.\n\nhttps://github.com/o/r/pull/9' ]
+}
+
 @test "squash body: a grouped update gives the generic line (#1572)" {
   run dependabot_squash_body 'Bump the npm_and_yarn group across 1 directory with 3 updates' 'https://github.com/o/r/pull/9'
   [ "$output" = $'Dependency update by Dependabot.\n\nhttps://github.com/o/r/pull/9' ]
