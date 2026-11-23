@@ -136,9 +136,16 @@ setup() {
   [[ "$output" == *"breaking-footer-without-bang"* ]]
 }
 
-@test "CLI: an empty or missing body passes (#1571)" {
-  run env -u PR_BODY PR_TITLE='docs: x (#1)' bash "$CHECK"
+@test "CLI: an empty body passes (#1571)" {
+  run env PR_BODY='' PR_TITLE='docs: x (#1)' bash "$CHECK"
   [ "$status" -eq 0 ]
+}
+
+@test "CLI: an unset title or body is a checker fault, exit 2, never clean (#1573)" {
+  run env -u PR_BODY PR_TITLE='docs: x (#1)' bash "$CHECK"
+  [ "$status" -eq 2 ]
+  run env -u PR_TITLE PR_BODY='clean' bash "$CHECK"
+  [ "$status" -eq 2 ]
 }
 
 @test "CLI: body text is never evaluated by the shell (#1571)" {

@@ -43,7 +43,7 @@ setup() {
 }
 
 @test "reusable: never relies on github.job_workflow_sha, which is empty at step level (#839)" {
-  run grep -nE '\$\{\{[^}]*github\.job_workflow_sha' "$REUSABLE"
+  run grep -nE '^[^#]*github\.job_workflow_sha' "$REUSABLE"
   [ "$status" -eq 1 ]
 }
 

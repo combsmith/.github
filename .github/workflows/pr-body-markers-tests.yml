@@ -8,6 +8,7 @@ on:
     paths:
       - 'scripts/lib/pr-body-markers.sh'
       - 'scripts/check-pr-body-markers.sh'
+      - 'standards/canary-rings.json'
       - 'test/scripts/pr-body-markers/**'
       - '.github/workflows/pr-body-markers.yml'
       - '.github/workflows/pr-body-markers-reusable.yml'
@@ -17,6 +18,7 @@ on:
     paths:
       - 'scripts/lib/pr-body-markers.sh'
       - 'scripts/check-pr-body-markers.sh'
+      - 'standards/canary-rings.json'
       - 'test/scripts/pr-body-markers/**'
       - '.github/workflows/pr-body-markers.yml'
       - '.github/workflows/pr-body-markers-reusable.yml'

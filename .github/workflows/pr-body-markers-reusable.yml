@@ -68,8 +68,22 @@ jobs:
         run: |
           set -euo pipefail
           # One read: the messages and the count come from the same response.
-          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
-            --jq '.[] | {sha, message: .commit.message}' > "${RUNNER_TEMP}/pr-commits.jsonl"
+          # Bounded retry: a transient API failure must not fail the check spuriously.
+          fetched=0
+          for attempt in 1 2 3; do
+            if timeout 60 gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
+              --jq '.[] | {sha, message: .commit.message}' > "${RUNNER_TEMP}/pr-commits.jsonl.tmp"; then
+              mv "${RUNNER_TEMP}/pr-commits.jsonl.tmp" "${RUNNER_TEMP}/pr-commits.jsonl"
+              fetched=1
+              break
+            fi
+            rm -f "${RUNNER_TEMP}/pr-commits.jsonl.tmp"
+            [ "${attempt}" -lt 3 ] && sleep $((attempt * 5))
+          done
+          if [ "${fetched}" -ne 1 ]; then
+            echo "::error::could not read the pull request's commits after 3 attempts"
+            exit 1
+          fi
           jq -r '.message' "${RUNNER_TEMP}/pr-commits.jsonl" > "${RUNNER_TEMP}/pr-commit-messages.txt"
           # The commits endpoint caps at 250 even paginated: fail closed on an incomplete list.
           collected="$(jq -s 'length' "${RUNNER_TEMP}/pr-commits.jsonl")"

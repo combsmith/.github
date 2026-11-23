@@ -12,13 +12,20 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/pr-body-markers.sh
 source "${SCRIPT_DIR}/lib/pr-body-markers.sh"
 
+# An unset title or body is a caller fault, not a clean pull request (an empty body is valid: the
+# workflow passes it as an empty string), so fail closed instead of printing "clean".
+if [[ -z "${PR_TITLE+x}" || -z "${PR_BODY+x}" ]]; then
+  echo "::error::PR_TITLE and PR_BODY must be set (an empty body is fine)" >&2
+  exit 2
+fi
+
 commits=""
 if [[ -n "${PR_COMMITS_FILE:-}" ]]; then
   [[ -r "$PR_COMMITS_FILE" ]] || { echo "::error::cannot read the commit messages file" >&2; exit 2; }
   commits="$(cat -- "$PR_COMMITS_FILE")"
 fi
 findings=""
-if findings="$(pr_body_marker_findings "${PR_TITLE:-}" "${PR_BODY:-}" "$commits")"; then
+if findings="$(pr_body_marker_findings "$PR_TITLE" "$PR_BODY" "$commits")"; then
   echo "pr-body-markers: clean"
   exit 0
 fi
