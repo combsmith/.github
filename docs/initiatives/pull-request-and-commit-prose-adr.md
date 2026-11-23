@@ -51,9 +51,8 @@ with reasons. Tallies go there, not above it.
 pr-review's triage escalates a body that lacks three of problem, risk, test plan, rollback and monitoring. Until it
 reads these headings, say risk, rollback and monitoring in one line each under What to look at.
 
-Once a pull request has been approved, its title and body do not change, even if the approval was later dismissed.
-They become the commit, so an edit would merge text no one reviewed. To change them, close the pull request and open
-a new one from the same branch.
+Once a pull request has been approved, any edit to its title or body holds the merge until a reviewer approves again.
+They become the commit, so the final text is reviewed without closing and reopening the pull request.
 
 ### Commits
 
