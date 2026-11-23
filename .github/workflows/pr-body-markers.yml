@@ -1,0 +1,37 @@
+name: pr-body-markers
+
+# Fails a pull request whose title and body carry a marker that would act on its own once the
+# body is the squash commit message (issue #1571, prose ADR #1565, opt-in list #1568):
+#   - a BREAKING CHANGE: line without '!' in the title (the canary autocut reads only the '!'), or
+#   - a skip-CI marker, which would land the merge on main with its push checks skipped.
+# The logic lives in the pure scripts/lib/pr-body-markers.sh (bats-gated by
+# pr-body-markers-tests.yml); this workflow is thin glue. The title and body reach the script
+# through the environment only, never interpolated into the run block.
+#
+# Runs on every pull request, and again when the title or body is edited.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: pr-body-markers-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-body-markers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Refuse breaking and skip-CI markers in the title and body
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bash scripts/check-pr-body-markers.sh
