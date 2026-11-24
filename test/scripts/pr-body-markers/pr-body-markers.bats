@@ -75,6 +75,13 @@ setup() {
   [[ "$output" == "commit-footer-without-bang:"* ]]
 }
 
+@test "findings: every offending commit gets its own finding line (#1573)" {
+  run pr_body_marker_findings 'feat(canary)!: x (#1)' 'a clean body' \
+    $'fix: a\n\nBREAKING CHANGE: y' $'fix: b\n\nBREAKING CHANGE: z'
+  [ "$status" -eq 1 ]
+  [ "$(printf '%s\n' "$output" | grep -c '^commit-footer-without-bang:')" -eq 2 ]
+}
+
 @test "findings: a skip-CI marker in a branch commit message is refused (#1571)" {
   run pr_body_marker_findings 'docs: x (#1)' 'a clean body' $'docs: wip [ci skip]'
   [ "$status" -eq 1 ]

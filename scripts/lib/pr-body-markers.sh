@@ -78,7 +78,6 @@ pr_body_marker_findings() {
     if [[ "$s" -eq 0 ]]; then
       printf '%s\n' "commit-footer-without-bang: a commit message has a BREAKING CHANGE: line but its own subject has no '!'. That subject can land on main (one-commit squash, rebase merge), so put '!' in it (feat(area)!: ...), or drop the line."
       found=1
-      break
     fi
   done
   s=0
