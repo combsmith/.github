@@ -56,8 +56,23 @@ setup() {
   [ "$status" -eq 1 ]
   [[ "$output" == "breaking-footer-without-bang: a commit message has"* ]]
   run pr_body_marker_findings 'feat(canary)!: make the input required (#1)' 'a clean body' \
-    $'fix: x\n\nBREAKING CHANGE: y'
+    $'fix!: x\n\nBREAKING CHANGE: y'
   [ "$status" -eq 0 ]
+}
+
+@test "findings: a commit with the footer needs the bang in its own subject, not just the title's (#1573)" {
+  # A one-commit squash under COMMIT_OR_PR_TITLE, or a rebase merge, lands the commit's own subject.
+  run pr_body_marker_findings 'feat(canary)!: make the input required (#1)' 'a clean body' \
+    $'fix: x\n\nBREAKING CHANGE: y'
+  [ "$status" -eq 1 ]
+  [[ "$output" == "commit-footer-without-bang: a commit message has"* ]]
+  run pr_body_marker_findings 'feat(canary)!: make the input required (#1)' 'a clean body' \
+    'docs: tidy' $'feat(canary)!: x\n\nBREAKING CHANGE: y'
+  [ "$status" -eq 0 ]
+  run pr_body_marker_findings 'feat(canary)!: make the input required (#1)' 'a clean body' \
+    $'feat(canary)!: x\n\nBREAKING CHANGE: y' $'fix: z\n\nBREAKING CHANGE: w'
+  [ "$status" -eq 1 ]
+  [[ "$output" == "commit-footer-without-bang:"* ]]
 }
 
 @test "findings: a skip-CI marker in a branch commit message is refused (#1571)" {
@@ -125,6 +140,17 @@ setup() {
   [[ "$output" == *"::error::breaking-footer-without-bang: a commit message has"* ]]
   run env PR_TITLE='fix: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$BATS_TEST_TMPDIR/missing" bash "$CHECK"
   [ "$status" -eq 2 ]
+}
+
+@test "CLI: reads NUL-ended commit messages one by one, so each subject is checked (#1573)" {
+  local f="$BATS_TEST_TMPDIR/commits.nul"
+  printf 'feat!: a\n\nBREAKING CHANGE: y\0docs: b\0' > "$f"
+  run env PR_TITLE='feat!: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$f" bash "$CHECK"
+  [ "$status" -eq 0 ]
+  printf 'docs: b\0fix: a\n\nBREAKING CHANGE: y\0' > "$f"
+  run env PR_TITLE='feat!: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$f" bash "$CHECK"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::commit-footer-without-bang:"* ]]
 }
 
 @test "CLI: a footer at the top of a body far larger than a pipe buffer is still found (#1571)" {

@@ -6,7 +6,9 @@ set -euo pipefail
 #
 # Usage: PR_TITLE=... PR_BODY=... [PR_COMMITS_FILE=path] check-pr-body-markers.sh
 # The workflow passes the title and body through the environment, never interpolated into the
-# script, and the branch's commit messages in a file (read with `gh` in the glue).
+# script, and the branch's commit messages in a file (read with `gh` in the glue), each message
+# ended by a NUL byte so that each commit's own subject can be checked. A file with no NUL is read
+# as one message.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/pr-body-markers.sh
@@ -19,13 +21,17 @@ if [[ -z "${PR_TITLE+x}" || -z "${PR_BODY+x}" ]]; then
   exit 2
 fi
 
-commits=""
+commits=()
 if [[ -n "${PR_COMMITS_FILE:-}" ]]; then
   [[ -r "$PR_COMMITS_FILE" ]] || { echo "::error::cannot read the commit messages file" >&2; exit 2; }
-  commits="$(cat -- "$PR_COMMITS_FILE")"
+  msg=""
+  while IFS= read -r -d '' msg || [[ -n "$msg" ]]; do
+    commits+=("$msg")
+    msg=""
+  done < "$PR_COMMITS_FILE"
 fi
 findings=""
-if findings="$(pr_body_marker_findings "$PR_TITLE" "$PR_BODY" "$commits")"; then
+if findings="$(pr_body_marker_findings "$PR_TITLE" "$PR_BODY" ${commits[@]+"${commits[@]}"})"; then
   echo "pr-body-markers: clean"
   exit 0
 fi

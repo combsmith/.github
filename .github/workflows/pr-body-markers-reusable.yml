@@ -84,7 +84,8 @@ jobs:
             echo "::error::could not read the pull request's commits after 3 attempts"
             exit 1
           fi
-          jq -r '.message' "${RUNNER_TEMP}/pr-commits.jsonl" > "${RUNNER_TEMP}/pr-commit-messages.txt"
+          # One message per commit, each ended by a NUL, so the check can read each commit's subject.
+          jq -j '(.message | gsub("\u0000"; "")) + "\u0000"' "${RUNNER_TEMP}/pr-commits.jsonl" > "${RUNNER_TEMP}/pr-commit-messages.txt"
           # The commits endpoint caps at 250 even paginated: fail closed on an incomplete list.
           collected="$(jq -s 'length' "${RUNNER_TEMP}/pr-commits.jsonl")"
           if [ "${collected}" -ne "${PR_COMMIT_COUNT}" ]; then
