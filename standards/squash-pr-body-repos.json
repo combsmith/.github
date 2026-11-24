@@ -1,0 +1,4 @@
+{
+  "_comment": "Repos whose squash commit message is the pull request body (PR_BODY), per docs/initiatives/pull-request-and-commit-prose-adr.md and issue #1568. Every other repo keeps COMMIT_MESSAGES. software-factory already uses the body, so it is seeded to avoid a reset. Add a repo only after a dry run of scripts/apply-repo-settings.sh on it; .github and .github-private go last.",
+  "repos": ["software-factory"]
+}
