@@ -11,8 +11,8 @@ set -euo pipefail
 # as one message.
 #
 # Exit 0: clean. Exit 3: findings, the verdict on the pull request's content. Exit 2: a caller
-# fault. Any other exit (1 included, as from a failed `source` under set -e) is a checker fault,
-# never a verdict.
+# fault. Any other exit (1 included, as from a failed `source` under set -e) is a checker fault.
+# The lib's own greps run without set -e, so a fault inside them is not caught here.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/pr-body-markers.sh
@@ -34,10 +34,16 @@ if [[ -n "${PR_COMMITS_FILE:-}" ]]; then
     msg=""
   done < "$PR_COMMITS_FILE"
 fi
-findings=""
-if findings="$(pr_body_marker_findings "$PR_TITLE" "$PR_BODY" ${commits[@]+"${commits[@]}"})"; then
+findings="" rc=0
+findings="$(pr_body_marker_findings "$PR_TITLE" "$PR_BODY" ${commits[@]+"${commits[@]}"})" || rc=$?
+if [[ "$rc" -eq 0 ]]; then
   echo "pr-body-markers: clean"
   exit 0
+fi
+# Only the findings return (1) is a verdict; any other status is a fault and keeps its own code.
+if [[ "$rc" -ne 1 ]]; then
+  echo "::error::the marker check failed with status $rc" >&2
+  exit "$rc"
 fi
 while IFS= read -r line; do
   [[ -n "$line" ]] && printf '::error::%s\n' "$line"

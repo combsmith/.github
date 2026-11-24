@@ -189,3 +189,11 @@ setup() {
   [ "$status" -ne 0 ]
   [ "$status" -ne 3 ]
 }
+
+@test "CLI: a findings function that fails with another status is a fault, not a verdict (#1573)" {
+  mkdir -p "$BATS_TEST_TMPDIR/fake/lib"
+  cp "$CHECK" "$BATS_TEST_TMPDIR/fake/check.sh"
+  printf 'pr_body_marker_findings() { return 7; }\n' > "$BATS_TEST_TMPDIR/fake/lib/pr-body-markers.sh"
+  run env PR_TITLE='feat: x (#1)' PR_BODY='clean' bash "$BATS_TEST_TMPDIR/fake/check.sh"
+  [ "$status" -eq 7 ]
+}

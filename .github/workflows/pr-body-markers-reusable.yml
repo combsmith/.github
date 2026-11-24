@@ -85,8 +85,9 @@ jobs:
             exit 1
           fi
           # One message per commit, each ended by a NUL, so the check can read each commit's subject.
-          # A NUL inside a message becomes a newline, so text after it still starts a line.
-          jq -j '(.message | gsub("\u0000"; "\n")) + "\u0000"' "${RUNNER_TEMP}/pr-commits.jsonl" > "${RUNNER_TEMP}/pr-commit-messages.txt"
+          # A message holding a NUL is checked both ways: NUL as a newline (text after it still starts
+          # a line) and NUL removed (in case GitHub strips it); the subject stays the first line.
+          jq -j '.message as $m | ($m | gsub("\u0000"; "\n")) + (if ($m | test("\u0000")) then "\n" + ($m | gsub("\u0000"; "")) else "" end) + "\u0000"' "${RUNNER_TEMP}/pr-commits.jsonl" > "${RUNNER_TEMP}/pr-commit-messages.txt"
           # The commits endpoint caps at 250 even paginated: fail closed on an incomplete list.
           collected="$(jq -s 'length' "${RUNNER_TEMP}/pr-commits.jsonl")"
           if [ "${collected}" -ne "${PR_COMMIT_COUNT}" ]; then
