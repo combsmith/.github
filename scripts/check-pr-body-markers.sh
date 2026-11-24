@@ -9,6 +9,10 @@ set -euo pipefail
 # script, and the branch's commit messages in a file (read with `gh` in the glue), each message
 # ended by a NUL byte so that each commit's own subject can be checked. A file with no NUL is read
 # as one message.
+#
+# Exit 0: clean. Exit 3: findings, the verdict on the pull request's content. Exit 2: a caller
+# fault. Any other exit (1 included, as from a failed `source` under set -e) is a checker fault,
+# never a verdict.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/pr-body-markers.sh
@@ -39,4 +43,4 @@ while IFS= read -r line; do
   [[ -n "$line" ]] && printf '::error::%s\n' "$line"
 done <<< "$findings"
 echo "Why: combsmith/.github#1571 (only the title's '!' marks a breaking change)." >&2
-exit 1
+exit 3

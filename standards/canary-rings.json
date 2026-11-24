@@ -1165,7 +1165,7 @@
             "id": "marker-rejection-of-pr-content",
             "workflow": "^pr-body-markers$",
             "step": "^Reject the pull request content that carries a marker$",
-            "reason": "#1573 review \u2014 this step fails only after the checker ran to completion and returned exit 1, its verdict that a pull request's title, body or commit messages carry a refused marker. That is a correct rejection of the PR's content, not a rollout fault. A checker crash (any other exit) fails the earlier check step and still counts. NOT version_independent: a candidate whose checker wrongly refuses a clean pull request fails this same step, and that is the regression this gate exists to catch, so the class excludes only at differs=0 (byte-identical)."
+            "reason": "#1573 review \u2014 this step fails only after the checker ran to completion and returned exit 3, its verdict that a pull request's title, body or commit messages carry a refused marker. That is a correct rejection of the PR's content, not a rollout fault. A checker crash (any other exit, 1 from a set -e fault included) fails the earlier check step and still counts. NOT version_independent: a candidate whose checker wrongly refuses a clean pull request fails this same step, and that is the regression this gate exists to catch, so the class excludes only at differs=0 (byte-identical)."
           }
         ],
         "control": {

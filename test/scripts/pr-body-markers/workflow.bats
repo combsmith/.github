@@ -85,6 +85,9 @@ setup() {
   run yq -r ".jobs.markers.steps[] | select(.name == \"$step\") | .run" "$REUSABLE"
   [ "$status" -eq 0 ]
   grep -q 'exit 1' <<< "$output"
+  # only the verdict exit (3) is recorded as a rejection; a fault (1 included) fails the check step
+  run yq -r '.jobs.markers.steps[] | select(.name == "Refuse breaking and skip-CI markers in the title, body and commits") | .run' "$REUSABLE"
+  grep -q '"${rc}" -eq 3' <<< "$output"
   # the registry's benign class names exactly that step, and only that one
   run jq -r '.agents."pr-body-markers".gate.benign_failure_classes | map(.step) | join("|")' "$REPO_ROOT/standards/canary-rings.json"
   [ "$output" = "^${step}\$" ]

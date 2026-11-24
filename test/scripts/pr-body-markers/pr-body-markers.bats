@@ -125,7 +125,7 @@ setup() {
 
 @test "CLI: reads the title and body from the environment and fails with ::error:: lines (#1571)" {
   run env PR_TITLE='feat: x (#1)' PR_BODY=$'BREAKING CHANGE: y' bash "$CHECK"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
   [[ "$output" == *"::error::breaking-footer-without-bang:"* ]]
   run env PR_TITLE='feat: x (#1)' PR_BODY='a clean body' bash "$CHECK"
   [ "$status" -eq 0 ]
@@ -136,7 +136,7 @@ setup() {
   local f="$BATS_TEST_TMPDIR/commits.txt"
   printf 'fix: x\n\nBREAKING CHANGE: y\n' > "$f"
   run env PR_TITLE='fix: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$f" bash "$CHECK"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
   [[ "$output" == *"::error::breaking-footer-without-bang: a commit message has"* ]]
   run env PR_TITLE='fix: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$BATS_TEST_TMPDIR/missing" bash "$CHECK"
   [ "$status" -eq 2 ]
@@ -149,7 +149,7 @@ setup() {
   [ "$status" -eq 0 ]
   printf 'docs: b\0fix: a\n\nBREAKING CHANGE: y\0' > "$f"
   run env PR_TITLE='feat!: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$f" bash "$CHECK"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
   [[ "$output" == *"::error::commit-footer-without-bang:"* ]]
 }
 
@@ -158,7 +158,7 @@ setup() {
   local f="$BATS_TEST_TMPDIR/big.txt"
   { printf 'fix: x\n\nBREAKING CHANGE: y\n'; head -c 300000 /dev/zero | tr '\0' 'x'; } > "$f"
   run env PR_TITLE='feat: x (#1)' PR_BODY='clean' PR_COMMITS_FILE="$f" bash "$CHECK"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
   [[ "$output" == *"breaking-footer-without-bang"* ]]
 }
 
@@ -179,4 +179,13 @@ setup() {
   run env PR_TITLE='docs: x (#1)' PR_BODY="\$(touch $marker) \`touch $marker\`" bash "$CHECK"
   [ "$status" -eq 0 ]
   [ ! -e "$marker" ]
+}
+
+@test "CLI: a checker fault never exits 3, so it is never read as a verdict (#1573)" {
+  # A copy of the CLI without its lib: the source fails under set -e.
+  mkdir -p "$BATS_TEST_TMPDIR/nolib"
+  cp "$CHECK" "$BATS_TEST_TMPDIR/nolib/check.sh"
+  run env PR_TITLE='feat: x (#1)' PR_BODY=$'BREAKING CHANGE: y' bash "$BATS_TEST_TMPDIR/nolib/check.sh"
+  [ "$status" -ne 0 ]
+  [ "$status" -ne 3 ]
 }
