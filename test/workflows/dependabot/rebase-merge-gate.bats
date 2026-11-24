@@ -106,6 +106,43 @@ _merge_calls() { grep -F '/pulls/5/merge' "${FIX_DIR}/writes.log" 2>/dev/null ||
   [[ "$output" == *"sha=${HEAD_SHA}"* ]]
 }
 
+@test "rebase: the merge carries the fixed squash body, never the PR body (#1572)" {
+  tt_seed_pr "$(tt_pr_state "$(_green_nodes)")" "$(_dependabot_only)" "$(_rules_requiring CodeQL)"
+  tt_fixture "repos/owner/repo/pulls/5" "$(tt_pr_rest "$HEAD_SHA" 1 | jq -c '. + {title: "chore(deps): bump actions/checkout from 6.0.0 to 7.0.1", body: "Release notes from upstream"}')"
+  _run_merge_step
+  [ "$status" -eq 0 ]
+  run _merge_calls
+  [[ "$output" == *"commit_message=Bumps actions/checkout from 6.0.0 to 7.0.1."* ]]
+  # The link sits on the body's last line, after a blank one.
+  run cat "${FIX_DIR}/writes.log"
+  [[ "$output" == *"commit_message=Bumps actions/checkout from 6.0.0 to 7.0.1."$'\n\n'"https://github.com/owner/repo/pull/5"* ]]
+  [[ "$output" != *"Release notes"* ]]
+}
+
+@test "rebase: a pull request with no title merges with the generic body (#1572)" {
+  tt_seed_pr "$(tt_pr_state "$(_green_nodes)")" "$(_dependabot_only)" "$(_rules_requiring CodeQL)"
+  _run_merge_step
+  [ "$status" -eq 0 ]
+  run _merge_calls
+  [[ "$output" == *"commit_message=Dependency update by Dependabot."* ]]
+}
+
+@test "rebase: an unreadable title still merges with the generic body (#1572)" {
+  tt_seed_pr "$(tt_pr_state "$(_green_nodes)")" "$(_dependabot_only)" "$(_rules_requiring CodeQL)"
+  # The gate's reads pass; only the title read (gh api …/pulls/5 --jq .title) fails.
+  mv "${TT_BIN}/gh" "${TT_BIN}/gh-inner"
+  cat > "${TT_BIN}/gh" <<WRAP
+#!/usr/bin/env bash
+case "\$*" in *"pulls/5 --jq .title"*) echo "gh: HTTP 502" >&2; exit 1 ;; esac
+exec "${TT_BIN}/gh-inner" "\$@"
+WRAP
+  chmod +x "${TT_BIN}/gh"
+  _run_merge_step
+  [ "$status" -eq 0 ]
+  run _merge_calls
+  [[ "$output" == *"commit_message=Dependency update by Dependabot."* ]]
+}
+
 @test "rebase: a cancelled agent job does not hold an otherwise green PR" {
   nodes="[$(tt_check_run CodeQL COMPLETED SUCCESS),$(tt_check_run 'dev-lead / dispatch' COMPLETED CANCELLED)]"
   tt_seed_pr "$(tt_pr_state "$nodes")" "$(_dependabot_only)"
