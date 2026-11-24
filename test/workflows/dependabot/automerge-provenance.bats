@@ -244,6 +244,16 @@ _pr_with_auto_merge_by() { # LOGIN
   [[ "$output" == *"TOKEN=app-token pr merge 5 --repo owner/repo --auto --squash --match-head-commit ${HEAD_SHA}"* ]]
 }
 
+@test "automerge: auto-merge carries the fixed squash body, never the PR body (#1572)" {
+  _seed "[$(tt_commit "$HEAD_SHA" 'dependabot[bot]' web-flow true 1)]"
+  tt_fixture "repos/owner/repo/pulls/5" "$(tt_pr_rest "$HEAD_SHA" 1 | jq -c '. + {title: "Bump lodash from 4.17.20 to 4.17.21", body: "Release notes from upstream"}')"
+  _run_approve_step
+  [ "$status" -eq 0 ]
+  run _writes
+  [[ "$output" == *"pr merge 5 --repo owner/repo --auto --squash --match-head-commit ${HEAD_SHA} --body Bumps lodash from 4.17.20 to 4.17.21."*"https://github.com/owner/repo/pull/5"* ]]
+  [[ "$output" != *"Release notes"* ]]
+}
+
 @test "automerge: the App's update-branch merge commit does not block re-approval" {
   _seed "[$(tt_commit "$DEP_SHA" 'dependabot[bot]' web-flow true 1),$(tt_commit "$HEAD_SHA" "$APP_LOGIN_FIXTURE" web-flow true 2)]"
   _run_approve_step
