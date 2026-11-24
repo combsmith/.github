@@ -107,7 +107,9 @@ jobs:
           # The commits endpoint caps at 250 even paginated: fail closed on an incomplete list.
           collected="$(jq -s 'length' "${RUNNER_TEMP}/pr-commits.jsonl")"
           if [ "${collected}" -ne "${PR_COMMIT_COUNT}" ]; then
-            echo "::error::collected ${collected} of ${PR_COMMIT_COUNT} commits; the list is incomplete (the API returns at most 250), so the marker check cannot vouch for it. Split the pull request into smaller pull requests"
+            echo "::error::collected ${collected} of ${PR_COMMIT_COUNT} commits; the list is incomplete" \
+              "(the API returns at most 250), so the marker check cannot vouch for it." \
+              "Split the pull request into smaller pull requests"
             exit 1
           fi
 
