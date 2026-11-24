@@ -45,6 +45,19 @@ jobs:
         run: |
           echo "pr-body-markers: a ${EVENT_NAME} event carries no pull request; nothing to check"
 
+      - name: Refuse an unresolved reusable commit
+        if: ${{ github.event.pull_request }}
+        env:
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        # An empty ref would check out the default branch, so a caller would quietly run main's
+        # copy instead of its pinned channel.
+        run: |
+          if ! printf '%s' "${WORKFLOW_SHA}" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::job.workflow_sha did not resolve to a commit; refusing to run another copy of the check"
+            exit 1
+          fi
+          echo "pr-body-markers: running the check at combsmith/.github@${WORKFLOW_SHA}"
+
       - name: Check out the check's scripts at this reusable's commit
         if: ${{ github.event.pull_request }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -94,7 +107,7 @@ jobs:
           # The commits endpoint caps at 250 even paginated: fail closed on an incomplete list.
           collected="$(jq -s 'length' "${RUNNER_TEMP}/pr-commits.jsonl")"
           if [ "${collected}" -ne "${PR_COMMIT_COUNT}" ]; then
-            echo "::error::collected ${collected} of ${PR_COMMIT_COUNT} commits; the list is incomplete, so the marker check cannot vouch for it"
+            echo "::error::collected ${collected} of ${PR_COMMIT_COUNT} commits; the list is incomplete (the API returns at most 250), so the marker check cannot vouch for it. Split the pull request, or an admin merges it past this check"
             exit 1
           fi
 

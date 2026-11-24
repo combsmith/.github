@@ -102,3 +102,13 @@ setup() {
     [ -f "$REPO_ROOT/$p" ] || { echo "missing: $p"; return 1; }
   done < <(jq -r '.agents["pr-body-markers"] | (.agent_ref_paths + .autocut.watched_paths) | unique | .[]' "$rings")
 }
+
+@test "reusable: refuses an unresolved job.workflow_sha before the checkout (#1573)" {
+  local names guard checkout
+  names="$(yq -r '.jobs.markers.steps[].name' "$REUSABLE")"
+  guard="$(grep -n '^Refuse an unresolved reusable commit$' <<< "$names" | cut -d: -f1)"
+  checkout="$(grep -n "^Check out the check's scripts at this reusable's commit$" <<< "$names" | cut -d: -f1)"
+  [ -n "$guard" ] && [ -n "$checkout" ] && [ "$guard" -lt "$checkout" ]
+  run yq -r '.jobs.markers.steps[] | select(.name == "Refuse an unresolved reusable commit") | .env.WORKFLOW_SHA' "$REUSABLE"
+  [ "$output" = '${{ job.workflow_sha }}' ]
+}

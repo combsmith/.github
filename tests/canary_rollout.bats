@@ -5718,6 +5718,20 @@ _filler_page() { jq -nc '[range(100)|{sha:("f\(.)"),commit:{message:"chore: fill
   [ "$status" -ne 0 ]
 }
 
+@test "orchestrator: autocut — a type! line below the subject is not read as the subject (#1573)" {
+  # jq anchors `^` at the start of the message, not of each line: a `feat!:` quoted in the body
+  # of a fix must not force a major.
+  local re1='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"fix: correct a log line\n\nfeat!: quoted from an upstream changelog"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
+    "2026-08-01T00:00:00Z" "$re1"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=dev-lead/v2.1.1 " "$GH_LOG"
+  run grep -q "tag=dev-lead/v3" "$GH_LOG"
+  [ "$status" -ne 0 ]
+}
+
 @test "orchestrator: autocut — an UNRESOLVABLE range fails safe to MAJOR (loudly), never silently to patch (#1023)" {
   # Every page is a full 100-commit page and the boundary is never reached within the page cap →
   # the range cannot be enumerated. It must NOT silently downgrade to patch: fail safe to major
@@ -5943,6 +5957,17 @@ GITEOF
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   grep -q "git/tags .*tag=persona-mention/v2.0.0 " "$GH_LOG"
+}
+
+@test "orchestrator: autocut — a script-only type! line below the subject is not a major (#1573)" {
+  local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"fix: tidy the retrigger log\n\nci-fix!: quoted from a pull request body"}}]}'
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=persona-mention/v1.2.1 " "$GH_LOG"
+  run grep -q "tag=persona-mention/v2" "$GH_LOG"
+  [ "$status" -ne 0 ]
 }
 
 # ── _gh_move_tag: create the ref when the PATCH reports 422 "Reference does not exist" ──
