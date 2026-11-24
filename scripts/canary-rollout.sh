@@ -3566,13 +3566,16 @@ _autocut_signal_paths() {
 
 # _autocut_commit_signals <agent> <host> <next_commit> <mainsha> — scan the commits in
 # (next_commit, mainsha] that TOUCH one of the agent's watched paths, echoing "<breaking 0|1>
-# <feat 0|1>". breaking=1 iff any such commit is a conventional-commit `!` (`type(scope)!:`) or
-# carries a `BREAKING CHANGE:`/`BREAKING-CHANGE:` footer; feat=1 iff any such commit subject is
-# `feat:`/`feat(scope):` (non-breaking).
+# <feat 0|1>". breaking=1 iff any such commit SUBJECT is a conventional-commit `!`
+# (`type(scope)!:`); feat=1 iff any such commit subject is `feat:`/`feat(scope):` (non-breaking).
+# A `BREAKING CHANGE:` line in the message body is NOT read (#1571): once a repo's squash message
+# is the pull request body (#1568), the body is free text, and a quoted footer would force a major.
+# The title's `!` (and the workflow_call interface diff) is the only breaking signal; the
+# pr-body-markers check fails a body that carries the footer without the `!`.
 #
 # Two defects this closes (#1023 defect 1):
 #   • SCOPED — signals come only from `commits?path=<watched>` results (per watched path), so an
-#     unrelated `feat!`/`BREAKING CHANGE` elsewhere in the range is invisible to the bump.
+#     unrelated `feat!` elsewhere in the range is invisible to the bump.
 #   • ENUMERATED, not truncated — the range is PAGINATED (never a single capped response) and
 #     bounded by a `since=<next_commit date>` window, so a breaking change beyond the first
 #     page's cap is still seen. The boundary commit itself is EXCLUDED (its message predates the
@@ -3617,7 +3620,7 @@ _autocut_commit_signals() {
   [[ "$acc" = "[]" ]] && return 2
   local out
   out="$(printf '%s\n' "$acc" | jq -r '
-    { b: any(.[]?; (. // "") | test("^[\\w-]+(\\([^)]*\\))?!:") or test("(^|\\n)BREAKING[ -]CHANGE:")),
+    { b: any(.[]?; (. // "") | test("^[\\w-]+(\\([^)]*\\))?!:")),
       f: any(.[]?; (. // "") | test("^feat(\\([^)]*\\))?:")) }
     | "\(if .b then 1 else 0 end) \(if .f then 1 else 0 end)"
   ' 2>/dev/null)" || return 1
@@ -3628,8 +3631,8 @@ _autocut_commit_signals() {
 # _autocut_range_signals <host> <base> <head> — the conventional-commit signals over ALL commits
 # between <base> and <head> (the compare range), echoing "<breaking 0|1> <feat 0|1>". Used as the
 # fallback signal source when the reusable-path-scoped scan finds no boundary (a SCRIPT-ONLY
-# change touches no reusable commit, #1019), so a script-only `feat`/`!`/`BREAKING CHANGE` still
-# bumps correctly. Detection is byte-identical to _autocut_commit_signals; only the commit source
+# change touches no reusable commit, #1019), so a script-only `feat`/`!` still bumps correctly.
+# Detection matches _autocut_commit_signals (subject `!` only, #1571); only the commit source
 # differs (compare `.commits[]` — already correctly bounded, no boundary search). Returns non-zero
 # on any fetch/parse error so the caller stays fail-safe to patch (never auto-major on missing data).
 _autocut_range_signals() {
@@ -3641,7 +3644,7 @@ _autocut_range_signals() {
     if (.commits | type) != "array" then error("no commits array") else . end
     | (.commits | map(.commit.message // "")) as $msgs
     | {
-        b: any($msgs[]; test("^\\w+(\\([^)]*\\))?!:") or test("(^|\\n)BREAKING[ -]CHANGE:")),
+        b: any($msgs[]; test("^[\\w-]+(\\([^)]*\\))?!:")),
         f: any($msgs[]; test("^feat(\\([^)]*\\))?:"))
       }
     | "\(if .b then 1 else 0 end) \(if .f then 1 else 0 end)"

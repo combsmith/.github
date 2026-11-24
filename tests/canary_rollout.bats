@@ -5344,7 +5344,8 @@ GITEOF
 
 # ── autocut breaking-change detection (#712, epic #1083 pillar 2) ──────────────
 # When autocut cuts a candidate it now CLASSIFIES the change: a conventional-commit
-# `!`/`BREAKING CHANGE` on a commit touching the reusable, or a workflow_call interface
+# `!` in the subject of a commit touching the reusable (a `BREAKING CHANGE:` body line is not
+# read, #1571), or a workflow_call interface
 # break (removed/renamed/newly-required input, removed secret) auto-produces a MAJOR
 # (seeding a fresh v<newmajor>-next per F4); a non-breaking `feat` → minor, `fix` → patch;
 # any signal-fetch error fails safe to patch. The `.agents[a].autocut.bump` knob overrides.
@@ -5583,8 +5584,8 @@ YML
 # ── autocut bump-signal scoping + pagination + fail-safe (#1023 defect 1) ───────
 # Signals are derived ONLY from commits touching a WATCHED path (reusable + optional
 # .agents[a].autocut.watched_paths[]), and the range is ENUMERATED with pagination + a `since`
-# window instead of trusting one capped response. An unrelated feat!/BREAKING outside the watched
-# paths must NOT raise the bump; a BREAKING beyond the first page's cap MUST still be detected;
+# window instead of trusting one capped response. An unrelated feat! outside the watched
+# paths must NOT raise the bump; a feat! beyond the first page's cap MUST still be detected;
 # and a range that cannot be enumerated fails safe to MAJOR (loudly), never silently to patch.
 #
 # The stub serves the reusable path's commit list PER PAGE (re-<n>.json) and, for any OTHER
@@ -5677,17 +5678,58 @@ _filler_page() { jq -nc '[range(100)|{sha:("f\(.)"),commit:{message:"chore: fill
   grep -q "git/tags .*tag=dev-lead/v3.0.0 " "$GH_LOG"
 }
 
-@test "orchestrator: autocut — a BREAKING CHANGE in a watched-path commit BEYOND the page cap IS detected → major (#1023)" {
+@test "orchestrator: autocut — a breaking feat! in a watched-path commit BEYOND the page cap IS detected → major (#1023)" {
   # Page 1 is a full 100-commit page of fillers (no boundary, no breaking); the boundary and the
-  # BREAKING CHANGE commit are on page 2. If pagination stopped at the cap the break would ship as
+  # `feat!` commit are on page 2. If pagination stopped at the cap the break would ship as
   # a patch — the dangerous direction. Enumerating past the cap ⇒ major.
-  local re2='[{"sha":"breaker000000000000000000000000000000000","commit":{"message":"feat: extend the matrix\n\nBREAKING CHANGE: the matrix input is now required."}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
+  local re2='[{"sha":"breaker000000000000000000000000000000000","commit":{"message":"feat!: make the matrix input required"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
   _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "2026-08-01T00:00:00Z" "$(_filler_page)" "$re2"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   grep -q "git/tags .*tag=dev-lead/v3.0.0 " "$GH_LOG"
+}
+
+@test "orchestrator: autocut — a BREAKING CHANGE body line WITHOUT a subject ! is NOT a major (#1571)" {
+  # Under a body squash message (#1568) the body is free text, so a `BREAKING CHANGE:` line in it
+  # must not force a major. Only the subject's `!` (or the interface diff) marks a break. The
+  # commit is a `feat` with the footer, so the bump is minor, never major.
+  local re1='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"feat: extend the matrix\n\nBREAKING CHANGE: the matrix input is now required."}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
+    "2026-08-01T00:00:00Z" "$re1"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=dev-lead/v2.2.0 " "$GH_LOG"       # minor, from the feat subject
+  run grep -q "tag=dev-lead/v3" "$GH_LOG"                     # the footer alone is not a major
+  [ "$status" -ne 0 ]
+}
+
+@test "orchestrator: autocut — a BREAKING-CHANGE footer on a fix is a patch, not a major (#1571)" {
+  local re1='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"fix: correct a log line\n\nBREAKING-CHANGE: quoted from an upstream changelog"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
+    "2026-08-01T00:00:00Z" "$re1"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=dev-lead/v2.1.1 " "$GH_LOG"
+  run grep -q "tag=dev-lead/v3" "$GH_LOG"
+  [ "$status" -ne 0 ]
+}
+
+@test "orchestrator: autocut — a type! line below the subject is not read as the subject (#1573)" {
+  # jq anchors `^` at the start of the message, not of each line: a `feat!:` quoted in the body
+  # of a fix must not force a major.
+  local re1='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"fix: correct a log line\n\nfeat!: quoted from an upstream changelog"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
+    "2026-08-01T00:00:00Z" "$re1"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=dev-lead/v2.1.1 " "$GH_LOG"
+  run grep -q "tag=dev-lead/v3" "$GH_LOG"
+  [ "$status" -ne 0 ]
 }
 
 @test "orchestrator: autocut — an UNRESOLVABLE range fails safe to MAJOR (loudly), never silently to patch (#1023)" {
@@ -5895,6 +5937,37 @@ GITEOF
   # major bump v1.2.0 → v2.0.0 seeded on a fresh v2-next line.
   grep -q "git/tags .*tag=persona-mention/v2.0.0 " "$GH_LOG"
   grep -q "PATCH repos/combsmith/.github/git/refs/tags/persona-mention/v2-next " "$GH_LOG"
+}
+
+@test "orchestrator: autocut — a script-only BREAKING CHANGE body line without ! is a minor, not a major (#1571)" {
+  local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"feat: add a --force retrigger mode\n\nBREAKING CHANGE: pasted from a pull request body"}}]}'
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=persona-mention/v1.3.0 " "$GH_LOG"
+  run grep -q "tag=persona-mention/v2" "$GH_LOG"
+  [ "$status" -ne 0 ]
+}
+
+@test "orchestrator: autocut — a script-only hyphenated type! (ci-fix!:) is a major, as on the scoped path (#1571)" {
+  local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"ci-fix!: drop the legacy retrigger path"}}]}'
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=persona-mention/v2.0.0 " "$GH_LOG"
+}
+
+@test "orchestrator: autocut — a script-only type! line below the subject is not a major (#1573)" {
+  local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"fix: tidy the retrigger log\n\nci-fix!: quoted from a pull request body"}}]}'
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=persona-mention/v1.2.1 " "$GH_LOG"
+  run grep -q "tag=persona-mention/v2" "$GH_LOG"
+  [ "$status" -ne 0 ]
 }
 
 # ── _gh_move_tag: create the ref when the PATCH reports 422 "Reference does not exist" ──
