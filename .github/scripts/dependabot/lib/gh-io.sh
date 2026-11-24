@@ -140,14 +140,26 @@ dependabot_merge_gate() {
   DEPENDABOT_GATE_SHA="$head"
 }
 
+# dependabot_squash_body_for REPO PR_NUMBER
+#   Prints the fixed squash commit body for the PR (dependabot_squash_body in
+#   lib/gates.sh): built from the PR's title and link only, never its body
+#   (issue #1572). An unreadable title gives the generic line.
+dependabot_squash_body_for() {
+  local repo="$1" pr="$2" title
+  title=$(gh api "repos/${repo}/pulls/${pr}" --jq '.title // ""' 2>/dev/null) || title=""
+  dependabot_squash_body "$title" "https://github.com/${repo}/pull/${pr}"
+}
+
 # dependabot_merge_pr REPO PR_NUMBER SHA
 #   Squash-merges the PR, bound to SHA: GitHub refuses the merge (409) if the
-#   head moved after it was verified.
+#   head moved after it was verified. The commit body is the fixed one from
+#   dependabot_squash_body_for, never the PR body (#1572).
 dependabot_merge_pr() {
-  local repo="$1" pr="$2" sha="$3"
+  local repo="$1" pr="$2" sha="$3" body
   [[ -n "$sha" ]] || return 1
+  body=$(dependabot_squash_body_for "$repo" "$pr")
   gh api "repos/${repo}/pulls/${pr}/merge" -X PUT \
-    -f merge_method=squash -f sha="$sha" --silent
+    -f merge_method=squash -f sha="$sha" -f commit_message="$body" --silent
 }
 
 # dependabot_approve_and_automerge REPO PR_NUMBER SHA APP_LOGIN
@@ -167,11 +179,13 @@ dependabot_merge_pr() {
 #   auto-merge was refused at SHA, the PR could not be re-read (the state is
 #   withdrawn first), or a withdrawal could not be completed.
 dependabot_approve_and_automerge() {
-  local repo="$1" pr="$2" sha="$3" app_login="${4:-}" enable_rc=0 rc=0
+  local repo="$1" pr="$2" sha="$3" app_login="${4:-}" enable_rc=0 rc=0 body
   [[ -n "$sha" ]] || return 1
   gh api "repos/${repo}/pulls/${pr}/reviews" -X POST \
     -f event=APPROVE -f commit_id="$sha" --silent || return 1
-  gh pr merge "$pr" --repo "$repo" --auto --squash --match-head-commit "$sha" || enable_rc=$?
+  # The squash body auto-merge will use: the fixed one, never the PR body (#1572).
+  body=$(GH_TOKEN="${READ_TOKEN:-${GH_TOKEN:-}}" dependabot_squash_body_for "$repo" "$pr")
+  gh pr merge "$pr" --repo "$repo" --auto --squash --match-head-commit "$sha" --body "$body" || enable_rc=$?
 
   GH_TOKEN="${READ_TOKEN:-${GH_TOKEN:-}}" dependabot_provenance_check "$repo" "$pr" "$app_login" || rc=$?
   case "$rc" in
