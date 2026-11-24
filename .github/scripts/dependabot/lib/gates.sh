@@ -264,3 +264,32 @@ dependabot_required_contexts() {
   [[ -n "$out" ]] || return 1
   echo "$out"
 }
+
+# dependabot_squash_body TITLE PR_URL
+#   The fixed squash commit body for a Dependabot merge (issue #1572): the
+#   package, the from and to versions, and the pull request link. Never the
+#   pull request's own body, which carries upstream release notes and commit
+#   lists written outside the org; once a repo's squash message is the body
+#   (#1568), those would land on main.
+#
+#   Reads only "bump PACKAGE from OLD to NEW" in TITLE (any case, after an
+#   optional conventional prefix, backticks removed), and keeps each token only when it is plain
+#   (letters, digits and @ / . _ + : -; the colon for Maven group:artifact). A title that does not parse that way,
+#   e.g. a grouped update, gives a generic line. PR_URL is kept only when it is
+#   a github.com pull request link. Always prints a body; never fails.
+dependabot_squash_body() {
+  local LC_ALL=C title="${1:-}" url="${2:-}" tok='[A-Za-z0-9@/._+:-]+' line
+  # Docker digests and submodules quote the versions: "from `f6fe8f2` to `7ac9a3b`".
+  title="${title//\`/}"
+  local re="(^|[[:space:]])[Bb][Uu][Mm][Pp][[:space:]]+(${tok})[[:space:]]+from[[:space:]]+(${tok})[[:space:]]+to[[:space:]]+(${tok})([[:space:]]|$)"
+  if [[ "$title" =~ $re ]]; then
+    line="Bumps ${BASH_REMATCH[2]} from ${BASH_REMATCH[3]} to ${BASH_REMATCH[4]}."
+  else
+    line="Dependency update by Dependabot."
+  fi
+  if [[ "$url" =~ ^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[0-9]+$ ]]; then
+    printf '%s\n\n%s\n' "$line" "$url"
+  else
+    printf '%s\n' "$line"
+  fi
+}
