@@ -197,3 +197,13 @@ setup() {
   run env PR_TITLE='feat: x (#1)' PR_BODY='clean' bash "$BATS_TEST_TMPDIR/fake/check.sh"
   [ "$status" -eq 7 ]
 }
+
+@test "lib: a grep that faults makes the findings return 2, never clean (#1573)" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!/bin/sh\nexit 2\n' > "$BATS_TEST_TMPDIR/bin/grep"
+  chmod +x "$BATS_TEST_TMPDIR/bin/grep"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run pr_body_marker_findings 'feat: x' 'clean'
+  [ "$status" -eq 2 ]
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run env PR_TITLE='feat: x' PR_BODY='clean' bash "$CHECK"
+  [ "$status" -eq 2 ]
+}

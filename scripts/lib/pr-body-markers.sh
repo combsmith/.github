@@ -31,48 +31,65 @@ pr_body_has_breaking_footer() {
 # pr_skip_ci_markers <text> — print each skip-CI marker found in <text>, one per line, as it
 # appears (case-insensitive match). Covers the five bracket markers GitHub honours and the
 # `skip-checks: true` trailer.
+# Returns 2 when grep itself faults (status above 1), so a fault is not read as "no marker".
 pr_skip_ci_markers() {
-  { grep -oiE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|^[[:space:]]*skip-checks:[[:space:]]*true' <<< "${1:-}" || true; } \
-    | sed -E 's/^[[:space:]]+//'
+  local out="" s=0
+  out="$(grep -oiE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|^[[:space:]]*skip-checks:[[:space:]]*true' <<< "${1:-}")" || s=$?
+  [[ "$s" -le 1 ]] || return 2
+  [[ -z "$out" ]] || sed -E 's/^[[:space:]]+//' <<< "$out"
 }
 
+# Returns 1 when there is no such line and 2 when grep faults.
 # pr_commit_footer_without_bang <message> — 0 when one commit message has a BREAKING CHANGE:
 # line but its own subject (first line) has no `!`. The title's `!` does not cover it: with a
 # COMMIT_OR_PR_TITLE squash title a one-commit pull request lands under the commit's subject, and a
 # rebase merge lands every commit as it is, so that subject is what the autocut reads.
 pr_commit_footer_without_bang() {
-  local msg="${1:-}"
-  pr_body_has_breaking_footer "$msg" && ! pr_title_marks_breaking "${msg%%$'\n'*}"
+  local msg="${1:-}" s=0
+  pr_body_has_breaking_footer "$msg" || s=$?
+  [[ "$s" -eq 0 ]] || return "$s"
+  ! pr_title_marks_breaking "${msg%%$'\n'*}"
 }
 
 # pr_body_marker_findings <title> <body> [<commit message>...] — print one finding per line;
-# return 1 when there is any, 0 when all are clean. Each further argument is one of the branch's
+# return 1 when there is any, 0 when all are clean, 2 when a grep faults. Each further argument is one of the branch's
 # commit messages: under a commit-messages squash setting they become the squash body, so they are
 # held to the same two rules as the body, and a commit with the footer needs `!` in its own subject.
 pr_body_marker_findings() {
-  local title="${1:-}" body="${2:-}" commits="" found=0 marker where msg
+  local title="${1:-}" body="${2:-}" commits="" found=0 marker where msg s fault=0 skips
   if [[ $# -ge 2 ]]; then shift 2; else shift "$#"; fi
   for msg in "$@"; do commits+="$msg"$'\n'; done
   if ! pr_title_marks_breaking "$title"; then
     for where in "the body" "a commit message"; do
       if [[ "$where" = "the body" ]]; then marker="$body"; else marker="$commits"; fi
-      if pr_body_has_breaking_footer "$marker"; then
+      s=0
+      pr_body_has_breaking_footer "$marker" || s=$?
+      [[ "$s" -le 1 ]] || fault=1
+      if [[ "$s" -eq 0 ]]; then
         printf '%s\n' "breaking-footer-without-bang: $where has a BREAKING CHANGE: line but the title has no '!'. Put '!' after the type or scope in the title (feat(area)!: ...), or drop the line."
         found=1
       fi
     done
   fi
   for msg in "$@"; do
-    if pr_commit_footer_without_bang "$msg"; then
+    s=0
+    pr_commit_footer_without_bang "$msg" || s=$?
+    [[ "$s" -le 1 ]] || fault=1
+    if [[ "$s" -eq 0 ]]; then
       printf '%s\n' "commit-footer-without-bang: a commit message has a BREAKING CHANGE: line but its own subject has no '!'. That subject can land on main (one-commit squash, rebase merge), so put '!' in it (feat(area)!: ...), or drop the line."
       found=1
       break
     fi
   done
+  s=0
+  skips="$(pr_skip_ci_markers "$title"$'\n'"$body"$'\n'"$commits")" || s=$?
+  [[ "$s" -le 1 ]] || fault=1
   while IFS= read -r marker; do
     [[ -n "$marker" ]] || continue
     printf '%s\n' "skip-ci-marker: '$marker' in the title, body or a commit message would skip the checks on main once it is in the squash message. Remove it."
     found=1
-  done < <(pr_skip_ci_markers "$title"$'\n'"$body"$'\n'"$commits")
+  done <<< "$skips"
+  # A grep fault outranks findings: the check could not finish, so it must not print clean.
+  [[ "$fault" -eq 0 ]] || return 2
   return "$found"
 }
