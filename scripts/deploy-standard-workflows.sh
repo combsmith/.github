@@ -150,7 +150,6 @@ DEPLOYABLE_WORKFLOWS=(
   pr-auto-review.yml
   feature-ideation.yml
   pr-review.yml
-  dismiss-stale-bot-reviews.yml
 )
 
 # Deployable workflows whose stub BODY carries a documented per-repo edit the

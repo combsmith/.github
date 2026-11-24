@@ -20,7 +20,7 @@
 # these against their template; a bats test keeps the list equal to the
 # DEPLOYABLE_WORKFLOWS whose template has no reusable `uses:` line.
 # shellcheck disable=SC2034  # read by callers (audit)
-VERBATIM_STUB_WORKFLOWS=(initiative-driver.yml dismiss-stale-bot-reviews.yml)
+VERBATIM_STUB_WORKFLOWS=(initiative-driver.yml)
 
 # stub_reusable_uses <template> -> the template's first `uses:` value that names a
 # reusable workflow (org/repo/.github/workflows/<name>.yml@<ref>), with the
