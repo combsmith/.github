@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# dismiss-stale-bot-reviews.sh (lib) — PURE decision core for the
+# dismiss-stale-bot-reviews workflow (#1115).
+#
+# Why this exists:
+#   Agent-PR merge friction (#617, blocker 3): a bot's CHANGES_REQUESTED review is
+#   NOT cleared by GitHub's dismiss_stale_reviews_on_push (that only dismisses
+#   stale *approvals*), so it persists on a superseded commit and blocks
+#   reviewDecision even with 0 unresolved threads — until the bot re-APPROVEs or a
+#   human dismisses it by hand. This core decides which reviews a workflow may
+#   dismiss on its behalf.
+#
+# This file is side-effect-free and network-free so it can be unit-tested with
+# bats (see test/workflows/dismiss-stale-bot-reviews/decision.bats). The
+# orchestrator (scripts/dismiss-stale-bot-reviews.sh) sources it and acts on the
+# verdict; the workflow is thin I/O glue.
+#
+# Decision contract: dismiss a review ONLY when ALL of the following hold —
+#   1. its state is CHANGES_REQUESTED (an APPROVED/COMMENTED review never blocks);
+#   2. its author is an allow-listed BOT (bot-only by design — human reviews are
+#      never dismissed, #1115 out-of-scope);
+#   3. it sits on a commit that is NO LONGER the PR head (superseded). A still-
+#      valid finding on the current head is left in place; it returns as a fresh
+#      CHANGES_REQUESTED on the new SHA when a bot re-reviews;
+#   4. that same bot has NO review thread that is still open and current
+#      (isResolved == false AND isOutdated == false, started by the same login,
+#      compared after `[bot]` normalization). A bot's live finding on the current
+#      head must not be dismissed along with its review (.github-private#2570);
+#   5. the PR carries NO hold label (`needs-human-review`, `dev-lead:needs-human`,
+#      `dev-lead:hands-off`, compared case-insensitively on the whole name). A PR
+#      held for a human keeps every review as it is. The set is fixed: no variable
+#      narrows or extends it (see dsbr_hold_label).
+
+# Default allow-list of bot review authors whose stale CHANGES_REQUESTED reviews
+# may be dismissed. Matches the AI code reviewers this org runs (CodeRabbit +
+# Copilot). Override wholesale via DSBR_BOT_ALLOWLIST (comma-separated logins) or
+# the optional CSV argument to the predicates below — an explicit list REPLACES
+# this default so an operator has full, tight control over what may be dismissed.
+#
+# The defaults are the GraphQL login form (no `[bot]` suffix): the orchestrator
+# reads `author.login` over GraphQL, which returns `coderabbitai`, not the REST
+# `coderabbitai[bot]`. Matching normalizes one trailing `[bot]` on both sides, so
+# an operator list may use either form.
+DSBR_DEFAULT_ALLOWLIST=(
+  "coderabbitai"
+  "copilot-pull-request-reviewer"
+)
+
+# dsbr_norm_login <login> — strip ONE trailing `[bot]` so the GraphQL and REST
+# forms of a bot login compare equal.
+dsbr_norm_login() {
+  printf '%s' "${1%\[bot\]}"
+}
+
+# dsbr_resolve_allowlist [csv] — print the active allow-list, one login per line.
+# Precedence: explicit CSV arg > DSBR_BOT_ALLOWLIST env > built-in default. A
+# supplied list REPLACES the default. Entries are whitespace-trimmed so
+# "a[bot], b[bot]" resolves to "a[bot]" and "b[bot]", not "a[bot]" and " b[bot]".
+dsbr_resolve_allowlist() {
+  local csv="${1:-${DSBR_BOT_ALLOWLIST:-}}"
+  if [[ -z "$csv" ]]; then
+    printf '%s\n' "${DSBR_DEFAULT_ALLOWLIST[@]}"
+    return 0
+  fi
+  # Split on commas without pathname-globbing (read -a, not unquoted expansion).
+  local entries=() entry
+  IFS=',' read -r -a entries <<<"$csv"
+  for entry in "${entries[@]}"; do
+    entry="${entry#"${entry%%[![:space:]]*}"}"   # strip leading whitespace
+    entry="${entry%"${entry##*[![:space:]]}"}"   # strip trailing whitespace
+    [[ -n "$entry" ]] && printf '%s\n' "$entry"
+  done
+}
+
+# The fixed set of labels that hold a PR for a human. Deliberately NOT overridable.
+DSBR_HOLD_LABELS=(
+  "needs-human-review"
+  "dev-lead:needs-human"
+  "dev-lead:hands-off"
+)
+
+# dsbr_hold_label <newline-separated label names>
+#   Prints the first hold label found and returns 0; returns 1 (prints nothing)
+#   when none of the names is a hold label. The comparison is case-insensitive on
+#   the exact whole name, so `size:XL` and `needs-human-review-later` are not holds.
+dsbr_hold_label() {
+  local name lc hold
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    lc="${name,,}"
+    for hold in "${DSBR_HOLD_LABELS[@]}"; do
+      if [[ "$lc" = "$hold" ]]; then
+        printf '%s\n' "$hold"
+        return 0
+      fi
+    done
+  done <<<"$1"
+  return 1
+}
+
+# dsbr_is_allowlisted_bot <login> <author_type> [allowlist_csv]
+#   0 if the review author is an allow-listed BOT, non-zero otherwise.
+#   The author_type (GraphQL review author __typename) MUST be "Bot": this is the
+#   bot-only gate that guarantees a human review is never a dismissal candidate,
+#   even if a human login were mistakenly present in the allow-list.
+dsbr_is_allowlisted_bot() {
+  local login="$1" author_type="$2" csv="${3:-}"
+  [[ "$author_type" = "Bot" ]] || return 1
+  # Pre-parse the resolved allow-list once into a local associative array so the
+  # membership test is a native in-process lookup rather than a per-entry string
+  # compare. All loop-scoped names are declared local so nothing leaks to global
+  # scope when this is sourced.
+  local -A allowed_bots=()
+  local allowed
+  while IFS= read -r allowed; do
+    allowed_bots["$(dsbr_norm_login "$allowed")"]=1
+  done < <(dsbr_resolve_allowlist "$csv")
+  login="$(dsbr_norm_login "$login")"
+  [[ -n "$login" ]] && [[ -n "${allowed_bots[$login]:-}" ]]
+}
+
+# dsbr_bot_has_open_thread <login> <threads_tsv>
+#   0 if <threads_tsv> (one TAB-separated record per review thread:
+#   isResolved, isOutdated, first-comment author login) holds a thread by the same
+#   login (after `[bot]` normalization) that is unresolved AND not outdated.
+dsbr_bot_has_open_thread() {
+  local login resolved outdated author
+  login="$(dsbr_norm_login "$1")"
+  while IFS=$'\t' read -r resolved outdated author; do
+    [[ -n "$resolved" ]] || continue
+    [[ "$resolved" = "false" ]] && [[ "$outdated" = "false" ]] || continue
+    [[ "$(dsbr_norm_login "$author")" = "$login" ]] && return 0
+  done <<<"$2"
+  return 1
+}
+
+# dsbr_should_dismiss <state> <review_oid> <head_oid> <login> <author_type> [allowlist_csv] [threads_tsv] [labels]
+#   0 (dismiss) iff the review is an allow-listed bot's CHANGES_REQUESTED sitting
+#   on a superseded commit AND that bot has no open, current review thread (see
+#   dsbr_bot_has_open_thread) AND the PR carries no hold label (see
+#   dsbr_hold_label; <labels> is newline-separated); non-zero (keep) otherwise. Fail-closed: a missing
+#   review_oid or head_oid cannot prove the review is superseded, so it is kept.
+dsbr_should_dismiss() {
+  local state="$1" review_oid="$2" head_oid="$3" login="$4" author_type="$5" csv="${6:-}" threads="${7:-}" labels="${8:-}"
+  [[ "$state" = "CHANGES_REQUESTED" ]] || return 1
+  [[ -n "$review_oid" ]] && [[ -n "$head_oid" ]] || return 1
+  [[ "$review_oid" != "$head_oid" ]] || return 1
+  dsbr_is_allowlisted_bot "$login" "$author_type" "$csv" || return 1
+  ! dsbr_bot_has_open_thread "$login" "$threads" || return 1
+  ! dsbr_hold_label "$labels" >/dev/null || return 1
+  return 0
+}
