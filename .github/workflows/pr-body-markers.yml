@@ -1,10 +1,13 @@
-# Pull request body marker check (issue #1571). Fails a pull request whose title, body or branch
-# commit messages carry a marker that would act on its own once in the squash commit message:
-# a BREAKING CHANGE: line without '!' in the title, or a skip-CI marker. Logic lives in
-# scripts/lib/pr-body-markers.sh (bats-gated by pr-body-markers-tests.yml); this is thin glue.
-# Runs in this repo only (no org rollout channel yet); a pull request runs its own copy of the
-# script, so it guards against honest mistakes, not a determined author. Advisory: no ruleset
-# requires it. A merge_group event carries no pull request, so the job passes without reading it.
+# Thin caller for the org-level reusable pull request body marker check (issue #1571).
+# Reusable: .github/workflows/pr-body-markers-reusable.yml (the logic and its header live there).
+#
+# This repo calls it by a local ref, so a change to the check runs on its own pull request
+# (ring0 dogfood). Other repos pin the `pr-body-markers/v<M>-<tier>` channel instead.
+#
+# Runs on every pull request, again when the title or body is edited, and on a merge queue's
+# merge_group (where it passes, since that event carries no pull request; no queue is on today).
+# Advisory: no ruleset requires it yet, and here a pull request runs its own copy of the script,
+# so it guards against honest mistakes, not a determined author.
 name: pr-body-markers
 
 on:
@@ -20,86 +23,7 @@ concurrency:
 
 jobs:
   pr-body-markers:
-    name: Body markers
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
-    steps:
-      - name: Pass an event that carries no pull request
-        if: ${{ !github.event.pull_request }}
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          echo "pr-body-markers: a ${EVENT_NAME} event carries no pull request; nothing to check"
-
-      - name: Check out the check's scripts
-        if: ${{ github.event.pull_request }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          path: .pr-body-markers-tooling
-          # Cone mode: scripts/lib plus the files directly under scripts/.
-          sparse-checkout: scripts/lib
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Read the branch's commit messages
-        if: ${{ github.event.pull_request }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_COMMIT_COUNT: ${{ github.event.pull_request.commits }}
-        run: |
-          set -euo pipefail
-          # One read: the messages and the count come from the same response.
-          # Bounded retry: a transient API failure must not fail the check spuriously.
-          fetched=0
-          for attempt in 1 2 3; do
-            if timeout 60 gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
-              --jq '.[] | {sha, message: .commit.message}' > "${RUNNER_TEMP}/pr-commits.jsonl.tmp"; then
-              mv "${RUNNER_TEMP}/pr-commits.jsonl.tmp" "${RUNNER_TEMP}/pr-commits.jsonl"
-              fetched=1
-              break
-            fi
-            rm -f "${RUNNER_TEMP}/pr-commits.jsonl.tmp"
-            [ "${attempt}" -lt 3 ] && sleep $((attempt * 5))
-          done
-          if [ "${fetched}" -ne 1 ]; then
-            echo "::error::could not read the pull request's commits after 3 attempts"
-            exit 1
-          fi
-          jq -r '.message' "${RUNNER_TEMP}/pr-commits.jsonl" > "${RUNNER_TEMP}/pr-commit-messages.txt"
-          # The commits endpoint caps at 250 even paginated: fail closed on an incomplete list.
-          collected="$(jq -s 'length' "${RUNNER_TEMP}/pr-commits.jsonl")"
-          if [ "${collected}" -ne "${PR_COMMIT_COUNT}" ]; then
-            echo "::error::collected ${collected} of ${PR_COMMIT_COUNT} commits; the list is incomplete, so the marker check cannot vouch for it"
-            exit 1
-          fi
-
-      - name: Refuse breaking and skip-CI markers in the title, body and commits
-        if: ${{ github.event.pull_request }}
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_COMMITS_FILE: ${{ runner.temp }}/pr-commit-messages.txt
-        # Exit 1 is the checker's verdict on the PR's content; it is recorded and failed in the next
-        # step, so a rejection is failed under its own step name. Any other non-zero exit is a
-        # checker fault and fails here.
-        run: |
-          rc=0
-          bash .pr-body-markers-tooling/scripts/check-pr-body-markers.sh || rc=$?
-          if [ "${rc}" -eq 1 ]; then
-            : > "${RUNNER_TEMP}/pr-body-markers-rejected"
-          elif [ "${rc}" -ne 0 ]; then
-            exit "${rc}"
-          fi
-
-      - name: Reject the pull request content that carries a marker
-        if: ${{ github.event.pull_request }}
-        run: |
-          if [ -e "${RUNNER_TEMP}/pr-body-markers-rejected" ]; then
-            echo "::error::the pull request's title, body or commit messages carry a refused marker (see the findings above)"
-            exit 1
-          fi
+    uses: ./.github/workflows/pr-body-markers-reusable.yml  # local ref — always current (ring0 dogfood)

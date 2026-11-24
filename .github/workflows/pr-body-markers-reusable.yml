@@ -1,0 +1,119 @@
+# Reusable pull request body marker check — the single source of truth for the org.
+# Each repo's pr-body-markers.yml calls this; .github calls it by a local ref (ring0 dogfood),
+# .github-private at the `pr-body-markers/v1-next` channel (standards/canary-rings.json).
+#
+# Fails a pull request whose title, body or branch commit messages carry a marker that would act
+# on its own once in the squash commit message (issue #1571, prose ADR #1565, opt-in list #1568).
+# The squash message is the body in a repo that opted in, and the commit messages until then:
+#   - a BREAKING CHANGE: line without '!' in the title (the canary autocut reads only the '!'), or
+#   - a skip-CI marker, which would land the merge on main with its push checks skipped.
+# The logic lives in the pure scripts/lib/pr-body-markers.sh (bats-gated by
+# pr-body-markers-tests.yml); this workflow is thin glue. The title and body reach the script
+# through the environment only, never interpolated into a run block; the commit messages are
+# read with the job token into a file.
+#
+# The scripts are checked out from combsmith/.github at this reusable's own commit
+# (`job.workflow_sha`), so a caller runs the check of the channel it pinned, never its own copy.
+# Under the local ref in .github that commit is the pull request's, so a change to the check is
+# exercised on its own pull request.
+#
+# A merge_group event carries no pull request: the job passes without reading anything, so a
+# ruleset that later requires this check cannot hold a merge queue. That pass does not re-read
+# the queued pull request, so a body edited after it was queued is judged only by its own
+# `edited` run. Advisory today: no ruleset requires it.
+
+name: PR Body Markers (Reusable)
+
+on:
+  workflow_call: {}
+
+permissions: {}
+
+jobs:
+  markers:
+    name: Body markers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Pass an event that carries no pull request
+        if: ${{ !github.event.pull_request }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          echo "pr-body-markers: a ${EVENT_NAME} event carries no pull request; nothing to check"
+
+      - name: Check out the check's scripts at this reusable's commit
+        if: ${{ github.event.pull_request }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: combsmith/.github
+          # `job.workflow_sha`, not `github.job_workflow_sha`, which is empty at step level (#839).
+          ref: ${{ job.workflow_sha }}
+          path: .pr-body-markers-tooling
+          # Cone mode: scripts/lib/ plus the files directly under scripts/.
+          sparse-checkout: scripts/lib
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Read the branch's commit messages
+        if: ${{ github.event.pull_request }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_COMMIT_COUNT: ${{ github.event.pull_request.commits }}
+        run: |
+          set -euo pipefail
+          # One read: the messages and the count come from the same response.
+          # Bounded retry: a transient API failure must not fail the check spuriously.
+          fetched=0
+          for attempt in 1 2 3; do
+            if timeout 60 gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
+              --jq '.[] | {sha, message: .commit.message}' > "${RUNNER_TEMP}/pr-commits.jsonl.tmp"; then
+              mv "${RUNNER_TEMP}/pr-commits.jsonl.tmp" "${RUNNER_TEMP}/pr-commits.jsonl"
+              fetched=1
+              break
+            fi
+            rm -f "${RUNNER_TEMP}/pr-commits.jsonl.tmp"
+            [ "${attempt}" -lt 3 ] && sleep $((attempt * 5))
+          done
+          if [ "${fetched}" -ne 1 ]; then
+            echo "::error::could not read the pull request's commits after 3 attempts"
+            exit 1
+          fi
+          jq -r '.message' "${RUNNER_TEMP}/pr-commits.jsonl" > "${RUNNER_TEMP}/pr-commit-messages.txt"
+          # The commits endpoint caps at 250 even paginated: fail closed on an incomplete list.
+          collected="$(jq -s 'length' "${RUNNER_TEMP}/pr-commits.jsonl")"
+          if [ "${collected}" -ne "${PR_COMMIT_COUNT}" ]; then
+            echo "::error::collected ${collected} of ${PR_COMMIT_COUNT} commits; the list is incomplete, so the marker check cannot vouch for it"
+            exit 1
+          fi
+
+      - name: Refuse breaking and skip-CI markers in the title, body and commits
+        if: ${{ github.event.pull_request }}
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_COMMITS_FILE: ${{ runner.temp }}/pr-commit-messages.txt
+        # Exit 1 is the checker's verdict on the PR's content; it is recorded and failed in the next
+        # step, so a rejection carries its own failed-step name (the canary gate's benign class,
+        # standards/canary-rings.json). Any other non-zero exit is a checker fault and fails here.
+        run: |
+          rc=0
+          bash .pr-body-markers-tooling/scripts/check-pr-body-markers.sh || rc=$?
+          if [ "${rc}" -eq 1 ]; then
+            : > "${RUNNER_TEMP}/pr-body-markers-rejected"
+          elif [ "${rc}" -ne 0 ]; then
+            exit "${rc}"
+          fi
+
+      - name: Reject the pull request content that carries a marker
+        if: ${{ github.event.pull_request }}
+        run: |
+          if [ -e "${RUNNER_TEMP}/pr-body-markers-rejected" ]; then
+            echo "::error::the pull request's title, body or commit messages carry a refused marker (see the findings above)"
+            exit 1
+          fi

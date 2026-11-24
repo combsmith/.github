@@ -1111,6 +1111,86 @@
         }
       }
     },
+    "pr-body-markers": {
+      "host": "combsmith/.github",
+      "reusable": ".github/workflows/pr-body-markers-reusable.yml",
+      "run_workflow": "pr-body-markers",
+      "agent_ref_paths": [
+        "scripts/lib/pr-body-markers.sh",
+        "scripts/check-pr-body-markers.sh"
+      ],
+      "autocut": {
+        "watched_paths": [
+          "scripts/lib/pr-body-markers.sh",
+          "scripts/check-pr-body-markers.sh"
+        ]
+      },
+      "rings": [
+        {
+          "channel": "next",
+          "order": 0,
+          "members": [
+            "combsmith/.github-private"
+          ]
+        },
+        {
+          "channel": "ring0",
+          "order": 1,
+          "members": [
+            "combsmith/.github"
+          ]
+        },
+        {
+          "channel": "ring1",
+          "order": 2,
+          "members": [
+            "combsmith/TalkTerm",
+            "combsmith/bmad-bgreat-suite"
+          ]
+        },
+        {
+          "channel": "stable",
+          "order": 3,
+          "members": [
+            "*"
+          ]
+        }
+      ],
+      "gate": {
+        "_standard": "combsmith/.github#548 \u2014 graduated dwell/sample gate over a per-candidate cumulative window. These are registry-configurable per-transition knobs; the values below are the #548 defaults.",
+        "baseline_window_days": 14,
+        "baseline_spike_cap_multiple": 3,
+        "benign_failure_classes": [
+          {
+            "id": "marker-rejection-of-pr-content",
+            "workflow": "^pr-body-markers$",
+            "step": "^Reject the pull request content that carries a marker$",
+            "reason": "#1573 review \u2014 this step fails only after the checker ran to completion and returned exit 1, its verdict that a pull request's title, body or commit messages carry a refused marker. That is a correct rejection of the PR's content, not a rollout fault. A checker crash (any other exit) fails the earlier check step and still counts. NOT version_independent: a candidate whose checker wrongly refuses a clean pull request fails this same step, and that is the regression this gate exists to catch, so the class excludes only at differs=0 (byte-identical)."
+          }
+        ],
+        "control": {
+          "allow_pre_existing": false
+        },
+        "_benign_note": "benign_failure_classes (#1025 P2): per-reusable allowlist matched against a failed run's workflow name (`workflow` ERE) + failed-step signature (`step` ERE, matched via `gh run view`). Matches are excluded from cum_fail \u2014 but ONLY when the candidate's reusable is byte-identical to the prior channel (differs=0), so the allowlist can never mask a candidate-introduced regression. Exception (#668): a class marked `version_independent: true` fails before/independent of the candidate's own code (e.g. a Dependabot-context secrets failure at startup) and can NEVER be candidate-caused, so it is excluded even when differs=1 \u2014 reserve the flag for classes where that is provable from the failure mechanism, not merely likely. `control.allow_pre_existing`, or `promote --allow-pre-existing`, advances a BLOCKED+PRE_EXISTING frontier (never REGRESSION).",
+        "transitions": {
+          "next->ring0": {
+            "dwell_hours": 4,
+            "sample_fraction_permille": 250,
+            "sample_clamp_min": 3,
+            "sample_clamp_max": 15,
+            "waive_sample_if_no_caller": true
+          },
+          "ring0->ring1": {
+            "dwell_hours": 8,
+            "waive_sample": true
+          },
+          "ring1->stable": {
+            "dwell_hours": 12,
+            "sample_min": 1
+          }
+        }
+      }
+    },
     "pr-review": {
       "_note": "combsmith/.github#1166 — the ring-0 self-host reviewer (#497). Its engine reusable `pr-review.yml` (grandfathered legacy name, #1127) lives in .github-private and is dogfooded there on `pr-review/next` via the `pr-review-trigger.yml` caller stub. It was absent from the registry, so autocut never cut/advanced its channel and a merged fix sat inert on main until a human ran cut-release.sh (two incidents in three days). run_workflow is the caller stub's DISPLAY NAME (the `name:` of pr-review-trigger.yml), NOT the engine or a *.yml filename: a workflow_call-only reusable has no runs of its own, so the gate reads the caller's run history via `gh run list --workflow`. It must be the display name because a repo without this workflow (every tier beyond the .github-private self-host) then returns the graceful 'could not find any workflows named …' (→ [], #747), whereas a *.yml filename would 404 and be mis-triaged as a transient fetch failure that fails the gate CLOSED. Registered host-relative like dev-lead/ci-failure-analyst: `next` = the host, so `next`+`ring0` span both org-infra repos. The self-host circular dependency (#497) is bounded by the soak gate — a candidate that breaks reviews on `next` (.github-private) fails there and is BLOCKED, never reaching ring0/stable.",
       "host": "combsmith/.github-private",
