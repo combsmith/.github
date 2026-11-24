@@ -8,14 +8,18 @@
 # and never the bare `<agent>/stable` form (a bare pin cannot be migrated by the
 # major-scope tooling and silently rides whatever the tip of the channel is).
 #
-# The 4 verbatim templates (ci, copilot-setup-steps, initiative-driver,
-# sonarcloud) have no first-party reusable `uses:` line and are exempt.
+# The verbatim templates (ci, copilot-setup-steps, initiative-driver, sonarcloud,
+# dismiss-stale-bot-reviews) have no first-party reusable `uses:` line and are
+# exempt — they are self-contained workflows, not thin callers for a reusable.
 
 REPO_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/../../.." && pwd)"
 WF_DIR="${REPO_ROOT}/standards/workflows"
 
 # The templates that carry no first-party channel-ref `uses:` line.
-VERBATIM="ci.yml copilot-setup-steps.yml initiative-driver.yml sonarcloud.yml"
+# dismiss-stale-bot-reviews.yml (#1115) is self-contained: a reusable-backed stub
+# would have to pin a <agent>/v<M>-stable channel tag that can only be cut after
+# the reusable merges, so it lands as the verbatim class like initiative-driver.
+VERBATIM="ci.yml copilot-setup-steps.yml initiative-driver.yml sonarcloud.yml dismiss-stale-bot-reviews.yml"
 
 # Emit each first-party channel-ref line in a file (marker-tagged uses lines).
 channel_ref_lines() {
@@ -71,7 +75,7 @@ ref_of() {
   done
 }
 
-@test "the 4 verbatim templates carry no first-party channel-ref line" {
+@test "the verbatim templates carry no first-party channel-ref line" {
   local name lines
   for name in $VERBATIM; do
     [ -f "${WF_DIR}/${name}" ] || { echo "missing ${name}"; return 1; }
