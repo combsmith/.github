@@ -1,0 +1,29 @@
+# Thin caller for the org-level reusable pull request body marker check (issue #1571).
+# Reusable: .github/workflows/pr-body-markers-reusable.yml (the logic and its header live there).
+#
+# This repo calls it by a local ref, so a change to the check runs on its own pull request
+# (ring0 dogfood). Other repos pin the `pr-body-markers/v<M>-<tier>` channel instead.
+#
+# Runs on every pull request, again when the title or body is edited, and on a merge queue's
+# merge_group (where it passes, since that event carries no pull request; no queue is on today).
+# Advisory: no ruleset requires it yet, and here a pull request runs its own copy of the script,
+# so it guards against honest mistakes, not a determined author.
+name: pr-body-markers
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  merge_group:
+
+permissions: {}
+
+concurrency:
+  group: pr-body-markers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-body-markers:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/pr-body-markers-reusable.yml  # local ref — always current (ring0 dogfood)
