@@ -40,8 +40,19 @@ jobs:
       - name: Install bats and shellcheck (jq is preinstalled on the runner)
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends bats shellcheck
+          # Bounded retries with a per-attempt timeout, so an apt mirror blip
+          # does not fail the check.
+          for attempt in 1 2 3; do
+            if timeout 120 sudo apt-get update -qq &&
+              timeout 120 sudo apt-get install -y --no-install-recommends bats shellcheck; then
+              break
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "::error::apt-get failed after $attempt attempts" >&2
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
 
       - name: shellcheck
         run: shellcheck --severity=warning -x scripts/codeql-filter-org-pins.sh

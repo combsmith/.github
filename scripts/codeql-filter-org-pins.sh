@@ -23,13 +23,14 @@ set -euo pipefail
 #   3. its message ends by naming a ref under 'ORG/'.
 # The line is the evidence; the message must agree, so neither a workflow name
 # nor a moved region can hide a third-party action. A result that cannot be read
-# this way is kept: no path, no line, a path outside SOURCE_ROOT, a missing file,
+# this way is kept: no path, no line, a path outside SOURCE_ROOT (a symlink
+# included), a missing file,
 # a percent-encoded path (not decoded), or a file holding a line break that sed
 # does not count but a YAML parser may (a lone CR, U+0085, U+2028, U+2029), as
 # then the line numbers could disagree.
 #
 # Fails closed: when IN is missing or is not a SARIF log (no `runs` array, a run
-# whose `results` is not an array, no run at all), it exits 2 and writes nothing,
+# whose `results` is present but not an array, no run at all), it exits 2 and writes nothing,
 # so the upload step that follows never runs and the CodeQL check goes red.
 # codeql.yml runs the base branch's copy of this script, so a pull request's
 # edit to it counts only after merge, and then checks in the workflow itself
@@ -99,6 +100,11 @@ drop_reason() {
   safe_relative_path "$uri" || return 0
   [[ "$line" =~ ^[1-9][0-9]*$ ]] || return 0
   [[ -f "$root/$uri" ]] || return 0
+  # Through a symlink, the file must still be inside the checkout.
+  local real_root real_file
+  real_root="$(cd "$root" && pwd -P)" || return 0
+  real_file="$(cd "$root" && realpath -- "$uri" 2>/dev/null)" || return 0
+  [[ "$real_file" == "$real_root"/* ]] || return 0
   # A lone CR (a CR not ending its line), NEL, LS or PS: keep the result.
   if LC_ALL=C grep -q -e $'\r.' -e $'\xc2\x85' -e $'\xe2\x80\xa8' -e $'\xe2\x80\xa9' "$root/$uri"; then
     return 0
@@ -121,7 +127,7 @@ main() {
 
   jq -e 'type == "object"
          and (.runs | type == "array" and length > 0)
-         and all(.runs[]; type == "object" and ((.results // []) | type == "array"))' \
+         and all(.runs[]; type == "object" and ((.results | type == "array") or (has("results") | not)))' \
     "$in" > /dev/null 2>&1 || die "'$in' is not a SARIF log (want an object with a non-empty runs array whose results are arrays)"
 
   # One line per unpinned-tag result: run index, result index, path, start line,
