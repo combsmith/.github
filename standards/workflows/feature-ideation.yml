@@ -86,8 +86,13 @@ on:
 
 permissions: {}
 
+# Analyst runs (schedule, workflow_dispatch) serialize in `feature-ideation` and
+# are never cancelled in progress. The Discussion bridge (`redispatch`) gets its
+# own group per run: it stays alive after dispatching to link the run, and GitHub
+# keeps only one pending run per group, so sharing a group would let a later run
+# replace (cancel) the analyst run it just dispatched, or another Idea's bridge (#1576).
 concurrency:
-  group: feature-ideation
+  group: ${{ github.event_name == 'discussion' && format('feature-ideation-bridge-{0}', github.run_id) || 'feature-ideation' }}
   cancel-in-progress: false
 
 jobs:
