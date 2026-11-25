@@ -7,7 +7,7 @@
 #   • This file is a THIN CALLER STUB. All rebase/merge serialization logic
 #     lives in the reusable workflow above.
 #   • You MUST NOT change: the `uses:` ref — it is pinned to the
-#     `dependabot-rebase/v2-stable` channel, a moving tag advanced centrally.
+#     `dependabot-rebase/<tier>` channel, a moving tag advanced centrally.
 #     Never repoint it to `@main`, a SHA, or a frozen `@vX` (see
 #     ci-standards.md → Reusable workflow versioning). Also do not change the
 #     concurrency group name, the explicit secrets
