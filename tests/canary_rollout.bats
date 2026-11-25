@@ -410,6 +410,46 @@ YML
   [ "$(classify_failure unknown comment-cap)" = "PRE_EXISTING" ]
   [ "$(classify_failure unknown infra)" = "PRE_EXISTING" ]
 }
+# ── classify_failure: failure signature also seen on an older release (#1590) ──────────────────
+# 4th arg pre_existing_sig: 1 = every counted failure's signature also failed on a run of an older
+# release within the window — the candidate cannot have introduced it.
+@test "classify_failure: a signature that also fails on the previous release is PRE_EXISTING, not REGRESSION (#1590)" {
+  [ "$(classify_failure 1 unknown 0 1)" = "PRE_EXISTING" ]
+  [ "$(classify_failure 1 unknown 0 0)" = "REGRESSION" ]
+  [ "$(classify_failure 1 unknown 0)" = "REGRESSION" ]   # flag absent → unchanged
+}
+@test "classify_failure: a pre-existing signature also clears SUSPECT (#1590)" {
+  [ "$(classify_failure 1 unknown 2 1)" = "PRE_EXISTING" ]
+  [ "$(classify_failure 1 unknown 2 0)" = "SUSPECT" ]
+}
+@test "classify_failure: a pre-existing signature does not turn an uncompared reusable into a verdict (#1590)" {
+  [ "$(classify_failure unknown unknown 0 1)" = "-" ]
+}
+@test "classify_failure: a malformed pre-existing flag is treated as 0 (#1590)" {
+  [ "$(classify_failure 1 unknown 0 yes)" = "REGRESSION" ]
+  [ "$(classify_failure 1 unknown 0 '')" = "REGRESSION" ]
+}
+
+# ── signatures_pre_existing <counted_sigs> <old_sigs> (#1590) ───────────────────────────────────
+@test "signatures_pre_existing: every counted signature also failed on the old release → yes (#1590)" {
+  [ "$(signatures_pre_existing $'Push changes\nPush changes' $'Compile\nPush changes')" = "yes" ]
+}
+@test "signatures_pre_existing: one counted signature never seen on the old release → no (#1590)" {
+  [ "$(signatures_pre_existing $'Push changes\nCompile TypeScript' 'Push changes')" = "no" ]
+}
+@test "signatures_pre_existing: an empty/unknown counted signature fails closed → no (#1590)" {
+  [ "$(signatures_pre_existing $'Push changes\n' 'Push changes')" = "no" ]
+  [ "$(signatures_pre_existing '' 'Push changes')" = "no" ]
+}
+@test "signatures_pre_existing: no old-release failures → no (#1590)" {
+  [ "$(signatures_pre_existing 'Push changes' '')" = "no" ]
+  [ "$(signatures_pre_existing 'Push changes' $'\n\n')" = "no" ]
+}
+@test "signatures_pre_existing: signatures match exactly, never by substring (#1590)" {
+  [ "$(signatures_pre_existing 'Push' 'Push changes')" = "no" ]
+  [ "$(signatures_pre_existing 'Push changes' 'Push')" = "no" ]
+}
+
 @test "triage_label: '-' reads INDETERMINATE where a human sees it; every other triage is itself (#1249)" {
   [ "$(triage_label -)" = "INDETERMINATE" ]
   [ "$(triage_label "")" = "INDETERMINATE" ]
@@ -1562,15 +1602,103 @@ GITEOF
   [[ "$output" == *"target-ring health"* ]]
 }
 
-@test "orchestrator: old-release failures on the SOURCE tier still BLOCK — attribution only applies to tiers not yet on the candidate (#1176)" {
-  # The source tier's sample still counts runs from before the candidate reached it, so dropping only
-  # their failures would let a candidate with no executions there reach PROMOTE. The host (.github-private)
-  # is the source tier of next->ring0 and its failing run's log names the OLD sha: it must still count.
+@test "orchestrator: old-release failures on the SOURCE tier / host are not counted against the candidate (#1590)" {
+  # #1590 reverses #1176's raw source tier: the host (.github-private) is the source tier of next->ring0 and
+  # its failing runs' logs name the OLD sha — they executed the previous release (e.g. run 45258589824 ran
+  # @dev-lead/v139-ring0 = 4e0a20e9 but was counted against ab469dfd). They are old-release health, not cum_fail.
   _executed_sha_stub bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb failure "repo combsmith/.github-private --workflow"
   run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
+  [[ "$output" != *"BLOCKED"* ]]
+  [[ "$output" == *"target-ring health"* ]]
+}
+
+@test "orchestrator: a SOURCE-tier failure that executed the candidate SHA still BLOCKS (#1590)" {
+  _executed_sha_stub cccccccccccccccccccccccccccccccccccccccc failure "repo combsmith/.github-private --workflow"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
   [[ "$output" == *"BLOCKED"* ]]
-  [[ "$output" != *"target-ring health"* ]]
+}
+
+@test "orchestrator: a SOURCE-tier failure whose executed release is unknown still BLOCKS — fail closed (#1590)" {
+  _executed_sha_stub none failure "repo combsmith/.github-private --workflow"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+}
+
+# ── orchestrator: referenced_workflows attribution + pre-existing signature triage (#1590) ──────
+# next = candidate (cccc), every ring = prior (bbbb); the reusable blob differs (differs=1).
+# The host (.github-private, source tier of next->ring0) has 3 failed runs; TalkTerm (ring1) has 3 failed
+# runs. `gh api repos/<repo>/actions/runs/<id>` returns referenced_workflows naming the reusable at
+# <host_sha> for the host and bbbb for TalkTerm; the run logs carry NO Uses: line, so attribution can
+# only come from referenced_workflows. Failed step: <host_step> on the host, <old_step> on TalkTerm.
+_refwf_stub() {
+  local host_sha="$1" host_step="$2" old_step="$3" cut_iso run_iso
+  STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
+  cut_iso="$(date -u -d "-3 days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v"-3d" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
+  run_iso="$(date -u -d "-2 days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v"-2d" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
+  cat > "$STUB_BIN/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"git/ref/tags/dev-lead/next"*)   echo "cccccccccccccccccccccccccccccccccccccccc commit" ;;
+  *"git/ref/tags/dev-lead/ring0"*)  echo "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb commit" ;;
+  *"git/ref/tags/dev-lead/ring1"*)  echo "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb commit" ;;
+  *"git/ref/tags/dev-lead/stable"*) echo "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb commit" ;;
+  *"matching-refs/tags/dev-lead/v"*) printf 'refs/tags/dev-lead/v2.0.0\ttagobj\ttag\n' ;;
+  *"git/tags/tagobj"*) printf '%s\t%s\n' "cccccccccccccccccccccccccccccccccccccccc" "$cut_iso" ;;
+  *"ref=cccc"*) echo "reuseCCCC" ;;
+  *"ref=bbbb"*) echo "reuseBBBB" ;;
+  *"run list"*)
+    __c=success
+    case "\$*" in *"repo combsmith/.github-private --workflow"*|*"repo combsmith/TalkTerm --workflow"*) __c=failure ;; esac
+    jq -nc --arg d "$run_iso" --arg c "\$__c" '[range(3)|{conclusion:\$c,createdAt:\$d,databaseId:(1000+.),workflowName:"Dev-Lead Agent"}]' ;;
+  *"repos/combsmith/.github-private/actions/runs/"*)
+    echo '{"referenced_workflows":[{"path":"combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@refs/tags/dev-lead/next","sha":"$host_sha","ref":"refs/tags/dev-lead/next"}]}' ;;
+  *"actions/runs/"*)
+    echo '{"referenced_workflows":[{"path":"combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@refs/tags/dev-lead/v1-ring1","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","ref":"refs/tags/dev-lead/v1-ring1"}]}' ;;
+  *"run view"*"--log"*) printf 'build\tUNKNOWN STEP\t2026-09-25T00:00:00.1Z nothing relevant\n' ;;
+  *"run view"*"combsmith/.github-private"*) jq -nc --arg s "$host_step" '{jobs:[{steps:[{name:\$s,conclusion:"failure"}]}]}' ;;
+  *"run view"*) jq -nc --arg s "$old_step" '{jobs:[{steps:[{name:\$s,conclusion:"failure"}]}]}' ;;
+  *) echo "{}" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+  printf '#!/usr/bin/env bash\n:\n' > "$STUB_BIN/git"; chmod +x "$STUB_BIN/git"
+}
+
+@test "orchestrator: a run whose referenced_workflows sha is an older release is not attributed to the candidate (#1590)" {
+  _refwf_stub bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb "Push changes" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"BLOCKED"* ]]
+  [[ "$output" == *"target-ring health"* ]]
+}
+
+@test "orchestrator: a candidate failure whose signature also fails on the previous release is PRE_EXISTING, not REGRESSION (#1590)" {
+  # The #2143 push race: the candidate's runs fail at "Push changes", and so do runs still on the old release.
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=PRE_EXISTING"* ]]
+  [[ "$output" != *"triage=REGRESSION"* ]]
+}
+
+@test "orchestrator: a candidate failure whose signature never fails on the previous release stays REGRESSION (#1590)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Compile TypeScript" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=REGRESSION"* ]]
+  [[ "$output" != *"triage=PRE_EXISTING"* ]]
+}
+
+@test "orchestrator: promote --allow-pre-existing advances a block whose signature is pre-existing on the old release (dry-run, #1590)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [[ "$output" == *"PRE_EXISTING"* ]]
+  [[ "$output" != *"candidate regression suspected"* ]]
 }
 
 @test "orchestrator: a short (7-char) candidate SHA in the Uses: line is matched by prefix and BLOCKS (#1176)" {
