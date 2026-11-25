@@ -1675,6 +1675,14 @@ GHEOF
   [[ "$output" == *"target-ring health"* ]]
 }
 
+@test "orchestrator: source-tier runs that executed an older release do not satisfy the candidate's sample floor (#1590)" {
+  _refwf_stub bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb "Push changes" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"PROMOTE"* ]]
+  [[ "$output" != *"sample=3/3"* ]]
+}
+
 @test "orchestrator: a candidate failure whose signature also fails on the previous release is PRE_EXISTING, not REGRESSION (#1590)" {
   # The #2143 push race: the candidate's runs fail at "Push changes", and so do runs still on the old release.
   _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"

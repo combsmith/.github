@@ -1358,9 +1358,20 @@ _agent_run_json() {
 # source tier since the candidate cut. Prints "<executed> <earliest_createdAt|->".
 _tier_sample() {
   local agent="$1" since="$2"; shift 2
-  local repo json executed=0 earliest="" e
+  local repo json executed=0 earliest="" e cand="${_CANARY_SAMPLE_CAND:--}" rid created
   for repo in "$@"; do
     json="$(_agent_run_json "$agent" "$repo" "$since")"
+    if [[ "$cand" != "-" ]] && [[ -n "$cand" ]]; then
+      # Executed-SHA attribution (#1590): a run that PROVABLY executed an older release is no
+      # evidence the candidate passed its canary, so it never counts toward the sample floor.
+      # Undeterminable runs still count (see _run_is_stale), matching the health gate.
+      while IFS=$'\t' read -r rid created; do
+        _run_is_stale "$agent" "$cand" "$repo" "$rid" && continue
+        executed=$(( executed + 1 ))
+        if [[ -n "$created" ]] && { [[ -z "$earliest" ]] || [[ "$created" < "$earliest" ]]; }; then earliest="$created"; fi
+      done < <(jq -r '.[]?|select(.conclusion=="success" or .conclusion=="failure")|[(.databaseId // "" | tostring),(.createdAt // "")]|@tsv' 2>/dev/null <<< "${json:-[]}")
+      continue
+    fi
     executed=$(( executed + $(jq '[.[]?|select(.conclusion=="success" or .conclusion=="failure")]|length' 2>/dev/null <<< "${json:-[]}" || echo 0) ))
     e="$(jq -r '[.[]?|select(.conclusion=="success" or .conclusion=="failure")|.createdAt?]|min // empty' 2>/dev/null <<< "$json" || echo "")"
     if [[ -n "$e" ]] && { [[ -z "$earliest" ]] || [[ "$e" < "$earliest" ]]; }; then earliest="$e"; fi
@@ -2006,7 +2017,7 @@ _pair_state() {
 
   # Sample on the source tier over the per-candidate window.
   local sample earliest
-  read -r sample earliest < <(_tier_sample "$agent" "$cut_z" "${src_repos[@]}")
+  read -r sample earliest < <(_CANARY_SAMPLE_CAND="$cand" _tier_sample "$agent" "$cut_z" "${src_repos[@]}")
 
   # Dwell is always measured from the candidate's own cut (tagger date), per #548 spec.
   local dwell_h=0
@@ -2048,7 +2059,8 @@ _pair_state() {
   # a source-tier or host run from before the candidate reached it (e.g. .github-private run
   # 45258589824 on @dev-lead/v139-ring0 = 4e0a20e9, counted against ab469dfd) is old-release health,
   # not a candidate failure. A run whose executed release cannot be determined still counts (fail
-  # closed), so this never turns an unknown into a pass. Sample sizing is unchanged.
+  # closed), so this never turns an unknown into a pass. Sample sizing applies the same attribution
+  # (_tier_sample): runs on an older release are not evidence the candidate passed.
   # The idle-waiver (#1513) separately waives sample_min for idle rings, but health gates still apply.
   local raw_repos=() attr_repos=() ch3
   for idx in "${!chan_array[@]}"; do
@@ -2166,6 +2178,9 @@ _pair_state() {
         && [[ "${cum_stale:-0}" -gt 0 ]] && [[ -n "$fail_log" ]] \
         && [[ "$(grep -c '^fail' "$fail_log" 2>/dev/null || true)" -eq "$cum_fail" ]]; then
       pre_sig="$(_failures_pre_existing "$fail_log")"
+      # A suspect-class match keeps the SUSPECT rate/evidence guards (auto-downgrade): signature
+      # equality alone must never clear it.
+      [[ "${cum_suspect:-0}" -gt 0 ]] && pre_sig=0
       if [[ "$pre_sig" = "1" ]]; then
         echo "::notice::$agent $transition: every failure counted against candidate ${cand:0:12} has the same failed-step signature as a failure on the previous release in this window — triaged PRE_EXISTING, not REGRESSION (#1590)." >&2
       fi
