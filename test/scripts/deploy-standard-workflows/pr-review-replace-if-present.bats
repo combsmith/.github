@@ -63,8 +63,7 @@ STUB
 # The template rendered at <channel> — what a correctly deployed caller looks like:
 # only the two pin lines move; the header prose keeps the template's channel.
 rendered_at() {  # <channel>
-  sed -E "/^[[:space:]]*(uses|agent_ref):/s#pr-review/v1-stable#$1#" "$TEMPLATE" \
-    | bash -c 'source "$1"; ring_repin_uses pr-review "$2"' _ "$SCRIPT" "$1"
+  sed -E "/^[[:space:]]*(uses|agent_ref):/s#pr-review/v1-stable#$1#" "$TEMPLATE"
 }
 
 # The legacy fleet caller shape (TalkTerm-like): bare pr-review/stable pin, an
