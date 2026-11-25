@@ -40,10 +40,12 @@
 #
 # Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#8-feature-ideation-feature-ideationyml--bmad-method-repos
 name: Feature Research & Ideation (BMAD Analyst)
-# A bridged run (see `redispatch`) is titled for its Discussion, so the bridge can
-# find the exact run it started and link it on the Idea. Empty on every other
-# run, so GitHub's default title applies. `github.event.inputs`, not `inputs` (#571).
-run-name: ${{ github.event.inputs.target_discussion && format('Feature ideation for Discussion {0}', github.event.inputs.target_discussion) || '' }}
+# A bridged run (see `redispatch`) is titled for its Discussion and the bridge run
+# that dispatched it, so the bridge can find the exact run it started and link it
+# on the Idea (an earlier run for the same Discussion has a different title, #1585).
+# Empty on every other run, so GitHub's default title applies.
+# `github.event.inputs`, not `inputs` (#571).
+run-name: ${{ github.event.inputs.target_discussion && format('Feature ideation for Discussion {0}{1}', github.event.inputs.target_discussion, github.event.inputs.bridge_run && format(' (bridge {0})', github.event.inputs.bridge_run) || '') || '' }}
 
 on:
   schedule:
@@ -75,6 +77,11 @@ on:
         type: boolean
       target_discussion:
         description: 'Internal — set by `redispatch` when bridging a `discussion:created` event to workflow_dispatch (claude-code-action does not support discussion contexts). Not for manual use.'
+        required: false
+        default: ''
+        type: string
+      bridge_run:
+        description: 'Internal — set by `redispatch` to the bridge run that dispatched this run, so the bridge links only its own run. Not for manual use.'
         required: false
         default: ''
         type: string
@@ -139,15 +146,18 @@ jobs:
               exit 0
               ;;
           esac
+          # This bridge run (and attempt) is unique, so it ties the dispatched run to
+          # this dispatch: an earlier run for the same Discussion has another title.
+          bridge_run="${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:-1}"
           # 30s back absorbs clock skew; the exact title, not the time, ties the run
-          # to this Discussion.
+          # to this dispatch.
           dispatched_at=$(date -u -d '-30 seconds' +%Y-%m-%dT%H:%M:%SZ)
           gh workflow run feature-ideation.yml --repo "${REPO}" \
-            -f target_discussion="${DISCUSSION_NUMBER}"
+            -f target_discussion="${DISCUSSION_NUMBER}" -f bridge_run="${bridge_run}"
 
           # Link the dispatched run on the Idea, best effort: from here on nothing
           # fails the step. Must match the top-level run-name.
-          title="Feature ideation for Discussion ${DISCUSSION_NUMBER}"
+          title="Feature ideation for Discussion ${DISCUSSION_NUMBER} (bridge ${bridge_run})"
           count=0
           urls=""
           found="found 0 runs titled '${title}'"
@@ -178,13 +188,28 @@ jobs:
           fi
           body="An analyst run is enhancing this idea: ${urls}"
           for attempt in 1 2 3; do
+            if [ "${attempt}" -gt 1 ]; then
+              sleep 5
+              # A failed post may still have been applied (lost response), so retry
+              # only when the Idea provably lacks the link (#1585).
+              # shellcheck disable=SC2016 # $id is a GraphQL variable, intentionally literal
+              if ! comments=$(gh api graphql \
+                -f query='query($id: ID!) { node(id: $id) { ... on Discussion { comments(last: 100) { nodes { body } } } } }' \
+                -f id="${DISCUSSION_ID}" --jq '.data.node.comments.nodes[].body'); then
+                echo "Comment lookup failed (attempt ${attempt}), so the post is not retried blind."
+                continue
+              fi
+              if grep -qxF -- "${body}" <<<"${comments}"; then
+                echo "The run link is already on the Idea."
+                exit 0
+              fi
+            fi
             # shellcheck disable=SC2016 # $id/$body are GraphQL variables, intentionally literal
             if gh api graphql \
               -f query='mutation($id: ID!, $body: String!) { addDiscussionComment(input: {discussionId: $id, body: $body}) { comment { id } } }' \
               -f id="${DISCUSSION_ID}" -f body="${body}" >/dev/null; then
               exit 0
             fi
-            [ "${attempt}" -eq 3 ] || sleep 5
           done
           echo "::warning title=Feature ideation::Discussion ${DISCUSSION_NUMBER}: could not post the run link on the Idea."
 

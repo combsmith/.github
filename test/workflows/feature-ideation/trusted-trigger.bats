@@ -82,15 +82,29 @@ runs() {
   printf ']\n' >>"$out"
 }
 
-# link_env: the env the re-dispatch step gets for Discussion 42 by alice.
+# link_env: the env the re-dispatch step gets for Discussion 42 by alice, from
+# attempt 1 of bridge run 777.
 link_env() {
   export GH_STUB_LOG="${TT_TMP}/gh.log" GH_TOKEN=fake REPO=o/r AUTHOR=alice \
-    DISCUSSION_NUMBER=42 DISCUSSION_ID=D_kwDOAbc42
+    DISCUSSION_NUMBER=42 DISCUSSION_ID=D_kwDOAbc42 GITHUB_RUN_ID=777 GITHUB_RUN_ATTEMPT=1
   : >"$GH_STUB_LOG"
   step "$TEMPLATE"
 }
 
 RUN42="https://github.com/o/r/actions/runs/1042"
+# The title run-name gives the run that bridge run 777 (attempt 1) dispatches.
+TITLE42="Feature ideation for Discussion 42 (bridge 777-1)"
+LINK42="An analyst run is enhancing this idea: ${RUN42}"
+
+# comments <file> <body>...: writes a comment lookup reply (one body per line,
+# as `--jq '.data.node.comments.nodes[].body'` prints them).
+comments() {
+  local out="$1"
+  shift
+  : >"$out"
+  local b
+  for b in "$@"; do printf '%s\n' "$b" >>"$out"; done
+}
 
 @test "stub gate: Ideas by users reach the permission check; bots and other categories never do" {
   for stub in "$TEMPLATE" "$SELF_STUB"; do
@@ -107,17 +121,18 @@ RUN42="https://github.com/o/r/actions/runs/1042"
 }
 
 @test "stub: an author with write or admin access is re-dispatched" {
-  export GH_STUB_LOG="${TT_TMP}/gh.log" GH_TOKEN=fake REPO=o/r AUTHOR=alice DISCUSSION_NUMBER=42
+  export GH_STUB_LOG="${TT_TMP}/gh.log" GH_TOKEN=fake REPO=o/r AUTHOR=alice DISCUSSION_NUMBER=42 \
+    GITHUB_RUN_ID=777 GITHUB_RUN_ATTEMPT=1
   step "$TEMPLATE"
   for perm in write admin; do
     : >"$GH_STUB_LOG"
-    runs "${TT_TMP}/runs.json" "Feature ideation for Discussion 42|${RUN42}"
+    runs "${TT_TMP}/runs.json" "${TITLE42}|${RUN42}"
     script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-${perm}.txt	-" "0	-	-" \
       "0	${TT_TMP}/runs.json	-" "0	-	-"
     DISCUSSION_ID=D_kwDOAbc42 run bash -eo pipefail "${TT_TMP}/step.sh"
     [ "$status" -eq 0 ]
     grep -q 'collaborators/alice/permission' "$GH_STUB_LOG"
-    grep -q 'workflow run feature-ideation.yml --repo o/r -f target_discussion=42' "$GH_STUB_LOG"
+    grep -q 'workflow run feature-ideation.yml --repo o/r -f target_discussion=42 -f bridge_run=777-1' "$GH_STUB_LOG"
     grep -q 'addDiscussionComment' "$GH_STUB_LOG"
   done
 }
@@ -190,8 +205,8 @@ RUN42="https://github.com/o/r/actions/runs/1042"
 
 # ── link the dispatched run on the Idea ──────────────────────────────────────
 
-@test "stub: run-name names the target Discussion only on a bridged dispatch" {
-  want="\${{ github.event.inputs.target_discussion && format('Feature ideation for Discussion {0}', github.event.inputs.target_discussion) || '' }}"
+@test "stub: run-name names the target Discussion and bridge run only on a bridged dispatch" {
+  want="\${{ github.event.inputs.target_discussion && format('Feature ideation for Discussion {0}{1}', github.event.inputs.target_discussion, github.event.inputs.bridge_run && format(' (bridge {0})', github.event.inputs.bridge_run) || '') || '' }}"
   for stub in "$TEMPLATE" "$SELF_STUB"; do
     [ "$(yq -r '."run-name"' "$stub")" = "$want" ]
   done
@@ -200,7 +215,13 @@ RUN42="https://github.com/o/r/actions/runs/1042"
 @test "stub: the link step uses the exact run-name title" {
   # The bridge matches on the string run-name produces, so the two must agree.
   for stub in "$TEMPLATE" "$SELF_STUB"; do
-    yq -r '.jobs.redispatch.steps[0].run' "$stub" | grep -qF 'title="Feature ideation for Discussion ${DISCUSSION_NUMBER}"'
+    yq -r '.jobs.redispatch.steps[0].run' "$stub" | grep -qF 'title="Feature ideation for Discussion ${DISCUSSION_NUMBER} (bridge ${bridge_run})"'
+  done
+}
+
+@test "stub: the bridge_run input is declared, optional and a string" {
+  for stub in "$TEMPLATE" "$SELF_STUB"; do
+    [ "$(yq -o=json -I=0 '.on.workflow_dispatch.inputs.bridge_run | {"required": .required, "default": .default, "type": .type}' "$stub")" = '{"required":false,"default":"","type":"string"}' ]
   done
 }
 
@@ -212,7 +233,7 @@ RUN42="https://github.com/o/r/actions/runs/1042"
 
 @test "link: one matching run is linked on the Idea" {
   link_env
-  runs "${TT_TMP}/runs.json" "Feature ideation for Discussion 42|${RUN42}"
+  runs "${TT_TMP}/runs.json" "${TITLE42}|${RUN42}"
   script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
     "0	${TT_TMP}/runs.json	-" "0	-	-"
   run bash -eo pipefail "${TT_TMP}/step.sh"
@@ -243,8 +264,8 @@ RUN42="https://github.com/o/r/actions/runs/1042"
 
 @test "link: two matching runs post nothing and warn" {
   link_env
-  runs "${TT_TMP}/runs.json" "Feature ideation for Discussion 42|${RUN42}" \
-    "Feature ideation for Discussion 42|https://github.com/o/r/actions/runs/1043"
+  runs "${TT_TMP}/runs.json" "${TITLE42}|${RUN42}" \
+    "${TITLE42}|https://github.com/o/r/actions/runs/1043"
   script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
     "0	${TT_TMP}/runs.json	-"
   run bash -eo pipefail "${TT_TMP}/step.sh"
@@ -256,7 +277,7 @@ RUN42="https://github.com/o/r/actions/runs/1042"
 @test "link: a run for another Discussion that shares a prefix is not matched" {
   link_env
   export DISCUSSION_NUMBER=4 DISCUSSION_ID=D_kwDOAbc4
-  runs "${TT_TMP}/runs.json" "Feature ideation for Discussion 42|${RUN42}" \
+  runs "${TT_TMP}/runs.json" "${TITLE42}|${RUN42}" \
     "Feature ideation for Discussion 4 |https://github.com/o/r/actions/runs/9" \
     "Feature ideation|https://github.com/o/r/actions/runs/8"
   script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
@@ -270,7 +291,7 @@ RUN42="https://github.com/o/r/actions/runs/1042"
 @test "link: the run that appears on a later poll is linked" {
   link_env
   runs "${TT_TMP}/none.json"
-  runs "${TT_TMP}/runs.json" "Feature ideation for Discussion 42|${RUN42}"
+  runs "${TT_TMP}/runs.json" "${TITLE42}|${RUN42}"
   script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
     "0	${TT_TMP}/none.json	-" "0	${TT_TMP}/runs.json	-" "0	-	-"
   run bash -eo pipefail "${TT_TMP}/step.sh"
@@ -292,15 +313,105 @@ RUN42="https://github.com/o/r/actions/runs/1042"
 
 @test "link: a failed post is tried three times, then warns, and the step stays green" {
   link_env
-  runs "${TT_TMP}/runs.json" "Feature ideation for Discussion 42|${RUN42}"
+  runs "${TT_TMP}/runs.json" "${TITLE42}|${RUN42}"
+  comments "${TT_TMP}/comments.txt" "Nice idea!"
   printf 'HTTP 403\n' >"${TT_TMP}/err.txt"
   script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
     "0	${TT_TMP}/runs.json	-" \
-    "1	-	${TT_TMP}/err.txt" "1	-	${TT_TMP}/err.txt" "1	-	${TT_TMP}/err.txt"
+    "1	-	${TT_TMP}/err.txt" "0	${TT_TMP}/comments.txt	-" \
+    "1	-	${TT_TMP}/err.txt" "0	${TT_TMP}/comments.txt	-" \
+    "1	-	${TT_TMP}/err.txt"
   run bash -eo pipefail "${TT_TMP}/step.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"::warning"*"could not post"* ]]
   [ "$(grep -c 'addDiscussionComment' "$GH_STUB_LOG")" -eq 3 ]
+}
+
+# ── #1585: link only this dispatch's run; never post the link twice ──────────
+
+@test "link: an earlier run for the same Discussion inside the lookback is not linked" {
+  # The earlier run is listed and this dispatch's run is not indexed yet: the
+  # earlier run must not be taken for it, and the new run is linked once listed.
+  link_env
+  EARLIER="https://github.com/o/r/actions/runs/1000"
+  runs "${TT_TMP}/earlier.json" "Feature ideation for Discussion 42|${EARLIER}" \
+    "Feature ideation for Discussion 42 (bridge 700-1)|https://github.com/o/r/actions/runs/1001"
+  runs "${TT_TMP}/both.json" "Feature ideation for Discussion 42|${EARLIER}" \
+    "Feature ideation for Discussion 42 (bridge 700-1)|https://github.com/o/r/actions/runs/1001" \
+    "${TITLE42}|${RUN42}"
+  script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
+    "0	${TT_TMP}/earlier.json	-" "0	${TT_TMP}/both.json	-" "0	-	-"
+  run bash -eo pipefail "${TT_TMP}/step.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"::warning"* ]]
+  post=$(sed -n 5p "$GH_STUB_LOG")
+  [[ "$post" == *addDiscussionComment* ]]
+  [[ "$post" == *"${RUN42}"* ]]
+  ! grep -q 'runs/1000' "$GH_STUB_LOG"
+  ! grep -q 'runs/1001' "$GH_STUB_LOG"
+}
+
+@test "link: only earlier runs for the same Discussion post nothing and warn" {
+  link_env
+  runs "${TT_TMP}/earlier.json" "Feature ideation for Discussion 42|https://github.com/o/r/actions/runs/1000"
+  script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
+    "0	${TT_TMP}/earlier.json	-" "0	${TT_TMP}/earlier.json	-" "0	${TT_TMP}/earlier.json	-"
+  run bash -eo pipefail "${TT_TMP}/step.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::warning"*"found 0 runs"* ]]
+  ! grep -q 'graphql' "$GH_STUB_LOG"
+}
+
+@test "link: a re-run of the bridge dispatches under a new title" {
+  link_env
+  export GITHUB_RUN_ATTEMPT=2
+  script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "1	-	-"
+  run bash -eo pipefail "${TT_TMP}/step.sh"
+  grep -q -- '-f bridge_run=777-2' "$GH_STUB_LOG"
+}
+
+@test "link: a post whose response was lost is not posted again" {
+  # GitHub applied the first post but gh reported a failure; the retry finds the
+  # link on the Idea and stops.
+  link_env
+  runs "${TT_TMP}/runs.json" "${TITLE42}|${RUN42}"
+  comments "${TT_TMP}/comments.txt" "Nice idea!" "${LINK42}"
+  printf 'HTTP 502\n' >"${TT_TMP}/err.txt"
+  script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
+    "0	${TT_TMP}/runs.json	-" "1	-	${TT_TMP}/err.txt" "0	${TT_TMP}/comments.txt	-"
+  run bash -eo pipefail "${TT_TMP}/step.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"::warning"* ]]
+  [ "$(grep -c 'addDiscussionComment' "$GH_STUB_LOG")" -eq 1 ]
+  [ "$(wc -l <"$GH_STUB_LOG")" -eq 5 ]
+  sed -n 5p "$GH_STUB_LOG" | grep -q 'id=D_kwDOAbc42'
+}
+
+@test "link: a failed post is retried when the Idea lacks the link" {
+  link_env
+  runs "${TT_TMP}/runs.json" "${TITLE42}|${RUN42}"
+  # A link to another run is not this run's link.
+  comments "${TT_TMP}/comments.txt" "An analyst run is enhancing this idea: ${RUN42}0"
+  printf 'HTTP 502\n' >"${TT_TMP}/err.txt"
+  script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
+    "0	${TT_TMP}/runs.json	-" "1	-	${TT_TMP}/err.txt" "0	${TT_TMP}/comments.txt	-" "0	-	-"
+  run bash -eo pipefail "${TT_TMP}/step.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"::warning"* ]]
+  [ "$(grep -c 'addDiscussionComment' "$GH_STUB_LOG")" -eq 2 ]
+}
+
+@test "link: a failed comment lookup never retries the post blind" {
+  link_env
+  runs "${TT_TMP}/runs.json" "${TITLE42}|${RUN42}"
+  printf 'HTTP 502\n' >"${TT_TMP}/err.txt"
+  script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
+    "0	${TT_TMP}/runs.json	-" "1	-	${TT_TMP}/err.txt" \
+    "1	-	${TT_TMP}/err.txt" "1	-	${TT_TMP}/err.txt"
+  run bash -eo pipefail "${TT_TMP}/step.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::warning"*"could not post"* ]]
+  [ "$(grep -c 'addDiscussionComment' "$GH_STUB_LOG")" -eq 1 ]
 }
 
 @test "link: a failed dispatch fails the step and looks up nothing" {
@@ -315,7 +426,7 @@ RUN42="https://github.com/o/r/actions/runs/1042"
 
 @test "link: a run URL of an unexpected shape is not posted" {
   link_env
-  runs "${TT_TMP}/runs.json" "Feature ideation for Discussion 42|https://evil.example/x"
+  runs "${TT_TMP}/runs.json" "${TITLE42}|https://evil.example/x"
   script_gh "0	${TT_FIXTURES_DIR}/gh-responses/permission-write.txt	-" "0	-	-" \
     "0	${TT_TMP}/runs.json	-"
   run bash -eo pipefail "${TT_TMP}/step.sh"
