@@ -707,6 +707,17 @@ that triggers on `push`, `pull_request` and `merge_group`, keeps the language
 set, query suite and weekly `schedule` default setup had, and ends in a job
 named `CodeQL` so the required context is unchanged.
 
+**Org channel pins are filtered out of the upload.** An inline `codeql.yml`
+analyzes with `upload: failure-only`, runs
+[`scripts/codeql-filter-org-pins.sh`](../scripts/codeql-filter-org-pins.sh) on
+the SARIF, and uploads the result with `github/codeql-action/upload-sarif` at the
+same pinned commit and category. The script drops only `actions/unpinned-tag`
+results on `combsmith/` refs, which the
+[exception for internal reusable workflow references](#exception-internal-reusable-workflow-references)
+makes deliberate, and keeps every other result, third-party tag pins included. A
+SARIF it cannot read fails the job, so nothing is uploaded. Default setup cannot
+filter results; there the CodeQL audit suppresses these alerts instead.
+
 **Recording an exception.** The approved repos are listed once, in
 `CODEQL_ADVANCED_EXCEPTIONS` in
 [`scripts/lib/codeql-advanced.sh`](../scripts/lib/codeql-advanced.sh). Both
