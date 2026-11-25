@@ -708,10 +708,11 @@ set, query suite and weekly `schedule` default setup had, and ends in a job
 named `CodeQL` so the required context is unchanged.
 
 **Org channel pins are filtered out of the upload.** An inline `codeql.yml`
-analyzes with `upload: failure-only`, runs
+analyzes with `upload: failure-only`, runs the base branch's copy of
 [`scripts/codeql-filter-org-pins.sh`](../scripts/codeql-filter-org-pins.sh) on
-the SARIF, and uploads the result with `github/codeql-action/upload-sarif` at the
-same pinned commit and category. The script drops only `actions/unpinned-tag`
+the SARIF (a pull request's edit to it counts only after merge), and uploads
+the result with `github/codeql-action/upload-sarif` at the same pinned commit
+and category. The script drops only `actions/unpinned-tag`
 results on `combsmith/` refs, which the
 [exception for internal reusable workflow references](#exception-internal-reusable-workflow-references)
 makes deliberate, and keeps every other result, third-party tag pins included. A
