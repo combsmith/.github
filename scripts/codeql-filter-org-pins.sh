@@ -46,10 +46,6 @@ die() {
   exit 2
 }
 
-lower() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
-}
-
 # uses_ref_on_line LINE — print the `uses:` value on a workflow or action line
 # (`uses: x`, `- uses: x`, quoted or not, a trailing comment allowed), or nothing.
 uses_ref_on_line() {
@@ -70,7 +66,7 @@ is_org_ref() {
   rest="${ref#*/}"
   repo="${rest%%[/@]*}"
   [[ -n "$owner" && "$repo" =~ ^[A-Za-z0-9._-]+$ && "$repo" != "." && "$repo" != ".." ]] || return 1
-  [[ "$(lower "$owner")" == "$(lower "$ORG")" ]]
+  [[ "${owner,,}" == "${ORG,,}" ]]
 }
 
 # message_names_org_ref MESSAGE — 0 when the message's closing clause names a
@@ -85,7 +81,8 @@ message_names_org_ref() {
   [[ "$msg" =~ $re ]] || return 1
   nwo="${BASH_REMATCH[2]}"
   [[ "$nwo" == */?* ]] || return 1
-  [[ "$(lower "${nwo%%/*}")" == "$(lower "$ORG")" ]]
+  local owner="${nwo%%/*}"
+  [[ "${owner,,}" == "${ORG,,}" ]]
 }
 
 # safe_relative_path PATH — 0 for a plain relative path inside the checkout.
@@ -144,12 +141,13 @@ main() {
         (.value.message.text // "") ]
     | map(tostring | gsub("[\u001f\n\r]"; " ")) | join("\u001f")' "$in")" || die "could not read the results of '$in'"
 
-  local drops="[]" kept_tags=0 r j uri line msg ref
+  local -a drop_list=()
+  local kept_tags=0 r j uri line msg ref
   while IFS=$'\x1f' read -r r j uri line msg; do
     [[ -n "$r" ]] || continue
     ref="$(drop_reason "$uri" "$line" "$msg" "$root")"
     if [[ -n "$ref" ]]; then
-      drops="$(jq -c --argjson r "$r" --argjson j "$j" '. + [[$r, $j]]' <<< "$drops")"
+      drop_list+=("[$r,$j]")
       echo "dropped: $uri:$line uses $ref (org ref, exempt from SHA pinning)" >&2
     else
       kept_tags=$((kept_tags + 1))
@@ -157,9 +155,12 @@ main() {
     fi
   done <<< "$candidates"
 
+  local drops
+  drops="[$(IFS=,; echo "${drop_list[*]}")]"
+
   local before after dropped tmp
   before="$(jq '[.runs[].results // [] | length] | add // 0' "$in")"
-  dropped="$(jq 'length' <<< "$drops")"
+  dropped="${#drop_list[@]}"
   mkdir -p "$(dirname "$out")"
   tmp="$(mktemp "$(dirname "$out")/.codeql-filter.XXXXXX")"
   if ! jq --argjson drops "$drops" \
