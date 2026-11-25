@@ -691,7 +691,7 @@ is_already_compliant() {
      || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
   fi
-  if ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
+  if ! is_skipped_repo "$repo" \
      && stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content"; then
     return 1
   fi
@@ -951,8 +951,19 @@ deploy_repo() {
       else
         mode="repin-in-place"
         if [[ "$DRY_RUN" != "true" ]]; then
+          # Merge the canonical guarded surfaces (on:/permissions/concurrency) into the
+          # repo's OWN body so fleet copies pick up surface fixes (e.g. #1576's bridge
+          # concurrency group) while project_context is preserved. No-op when no drift.
+          local merged_body
+          merged_body="$(merge_guarded_surfaces "$workflow" "$(< "$template")" "$existing_content")"
+          # Refuse drift that survives the merge (e.g. job-level permissions), as the
+          # surface-drift-repin branch does; otherwise the stub is re-queued every sweep.
+          if stub_any_surface_drift "$workflow" "$(< "$template")" "$merged_body"; then
+            skip "$repo/$target_path surface drift not repairable by merge (e.g. job-level block); not queuing an unchanged stub"
+            continue
+          fi
           repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
-          printf '%s\n' "$existing_content" > "$repin_source"
+          printf '%s\n' "$merged_body" > "$repin_source"
         fi
       fi
     elif [[ -n "$existing_sha" ]] && ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
