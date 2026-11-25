@@ -89,7 +89,7 @@ STUB
 find . -name '*.go' -type f | while IFS= read -r f; do
   d="${f%/*}"
   m="$d"
-  while [[ "$m" != "." ]] && [[ ! -e "$m/go.mod" ]]; do m="${m%/*}"; done
+  while [[ "$m" != "." && ! -e "$m/go.mod" ]]; do m="${m%/*}"; done
   [[ "$m" = "." ]] && printf '%s\n' "$d"
 done | LC_ALL=C sort -u
 STUB
