@@ -45,8 +45,8 @@ printf 'cargo %s @ %s\0' "$*" "$(pwd -P)" >>"$CALLS"
 case "$1" in
   metadata)
     manifest=""
-    while [ $# -gt 0 ]; do
-      [ "$1" = "--manifest-path" ] && manifest="$2"
+    while [[ $# -gt 0 ]]; do
+      [[ "$1" = "--manifest-path" ]] && manifest="$2"
       shift
     done
     dir="$(cd -- "${manifest%/*}" && pwd -P)" || exit 101
@@ -56,7 +56,7 @@ case "$1" in
     fi
     ws="$dir"
     while IFS=$'\t' read -r m r; do
-      [ "$m" = "$dir" ] && ws="$r"
+      [[ "$m" = "$dir" ]] && ws="$r"
     done <"$CARGO_WS_MAP"
     jq -n --arg ws "$ws" '{packages: [], workspace_root: $ws}'
     ;;
@@ -64,7 +64,7 @@ case "$1" in
     echo "# generated: clean" >Cargo.lock
     ;;
   audit)
-    [ -f Cargo.lock ] || { echo "error: no Cargo.lock" >&2; exit 1; }
+    [[ -f Cargo.lock ]] || { echo "error: no Cargo.lock" >&2; exit 1; }
     ! grep -q VULN Cargo.lock
     ;;
   *) exit 2 ;;
@@ -74,12 +74,12 @@ STUB
   cat >"$STUB_BIN/pip-audit" <<'STUB'
 #!/usr/bin/env bash
 printf 'pip-audit %s @ %s\0' "$*" "$(pwd -P)" >>"$CALLS"
-if [ "$1" = "-r" ]; then
+if [[ "$1" = "-r" ]]; then
   target="$2"
 else
   target="$1/pyproject.toml"
 fi
-[ -f "$target" ] || exit 2
+[[ -f "$target" ]] || exit 2
 ! grep -q VULN "$target"
 STUB
   # Shared by the go and govulncheck stubs: prints the module-relative package
@@ -89,21 +89,21 @@ STUB
 find . -name '*.go' -type f | while IFS= read -r f; do
   d="${f%/*}"
   m="$d"
-  while [ "$m" != "." ] && [ ! -e "$m/go.mod" ]; do m="${m%/*}"; done
-  [ "$m" = "." ] && printf '%s\n' "$d"
+  while [[ "$m" != "." ]] && [[ ! -e "$m/go.mod" ]]; do m="${m%/*}"; done
+  [[ "$m" = "." ]] && printf '%s\n' "$d"
 done | LC_ALL=C sort -u
 STUB
 
   cat >"$STUB_BIN/go" <<'STUB'
 #!/usr/bin/env bash
 printf 'go %s @ %s\0' "$*" "$(pwd -P)" >>"$CALLS"
-[ "$1 $2" = "list ./..." ] || exit 2
+[[ "$1 $2" = "list ./..." ]] || exit 2
 if grep -qxF -- "$(pwd -P)" "$GO_LIST_FAIL"; then
   echo "go: errors parsing go.mod" >&2
   exit 1
 fi
 pkgs="$(go-stub-packages)"
-[ -n "$pkgs" ] || { echo 'go: warning: "./..." matched no packages' >&2; exit 0; }
+[[ -n "$pkgs" ]] || { echo 'go: warning: "./..." matched no packages' >&2; exit 0; }
 printf '%s\n' "$pkgs" | sed 's|^\.|example.com/m|'
 STUB
 
@@ -111,7 +111,7 @@ STUB
 #!/usr/bin/env bash
 printf 'govulncheck %s @ %s\0' "$*" "$(pwd -P)" >>"$CALLS"
 pkgs="$(go-stub-packages)"
-[ -n "$pkgs" ] || { echo "govulncheck: no packages matched the provided patterns" >&2; exit 1; }
+[[ -n "$pkgs" ]] || { echo "govulncheck: no packages matched the provided patterns" >&2; exit 1; }
 while IFS= read -r d; do
   if grep -q VULN "$d"/*.go; then echo "Vulnerability #1: GO-0000-0000"; exit 3; fi
 done <<<"$pkgs"
@@ -152,7 +152,7 @@ da_run_step() {
   local job="$1" step="$2" ws="$3" wd script
   script="${BATS_TEST_TMPDIR}/step.sh"
   da_step_script "$job" "$step" >"$script"
-  [ -s "$script" ] || { echo "step '$step' not found in job '$job'" >&2; return 99; }
+  [[ -s "$script" ]] || { echo "step '$step' not found in job '$job'" >&2; return 99; }
   wd="$(JOB="$job" STEP="$step" yq -r \
     '.jobs[strenv(JOB)].steps[] | select(.name == strenv(STEP)) | .["working-directory"] // ""' \
     "$DA_WORKFLOW")"

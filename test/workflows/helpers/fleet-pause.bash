@@ -320,7 +320,7 @@ pause() { run python3 "$PAUSE_PY" "$WF" "$@"; }
 load_table() {
   pause table "$@"
   # shellcheck disable=SC2154  # bats' `run` sets status and output
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
   TABLE="$output"
 }
 

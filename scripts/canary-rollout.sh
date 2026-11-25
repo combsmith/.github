@@ -1403,7 +1403,7 @@ _tier_inflight() {
     # (fail closed). _tier_sample reads the same lists and reports 0 on a failed read, so without this
     # an unreadable ring would look idle on the cmd_promote path, which has no fetch-failure flag.
     jrc=0; json="$(_agent_run_json "$agent" "$repo" "$since")" || jrc=$?
-    if [ "$jrc" -ne 0 ]; then n=$((n + 1)); continue; fi
+    if [[ "$jrc" -ne 0 ]]; then n=$((n + 1)); continue; fi
     n=$(( n + $(jq '[.[]?|select((.conclusion // "")=="")]|length' 2>/dev/null <<< "${json:-[]}" || echo 0) ))
     # A collapsed (ingress-routed) repo: _ingress_agent_runs only emits COMPLETED runs, so an in-flight
     # ingress run is invisible above. Count it from the ingress run list's own `conclusion` instead.
@@ -1415,9 +1415,9 @@ _tier_inflight() {
     # Same resolution as _agent_run_json: the first of run_workflow / run_workflow_aliases present (#1589).
     for wf in "${_REG_WFS[@]}"; do
       rc=0; _repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" >/dev/null 2>&1 || rc=$?
-      [ "$rc" -eq 3 ] || break
+      [[ "$rc" -eq 3 ]] || break
     done
-    if [ "$rc" -eq 0 ]; then
+    if [[ "$rc" -eq 0 ]]; then
       # Legacy per-role workflow. Its general list is the newest $_LEGACY_RUN_LIMIT runs, so a flood of newer
       # skipped runs can push an older in-flight run out of view (_agent_run_json completes only failure-class
       # runs). Read the unfinished runs separately, server-side, so the list cannot truncate them away; an
@@ -1429,12 +1429,12 @@ _tier_inflight() {
       done
       continue
     fi
-    [ -z "$role" ] && continue
-    [ "$rc" -eq 3 ] || continue
+    [[ -z "$role" ]] && continue
+    [[ "$rc" -eq 3 ]] || continue
     _reg_ingress_wf; iwf="$_REG_VAL"
     rc=0; iraw="$(_ingress_runs_fetch "$repo" "$iwf" "$since")" || rc=$?
-    [ "$rc" -eq 3 ] && continue   # no ingress workflow on this repo: nothing in flight there
-    if [ "$rc" -ne 0 ]; then n=$((n + 1)); continue; fi   # unreadable ingress list: hold the waiver
+    [[ "$rc" -eq 3 ]] && continue   # no ingress workflow on this repo: nothing in flight there
+    if [[ "$rc" -ne 0 ]]; then n=$((n + 1)); continue; fi   # unreadable ingress list: hold the waiver
     n=$(( n + $(jq --arg since "$since" '[.[]?|select((.conclusion // "")=="")|select($since=="" or (.createdAt // "")>=$since)]|length' 2>/dev/null <<< "${iraw:-[]}" || echo 0) ))
   done
   echo "$n"
