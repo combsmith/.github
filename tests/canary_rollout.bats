@@ -1631,6 +1631,9 @@ GITEOF
   # #1590 reverses #1176's raw source tier: the host (.github-private) is the source tier of next->ring0 and
   # its failing runs' logs name the OLD sha — they executed the previous release (e.g. run 45258589824 ran
   # @dev-lead/v139-ring0 = 4e0a20e9 but was counted against ab469dfd). They are old-release health, not cum_fail.
+  # This deliberately REVERSES the #1176 test "old-release failures on the SOURCE tier still BLOCK": #1590 Ask 1
+  # attributes a failed run to the candidate only when its referenced_workflows SHA matches (host run 45258589824).
+  # The protective part of #1176 stays covered by the candidate-SHA and unknown-release tests.
   _executed_sha_stub bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb failure "repo combsmith/.github-private --workflow"
   run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]

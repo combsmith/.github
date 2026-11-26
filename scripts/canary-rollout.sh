@@ -2160,6 +2160,8 @@ _pair_state() {
   local a_fail a_startup a_benign a_suspect a_stale
   # Counted + old-release failures are logged so triage can tell a pre-existing signature (#1590).
   local fail_log; fail_log="$(mktemp 2>/dev/null || echo "")"
+  # Remove the temp log on every return path (not only the final cleanup).
+  trap 'if [[ -n "${fail_log:-}" ]]; then rm -f "$fail_log"; fi; trap - RETURN' RETURN
   read -r cum_fail cum_startup cum_benign cum_suspect cum_stale < <(_CANARY_PRIOR="$prior" _CANARY_FAIL_LOG="$fail_log" _cumulative_health "$agent" "$cut_z" "$differs" "$cand" ${raw_repos[@]+"${raw_repos[@]}"})
   read -r a_fail a_startup a_benign a_suspect a_stale < <(_CANARY_PRIOR="$prior" _CANARY_FAIL_LOG="$fail_log" _cumulative_health "$agent" "$cut_z" "$differs" "$cand" ${attr_only[@]+"${attr_only[@]}"})
   cum_fail=$(( cum_fail + a_fail )); cum_startup=$(( cum_startup + a_startup ))
