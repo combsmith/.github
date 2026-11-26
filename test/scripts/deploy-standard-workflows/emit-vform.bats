@@ -441,3 +441,31 @@ partial_cut_refs() {
   refute_output_matches -q 'would pin'
   refute_output_matches -q 'Would open PR'
 }
+
+# ── #1594: per-agent pin_overrides — .github-private's own dev-lead stub is ring0 ──
+# Safe Release SC2 (#503) requires dev-lead's HOST to pin a promoted tier for its own
+# caller, so a broken in-development dev-lead cannot block the PR that fixes it. The
+# registry's dev-lead pin_overrides maps .github-private → ring0; the sweep reads it
+# through ring_pin_current → ring_tier_for_repo, with no repo-specific branch here.
+
+@test "#1594: .github-private's dev-lead stub on v<M>-ring0 is already compliant (pin_overrides)" {
+  GH_MATCHING_REFS="$(devlead_v139_refs)"; export GH_MATCHING_REFS
+  GH_CONTENT_B64="$(devlead_stub_pinning_with_marker dev-lead/v139-ring0)"; export GH_CONTENT_B64
+  install_gh_stub
+  run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo .github-private --workflow dev-lead.yml
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qF '.github-private/.github/workflows/dev-lead.yml already compliant'
+  refute_output_matches -q 'Would open PR'
+}
+
+@test "#1594: .github-private's dev-lead stub on v<M>-next is drift → re-pin @dev-lead/v139-ring0" {
+  GH_MATCHING_REFS="$(devlead_v139_refs)"; export GH_MATCHING_REFS
+  GH_CONTENT_B64="$(devlead_stub_pinning_with_marker dev-lead/v139-next)"; export GH_CONTENT_B64
+  install_gh_stub
+  run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo .github-private --workflow dev-lead.yml
+  [ "$status" -eq 0 ]
+  refute_output_matches -q 'already compliant'
+  echo "$output" | grep -qF 'would pin @dev-lead/v139-ring0'
+  refute_output_matches -qF 'v139-next'
+  echo "$output" | grep -qE 'Would open PR for \.github-private .* dev-lead.yml'
+}
