@@ -1702,6 +1702,16 @@ GHEOF
   [[ "$output" != *"triage=PRE_EXISTING"* ]]
 }
 
+@test "orchestrator: a same-signature failure on a release OLDER than the previous one is not a pre-existing baseline (#1590)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  # TalkTerm's failed runs executed a third release (aaaa), not the previous one (bbbb).
+  sed -i '/v1-ring1/s/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/g' "$STUB_BIN/gh"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" != *"triage=PRE_EXISTING"* ]]
+}
+
 @test "orchestrator: promote --allow-pre-existing advances a block whose signature is pre-existing on the old release (dry-run, #1590)" {
   _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
   run env CANARY_RINGS="$RINGS" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run

@@ -1364,7 +1364,7 @@ _tier_sample() {
     if [[ "$cand" != "-" ]] && [[ -n "$cand" ]]; then
       # Executed-SHA attribution (#1590): a run that PROVABLY executed an older release is no
       # evidence the candidate passed its canary, so it never counts toward the sample floor.
-      # Undeterminable runs still count (see _run_is_stale), matching the health gate.
+      # Undeterminable runs still count (see _run_is_stale): the sample floor only drops runs PROVEN old.
       while IFS=$'\t' read -r rid created; do
         _run_is_stale "$agent" "$cand" "$repo" "$rid" && continue
         executed=$(( executed + 1 ))
@@ -1657,6 +1657,20 @@ _run_is_stale() {
   return 0
 }
 
+# _run_on_release <agent> <sha> <repo> <run_id> — 0 only when the run PROVABLY executed <sha> (prefix
+# match either way, like _run_is_stale). Empty/"-" <sha> or an undeterminable run is never a match.
+_run_on_release() {
+  local agent="$1" want="$2" repo="$3" id="$4" sha shas
+  { [[ -z "$want" ]] || [[ "$want" = "-" ]]; } && return 1
+  shas="$(_run_reusable_sha "$agent" "$repo" "$id")" || return 1
+  while IFS= read -r sha; do
+    [[ -z "$sha" ]] && continue
+    case "$want" in "$sha"*) return 0 ;; esac
+    case "$sha" in "$want"*) return 0 ;; esac
+  done <<< "$shas"
+  return 1
+}
+
 # _cumulative_health <agent> <since_z> <differs 0|1> <cand|-> <repo...> — failures +
 # startup_failures across EVERY given tier repo since the candidate cut. Only runs that executed
 # the candidate count (#1176): a failure from a run provably on an OLDER release (see
@@ -1691,7 +1705,11 @@ _cumulative_health() {
       while IFS=$'\t' read -r rid rwf rrole; do
         if _run_is_stale "$agent" "$cand" "$repo" "$rid"; then
           stale=$(( stale + 1 ))
-          [[ -n "${_CANARY_FAIL_LOG:-}" ]] && printf 'stale\t%s\t%s\t%s\n' "$repo" "$rid" "$rrole" >> "$_CANARY_FAIL_LOG" 2>/dev/null || true
+          # Only the PREVIOUS release's failures are signature evidence (_CANARY_PRIOR); a run on any
+          # other non-candidate release still never counts against the candidate, but is no baseline.
+          if [[ -n "${_CANARY_FAIL_LOG:-}" ]] && _run_on_release "$agent" "${_CANARY_PRIOR:-}" "$repo" "$rid"; then
+            printf 'stale\t%s\t%s\t%s\n' "$repo" "$rid" "$rrole" >> "$_CANARY_FAIL_LOG" 2>/dev/null || true
+          fi
         elif [[ -n "$patterns" ]] && _failure_benign "$repo" "$rid" "$rwf" "$patterns" "$rrole"; then
           benign=$(( benign + 1 ))
         else
@@ -2084,8 +2102,8 @@ _pair_state() {
   local a_fail a_startup a_benign a_suspect a_stale
   # Counted + old-release failures are logged so triage can tell a pre-existing signature (#1590).
   local fail_log; fail_log="$(mktemp 2>/dev/null || echo "")"
-  read -r cum_fail cum_startup cum_benign cum_suspect cum_stale < <(_CANARY_FAIL_LOG="$fail_log" _cumulative_health "$agent" "$cut_z" "$differs" "$cand" ${raw_repos[@]+"${raw_repos[@]}"})
-  read -r a_fail a_startup a_benign a_suspect a_stale < <(_CANARY_FAIL_LOG="$fail_log" _cumulative_health "$agent" "$cut_z" "$differs" "$cand" ${attr_only[@]+"${attr_only[@]}"})
+  read -r cum_fail cum_startup cum_benign cum_suspect cum_stale < <(_CANARY_PRIOR="$prior" _CANARY_FAIL_LOG="$fail_log" _cumulative_health "$agent" "$cut_z" "$differs" "$cand" ${raw_repos[@]+"${raw_repos[@]}"})
+  read -r a_fail a_startup a_benign a_suspect a_stale < <(_CANARY_PRIOR="$prior" _CANARY_FAIL_LOG="$fail_log" _cumulative_health "$agent" "$cut_z" "$differs" "$cand" ${attr_only[@]+"${attr_only[@]}"})
   cum_fail=$(( cum_fail + a_fail )); cum_startup=$(( cum_startup + a_startup ))
   cum_benign=$(( cum_benign + a_benign )); cum_suspect=$(( cum_suspect + a_suspect ))
   cum_stale=$(( cum_stale + a_stale ))
