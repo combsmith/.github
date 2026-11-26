@@ -1683,8 +1683,8 @@ _run_on_release() {
 # (#668 increment 2) — it still counts toward the blocking total (SUSPECT blocks like
 # REGRESSION), but downstream triage renders SUSPECT + guidance instead of a bare
 # REGRESSION. Prints "<failures> <startup_failures> <benign_excluded> <suspect_count> <old_release_failures>".
-# When _CANARY_FAIL_LOG names a file, every counted failure ("fail") and every old-release failure
-# ("stale") is appended to it as "<kind>\t<repo>\t<run_id>\t<role>", so triage can compare their
+# When _CANARY_FAIL_LOG names a file, every counted failure ("fail") and every failure on the PREVIOUS
+# release (_CANARY_PRIOR; failures on any other old release are not logged) ("stale") is appended to it as "<kind>\t<repo>\t<run_id>\t<role>", so triage can compare their
 # failure signatures (#1590, see _failures_pre_existing). Signatures are fetched only there — this
 # pass stays as cheap as before.
 _cumulative_health() {
@@ -2125,7 +2125,13 @@ _pair_state() {
     # ring is never mistaken for an idle one; any failure still BLOCKs in decide_graduated.
     local idle_after
     idle_after="$(_gate_knob "$agent" "$transition" waive_sample_if_idle_after_hours)"
-    if [[ -n "$idle_after" && "$(idle_sample_waiver "$dwell_h" "$idle_after" "$sample" "$target")" = "true" \
+    # Idle means zero executed runs of ANY release: the executed-SHA-filtered `sample` would read 0 for a
+    # ring that only ran an older release, so eligibility uses the unfiltered count.
+    local idle_total="$sample"
+    if [[ -n "$idle_after" ]]; then
+      read -r idle_total _ < <(_CANARY_SAMPLE_CAND="" _tier_sample "$agent" "$cut_z" "${src_repos[@]}")
+    fi
+    if [[ -n "$idle_after" && "$(idle_sample_waiver "$dwell_h" "$idle_after" "${idle_total:-0}" "$target")" = "true" \
           && "$(_tier_inflight "$agent" "$cut_z" "${src_repos[@]}")" = "0" ]]; then
       echo "::notice::$agent $transition: source ring is idle (0 executed runs since the cut) and dwell ${dwell_h}h >= ${idle_after}h — sample floor ($target) waived (#1513)." >&2
       # Same shape as waive_sample (target 0): consumers that re-derive "sample met" from sample >= target

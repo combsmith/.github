@@ -1709,6 +1709,7 @@ GHEOF
   run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=REGRESSION"* ]]
   [[ "$output" != *"triage=PRE_EXISTING"* ]]
 }
 
