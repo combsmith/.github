@@ -38,8 +38,76 @@ setup() {
   for a in $(jq -r '(.agents // {}) | keys[]?' "${REPO_ROOT}/standards/canary-rings.json"); do
     [ "$(ring_tier_for_repo "$a" TalkTerm)" = "ring1" ]
     [ "$(ring_tier_for_repo "$a" .github)" = "ring0" ]
+    # #1594: dev-lead's pin_overrides moves its host's own stub to ring0 (SC2, #503).
+    [ "$a" = "dev-lead" ] && continue
     [ "$(ring_tier_for_repo "$a" .github-private)" = "next" ]
   done
+}
+
+# #1594 — per-agent pin_overrides. Safe Release SC2 (#503) requires dev-lead's host
+# (.github-private) to pin a PROMOTED tier for its own dev-lead stub, so the sweep
+# must expect ring0 there instead of the host-relative `next`.
+@test "ring_tier_for_repo: dev-lead pin_overrides puts .github-private on ring0 (#1594)" {
+  [ "$(ring_tier_for_repo dev-lead combsmith/.github-private)" = "ring0" ]
+  [ "$(ring_tier_for_repo dev-lead .github-private)" = "ring0" ]
+  # .github is dev-lead's ring0 member already — unchanged.
+  [ "$(ring_tier_for_repo dev-lead .github)" = "ring0" ]
+  # Overrides are per-agent: other agents keep .github-private on next.
+  [ "$(ring_tier_for_repo pr-review .github-private)" = "next" ]
+  [ "$(ring_tier_for_repo agent-shield .github-private)" = "next" ]
+}
+
+# Minimal one-agent registry with a dev-lead-shaped ring set and the given
+# pin_overrides JSON value. Prints the fixture path.
+_override_fixture() {  # <name> <pin_overrides-json>
+  local f="${BATS_TEST_TMPDIR}/$1.json"
+  jq -n --argjson po "$2" '{
+    org_infra_repos: ["combsmith/.github", "combsmith/.github-private"],
+    agents: { "dev-lead": {
+      host: "combsmith/.github-private",
+      rings: [
+        {channel: "next",   order: 0, members: ["$host"]},
+        {channel: "ring0",  order: 1, members: ["$org_infra"]},
+        {channel: "ring1",  order: 2, members: ["combsmith/TalkTerm"]},
+        {channel: "stable", order: 3, members: ["*"]}
+      ],
+      pin_overrides: $po } } }' > "$f"
+  printf '%s' "$f"
+}
+
+@test "ring_tier_for_repo: an override is matched by basename and cached (#1594)" {
+  local f
+  f="$(_override_fixture ok '{"combsmith/TalkTerm": {"tier": "stable", "reason": "x"}}')"
+  RING_PINS_REGISTRY="$f"
+  [ "$(ring_tier_for_repo dev-lead TalkTerm)" = "stable" ]
+  [ "$(ring_tier_for_repo dev-lead combsmith/TalkTerm)" = "stable" ]
+  # repos without an override still walk the rings
+  [ "$(ring_tier_for_repo dev-lead .github-private)" = "next" ]
+  # cached in-process like any other answer
+  ring_tier_for_repo dev-lead TalkTerm >/dev/null
+  [ "${_RING_TIER_CACHE[dev-lead,TalkTerm]}" = "stable" ]
+}
+
+@test "ring_tier_for_repo: a malformed override fails closed (rc 3, not cached) (#1594)" {
+  local f po
+  for po in \
+    '{"combsmith/.github-private": {"tier": "ring9", "reason": "unknown tier"}}' \
+    '{"combsmith/.github-private": {"reason": "no tier"}}' \
+    '{"combsmith/.github-private": "ring0"}' \
+    '["combsmith/.github-private"]'; do
+    f="$(_override_fixture bad "$po")"
+    RING_PINS_REGISTRY="$f" run ring_tier_for_repo dev-lead .github-private
+    [ "$status" -eq 3 ] || { echo "not fail-closed for: $po (status=$status output=$output)"; false; }
+    [[ "$output" == *"ring_tier_for_repo:"* ]]
+  done
+  # in-process: the failed lookup prints no tier and is not cached
+  local rc=0 out
+  RING_PINS_REGISTRY="$f"
+  out="$(ring_tier_for_repo dev-lead .github-private 2>/dev/null)" || rc=$?
+  [ "$rc" -eq 3 ]
+  [ -z "$out" ]
+  ring_tier_for_repo dev-lead .github-private >/dev/null 2>&1 || true
+  [ -z "${_RING_TIER_CACHE[dev-lead,.github-private]+isset}" ]
 }
 
 # #1092 AC2 — the whole risk of the change: every agent EXCEPT apply-repo-settings
@@ -60,11 +128,14 @@ setup() {
   for a in $(jq -r '(.agents // {}) | keys[]?' "${REPO_ROOT}/standards/canary-rings.json"); do
     [ "$a" = "apply-repo-settings" ] && continue
     for repo in "${repos[@]}"; do
+      # #1594: dev-lead's pin_overrides pins its host's own stub to ring0 (SC2, #503) —
+      # an intended PIN difference, asserted in its own test below.
+      [ "$a" = "dev-lead" ] && [ "$repo" = ".github-private" ] && continue
       [ "$(ring_tier_for_repo "$a" "$repo")" = "$(old_tier "$repo")" ] \
         || { echo "drift: $a $repo -> $(ring_tier_for_repo "$a" "$repo") (old: $(old_tier "$repo"))"; false; }
     done
   done
-  # apply-repo-settings is the ONE intended difference: markets moves to ring1.
+  # apply-repo-settings is the ONE intended ring difference: markets moves to ring1.
   [ "$(ring_tier_for_repo apply-repo-settings markets)" != "$(old_tier markets)" ]
   [ "$(ring_tier_for_repo apply-repo-settings markets)" = "ring1" ]
 }
@@ -74,12 +145,15 @@ setup() {
 # tier equals an INDEPENDENT derivation straight from canary-rings.json.
 @test "ring_tier_for_repo equals the canary-rings.json derivation for every pair (#1092 AC4)" {
   local rings="${REPO_ROOT}/standards/canary-rings.json"
-  # Independent oracle: expand $host/$org_infra tokens, return the first ring
+  # Independent oracle: an agent's pin_overrides entry for the repo basename wins
+  # (#1594); otherwise expand $host/$org_infra tokens, return the first ring
   # (registry order = tier order) whose members contain the repo basename, else
   # the ring whose members contain "*".
   expected_tier() {
     jq -r --arg a "$1" --arg repo "${2##*/}" '
       .agents[$a] as $ag
+      | ([($ag.pin_overrides // {}) | to_entries[] | select((.key | sub(".*/";"")) == $repo) | .value.tier][0]) as $ov
+      | if $ov != null then $ov else .
       | ($ag.host | sub(".*/";"")) as $host
       | ([.org_infra_repos[]? | sub(".*/";"")] - [$host]) as $orginfra
       | ( $ag.rings
@@ -89,7 +163,7 @@ setup() {
                         elif $x == "$org_infra" then . + $orginfra
                         else . + [($x | sub(".*/";""))] end)) }) ) as $r
       | ( ([$r[] | select(.m | index($repo)) | .channel][0])
-          // ([$r[] | select(.m | index("*")) | .channel][0]) )' "$rings"
+          // ([$r[] | select(.m | index("*")) | .channel][0]) ) end' "$rings"
   }
   # The repo universe: every explicitly-named member plus the meta-repos and a
   # couple of fleet repos not named in any ring.
@@ -173,7 +247,9 @@ setup() {
 @test "ring_canonical_ref is the repo's tier channel" {
   [ "$(ring_canonical_ref agent-shield TalkTerm)" = "agent-shield/ring1" ]
   [ "$(ring_canonical_ref agent-shield markets)" = "agent-shield/stable" ]
-  [ "$(ring_canonical_ref dev-lead .github-private)" = "dev-lead/next" ]
+  [ "$(ring_canonical_ref agent-shield .github-private)" = "agent-shield/next" ]
+  # #1594: dev-lead's pin_overrides pins its host's own stub to ring0 (SC2, #503).
+  [ "$(ring_canonical_ref dev-lead .github-private)" = "dev-lead/ring0" ]
 }
 
 # #1092 — end-to-end: because the tier is now agent-aware, ring_canonical_ref (and
@@ -190,7 +266,8 @@ setup() {
   # is still the repo's ring tier.
   [ "$(ring_canonical_ref agent-shield markets 2)" = "agent-shield/v2-stable" ]
   [ "$(ring_canonical_ref agent-shield TalkTerm 2)" = "agent-shield/v2-ring1" ]
-  [ "$(ring_canonical_ref dev-lead .github-private 5)" = "dev-lead/v5-next" ]
+  [ "$(ring_canonical_ref agent-shield .github-private 5)" = "agent-shield/v5-next" ]
+  [ "$(ring_canonical_ref dev-lead .github-private 5)" = "dev-lead/v5-ring0" ]  # pin_overrides (#1594)
   # No major argument is backward-compatible: the legacy bare-tier ref.
   [ "$(ring_canonical_ref agent-shield markets)" = "agent-shield/stable" ]
 }
