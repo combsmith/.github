@@ -1493,18 +1493,20 @@ _suspect_downgrade_patterns() {
      | @tsv'
 }
 
-# _suspect_class_counts <agent> <since_z> <before_z|-> <wf_re> <step_re> <repo...> — over the
+# _suspect_class_counts <agent> <since_z> <before_z|-> <cand|-> <wf_re> <step_re> <repo...> — over the
 # window [since_z, before_z) on the given tier repos, echo "<matched_failures> <executed> <incomplete>":
 # executed = success+failure runs; matched = the failures whose failed-step signature matches
 # THIS one suspect class (via benign_match, the same matcher triage uses); incomplete = the
 # count of failure runs whose signature could not be retrieved (gh run view error — callers
 # treat incomplete>0 as HOLD, not DOWNGRADE, since an unreadable run could be a non-match).
-# before_z="-" means no upper bound. Powers the candidate-vs-baseline SUSPECT-class failure
+# before_z="-" means no upper bound. A <cand> SHA (not "-") drops runs that PROVABLY executed
+# another release (_run_is_stale) from BOTH executed and matched, so old-release traffic cannot
+# dilute the candidate's rate; "-" (the baseline window) keeps every run. Powers the candidate-vs-baseline SUSPECT-class failure
 # RATE that the auto-downgrade core compares (#668 increment 6). Reuses _run_json /
 # _run_signature (the signature cache is warm from the cumulative-health pass on the
 # candidate window).
 _suspect_class_counts() {
-  local agent="$1" since="$2" before="$3" wf_re="$4" step_re="$5"; shift 5
+  local agent="$1" since="$2" before="$3" cand="$4" wf_re="$5" step_re="$6"; shift 6
   local repo json rid rwf rrole sig sig_rc matched=0 executed=0 incomplete=0 count
   local exec_filter='.[]?|select(.conclusion=="success" or .conclusion=="failure")'
   local fail_filter='.[]?|select(.conclusion=="failure")'
@@ -1515,13 +1517,24 @@ _suspect_class_counts() {
   for repo in "$@"; do
     { [[ -z "$repo" ]] || [[ "$repo" = '*' ]]; } && continue
     json="$(_agent_run_json "$agent" "$repo" "$since")"
-    count="$(jq "[${exec_filter}]|length" 2>/dev/null <<< "$json" || echo 0)"
+    if [[ -n "$cand" ]] && [[ "$cand" != "-" ]]; then
+      count=0
+      while IFS= read -r rid || [[ -n "$rid" ]]; do
+        rid="${rid%$'\r'}"
+        [[ -z "$rid" ]] && continue
+        _run_is_stale "$agent" "$cand" "$repo" "$rid" && continue
+        count=$(( count + 1 ))
+      done < <(jq -r "[${exec_filter}]|.[]|(.databaseId // \"\"|tostring)" 2>/dev/null <<< "$json")
+    else
+      count="$(jq "[${exec_filter}]|length" 2>/dev/null <<< "$json" || echo 0)"
+    fi
     executed=$(( executed + ${count:-0} ))
     while IFS=$'\t' read -r rid rwf rrole || [[ -n "$rid" ]]; do
       rid="${rid%$'\r'}"
       rwf="${rwf%$'\r'}"
       rrole="${rrole%$'\r'}"
       [[ -z "$rid" ]] && continue
+      if [[ -n "$cand" ]] && [[ "$cand" != "-" ]] && _run_is_stale "$agent" "$cand" "$repo" "$rid"; then continue; fi
       sig_rc=0
       sig="$(_run_signature "$repo" "$rid" "$rrole")" || sig_rc=$?  # || prevents set -e on lookup failure
       if [[ -z "$sig" ]]; then
@@ -2279,8 +2292,8 @@ _pair_state() {
       while IFS=$'\t' read -r dwf dsr dmin dmargin || [[ -n "$dwf" ]]; do
         dwf="${dwf%$'\r'}"; dsr="${dsr%$'\r'}"; dmin="${dmin%$'\r'}"; dmargin="${dmargin%$'\r'}"
         [[ -z "$dsr" ]] && continue
-        read -r cm ce cmi < <(_suspect_class_counts "$agent" "$cut_z" "-" "$dwf" "$dsr" "${src_repos[@]}")
-        read -r bm be bei < <(_suspect_class_counts "$agent" "$dg_base_since" "$cut_z" "$dwf" "$dsr" "${src_repos[@]}")
+        read -r cm ce cmi < <(_suspect_class_counts "$agent" "$cut_z" "-" "$cand" "$dwf" "$dsr" "${src_repos[@]}")
+        read -r bm be bei < <(_suspect_class_counts "$agent" "$dg_base_since" "$cut_z" "-" "$dwf" "$dsr" "${src_repos[@]}")
         # Guard (Thread 2): if any signature lookup failed, baseline class evidence is
         # incomplete. A missing run could be a non-match; fail-closed and skip DOWNGRADE.
         [[ "${cmi:-0}" -gt 0 ]] || [[ "${bei:-0}" -gt 0 ]] && continue

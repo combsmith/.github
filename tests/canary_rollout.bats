@@ -462,6 +462,19 @@ YML
   [ "$status" -eq 0 ]
 }
 
+@test "_suspect_class_counts: candidate window drops old-release runs from numerator and denominator (#1590)" {
+  run bash -c "source '$ORCH'
+    _agent_run_json() { echo '[{\"databaseId\":1,\"conclusion\":\"success\",\"createdAt\":\"2026-01-02\"},{\"databaseId\":2,\"conclusion\":\"failure\",\"createdAt\":\"2026-01-02\",\"workflowName\":\"w\"},{\"databaseId\":3,\"conclusion\":\"failure\",\"createdAt\":\"2026-01-02\",\"workflowName\":\"w\"}]'; }
+    _run_reusable_sha() { case \"\$3\" in 1|2) printf 'aaaa\\n';; 3) printf 'cccc\\n';; esac; }
+    _run_signature() { echo 'Stage timeout'; }
+    benign_match() { echo yes; }
+    [ \"\$(_suspect_class_counts agent-shield 2026-01-01 - cccc w 'Stage timeout' r)\" = '1 1 0' ] || exit 11
+    [ \"\$(_suspect_class_counts agent-shield 2026-01-01 - - w 'Stage timeout' r)\" = '2 3 0' ] || exit 12
+    exit 0"
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
+
 @test "triage_label: '-' reads INDETERMINATE where a human sees it; every other triage is itself (#1249)" {
   [ "$(triage_label -)" = "INDETERMINATE" ]
   [ "$(triage_label "")" = "INDETERMINATE" ]
