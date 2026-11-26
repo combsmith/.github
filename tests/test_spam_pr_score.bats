@@ -422,6 +422,17 @@ STUB
   [ "$status" -eq 0 ]
 }
 
+@test "glue: a very large PR body does not hit the argument-size limit" {
+  make_gh_stub 0
+  # Prose-like (spaced) body: one unbroken alphanumeric run would instead hit the
+  # linked-issue regexes' own quadratic backtracking, which is not under test.
+  yes 'lorem ipsum dolor sit amet' | head -c 200000 \
+    | jq -Rs '{changed_files:1,title:"Update README.md",body:.,author_association:"NONE",user:{login:"drive-by",type:"User"},head:{ref:"main",repo:{full_name:"drive-by/repo",default_branch:"main"}},base:{repo:{full_name:"acme/repo"}}}' >"$TMP/pr.json"
+  sed -i "s|^  \*pulls/7\*).*|  *pulls/7*) cat '$TMP/pr.json' ;;|" "$TMP/bin/gh"
+  run env PATH="$TMP/bin:$PATH" SPS_NOW="2026-11-22T12:00:00Z" "$SCRIPT" --repo acme/repo --pr 7
+  [ "$status" -eq 0 ]
+}
+
 # --- lint (AC8) ---------------------------------------------------------------
 
 @test "spam-pr-score.sh passes shellcheck" {
