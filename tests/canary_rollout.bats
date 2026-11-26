@@ -1743,6 +1743,19 @@ GHEOF
   [[ "$output" != *"triage=PRE_EXISTING"* ]]
 }
 
+@test "orchestrator: a run calling two reusables is ambiguous, so its signature is unknown and stays REGRESSION (#1590, #1600)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  # Both releases' runs have two reusable-calling jobs from different callers; which one ran the
+  # attributed reusable is unknowable, so no signature may match.
+  sed -i -e '/"run view"\*"combsmith\/.github-private"/s/{jobs:\[{steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"ideate \/ run",steps:[{name:\$s,conclusion:"failure"}]},{name:"other \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' \
+    -e '/^  \*"run view"\*) jq/s/{jobs:\[{steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"ideate \/ run",steps:[{name:\$s,conclusion:"failure"}]},{name:"other \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' "$STUB_BIN/gh"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=REGRESSION"* ]]
+  [[ "$output" != *"triage=PRE_EXISTING"* ]]
+}
+
 @test "orchestrator: a same-signature failure on a release OLDER than the previous one is not a pre-existing baseline (#1590)" {
   _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
   # TalkTerm's failed runs executed a third release (aaaa), not the previous one (bbbb).
