@@ -1561,11 +1561,16 @@ declare -A _RUN_SIG_CACHE=()
 # any gh error → "" with exit 1 (fail-closed: an unknown signature is never treated as
 # benign, and callers that need to distinguish a lookup failure from a genuine empty
 # signature check the exit code). A successful lookup with no failed steps → "" exit 0.
+# A <called_only> of 1 (direct runs, which have no role) restricts it to jobs that call a reusable
+# workflow — GitHub names those "<caller job> / <called job>" — so a failed step of a plain job in
+# the same workflow (e.g. a `prep` job) is never taken as the reusable's failure (#1600). When the
+# run has no such job it falls back to every job (fail closed is the caller's: unscoped = old behaviour).
 # The $'\x01' sentinel in the cache marks a prior lookup failure so it is not retried.
 _run_signature() {
-  local repo="$1" id="$2" role="${3:-}" cache_key sig json
+  local repo="$1" id="$2" role="${3:-}" called_only="${4:-0}" cache_key sig json
   { [[ -z "$repo" ]] || [[ "$repo" = '*' ]] || [[ -z "$id" ]]; } && { echo ""; return 0; }
   cache_key="${repo}:${id}:${role}"
+  [[ "$called_only" = "1" ]] && cache_key+=":called"
   if [[ -v _RUN_SIG_CACHE["$cache_key"] ]]; then
     if [[ "${_RUN_SIG_CACHE[$cache_key]}" = $'\x01' ]]; then
       echo ""; return 1  # cached lookup failure — signal to caller
@@ -1580,7 +1585,10 @@ _run_signature() {
     _RUN_SIG_CACHE["$cache_key"]=$'\x01'
     echo ""; return 1
   }
-  sig="$(jq -r --arg role "$role" '[.jobs[]?|select($role == "" or ((.name // "")|split(" / ")[0]) == $role)
+  sig="$(jq -r --arg role "$role" --argjson co "$([[ "$called_only" = "1" ]] && echo true || echo false)" '
+    (if $co and $role == "" and ([.jobs[]?|select((.name // "")|contains(" / "))]|length) > 0
+       then [.jobs[]?|select((.name // "")|contains(" / "))] else [.jobs[]?] end) as $jobs
+    | [$jobs[]|select($role == "" or ((.name // "")|split(" / ")[0]) == $role)
     |.steps[]?|select(.conclusion=="failure")|.name] | join("\n")' 2>/dev/null <<< "$json" || echo "")"
   _RUN_SIG_CACHE["$cache_key"]="$sig"
   echo "$sig"
@@ -1794,7 +1802,7 @@ _failures_pre_existing() {
   [[ -n "$log" ]] && [[ -s "$log" ]] || { echo 0; return 0; }
   while IFS=$'\t' read -r kind repo rid role; do
     [[ -z "$kind" ]] && continue
-    sig="$(_run_signature "$repo" "$rid" "$role")" || sig=""
+    sig="$(_run_signature "$repo" "$rid" "$role" 1)" || sig=""
     sig="$(printf '%s\n' "$sig" | sed '/^$/d' | sort -u | paste -sd $'\x1f' -)"
     case "$kind" in
       # An unknown counted signature can never be shown pre-existing: stop early (fail closed).
