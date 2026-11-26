@@ -238,7 +238,7 @@ dep_audit_go_run() {
   while IFS= read -r -d '' -u 3 dir; do
     shown="$(dep_audit_display "$dir")"
     echo "::group::govulncheck ${shown}"
-    if pkgs="$(cd -- "$dir" && go list ./... </dev/null)" && [ -z "$pkgs" ]; then
+    if pkgs="$(cd -- "$dir" && go list ./... </dev/null)" && [[ -z "$pkgs" ]]; then
       echo "::notice::Go module ${shown} has no packages; nothing for govulncheck to scan"
     else
       (cd -- "$dir" && govulncheck ./... </dev/null) || status=1
