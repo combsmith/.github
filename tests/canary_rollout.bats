@@ -1686,8 +1686,8 @@ case "\$*" in
   *"actions/runs/"*)
     echo '{"referenced_workflows":[{"path":"combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@refs/tags/dev-lead/v1-ring1","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","ref":"refs/tags/dev-lead/v1-ring1"}]}' ;;
   *"run view"*"--log"*) printf 'build\tUNKNOWN STEP\t2026-09-25T00:00:00.1Z nothing relevant\n' ;;
-  *"run view"*"combsmith/.github-private"*) jq -nc --arg s "$host_step" '{jobs:[{steps:[{name:\$s,conclusion:"failure"}]}]}' ;;
-  *"run view"*) jq -nc --arg s "$old_step" '{jobs:[{steps:[{name:\$s,conclusion:"failure"}]}]}' ;;
+  *"run view"*"combsmith/.github-private"*) jq -nc --arg s "$host_step" '{jobs:[{name:"ideate / run",steps:[{name:\$s,conclusion:"failure"}]}]}' ;;
+  *"run view"*) jq -nc --arg s "$old_step" '{jobs:[{name:"ideate / run",steps:[{name:\$s,conclusion:"failure"}]}]}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1734,8 +1734,18 @@ GHEOF
   _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Compile TypeScript" "Compile TypeScript"
   # Candidate: the reusable job (named "caller / inner") fails at "Compile TypeScript". Previous release: only an
   # unrelated plain job ("prep") fails at that same step name; its reusable job succeeded.
-  sed -i -e '/"run view"\*"combsmith\/.github-private"/s/{jobs:\[{steps:/{jobs:[{name:"ideate \/ run",steps:/' \
-    -e '/^  \*"run view"\*) jq/s/{jobs:\[{steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"prep",steps:[{name:\$s,conclusion:"failure"}]},{name:"ideate \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' "$STUB_BIN/gh"
+  sed -i -e '/^  \*"run view"\*) jq/s/{jobs:\[{name:"ideate \/ run",steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"prep",steps:[{name:\$s,conclusion:"failure"}]},{name:"ideate \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' "$STUB_BIN/gh"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=REGRESSION"* ]]
+  [[ "$output" != *"triage=PRE_EXISTING"* ]]
+}
+
+@test "orchestrator: a previous-release run with only plain jobs has no reusable signature, so it stays REGRESSION (#1600)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  # Previous-release runs expose only a plain job ("prep") failing at the same step name.
+  sed -i -e '/^  \*"run view"\*) jq/s/{name:"ideate \/ run",steps:/{name:"prep",steps:/' "$STUB_BIN/gh"
   run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"BLOCKED"* ]]
@@ -1747,8 +1757,8 @@ GHEOF
   _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
   # Both releases' runs have two reusable-calling jobs from different callers; which one ran the
   # attributed reusable is unknowable, so no signature may match.
-  sed -i -e '/"run view"\*"combsmith\/.github-private"/s/{jobs:\[{steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"ideate \/ run",steps:[{name:\$s,conclusion:"failure"}]},{name:"other \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' \
-    -e '/^  \*"run view"\*) jq/s/{jobs:\[{steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"ideate \/ run",steps:[{name:\$s,conclusion:"failure"}]},{name:"other \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' "$STUB_BIN/gh"
+  sed -i -e '/"run view"\*"combsmith\/.github-private"/s/{jobs:\[{name:"ideate \/ run",steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"ideate \/ run",steps:[{name:\$s,conclusion:"failure"}]},{name:"other \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' \
+    -e '/^  \*"run view"\*) jq/s/{jobs:\[{name:"ideate \/ run",steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"ideate \/ run",steps:[{name:\$s,conclusion:"failure"}]},{name:"other \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' "$STUB_BIN/gh"
   run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"BLOCKED"* ]]

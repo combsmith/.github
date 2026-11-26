@@ -1566,7 +1566,7 @@ declare -A _RUN_SIG_CACHE=()
 # the same workflow (e.g. a `prep` job) is never taken as the reusable's failure (#1600). When the
 # run has more than one distinct calling job the reusable cannot be told apart from the others, so the
 # lookup fails closed (exit 1, unknown signature). When the
-# run has no such job it falls back to every job (fail closed is the caller's: unscoped = old behaviour).
+# run has no such job the lookup also fails closed (exit 1): a plain job's failure is never the reusable's.
 # The $'\x01' sentinel in the cache marks a prior lookup failure so it is not retried.
 _run_signature() {
   local repo="$1" id="$2" role="${3:-}" called_only="${4:-0}" cache_key sig json
@@ -1593,9 +1593,13 @@ _run_signature() {
     _RUN_SIG_CACHE["$cache_key"]=$'\x01'
     echo ""; return 1
   fi
+  # Fail closed when a direct run has no reusable-calling job at all: every job is then a plain job.
+  if [[ "$called_only" = "1" ]] && [[ -z "$role" ]] && [[ "$(jq -r '[.jobs[]?|select((.name // "")|contains(" / "))]|length' 2>/dev/null <<< "$json" || echo 0)" -eq 0 ]]; then
+    _RUN_SIG_CACHE["$cache_key"]=$'\x01'
+    echo ""; return 1
+  fi
   sig="$(jq -r --arg role "$role" --argjson co "$([[ "$called_only" = "1" ]] && echo true || echo false)" '
-    (if $co and $role == "" and ([.jobs[]?|select((.name // "")|contains(" / "))]|length) > 0
-       then [.jobs[]?|select((.name // "")|contains(" / "))] else [.jobs[]?] end) as $jobs
+    (if $co and $role == "" then [.jobs[]?|select((.name // "")|contains(" / "))] else [.jobs[]?] end) as $jobs
     | [$jobs[]|select($role == "" or ((.name // "")|split(" / ")[0]) == $role)
     |.steps[]?|select(.conclusion=="failure")|.name] | join("\n")' 2>/dev/null <<< "$json" || echo "")"
   _RUN_SIG_CACHE["$cache_key"]="$sig"
