@@ -108,8 +108,9 @@ ring_tier_for_repo() {
         # #1594: a per-agent pin override wins over the ring walk. Validate it here
         # so a malformed entry errors (jq rc 5 → fail closed) instead of being
         # silently ignored or returning a tier the agent has no channel for.
-        ($ag.pin_overrides // {}) as $po
-        | (if ($po | type) != "object" then error("pin_overrides is not an object") else . end)
+        (if $ag | has("pin_overrides")
+         then (if ($ag.pin_overrides | type) != "object" then error("pin_overrides is not an object") else $ag.pin_overrides end)
+         else {} end) as $po
         | ([$po | to_entries[] | select((.key | sub(".*/";"")) == $repo) | .value][0]) as $ov
         | if $ov != null then
             ( if ($ov | type) == "object" and ($ov.tier | type) == "string"

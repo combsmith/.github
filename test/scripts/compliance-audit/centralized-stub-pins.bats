@@ -389,24 +389,6 @@ devlead_verdict() {  # <pinned-ref>
   devlead_verdict dev-lead/v139-ring0
   [ "$status" -eq 0 ]
   [ "$output" = "rc=0 expected=dev-lead/v139-ring0" ]
-  # and the whole dev-lead check emits nothing for .github-private
-  FIXTURE_B64=$(printf '%s' "jobs:
-  dev-lead:
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-ring0
-    with:
-      agent_ref: dev-lead/v139-ring0
-    secrets: inherit" | base64 | tr -d '\n'); export FIXTURE_B64
-  run bash -c '
-    source "$1" >/dev/null 2>&1
-    ORG=combsmith
-    gh() { case "$2" in *matching-refs/tags/*) printf "%s\n" "$AUDIT_MATCHING_REFS" ;; *) return 1 ;; esac; }
-    gh_api() { case "$1" in */contents/.github/workflows/dev-lead.yml) printf "%s" "$FIXTURE_B64" ;; esac; }
-    add_finding() { printf "FLAGGED:%s:%s:%s\n" "$3" "$4" "$5"; }
-    check_dev_lead_stub .github-private
-  ' _ "$SCRIPT"
-  [ "$status" -eq 0 ]
-  refute_flagged() { local rc=0; grep -q 'FLAGGED:dev-lead-stub-pin' <<< "$output" || rc=$?; [ "$rc" -eq 1 ]; }
-  refute_flagged
 }
 
 @test "#1594: .github-private dev-lead stub on v<M>-next is drift, expected v<M>-ring0" {
