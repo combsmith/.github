@@ -474,7 +474,7 @@ decide_graduated() {
   echo "SOAKING"
 }
 
-# classify_failure <reusable_differs 0|1> <category> [suspect_match 0|1] — triage an
+# classify_failure <reusable_differs 0|1> <category> [suspect_match 0|1] [pre_existing_sig 0|1] — triage an
 # in-window failure (called only when decide_graduated returns BLOCKED). Echoes:
 #   REGRESSION   — the candidate changed the reusable (differs=1) AND the failure is
 #                  not a known environmental class and not a suspect class → HALT,
@@ -486,24 +486,50 @@ decide_graduated() {
 #                  per-class discriminating question so the human confirm is fast. Unlike a
 #                  `version_independent` benign class it is NOT auto-cleared.
 #   PRE_EXISTING — the reusable is byte-identical to the prior channel (differs=0), OR
-#                  the failure is environmental (comment-cap / rate-limit / infra / data)
+#                  the failure is environmental (comment-cap / rate-limit / infra / data), OR
+#                  every failure signature also fails on an older release (#1590)
 #                  → report, do NOT rollback, do NOT advance.
 #   -            — INDETERMINATE: the reusable could not be compared at all (differs=unknown,
 #                  e.g. the candidate commit is unresolvable, #1249) and the failure is not
 #                  environmental. No verdict is claimed: PRE_EXISTING would assert "byte-
 #                  identical" and REGRESSION "changed", and neither was observed. The caller
 #                  still holds the pair BLOCKED. Same "-" a non-BLOCKED pair carries.
+# The optional 4th arg <pre_existing_sig 0|1> (#1590) is 1 when EVERY counted failure's signature
+# also failed on a run of an older release within the same window (see signatures_pre_existing):
+# the failure happens without the candidate, so it is PRE_EXISTING rather than REGRESSION/SUSPECT
+# (e.g. the #2143 push race). Anything but exactly "1" is 0.
 # Precedence: environmental category first, then an uncompared reusable (no verdict), then
-# differs=0 (can't be candidate-caused), then a suspect match narrows an otherwise-REGRESSION
-# verdict to SUSPECT.
+# differs=0 (can't be candidate-caused), then a pre-existing signature, then a suspect match
+# narrows an otherwise-REGRESSION verdict to SUSPECT.
 classify_failure() {
-  local differs="${1:-0}" category="${2:-unknown}" suspect="${3:-0}"
+  local differs="${1:-0}" category="${2:-unknown}" suspect="${3:-0}" pre_sig="${4:-0}"
   case "$category" in
     comment-cap|rate-limit|infra|data) echo "PRE_EXISTING"; return 0 ;;
   esac
   if [[ "$differs" = "unknown" ]]; then echo "-"; return 0; fi
   if [[ "$differs" != "1" ]]; then echo "PRE_EXISTING"; return 0; fi
+  if [[ "$pre_sig" = "1" ]]; then echo "PRE_EXISTING"; return 0; fi
   if [[ "$suspect" -gt 0 ]]; then echo "SUSPECT"; else echo "REGRESSION"; fi
+}
+
+# signatures_pre_existing <counted_sigs> <old_sigs> (#1590) — echo "yes" when every counted
+# failure's signature also occurs among the old-release failures' signatures, else "no". Each arg
+# is a newline-separated list with ONE line per failed run (that run's normalised failed-step
+# signature; the caller joins a run's steps with a non-newline separator). Signatures compare as
+# whole lines, never by substring. Fail closed: no counted failures, no old-release failures, or
+# any counted run with an empty (unknown) signature → "no". Pure: no I/O.
+signatures_pre_existing() {
+  local counted="$1" old="$2" line any=0
+  local -A old_set=()
+  while IFS= read -r line; do
+    if [[ -n "$line" ]]; then old_set["$line"]=1; fi
+  done <<< "$old"
+  [[ "${#old_set[@]}" -eq 0 ]] && { echo "no"; return 0; }
+  while IFS= read -r line; do
+    if [[ -z "$line" ]] || [[ -z "${old_set["$line"]:-}" ]]; then echo "no"; return 0; fi
+    any=1
+  done <<< "$counted"
+  if [[ "$any" -eq 1 ]]; then echo "yes"; else echo "no"; fi
 }
 
 # triage_label <triage> — the triage as a human reads it: the indeterminate "-" (or an empty

@@ -1382,9 +1382,20 @@ _agent_run_json() {
 # source tier since the candidate cut. Prints "<executed> <earliest_createdAt|->".
 _tier_sample() {
   local agent="$1" since="$2"; shift 2
-  local repo json executed=0 earliest="" e
+  local repo json executed=0 earliest="" e cand="${_CANARY_SAMPLE_CAND:--}" rid created
   for repo in "$@"; do
     json="$(_agent_run_json "$agent" "$repo" "$since")"
+    if [[ "$cand" != "-" ]] && [[ -n "$cand" ]]; then
+      # Executed-SHA attribution (#1590): a run that PROVABLY executed an older release is no
+      # evidence the candidate passed its canary, so it never counts toward the sample floor.
+      # Undeterminable runs still count (see _run_is_stale): the sample floor only drops runs PROVEN old.
+      while IFS=$'\t' read -r rid created; do
+        _run_is_stale "$agent" "$cand" "$repo" "$rid" && continue
+        executed=$(( executed + 1 ))
+        if [[ -n "$created" ]] && { [[ -z "$earliest" ]] || [[ "$created" < "$earliest" ]]; }; then earliest="$created"; fi
+      done < <(jq -r '.[]?|select(.conclusion=="success" or .conclusion=="failure")|[(.databaseId // "" | tostring),(.createdAt // "")]|@tsv' 2>/dev/null <<< "${json:-[]}")
+      continue
+    fi
     executed=$(( executed + $(jq '[.[]?|select(.conclusion=="success" or .conclusion=="failure")]|length' 2>/dev/null <<< "${json:-[]}" || echo 0) ))
     e="$(jq -r '[.[]?|select(.conclusion=="success" or .conclusion=="failure")|.createdAt?]|min // empty' 2>/dev/null <<< "$json" || echo "")"
     if [[ -n "$e" ]] && { [[ -z "$earliest" ]] || [[ "$e" < "$earliest" ]]; }; then earliest="$e"; fi
@@ -1482,18 +1493,20 @@ _suspect_downgrade_patterns() {
      | @tsv'
 }
 
-# _suspect_class_counts <agent> <since_z> <before_z|-> <wf_re> <step_re> <repo...> — over the
+# _suspect_class_counts <agent> <since_z> <before_z|-> <cand|-> <wf_re> <step_re> <repo...> — over the
 # window [since_z, before_z) on the given tier repos, echo "<matched_failures> <executed> <incomplete>":
 # executed = success+failure runs; matched = the failures whose failed-step signature matches
 # THIS one suspect class (via benign_match, the same matcher triage uses); incomplete = the
 # count of failure runs whose signature could not be retrieved (gh run view error — callers
 # treat incomplete>0 as HOLD, not DOWNGRADE, since an unreadable run could be a non-match).
-# before_z="-" means no upper bound. Powers the candidate-vs-baseline SUSPECT-class failure
+# before_z="-" means no upper bound. A <cand> SHA (not "-") drops runs that PROVABLY executed
+# another release (_run_is_stale) from BOTH executed and matched, so old-release traffic cannot
+# dilute the candidate's rate; "-" (the baseline window) keeps every run. Powers the candidate-vs-baseline SUSPECT-class failure
 # RATE that the auto-downgrade core compares (#668 increment 6). Reuses _run_json /
 # _run_signature (the signature cache is warm from the cumulative-health pass on the
 # candidate window).
 _suspect_class_counts() {
-  local agent="$1" since="$2" before="$3" wf_re="$4" step_re="$5"; shift 5
+  local agent="$1" since="$2" before="$3" cand="$4" wf_re="$5" step_re="$6"; shift 6
   local repo json rid rwf rrole sig sig_rc matched=0 executed=0 incomplete=0 count
   local exec_filter='.[]?|select(.conclusion=="success" or .conclusion=="failure")'
   local fail_filter='.[]?|select(.conclusion=="failure")'
@@ -1504,13 +1517,24 @@ _suspect_class_counts() {
   for repo in "$@"; do
     { [[ -z "$repo" ]] || [[ "$repo" = '*' ]]; } && continue
     json="$(_agent_run_json "$agent" "$repo" "$since")"
-    count="$(jq "[${exec_filter}]|length" 2>/dev/null <<< "$json" || echo 0)"
+    if [[ -n "$cand" ]] && [[ "$cand" != "-" ]]; then
+      count=0
+      while IFS= read -r rid || [[ -n "$rid" ]]; do
+        rid="${rid%$'\r'}"
+        [[ -z "$rid" ]] && continue
+        _run_is_stale "$agent" "$cand" "$repo" "$rid" && continue
+        count=$(( count + 1 ))
+      done < <(jq -r "[${exec_filter}]|.[]|(.databaseId // \"\"|tostring)" 2>/dev/null <<< "$json")
+    else
+      count="$(jq "[${exec_filter}]|length" 2>/dev/null <<< "$json" || echo 0)"
+    fi
     executed=$(( executed + ${count:-0} ))
     while IFS=$'\t' read -r rid rwf rrole || [[ -n "$rid" ]]; do
       rid="${rid%$'\r'}"
       rwf="${rwf%$'\r'}"
       rrole="${rrole%$'\r'}"
       [[ -z "$rid" ]] && continue
+      if [[ -n "$cand" ]] && [[ "$cand" != "-" ]] && _run_is_stale "$agent" "$cand" "$repo" "$rid"; then continue; fi
       sig_rc=0
       sig="$(_run_signature "$repo" "$rid" "$rrole")" || sig_rc=$?  # || prevents set -e on lookup failure
       if [[ -z "$sig" ]]; then
@@ -1537,11 +1561,18 @@ declare -A _RUN_SIG_CACHE=()
 # any gh error → "" with exit 1 (fail-closed: an unknown signature is never treated as
 # benign, and callers that need to distinguish a lookup failure from a genuine empty
 # signature check the exit code). A successful lookup with no failed steps → "" exit 0.
+# A <called_only> of 1 (direct runs, which have no role) restricts it to jobs that call a reusable
+# workflow — GitHub names those "<caller job> / <called job>" — so a failed step of a plain job in
+# the same workflow (e.g. a `prep` job) is never taken as the reusable's failure (#1600). When the
+# run has more than one distinct calling job the reusable cannot be told apart from the others, so the
+# lookup fails closed (exit 1, unknown signature). When the
+# run has no such job the lookup also fails closed (exit 1): a plain job's failure is never the reusable's.
 # The $'\x01' sentinel in the cache marks a prior lookup failure so it is not retried.
 _run_signature() {
-  local repo="$1" id="$2" role="${3:-}" cache_key sig json
+  local repo="$1" id="$2" role="${3:-}" called_only="${4:-0}" cache_key sig json
   { [[ -z "$repo" ]] || [[ "$repo" = '*' ]] || [[ -z "$id" ]]; } && { echo ""; return 0; }
   cache_key="${repo}:${id}:${role}"
+  [[ "$called_only" = "1" ]] && cache_key+=":called"
   if [[ -v _RUN_SIG_CACHE["$cache_key"] ]]; then
     if [[ "${_RUN_SIG_CACHE[$cache_key]}" = $'\x01' ]]; then
       echo ""; return 1  # cached lookup failure — signal to caller
@@ -1556,7 +1587,20 @@ _run_signature() {
     _RUN_SIG_CACHE["$cache_key"]=$'\x01'
     echo ""; return 1
   }
-  sig="$(jq -r --arg role "$role" '[.jobs[]?|select($role == "" or ((.name // "")|split(" / ")[0]) == $role)
+  # Fail closed when a direct run has reusable-calling jobs from more than one caller job: the jobs
+  # API cannot say which reusable each one ran, so a failure could belong to an unrelated reusable.
+  if [[ "$called_only" = "1" ]] && [[ -z "$role" ]] && [[ "$(jq -r '[.jobs[]?|select((.name // "")|contains(" / "))|(.name|split(" / ")[0])]|unique|length' 2>/dev/null <<< "$json" || echo 0)" -gt 1 ]]; then
+    _RUN_SIG_CACHE["$cache_key"]=$'\x01'
+    echo ""; return 1
+  fi
+  # Fail closed when a direct run has no reusable-calling job at all: every job is then a plain job.
+  if [[ "$called_only" = "1" ]] && [[ -z "$role" ]] && [[ "$(jq -r '[.jobs[]?|select((.name // "")|contains(" / "))]|length' 2>/dev/null <<< "$json" || echo 0)" -eq 0 ]]; then
+    _RUN_SIG_CACHE["$cache_key"]=$'\x01'
+    echo ""; return 1
+  fi
+  sig="$(jq -r --arg role "$role" --argjson co "$([[ "$called_only" = "1" ]] && echo true || echo false)" '
+    (if $co and $role == "" then [.jobs[]?|select((.name // "")|contains(" / "))] else [.jobs[]?] end) as $jobs
+    | [$jobs[]|select($role == "" or ((.name // "")|split(" / ")[0]) == $role)
     |.steps[]?|select(.conclusion=="failure")|.name] | join("\n")' 2>/dev/null <<< "$json" || echo "")"
   _RUN_SIG_CACHE["$cache_key"]="$sig"
   echo "$sig"
@@ -1599,10 +1643,14 @@ _failure_suspect() {
 declare -A _RUN_SHA_CACHE=()
 
 # _run_reusable_sha <agent> <repo> <run_id> — every distinct commit SHA the run's calls to THIS
-# agent's reusable resolved to (one per line), read from the "Uses: <host>/<reusable>@<ref> (<sha>)"
-# lines GitHub prints in the run log (#1176). Only lines naming the registry host + full reusable
-# path count, so a different workflow with a similar filename is never attributed. Empty (exit 1)
-# when the log is unreadable or has no such line; an unknown SHA is never attributed to an older
+# agent's reusable resolved to (one per line). Read first from the run's `referenced_workflows`
+# (`GET repos/<repo>/actions/runs/<id>`, #1590): GitHub records there the exact sha every reusable
+# call resolved to, so a run that executed `@<agent>/vN-ring0` at the previous release is attributed
+# to that release even when the host's main (or the ring tag today) is the candidate. When the API
+# names no matching entry, fall back to the "Uses: <host>/<reusable>@<ref> (<sha>)" lines GitHub
+# prints in the run log (#1176). Either way only an entry naming the registry host + full reusable
+# path counts, so a different workflow with a similar filename is never attributed. Empty (exit 1)
+# when neither source names the reusable; an unknown SHA is never attributed to an older
 # release (fail closed — see _run_is_stale). Lookup failures are cached as empty too.
 _run_reusable_sha() {
   local agent="$1" repo="$2" id="$3" key="$1:$2:$3" reusable host cachef="" keyhash log shas="" line
@@ -1623,8 +1671,15 @@ _run_reusable_sha() {
   fi
   reusable="$(_agent_field "$agent" reusable)"
   host="$(_agent_field "$agent" host)"; host="${host:-$THIS_REPO}"
-  log="$(gh run view "$id" --repo "$repo" --log 2>/dev/null)" || log=""
   if [[ -n "$reusable" ]]; then
+    # referenced_workflows path is "<owner>/<repo>/<path>@<ref>"; its sha is the resolved commit.
+    shas="$(gh api "repos/$repo/actions/runs/$id" 2>/dev/null \
+      | jq -r --arg p "$host/$reusable@" 'if type=="object" then (.referenced_workflows // [])[]?
+          | select(type=="object" and ((.path // "")|startswith($p)))
+          | (.sha // "") | select(test("^[0-9a-f]{7,40}$")) else empty end' 2>/dev/null | sort -u)" || shas=""
+  fi
+  if [[ -n "$reusable" ]] && [[ -z "$shas" ]]; then
+    log="$(gh run view "$id" --repo "$repo" --log 2>/dev/null)" || log=""
     # `gh run view --log` lines are "<job>\t<step>\t<timestamp> <text>". GitHub prints the genuine
     # "Uses:" line while setting a job up, before any of that job's own output, so only the FIRST
     # "Uses:" line per job is trusted: a later line a job merely echoes (a forged old SHA) is ignored.
@@ -1663,6 +1718,37 @@ _run_is_stale() {
   return 0
 }
 
+# _run_on_release <agent> <sha> <repo> <run_id> — 0 only when the run PROVABLY executed <sha> (prefix
+# match either way, like _run_is_stale). Empty/"-" <sha> or an undeterminable run is never a match.
+_run_on_release() {
+  local agent="$1" want="$2" repo="$3" id="$4" sha shas
+  { [[ -z "$want" ]] || [[ "$want" = "-" ]]; } && return 1
+  shas="$(_run_reusable_sha "$agent" "$repo" "$id")" || return 1
+  while IFS= read -r sha; do
+    [[ -z "$sha" ]] && continue
+    case "$want" in "$sha"*) return 0 ;; esac
+    case "$sha" in "$want"*) return 0 ;; esac
+  done <<< "$shas"
+  return 1
+}
+
+# _run_only_on_release <agent> <sha> <repo> <run_id> — like _run_on_release, but 0 only when EVERY
+# SHA the run's calls resolved to matches <sha>. A run that called the reusable at the previous
+# release AND another release has a run-wide failure signature (_run_signature) that may come from
+# the other release, so it must not be baseline evidence for the previous release.
+_run_only_on_release() {
+  local agent="$1" want="$2" repo="$3" id="$4" sha shas seen=0
+  { [[ -z "$want" ]] || [[ "$want" = "-" ]]; } && return 1
+  shas="$(_run_reusable_sha "$agent" "$repo" "$id")" || return 1
+  while IFS= read -r sha; do
+    [[ -z "$sha" ]] && continue
+    case "$want" in "$sha"*) seen=1; continue ;; esac
+    case "$sha" in "$want"*) seen=1; continue ;; esac
+    return 1
+  done <<< "$shas"
+  [[ "$seen" = "1" ]]
+}
+
 # _cumulative_health <agent> <since_z> <differs 0|1> <cand|-> <repo...> — failures +
 # startup_failures across EVERY given tier repo since the candidate cut. Only runs that executed
 # the candidate count (#1176): a failure from a run provably on an OLDER release (see
@@ -1675,6 +1761,10 @@ _run_is_stale() {
 # (#668 increment 2) — it still counts toward the blocking total (SUSPECT blocks like
 # REGRESSION), but downstream triage renders SUSPECT + guidance instead of a bare
 # REGRESSION. Prints "<failures> <startup_failures> <benign_excluded> <suspect_count> <old_release_failures>".
+# When _CANARY_FAIL_LOG names a file, every counted failure ("fail") and every failure on the PREVIOUS
+# release (_CANARY_PRIOR; failures on any other old release are not logged) ("stale") is appended to it as "<kind>\t<repo>\t<run_id>\t<role>", so triage can compare their
+# failure signatures (#1590, see _failures_pre_existing). Signatures are fetched only there — this
+# pass stays as cheap as before.
 _cumulative_health() {
   local agent="$1" since="$2" differs="$3" cand="${4:--}"; shift 4
   local repo json fail=0 startup=0 benign=0 suspect=0 stale=0 patterns="" suspect_patterns="" rid rwf rrole
@@ -1693,10 +1783,16 @@ _cumulative_health() {
       while IFS=$'\t' read -r rid rwf rrole; do
         if _run_is_stale "$agent" "$cand" "$repo" "$rid"; then
           stale=$(( stale + 1 ))
+          # Only the PREVIOUS release's failures are signature evidence (_CANARY_PRIOR); a run on any
+          # other non-candidate release still never counts against the candidate, but is no baseline.
+          if [[ -n "${_CANARY_FAIL_LOG:-}" ]] && _run_only_on_release "$agent" "${_CANARY_PRIOR:-}" "$repo" "$rid"; then
+            printf 'stale\t%s\t%s\t%s\n' "$repo" "$rid" "$rrole" >> "$_CANARY_FAIL_LOG" 2>/dev/null || true
+          fi
         elif [[ -n "$patterns" ]] && _failure_benign "$repo" "$rid" "$rwf" "$patterns" "$rrole"; then
           benign=$(( benign + 1 ))
         else
           fail=$(( fail + 1 ))
+          [[ -n "${_CANARY_FAIL_LOG:-}" ]] && printf 'fail\t%s\t%s\t%s\n' "$repo" "$rid" "$rrole" >> "$_CANARY_FAIL_LOG" 2>/dev/null || true
           if [[ -n "$suspect_patterns" ]] && _failure_suspect "$repo" "$rid" "$rwf" "$suspect_patterns" "$rrole"; then
             suspect=$(( suspect + 1 ))
           fi
@@ -1705,6 +1801,29 @@ _cumulative_health() {
     fi
   done
   echo "$fail $startup $benign $suspect $stale"
+}
+
+# _failures_pre_existing <fail_log> — echo 1 when every counted failure recorded in <fail_log> (see
+# _cumulative_health) has a failure signature that also occurs on an old-release failure recorded
+# there — i.e. the same failure happens on the previous release within the same window, so the
+# candidate did not introduce it (#1590: the #2143 push race fails on both releases). Else 0. A run's
+# signature is its set of failed step names (order-insensitive); a signature that cannot be read is
+# unknown, never a match (fail closed — see signatures_pre_existing).
+_failures_pre_existing() {
+  local log="$1" kind repo rid role sig counted="" old=""
+  [[ -n "$log" ]] && [[ -s "$log" ]] || { echo 0; return 0; }
+  while IFS=$'\t' read -r kind repo rid role; do
+    [[ -z "$kind" ]] && continue
+    sig="$(_run_signature "$repo" "$rid" "$role" 1)" || sig=""
+    sig="$(printf '%s\n' "$sig" | sed '/^$/d' | sort -u | paste -sd $'\x1f' -)"
+    case "$kind" in
+      # An unknown counted signature can never be shown pre-existing: stop early (fail closed).
+      fail) [[ -z "$sig" ]] && { echo 0; return 0; }; counted+="$sig"$'\n' ;;
+      stale) if [[ -n "$sig" ]]; then old+="$sig"$'\n'; fi ;;
+    esac
+  done < "$log"
+  counted="${counted%$'\n'}"
+  if [[ "$(signatures_pre_existing "$counted" "$old")" = "yes" ]]; then echo 1; else echo 0; fi
 }
 
 # _baseline_daily <agent> <window_days> <repo...> — per-day EXECUTED counts on the
@@ -1994,7 +2113,7 @@ _pair_state() {
 
   # Sample on the source tier over the per-candidate window.
   local sample earliest
-  read -r sample earliest < <(_tier_sample "$agent" "$cut_z" "${src_repos[@]}")
+  read -r sample earliest < <(_CANARY_SAMPLE_CAND="$cand" _tier_sample "$agent" "$cut_z" "${src_repos[@]}")
 
   # Dwell is always measured from the candidate's own cut (tagger date), per #548 spec.
   local dwell_h=0
@@ -2029,12 +2148,15 @@ _pair_state() {
   # lower candidate block an older, independently-clean higher pair. In a single-candidate rollout
   # no ring is below the source with a different commit, so this is byte-identical to the prior
   # all-tiers scope; it diverges only when a newer candidate is soaking further down the pipeline.
-  # Two scopes (#1176 + CodeRabbit on #1220): a tier that does NOT yet run the candidate (the
-  # destination and beyond, tag provably on a different commit) has its failures attributed to the
-  # release that actually ran, so old-release failures there never block. Every other tier — the
-  # source tier and below, plus any tier whose commit is unknown — counts RAW, as before #1176:
-  # the source tier's sample still includes runs from before the candidate reached it, so dropping
-  # only their failures would risk letting a candidate with zero new executions bypass gate checks.
+  # Two repo scopes are kept (#1176 + CodeRabbit on #1220): tiers that do NOT yet run the candidate
+  # (the destination and beyond, tag provably on a different commit) vs every other tier (the source
+  # tier and below, plus any tier whose commit is unknown). Since #1590 BOTH attribute each failure
+  # to the release the run actually executed (its referenced_workflows sha, see _run_reusable_sha):
+  # a source-tier or host run from before the candidate reached it (e.g. .github-private run
+  # 45258589824 on @dev-lead/v139-ring0 = 4e0a20e9, counted against ab469dfd) is old-release health,
+  # not a candidate failure. A run whose executed release cannot be determined still counts (fail
+  # closed), so this never turns an unknown into a pass. Sample sizing applies the same attribution
+  # (_tier_sample): runs on an older release are not evidence the candidate passed.
   # The idle-waiver (#1513) separately waives sample_min for idle rings, but health gates still apply.
   local raw_repos=() attr_repos=() ch3
   for idx in "${!chan_array[@]}"; do
@@ -2056,8 +2178,12 @@ _pair_state() {
   for r in ${attr_repos[@]+"${attr_repos[@]}"}; do [[ -z "${raw_set["$r"]:-}" ]] && attr_only+=("$r"); done
   local cum_fail cum_startup cum_benign cum_suspect cum_stale
   local a_fail a_startup a_benign a_suspect a_stale
-  read -r cum_fail cum_startup cum_benign cum_suspect cum_stale < <(_cumulative_health "$agent" "$cut_z" "$differs" "-" ${raw_repos[@]+"${raw_repos[@]}"})
-  read -r a_fail a_startup a_benign a_suspect a_stale < <(_cumulative_health "$agent" "$cut_z" "$differs" "$cand" ${attr_only[@]+"${attr_only[@]}"})
+  # Counted + old-release failures are logged so triage can tell a pre-existing signature (#1590).
+  local fail_log; fail_log="$(mktemp 2>/dev/null || echo "")"
+  # Remove the temp log on every return path (not only the final cleanup).
+  trap 'if [[ -n "${fail_log:-}" ]]; then rm -f "$fail_log"; fi; trap - RETURN' RETURN
+  read -r cum_fail cum_startup cum_benign cum_suspect cum_stale < <(_CANARY_PRIOR="$prior" _CANARY_FAIL_LOG="$fail_log" _cumulative_health "$agent" "$cut_z" "$differs" "$cand" ${raw_repos[@]+"${raw_repos[@]}"})
+  read -r a_fail a_startup a_benign a_suspect a_stale < <(_CANARY_PRIOR="$prior" _CANARY_FAIL_LOG="$fail_log" _cumulative_health "$agent" "$cut_z" "$differs" "$cand" ${attr_only[@]+"${attr_only[@]}"})
   cum_fail=$(( cum_fail + a_fail )); cum_startup=$(( cum_startup + a_startup ))
   cum_benign=$(( cum_benign + a_benign )); cum_suspect=$(( cum_suspect + a_suspect ))
   cum_stale=$(( cum_stale + a_stale ))
@@ -2079,7 +2205,13 @@ _pair_state() {
     # ring is never mistaken for an idle one; any failure still BLOCKs in decide_graduated.
     local idle_after
     idle_after="$(_gate_knob "$agent" "$transition" waive_sample_if_idle_after_hours)"
-    if [[ -n "$idle_after" && "$(idle_sample_waiver "$dwell_h" "$idle_after" "$sample" "$target")" = "true" \
+    # Idle means zero executed runs of ANY release: the executed-SHA-filtered `sample` would read 0 for a
+    # ring that only ran an older release, so eligibility uses the unfiltered count.
+    local idle_total="$sample"
+    if [[ -n "$idle_after" ]]; then
+      read -r idle_total _ < <(_CANARY_SAMPLE_CAND="" _tier_sample "$agent" "$cut_z" "${src_repos[@]}")
+    fi
+    if [[ -n "$idle_after" && "$(idle_sample_waiver "$dwell_h" "$idle_after" "${idle_total:-0}" "$target")" = "true" \
           && "$(_tier_inflight "$agent" "$cut_z" "${src_repos[@]}")" = "0" ]]; then
       echo "::notice::$agent $transition: source ring is idle (0 executed runs since the cut) and dwell ${dwell_h}h >= ${idle_after}h — sample floor ($target) waived (#1513)." >&2
       # Same shape as waive_sample (target 0): consumers that re-derive "sample met" from sample >= target
@@ -2142,8 +2274,24 @@ _pair_state() {
   if [[ "$state" = "BLOCKED" ]] && [[ "$mix_shift" = "SHIFT" ]]; then
     triage="SUSPECT"
   elif [[ "$state" = "BLOCKED" ]]; then
-    triage="$(classify_failure "$differs" "${CANARY_FAILURE_CATEGORY:-unknown}" "$cum_suspect")"
+    # Pre-existing signature (#1590): every counted failure's failed steps also fail on a run of an
+    # older release in this window. Only when every blocking failure HAS a signature — a
+    # startup_failure never ran a step, so it can never be shown pre-existing.
+    local pre_sig=0
+    if [[ "$differs" = "1" ]] && [[ "${cum_startup:-0}" -eq 0 ]] && [[ "${cum_fail:-0}" -gt 0 ]] \
+        && [[ "${cum_stale:-0}" -gt 0 ]] && [[ -n "$fail_log" ]] \
+        && [[ "$(grep -c '^fail' "$fail_log" 2>/dev/null || true)" -eq "$cum_fail" ]]; then
+      pre_sig="$(_failures_pre_existing "$fail_log")"
+      # A suspect-class match keeps the SUSPECT rate/evidence guards (auto-downgrade): signature
+      # equality alone must never clear it.
+      [[ "${cum_suspect:-0}" -gt 0 ]] && pre_sig=0
+      if [[ "$pre_sig" = "1" ]]; then
+        echo "::notice::$agent $transition: every failure counted against candidate ${cand:0:12} has the same failed-step signature as a failure on the previous release in this window — triaged PRE_EXISTING, not REGRESSION (#1590)." >&2
+      fi
+    fi
+    triage="$(classify_failure "$differs" "${CANARY_FAILURE_CATEGORY:-unknown}" "$cum_suspect" "$pre_sig")"
   fi
+  if [[ -n "$fail_log" ]]; then rm -f "$fail_log"; fi
 
   # SUSPECT → PRE_EXISTING auto-downgrade (#668 increment 6, opt-in per suspect class). Only the
   # failure-class SUSPECT variant is eligible — mix_shift="-" excludes the correctness variant,
@@ -2166,8 +2314,8 @@ _pair_state() {
       while IFS=$'\t' read -r dwf dsr dmin dmargin || [[ -n "$dwf" ]]; do
         dwf="${dwf%$'\r'}"; dsr="${dsr%$'\r'}"; dmin="${dmin%$'\r'}"; dmargin="${dmargin%$'\r'}"
         [[ -z "$dsr" ]] && continue
-        read -r cm ce cmi < <(_suspect_class_counts "$agent" "$cut_z" "-" "$dwf" "$dsr" "${src_repos[@]}")
-        read -r bm be bei < <(_suspect_class_counts "$agent" "$dg_base_since" "$cut_z" "$dwf" "$dsr" "${src_repos[@]}")
+        read -r cm ce cmi < <(_suspect_class_counts "$agent" "$cut_z" "-" "$cand" "$dwf" "$dsr" "${src_repos[@]}")
+        read -r bm be bei < <(_suspect_class_counts "$agent" "$dg_base_since" "$cut_z" "-" "$dwf" "$dsr" "${src_repos[@]}")
         # Guard (Thread 2): if any signature lookup failed, baseline class evidence is
         # incomplete. A missing run could be a non-match; fail-closed and skip DOWNGRADE.
         [[ "${cmi:-0}" -gt 0 ]] || [[ "${bei:-0}" -gt 0 ]] && continue
@@ -2685,16 +2833,8 @@ _blocker_evidence() {
     while IFS= read -r r; do [[ -n "$r" ]] && [[ "$r" != '*' ]] && all+=("$r"); done < <(resolve_members "$agent" "$ch")
   done
   for r in "${all[@]}"; do case "$seen" in *" $r "*) ;; *) dedup+=("$r"); seen+="$r ";; esac; done
-  # Same attribution scope as _pair_state: only a repo that belongs solely to tiers provably NOT on
-  # the candidate has its old-release failures skipped; any repo in a tier on (or of unknown) commit
-  # lists every failure, so the evidence matches cum_fail.
-  local -A raw_evidence=(); local ev_c
-  for ch in "${chan_array[@]}"; do
-    ev_c="$(channel_commit "$agent" "$ch" || true)"
-    if [[ -z "$ev_c" ]] || [[ "$ev_c" = "$cand" ]]; then
-      while IFS= read -r r; do [[ -n "$r" ]] && raw_evidence["$r"]=1; done < <(resolve_members "$agent" "$ch")
-    fi
-  done
+  # Same attribution as _pair_state (#1590): a failure from a run that provably executed an older
+  # release is skipped in EVERY tier, so the evidence matches cum_fail.
   for repo in "${dedup[@]}"; do
     json="$(_agent_run_json "$agent" "$repo" "$cut_z")"
     local rid rrole sig
@@ -2703,7 +2843,7 @@ _blocker_evidence() {
       [[ -z "$rid" ]] && continue
       # Old release: not counted (#1176). Only `failure` runs are attributable — a startup_failure
       # never ran a job, so it has no "Uses:" line and always counts (cum_startup), like the gate.
-      if [[ "$concl" = "failure" ]] && [[ -z "${raw_evidence["$repo"]:-}" ]] && _run_is_stale "$agent" "$cand" "$repo" "$rid"; then continue; fi
+      if [[ "$concl" = "failure" ]] && _run_is_stale "$agent" "$cand" "$repo" "$rid"; then continue; fi
       if [[ "$n" -ge 8 ]]; then out+="- _(…more failing runs; truncated at 8)_"$'\n'; printf '%s' "$out"; return 0; fi
       sig="$(_run_signature "$repo" "$rid" "$rrole" | tr '\n' ';' | sed 's/;$//')"
       out+="- \`$repo\` — run [$rid](https://github.com/$repo/actions/runs/$rid); failed steps: ${sig:-unknown}"$'\n'
