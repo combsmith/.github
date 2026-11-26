@@ -191,7 +191,10 @@ _sps_ere_any() {
 _sps_strip_html_comments() {
   # Terminated spans first (non-greedy), then an unterminated `<!--` drops the
   # rest of the body. If jq fails, fail closed via empty output + status.
-  jq -nr --arg s "$1" '$s | gsub("(?s)<!--.*?-->"; "") | gsub("(?s)<!--.*$"; "")'
+  # The body goes through stdin (raw-slurp), never argv: a large description
+  # would otherwise exceed the kernel's per-argument limit ("Argument list too
+  # long").
+  printf '%s' "$1" | jq -Rsr 'gsub("(?s)<!--.*?-->"; "") | gsub("(?s)<!--.*$"; "")'
 }
 
 _sps_epoch() {
