@@ -352,3 +352,47 @@ refs/tags/agent-shield/v2-ring0"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+# ---------------------------------------------------------------------------
+# #1594 — dev-lead pin_overrides: .github-private's OWN dev-lead stub pins ring0
+# (Safe Release SC2, #503), not its host-relative `next`. The audit and the sweep
+# share ring_pin_current, so a v<M>-ring0 stub there must raise no pin finding.
+# ---------------------------------------------------------------------------
+DEVLEAD_V139_REFS="refs/tags/dev-lead/v139-next
+refs/tags/dev-lead/v139-ring0
+refs/tags/dev-lead/v139-ring1
+refs/tags/dev-lead/v139-stable"
+
+# Run the audit's dev-lead pin verdict (ring_pin_current, as check_dev_lead_stub
+# calls it) for .github-private and the given pinned ref; prints rc + expected ref.
+devlead_verdict() {  # <pinned-ref>
+  export AUDIT_MATCHING_REFS="$DEVLEAD_V139_REFS"
+  run bash -c '
+    source "$1" >/dev/null 2>&1
+    ORG=combsmith
+    gh() { case "$2" in *matching-refs/tags/*) printf "%s\n" "$AUDIT_MATCHING_REFS" ;; *) return 1 ;; esac; }
+    rc=0
+    ring_pin_current "$ORG/.github-private" dev-lead .github-private "$2" || rc=$?
+    printf "rc=%s expected=%s\n" "$rc" "$RING_EXPECTED_REF"
+  ' _ "$SCRIPT" "$1"
+}
+
+@test "#1594: ring tier: dev-lead .github-private is ring0 (pin_overrides); other agents stay next" {
+  tier "dev-lead" ".github-private"
+  [ "$status" -eq 0 ]
+  [ "$output" = "ring0" ]
+  tier "agent-shield" ".github-private"
+  [ "$output" = "next" ]
+}
+
+@test "#1594: .github-private dev-lead stub on v<M>-ring0 raises no pin finding" {
+  devlead_verdict dev-lead/v139-ring0
+  [ "$status" -eq 0 ]
+  [ "$output" = "rc=0 expected=dev-lead/v139-ring0" ]
+}
+
+@test "#1594: .github-private dev-lead stub on v<M>-next is drift, expected v<M>-ring0" {
+  devlead_verdict dev-lead/v139-next
+  [ "$status" -eq 0 ]
+  [ "$output" = "rc=1 expected=dev-lead/v139-ring0" ]
+}
