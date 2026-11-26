@@ -1735,7 +1735,7 @@ GHEOF
   # Candidate: the reusable job (named "caller / inner") fails at "Compile TypeScript". Previous release: only an
   # unrelated plain job ("prep") fails at that same step name; its reusable job succeeded.
   sed -i -e '/"run view"\*"combsmith\/.github-private"/s/{jobs:\[{steps:/{jobs:[{name:"ideate \/ run",steps:/' \
-    -e '/^  \*"run view"\*) jq/s/{jobs:\[{steps:\[{name:\\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"prep",steps:[{name:\\$s,conclusion:"failure"}]},{name:"ideate \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' "$STUB_BIN/gh"
+    -e '/^  \*"run view"\*) jq/s/{jobs:\[{steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"prep",steps:[{name:\$s,conclusion:"failure"}]},{name:"ideate \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' "$STUB_BIN/gh"
   run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
   [[ "$output" == *"BLOCKED"* ]]
