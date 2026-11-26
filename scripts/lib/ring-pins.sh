@@ -111,12 +111,13 @@ ring_tier_for_repo() {
         (if $ag | has("pin_overrides")
          then (if ($ag.pin_overrides | type) != "object" then error("pin_overrides is not an object") else $ag.pin_overrides end)
          else {} end) as $po
-        | ([$po | to_entries[] | select((.key | sub(".*/";"")) == $repo) | .value][0]) as $ov
-        | if $ov != null then
-            ( if ($ov | type) == "object" and ($ov.tier | type) == "string"
+        | ([$po | to_entries[] | select((.key | sub(".*/";"")) == $repo)][0]) as $entry
+        | if $entry != null then
+            ($entry.value) as $ov
+            | if ($ov | type) == "object" and ($ov.tier | type) == "string"
                  and ([$ag.rings[]?.channel] | index($ov.tier)) != null
               then $ov.tier
-              else error("malformed pin_override for \($repo)") end )
+              else error("malformed pin_override for \($repo)") end
           else
         ($ag.host | sub(".*/";"")) as $host
         | ([.org_infra_repos[]? | sub(".*/";"")] - [$host]) as $orginfra
