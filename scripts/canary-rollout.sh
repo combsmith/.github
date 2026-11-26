@@ -99,28 +99,30 @@ _agent_field() { _jq -r --arg a "$1" ".agents[\$a].$2"; }
 # Registry memo: main() calls _registry_preload ONCE in the parent shell, before the fan-out forks its
 # subshells, which inherit the arrays. Outside main (tests that source this file) nothing is preloaded
 # and every accessor falls back to the original jq lookup, so behaviour is identical either way.
-declare -A _REG_RUN_WF=() _REG_INGRESS_JOB=()
-_REG_INGRESS_WF=""; _REG_LOADED_FOR=""; _REG_VAL=""
+declare -A _REG_RUN_WF=() _REG_INGRESS_JOB=() _REG_RUN_WF_ALIASES=()
+_REG_INGRESS_WF=""; _REG_LOADED_FOR=""; _REG_VAL=""; _REG_WFS=()
 
-# _registry_preload — load run_workflow, ingress_job and the ingress workflow name for every agent in a
-# SINGLE jq call. The unit separator (\x1f) is non-whitespace, so `read` keeps empty fields.
+# _registry_preload — load run_workflow, run_workflow_aliases, ingress_job and the ingress workflow name for
+# every agent in a SINGLE jq call. The unit separator (\x1f) is non-whitespace, so `read` keeps empty fields;
+# the aliases list is one field whose entries are joined by the record separator (\x1e).
 _registry_preload() {
   # Invalidate first so a failed (re)load falls back to the jq lookups instead of serving a stale memo.
-  _REG_LOADED_FOR=""; _REG_RUN_WF=(); _REG_INGRESS_JOB=(); _REG_INGRESS_WF=""
-  local path="${CANARY_RINGS:-}" dump agent wf job iwf
+  _REG_LOADED_FOR=""; _REG_RUN_WF=(); _REG_INGRESS_JOB=(); _REG_RUN_WF_ALIASES=(); _REG_INGRESS_WF=""
+  local path="${CANARY_RINGS:-}" dump agent wf job aliases iwf
   [[ -n "$path" ]] && [[ -r "$path" ]] || return 1
-  # A value containing a newline or U+001F would corrupt the framing; refuse to preload (jq errors) so
-  # every lookup uses the exact per-call jq path instead.
-  dump="$(jq -r 'def chk: if test("[\n\u001f]") then error("delimiter in registry value") else . end;
+  # A value containing a newline, U+001E or U+001F would corrupt the framing; refuse to preload (jq errors)
+  # so every lookup uses the exact per-call jq path instead.
+  dump="$(jq -r 'def chk: if test("[\n\u001e\u001f]") then error("delimiter in registry value") else . end;
                  ((.ingress?.workflow? // "") | tostring | chk),
                  ((.agents // {}) | to_entries[]
-                  | [.key, (.value.run_workflow | tostring), ((.value.ingress_job // "") | tostring)]
-                  | map(chk) | join("\u001f"))' "$path" 2>/dev/null)" || return 1
-  _REG_RUN_WF=(); _REG_INGRESS_JOB=()
+                  | ([.key, (.value.run_workflow | tostring), ((.value.ingress_job // "") | tostring)] | map(chk))
+                    + [[(.value.run_workflow_aliases // [])[]? | tostring | chk] | join("\u001e")]
+                  | join("\u001f"))' "$path" 2>/dev/null)" || return 1
+  _REG_RUN_WF=(); _REG_INGRESS_JOB=(); _REG_RUN_WF_ALIASES=()
   { IFS= read -r iwf || true
-    while IFS=$'\x1f' read -r agent wf job; do
+    while IFS=$'\x1f' read -r agent wf job aliases; do
       [[ -n "$agent" ]] || continue
-      _REG_RUN_WF["$agent"]="$wf"; _REG_INGRESS_JOB["$agent"]="$job"
+      _REG_RUN_WF["$agent"]="$wf"; _REG_INGRESS_JOB["$agent"]="$job"; _REG_RUN_WF_ALIASES["$agent"]="$aliases"
     done; } <<< "$dump"
   _REG_INGRESS_WF="${iwf:-Agent Ingress}"
   _REG_LOADED_FOR="$path"
@@ -132,6 +134,21 @@ _reg_loaded() { [[ -n "$_REG_LOADED_FOR" ]] && [[ "$_REG_LOADED_FOR" = "${CANARY
 _reg_run_workflow() {
   if _reg_loaded && [[ -v _REG_RUN_WF["$1"] ]]; then _REG_VAL="${_REG_RUN_WF[$1]}"
   else _REG_VAL="$(_agent_field "$1" run_workflow)"; fi
+}
+# _reg_run_workflows <agent> — set the array _REG_WFS to the display names under which a member may run the
+# agent, in resolution order: run_workflow, then each of `.agents[<a>].run_workflow_aliases` (#1589). An
+# alias covers a consumer stub whose `name:` differs from run_workflow (pr-review: the .github-private
+# caller stub is "PR Review Agent — Trigger", the canonical consumer stub is "PR Review Agent").
+_reg_run_workflows() {
+  local _a _s
+  _reg_run_workflow "$1"; _REG_WFS=("$_REG_VAL")
+  if _reg_loaded && [[ -v _REG_RUN_WF_ALIASES["$1"] ]]; then _s="${_REG_RUN_WF_ALIASES[$1]}"
+  else _s="$(_jq -r --arg a "$1" '[(.agents[$a].run_workflow_aliases // [])[]? | tostring] | join("\u001e")' 2>/dev/null || true)"; fi
+  [[ -n "$_s" ]] || return 0
+  while IFS= read -r -d $'\x1e' _a; do
+    [[ -n "$_a" ]] && [[ "$_a" != "${_REG_WFS[0]}" ]] && _REG_WFS+=("$_a")
+  done <<< "${_s}"$'\x1e'
+  return 0
 }
 _reg_ingress_job() {
   if _reg_loaded && [[ -v _REG_INGRESS_JOB["$1"] ]]; then _REG_VAL="${_REG_INGRESS_JOB[$1]}"
@@ -1253,7 +1270,8 @@ _ingress_agent_runs() {
 # _agent_run_json <agent> <repo> <since_z> — the agent's runs on one ring member since the given
 # Zulu timestamp (same record shape as _run_json, plus `role` for ingress-attributed runs).
 # Resolution order (#1224):
-#   1. the per-role workflow (`run_workflow`) exists → its runs (legacy, unchanged);
+#   1. the per-role workflow (`run_workflow`, else the first of `run_workflow_aliases` present, #1589)
+#      exists → its runs (legacy, unchanged);
 #   2. it is absent and the agent registers NO `ingress_job` → [] (#1247). Such an agent is not an
 #      ADR-0007 ingress role (Class 2/3 and pull_request_target roles keep their own stub), so a
 #      member's ingress says nothing about it and the ingress is not consulted: no per-role
@@ -1283,7 +1301,7 @@ _agent_run_json() {
   local agent="$1" repo="$2" since="$3" wf iwf raw iraw role rc=0
   [[ -n "${_TIMING_CALLS:-}" ]] && { printf . >> "$_TIMING_CALLS" 2>/dev/null || true; }   # call counter (CANARY_TIMING)
   if [[ -z "$repo" ]] || [[ "$repo" = '*' ]]; then echo '[]'; return 0; fi
-  _reg_run_workflow "$agent"; wf="$_REG_VAL"
+  _reg_run_workflows "$agent"
   # Date-bound the per-role list (#1259, option B): every window the gate samples starts at most ~2 weeks back, so the
   # newest 1000 runs of a busy workflow are mostly older than anything read. One fixed tier (CANARY_RUNS_HORIZON_TIERS,
   # days, default "15"; EMPTY disables the bound) so every window shares ONE fetch per (repo, workflow). No unbounded
@@ -1291,7 +1309,13 @@ _agent_run_json() {
   # the newest-1000 the unbounded call returns. A capped list that does not reach the window start is completed below
   # instead (#1244). A window older than the tier (a long soak) gets the unbounded list as before.
   _horizon_from "$since" "${CANARY_RUNS_HORIZON_TIERS-15}"
-  raw="$(_repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM")" || rc=$?
+  # The first of run_workflow / run_workflow_aliases (#1589) that exists on the member is the per-role
+  # workflow; `wf` keeps that name below. Only when NONE exists (each a graceful not-found, rc 3) does the
+  # member fall through to the ingress / non-consumer path.
+  for wf in "${_REG_WFS[@]}"; do
+    rc=0; raw="$(_repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM")" || rc=$?
+    [[ "$rc" -eq 3 ]] || break
+  done
   if [[ "$rc" -eq 3 ]]; then
     # Not an ingress role (no ingress_job): the member's ingress cannot carry it, so it is not read (#1247).
     _reg_ingress_job "$agent"; role="$_REG_VAL"
@@ -1397,9 +1421,13 @@ _tier_inflight() {
     # (Ingress runs are not role-filtered here — a pending run's role job may not exist yet — so this
     # errs toward holding the waiver, the conservative side.)
     _reg_ingress_job "$agent"; role="$_REG_VAL"
-    _reg_run_workflow "$agent"; wf="$_REG_VAL"
+    _reg_run_workflows "$agent"
     _horizon_from "$since" "${CANARY_RUNS_HORIZON_TIERS-15}"
-    rc=0; _repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" >/dev/null 2>&1 || rc=$?
+    # Same resolution as _agent_run_json: the first of run_workflow / run_workflow_aliases present (#1589).
+    for wf in "${_REG_WFS[@]}"; do
+      rc=0; _repo_wf_runs_cached "$repo" "$wf" 1 "$_LEGACY_RUN_LIMIT" "$_HORIZON_FROM" >/dev/null 2>&1 || rc=$?
+      [ "$rc" -eq 3 ] || break
+    done
     if [ "$rc" -eq 0 ]; then
       # Legacy per-role workflow. Its general list is the newest $_LEGACY_RUN_LIMIT runs, so a flood of newer
       # skipped runs can push an older in-flight run out of view (_agent_run_json completes only failure-class

@@ -6273,6 +6273,119 @@ GHEOF
   [ "$(jq -r '.agents["pr-review"].rings[] | select(.channel=="stable") | .members | join(",")' "$RINGS")" = "*" ]
 }
 
+# ── run_workflow_aliases: consumer-ring runs under another display name (#1589) ──
+# pr-review's run_workflow is the .github-private caller stub's name ("PR Review Agent — Trigger"), but
+# ring1/stable consumers call it from the canonical stub standards/workflows/pr-review.yml, whose name is
+# "PR Review Agent". With only run_workflow the gate found nothing there (sample=0/1 while bmad-bgreat-suite
+# had 16 good runs) and promoted only via the idle waiver. run_workflow_aliases lists the names to try, in
+# order, on a member that has no workflow named run_workflow.
+@test "pr-review: run_workflow_aliases names the canonical consumer stub's display name (#1589)" {
+  local stub_name
+  stub_name="$(sed -n 's/^name:[[:space:]]*//p' "$SCRIPT_DIR/standards/workflows/pr-review.yml" | head -1)"
+  [ -n "$stub_name" ]
+  run jq -e --arg n "$stub_name" '.agents["pr-review"].run_workflow_aliases | index($n) != null' "$RINGS"
+  [ "$status" -eq 0 ]
+}
+
+@test "registry lint: every run_workflow_aliases is a list of non-empty display names, never a *.yml filename (#1589)" {
+  # A *.yml filename 404s instead of the graceful "could not find any workflows named …" (#747), which
+  # would fail the gate CLOSED on every repo without that workflow (same guard as run_workflow, #1166).
+  run jq -e '[.agents[] | select(has("run_workflow_aliases")) | .run_workflow_aliases
+              | (type == "array") and all(.[]; type == "string" and length > 0 and (test("\\.ya?ml$") | not))
+                and (index(null) == null)] | all' "$RINGS"
+  [ "$status" -eq 0 ]
+  # An alias never repeats run_workflow (it would be read twice for nothing).
+  run jq -e '[.agents[] | select(has("run_workflow_aliases")) | . as $a | ($a.run_workflow_aliases | index($a.run_workflow)) == null] | all' "$RINGS"
+  [ "$status" -eq 0 ]
+}
+
+# _alias_stub — gh stub:
+#   org/selfhost — "PR Review Agent — Trigger" run 501 (the host's caller stub)
+#   org/ring1    — "PR Review Agent" runs 511 (success), 512 (success), 513 (in flight)
+#   org/both     — both names: 521 under run_workflow, 522 under the alias
+#   org/none     — neither name, no ingress (a non-consumer, #747)
+_alias_stub() {
+  export TMPDIR="$BATS_TEST_TMPDIR"
+  STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
+  export GH_LOG="$BATS_TEST_TMPDIR/gh-alias.log"; : > "$GH_LOG"
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+echo "$*" >> "$GH_LOG"
+repo=""; wf=""; st=""; prev=""
+for a in "$@"; do
+  [ "$prev" = "--repo" ] && repo="$a"
+  [ "$prev" = "--workflow" ] && wf="$a"
+  [ "$prev" = "--status" ] && st="$a"
+  prev="$a"
+done
+nf() { echo "could not find any workflows named $wf" >&2; exit 1; }
+rec() { printf '{"conclusion":%s,"createdAt":"2026-11-24T0%s:00:00Z","databaseId":%s,"workflowName":"%s"}' "$1" "$2" "$3" "$wf"; }
+[ "$1 $2" = "run list" ] || { echo '{}'; exit 0; }
+case "$repo|$wf" in
+  "org/selfhost|PR Review Agent — Trigger") body="[$(rec '"success"' 1 501)]" ;;
+  "org/ring1|PR Review Agent") body="[$(rec '"success"' 1 511),$(rec '"success"' 2 512),$(rec null 3 513)]" ;;
+  "org/both|PR Review Agent — Trigger") body="[$(rec '"success"' 1 521)]" ;;
+  "org/both|PR Review Agent") body="[$(rec '"success"' 1 522)]" ;;
+  *) nf ;;
+esac
+case "$st" in
+  "") echo "$body" ;;
+  in_progress) jq -c '[.[] | select(.conclusion == null)]' <<< "$body" ;;
+  *) jq -c --arg s "$st" '[.[] | select(.conclusion == $s)]' <<< "$body" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+  ALIAS_RINGS="$BATS_TEST_TMPDIR/alias-rings.json"
+  jq '.agents["pr-review"].rings = [{"channel":"next","order":0,"members":["org/selfhost"]},
+                                    {"channel":"ring1","order":1,"members":["org/ring1","org/none"]}]' "$RINGS" > "$ALIAS_RINGS"
+  export ALIAS_RINGS
+}
+
+@test "_agent_run_json: a ring1 member running pr-review under the consumer stub name is sampled via run_workflow_aliases (#1589)" {
+  _alias_stub
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _agent_run_json pr-review org/ring1 '2026-11-20T00:00:00Z' | jq -c 'map(.databaseId) | sort'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[511,512,513]" ]
+}
+
+@test "_tier_sample: ring1 pr-review samples under the alias are counted toward the gate (#1589)" {
+  _alias_stub
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 _CANARY_UNRESOLVED_FLAG="$flag" \
+    bash -c "source '$ORCH' && _tier_sample pr-review '2026-11-20T00:00:00Z' org/ring1 org/none"
+  [ "$status" -eq 0 ]
+  # two executed runs (513 is in flight); org/none contributes nothing and is not UNRESOLVED.
+  [ "$output" = "2 2026-11-24T01:00:00Z" ]
+  [ ! -s "$flag" ]
+}
+
+@test "_tier_inflight: an in-flight run under the alias holds the idle waiver (#1589)" {
+  _alias_stub
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _tier_inflight pr-review '2026-11-20T00:00:00Z' org/ring1"
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 1 ]
+}
+
+@test "_agent_run_json: run_workflow wins over an alias when a member has both; neither → graceful [] (#1589, #747)" {
+  _alias_stub
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _agent_run_json pr-review org/selfhost '' | jq -c 'map(.databaseId)'"
+  [ "$status" -eq 0 ]; [ "$output" = "[501]" ]
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _agent_run_json pr-review org/both '' | jq -c 'map(.databaseId)'"
+  [ "$status" -eq 0 ]; [ "$output" = "[521]" ]
+  # The alias is not read on a member where run_workflow resolved.
+  run grep -c -- "--repo org/both --workflow PR Review Agent -L" "$GH_LOG"
+  [ "$output" = "0" ]
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 _CANARY_UNRESOLVED_FLAG="$flag" \
+    bash -c "source '$ORCH' && _agent_run_json pr-review org/none ''"
+  [ "$status" -eq 0 ]; [ "$output" = "[]" ]
+  [ ! -s "$flag" ]
+}
+
 @test "canary-rollout.yml: pr-review is a hand-dispatchable agent (#1106 AC3)" {
   local wf="$SCRIPT_DIR/.github/workflows/canary-rollout.yml"
   run grep -Eq '^          - pr-review$' "$wf"
@@ -6900,6 +7013,31 @@ GHEOF
   [[ "$output" == *"bad=0"* ]]
   # The registry has many agents; make sure the comparison was not vacuous.
   [[ "$output" =~ agents=([0-9]+) ]] && [ "${BASH_REMATCH[1]}" -ge 10 ]
+}
+
+@test "registry preload: the memoized run_workflow + run_workflow_aliases list equals the jq lookup for every agent (#1589)" {
+  local rings="$BATS_TEST_TMPDIR/alias-preload.json"
+  # Add a multi-alias agent (including a duplicate of run_workflow, which must be dropped) to the real registry.
+  jq '.agents["multi"] = (.agents["dev-lead"] | .run_workflow = "A" | .run_workflow_aliases = ["B C", "A", "D — E"])' "$RINGS" > "$rings"
+  run env CANARY_RINGS="$rings" bash -c "source '$ORCH'; set +e
+    declare -A exp
+    for a in \$(jq -r '.agents | keys[]' \"\$CANARY_RINGS\"); do
+      _reg_run_workflows \"\$a\"; exp[\$a]=\"\$(printf '%s|' \"\${_REG_WFS[@]}\")\"
+    done
+    _registry_preload || { echo PRELOAD_FAILED; exit 1; }
+    _reg_loaded || { echo NOT_LOADED; exit 1; }
+    bad=0
+    for a in \"\${!exp[@]}\"; do
+      _reg_run_workflows \"\$a\"; got=\"\$(printf '%s|' \"\${_REG_WFS[@]}\")\"
+      [ \"\$got\" = \"\${exp[\$a]}\" ] || { echo \"MISMATCH \$a: '\$got' vs '\${exp[\$a]}'\"; bad=1; }
+    done
+    _reg_run_workflows multi; echo \"multi=\$(printf '%s|' \"\${_REG_WFS[@]}\")\"
+    _reg_run_workflows pr-review; echo \"pr-review=\$(printf '%s|' \"\${_REG_WFS[@]}\")\"
+    echo \"bad=\$bad\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bad=0"* ]]
+  [[ "$output" == *"multi=A|B C|D — E|"* ]]
+  [[ "$output" == *"pr-review=PR Review Agent — Trigger|PR Review Agent|"* ]]
 }
 
 @test "registry preload: a map built for one registry is ignored once CANARY_RINGS points elsewhere (#1259)" {
