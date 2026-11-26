@@ -78,20 +78,12 @@ readonly ENGINE_HOST_REPO=".github-private"
 # A repo here may still opt into a *specific* workflow via SKIP_OVERRIDES below.
 SKIP_REPOS=(".github" "$ENGINE_HOST_REPO")
 
-# Repos the standard-workflow sweep does not serve at all. This is a different
-# thing from SKIP_REPOS. A SKIP_REPO is inside the standard and self-manages it,
-# so every required workflow on it must be reconciled (SKIP_OVERRIDES or
-# SKIP_SELF_MANAGED, see reconcile_skip_repo_required_workflows). A repo here is
-# outside the standard by a recorded decision of the Maintainer: it receives no
-# stub, takes no opt-in, and is not part of that reconciliation.
-#   software-factory        — where the replacement for this fleet is built. Its
-#                             design keeps the two apart (no owner-account token,
-#                             none of the fleet's workflows), and its own workflow
-#                             rules refuse every stub. A sync PR opened there on
-#                             2026-10-12 was closed unmerged.
-#   software-factory-canary — throwaway repo for that project's platform trials.
-# The audits (compliance, Scorecard, SonarCloud) do not read this list yet.
-NOT_SERVED_REPOS=("software-factory" "software-factory-canary")
+# Repos the standard-workflow sweep does not serve at all (NOT_SERVED_REPOS,
+# is_not_served_repo) — distinct from SKIP_REPOS above, and shared with
+# compliance-audit.sh so the audit files nothing where the sweep deploys nothing
+# (#1334, #1343).
+# shellcheck source=scripts/lib/not-served-repos.sh
+source "$SCRIPT_DIR/lib/not-served-repos.sh"
 
 # Per-workflow opt-ins for otherwise-skipped repos. Keyed by workflow filename;
 # value is a space-separated list of SKIP_REPOS that should still receive it.
@@ -158,6 +150,7 @@ DEPLOYABLE_WORKFLOWS=(
   pr-auto-review.yml
   feature-ideation.yml
   pr-review.yml
+  dismiss-stale-bot-reviews.yml
 )
 
 # Deployable workflows whose stub BODY carries a documented per-repo edit the
@@ -290,17 +283,6 @@ is_skipped_repo() {
   local repo="$1" s
   for s in "${SKIP_REPOS[@]}"; do
     [[ "$repo" == "$s" ]] && return 0
-  done
-  return 1
-}
-
-# True if <repo> is in NOT_SERVED_REPOS (the sweep never touches it).
-is_not_served_repo() {
-  local repo s
-  # GitHub repo names are case-insensitive; compare lowercased.
-  repo=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
-  for s in "${NOT_SERVED_REPOS[@]}"; do
-    [[ "$repo" == "$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]')" ]] && return 0
   done
   return 1
 }
@@ -638,7 +620,7 @@ is_already_compliant() {
      || { is_full_body_compare_repo "$repo" && ! is_body_preserving_workflow "$workflow"; }; then
     stub_body_matches_template "$existing_content" "$template" "$repo" || return 1
   fi
-  if ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \
+  if ! is_skipped_repo "$repo" \
      && stub_any_surface_drift "$workflow" "$(< "$template")" "$existing_content"; then
     return 1
   fi
@@ -898,8 +880,19 @@ deploy_repo() {
       else
         mode="repin-in-place"
         if [[ "$DRY_RUN" != "true" ]]; then
+          # Merge the canonical guarded surfaces (on:/permissions/concurrency) into the
+          # repo's OWN body so fleet copies pick up surface fixes (e.g. #1576's bridge
+          # concurrency group) while project_context is preserved. No-op when no drift.
+          local merged_body
+          merged_body="$(merge_guarded_surfaces "$workflow" "$(< "$template")" "$existing_content")"
+          # Refuse drift that survives the merge (e.g. job-level permissions), as the
+          # surface-drift-repin branch does; otherwise the stub is re-queued every sweep.
+          if stub_any_surface_drift "$workflow" "$(< "$template")" "$merged_body"; then
+            skip "$repo/$target_path surface drift not repairable by merge (e.g. job-level block); not queuing an unchanged stub"
+            continue
+          fi
           repin_source="$(mktemp)"; _TMPFILES+=("$repin_source")
-          printf '%s\n' "$existing_content" > "$repin_source"
+          printf '%s\n' "$merged_body" > "$repin_source"
         fi
       fi
     elif [[ -n "$existing_sha" ]] && ! is_skipped_repo "$repo" && ! is_body_preserving_workflow "$workflow" \

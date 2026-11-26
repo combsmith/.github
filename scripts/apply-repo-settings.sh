@@ -34,6 +34,39 @@ fi
 ORG="${ORG:-combsmith}"
 DRY_RUN="${DRY_RUN:-false}"
 
+# The repos whose squash message is the pull request's body (issue #1568). Off for every
+# repo not listed, so a release of this script changes no repo until one is added.
+SQUASH_PR_BODY_LIST="${SQUASH_PR_BODY_LIST:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/standards/squash-pr-body-repos.json}"
+
+# squash_message_for <repo> — PR_BODY for a repo on the opt-in list, else COMMIT_MESSAGES.
+# A missing or unreadable list leaves every repo on COMMIT_MESSAGES. A readable list that is
+# not {"repos": [<string>...]} is a configuration error: return non-zero rather than guess,
+# so an enrolled repo is never rolled back to COMMIT_MESSAGES by a malformed file.
+squash_message_for() {
+  local repo="$1" rc
+  if [[ ! -r "$SQUASH_PR_BODY_LIST" ]]; then
+    echo COMMIT_MESSAGES
+    return 0
+  fi
+  if jq -e --arg r "$repo" '
+      if (.repos | type == "array") and all(.repos[]; type == "string")
+      then any(.repos[]; . == $r)
+      else error("repos must be an array of repository-name strings")
+      end' "$SQUASH_PR_BODY_LIST" >/dev/null 2>&1; then
+    echo PR_BODY
+    return 0
+  else
+    rc=$?
+  fi
+  # jq -e: 1 = evaluated to false (not on the list); anything else = invalid JSON or schema.
+  if [[ "$rc" -eq 1 ]]; then
+    echo COMMIT_MESSAGES
+    return 0
+  fi
+  err "Invalid squash opt-in list $SQUASH_PR_BODY_LIST — expected {\"repos\": [\"name\", ...]}"
+  return 1
+}
+
 # The standard label set — the fixed set (STANDARD_LABEL_SPECS), the persona
 # manifest source, the opt-out family colour, and persona_opt_out_label_configs
 # — all live in scripts/lib/labels.sh, the single source of truth shared with
@@ -224,25 +257,25 @@ apply_settings() {
     fi
   done
 
-  # Check string settings separately (jq -f flag for strings)
-  local squash_title
+  # The squash commit's title and message (docs/initiatives/pull-request-and-commit-prose-adr.md,
+  # issue #1568). The message is the pull request's body only for a repo on the opt-in list
+  # (squash_message_for); every other repo keeps commit messages. GitHub needs the title
+  # whenever the message is sent, so the two are always sent together.
+  local squash_title squash_msg want_msg
   squash_title=$(printf '%s' "$current" | jq -r '.squash_merge_commit_title // "null"')
-  if [[ "$squash_title" != "PR_TITLE" ]]; then
+  squash_msg=$(printf '%s' "$current" | jq -r '.squash_merge_commit_message // "null"')
+  if ! want_msg=$(squash_message_for "$repo"); then
+    err "Cannot determine the squash message setting for $ORG/$repo"
+    return 1
+  fi
+  if [[ "$squash_title" != "PR_TITLE" ]] || [[ "$squash_msg" != "$want_msg" ]]; then
     info "  squash_merge_commit_title: $squash_title → PR_TITLE"
+    info "  squash_merge_commit_message: $squash_msg → $want_msg"
     needs_patch=true
-    patch_args+=(-f squash_merge_commit_title=PR_TITLE)
+    patch_args+=(-f squash_merge_commit_title=PR_TITLE -f "squash_merge_commit_message=$want_msg")
   else
     ok "  squash_merge_commit_title: already PR_TITLE"
-  fi
-
-  local squash_msg
-  squash_msg=$(printf '%s' "$current" | jq -r '.squash_merge_commit_message // "null"')
-  if [[ "$squash_msg" != "COMMIT_MESSAGES" ]]; then
-    info "  squash_merge_commit_message: $squash_msg → COMMIT_MESSAGES"
-    needs_patch=true
-    patch_args+=(-f squash_merge_commit_message=COMMIT_MESSAGES)
-  else
-    ok "  squash_merge_commit_message: already COMMIT_MESSAGES"
+    ok "  squash_merge_commit_message: already $want_msg"
   fi
 
   if [[ "$needs_patch" = false ]]; then

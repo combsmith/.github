@@ -298,6 +298,12 @@ RULESETS_SRC_DIR="${RULESETS_SRC_DIR:-$SCRIPT_DIR/../standards/rulesets}"
 # shellcheck source=lib/ring-pins.sh
 . "$SCRIPT_DIR/lib/ring-pins.sh"
 
+# Repos outside the org standard by the Maintainer's decision — NOT_SERVED_REPOS
+# and is_not_served_repo(). Shared with deploy-standard-workflows.sh: the audit
+# files no findings or issues where the sweep deploys nothing (#1343, #1352).
+# shellcheck source=lib/not-served-repos.sh
+. "$SCRIPT_DIR/lib/not-served-repos.sh"
+
 # ADR-0007 agent-ingress identity helpers: a required per-role workflow whose role
 # an agent-ingress.yml job serves is present, not missing (#1226) — the same rule
 # deploy-standard-workflows.sh uses to never re-seed a collapsed stub.
@@ -1222,7 +1228,7 @@ check_code_scanning_rule() {
 # The standard (github-settings.md § "Bypass Actors — Required on Every Ruleset
 # Targeting main") requires that EVERY ruleset whose conditions include the
 # default branch grant always-bypass to BOTH:
-#   1. the `dependabot-automerge-petry` GitHub App (Integration, actor_id 3167543)
+#   1. the `combsmith-dependabot-automrg` GitHub App (Integration, actor_id 3167543)
 #   2. the `OrganizationAdmin` role
 # GitHub evaluates bypass eligibility independently per ruleset, so a missing
 # actor on code-quality (or a legacy protect-branches / main ruleset) silently
@@ -1309,15 +1315,15 @@ check_ruleset_bypass_actors() {
       fi
     fi
 
-    # --- dependabot-automerge-petry app -----------------------------------
+    # --- combsmith-dependabot-automrg app ---------------------------------
     if [[ "$dep_always" != "true" ]]; then
       if [[ "$dep_any" = "true" ]]; then
         add_finding "$repo" "rulesets" "ruleset-bypass-dependabot-mode-$slug" "error" \
-          "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants the \`dependabot-automerge-petry\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass but with the wrong mode. \`pull_request\` mode only applies when the bypass actor opens the PR; Dependabot opens its own PRs, so its merge API calls are rejected. Set \`bypass_mode: always\`." \
+          "Ruleset \`$rs_name\` (targets \`$default_branch\`) grants the \`combsmith-dependabot-automrg\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass but with the wrong mode. \`pull_request\` mode only applies when the bypass actor opens the PR; Dependabot opens its own PRs, so its merge API calls are rejected. Set \`bypass_mode: always\`." \
           "$std_ref"
       else
         add_finding "$repo" "rulesets" "ruleset-bypass-dependabot-$slug" "error" \
-          "Ruleset \`$rs_name\` (targets \`$default_branch\`) is missing the required \`dependabot-automerge-petry\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass actor (\`bypass_mode: always\`). Without it, Dependabot auto-merge API calls are rejected by this ruleset — GitHub evaluates bypass per-ruleset, so it must be present on every ruleset targeting the default branch, not only \`pr-quality\`." \
+          "Ruleset \`$rs_name\` (targets \`$default_branch\`) is missing the required \`combsmith-dependabot-automrg\` app (id $DEPENDABOT_APP_ACTOR_ID) bypass actor (\`bypass_mode: always\`). Without it, Dependabot auto-merge API calls are rejected by this ruleset — GitHub evaluates bypass per-ruleset, so it must be present on every ruleset targeting the default branch, not only \`pr-quality\`." \
           "$std_ref"
       fi
     fi
@@ -3724,10 +3730,28 @@ main() {
   local repos
   repos=$(gh repo list "$ORG" --no-archived --json name -q '.[].name' --limit 500)
 
+  # Drop repos outside the standard (NOT_SERVED_REPOS) before both the audit loop
+  # and the issue-management loop, so no finding, issue or label lands there.
+  local listed served="" all_repos_before_filter=""
+  [[ -n "$repos" ]] && all_repos_before_filter="yes"
+  for listed in $repos; do
+    if is_not_served_repo "$listed" "$ORG"; then
+      info "Skipping $ORG/$listed (not served — NOT_SERVED_REPOS)"
+      continue
+    fi
+    served+="$listed"$'\n'
+  done
+  repos="$served"
+
   if [[ -z "$repos" ]]; then
-    warn "No repositories found in $ORG — check GH_TOKEN permissions"
-    echo "[]" > "$FINDINGS_FILE"
-    return 1
+    if [[ -z "$all_repos_before_filter" ]]; then
+      warn "No repositories found in $ORG — check GH_TOKEN permissions"
+      echo "[]" > "$FINDINGS_FILE"
+      return 1
+    else
+      # Fall through: the zero-repo tail still writes summary.md and issue-counts.json.
+      info "All repositories in $ORG are excluded (not-served); audit completes with no findings"
+    fi
   fi
 
   local repo_count=0
@@ -3805,6 +3829,12 @@ main() {
     info "Managing issues..."
 
     for repo in $repos; do
+      # Repos the org standard does not serve are never managed (#1343).
+      if is_not_served_repo "$repo" "$ORG"; then
+        info "Skipping issue management for $repo — repo is not served by the org standard"
+        continue
+      fi
+
       ensure_audit_label "$repo"
       ensure_required_labels "$repo"
 

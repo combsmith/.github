@@ -45,6 +45,7 @@ readonly RING_REUSABLES=(
   initiative-planner
   persona-mention
   pr-auto-review
+  pr-body-markers
   pr-review
   pr-review-mention
 )
@@ -69,6 +70,16 @@ RING_PINS_REGISTRY="${CANARY_RINGS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 
 # contain the repo wins. Repos in no explicit ring fall back to the ring whose
 # members contain the `"*"` fleet wildcard (today: stable). An unknown agent (not
 # in the registry) also falls back to `stable`.
+#
+# Per-agent pin overrides (#1594): before the ring walk, an entry in
+# `.agents[<agent>].pin_overrides` whose key matches the repo (by basename, as for
+# members) wins — its `tier` is returned. This changes only the channel the repo's
+# consumer stub is expected to PIN (sweep + audit), never ring membership or canary
+# evidence (canary-rollout.sh resolve_members ignores it). Example: Safe Release SC2
+# (#503) pins dev-lead's own host stub to ring0 rather than its host-relative `next`.
+# A malformed override (pin_overrides not an object, the entry not an object, or a
+# tier that is not one of the agent's `rings` channels) fails closed (rc 3) exactly
+# like a registry read error, and is not cached.
 ring_tier_for_repo() {
   local agent="$1" repo="$2"
   if [[ -z "$agent" ]]; then
@@ -94,6 +105,20 @@ ring_tier_for_repo() {
   tier="$(jq -r --arg a "$agent" --arg repo "$repo_name" '
     .agents[$a] as $ag
     | if $ag == null then "" else
+        # #1594: a per-agent pin override wins over the ring walk. Validate it here
+        # so a malformed entry errors (jq rc 5 → fail closed) instead of being
+        # silently ignored or returning a tier the agent has no channel for.
+        (if $ag | has("pin_overrides")
+         then (if ($ag.pin_overrides | type) != "object" then error("pin_overrides is not an object") else $ag.pin_overrides end)
+         else {} end) as $po
+        | ([$po | to_entries[] | select((.key | sub(".*/";"")) == $repo)][0]) as $entry
+        | if $entry != null then
+            ($entry.value) as $ov
+            | if ($ov | type) == "object" and ($ov.tier | type) == "string"
+                 and ([$ag.rings[]?.channel] | index($ov.tier)) != null
+              then $ov.tier
+              else error("malformed pin_override for \($repo)") end
+          else
         ($ag.host | sub(".*/";"")) as $host
         | ([.org_infra_repos[]? | sub(".*/";"")] - [$host]) as $orginfra
         | ( $ag.rings
@@ -106,6 +131,7 @@ ring_tier_for_repo() {
         | ( ([$r[] | select(.m | index($repo)) | .channel][0])
             // ([$r[] | select(.m | index("*"))  | .channel][0])
             // "" )
+          end
       end
   ' "$RING_PINS_REGISTRY" 2>/dev/null)"
   status=$?
@@ -116,7 +142,7 @@ ring_tier_for_repo() {
   # fail-closed probe (#870). A read error is NOT cached, so a transient failure
   # does not poison later lookups.
   if [[ "$status" -ne 0 ]]; then
-    echo "ring_tier_for_repo: failed to read ring registry '$RING_PINS_REGISTRY' (agent=$agent repo=$repo_name)" >&2
+    echo "ring_tier_for_repo: failed to read ring registry '$RING_PINS_REGISTRY' or its pin_overrides are malformed (agent=$agent repo=$repo_name)" >&2
     return 3
   fi
   # jq succeeded: an empty result is a genuine no-match — an unknown agent (not in

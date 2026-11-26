@@ -61,7 +61,7 @@ configuration — see the [Advanced Security (GHAS) Standard](advanced-security.
 | **Allow auto-merge** | `true` | Required for Dependabot auto-merge workflow |
 | **Automatically delete head branches** | `true` | Clean up merged branches automatically |
 | **Default squash merge commit title** | `PR_TITLE` | Clean, descriptive commit history |
-| **Default squash merge commit message** | Commit messages (`COMMIT_MESSAGES`) | Preserves individual commit messages |
+| **Default squash merge commit message** | Commit messages (`COMMIT_MESSAGES`); pull request body (`PR_BODY`) for each repo in [`squash-pr-body-repos.json`](squash-pr-body-repos.json) | The ADR ([pull request and commit prose](../docs/initiatives/pull-request-and-commit-prose-adr.md)) moves repos to the reviewed body one list entry at a time. `PR_BODY` needs the `PR_TITLE` title, and both are always sent together |
 
 > **Note:** While merge commits and rebase merging are enabled at the repository
 > level, the `pr-quality` ruleset enforces **squash-only** merges. The repo-level
@@ -189,7 +189,7 @@ ruleset by that name existed.
 
 ### Bypass Actors — Required on Every Ruleset Targeting `main`
 
-**The `dependabot-automerge-petry` GitHub App MUST be a bypass actor on every
+**The `combsmith-dependabot-automrg` GitHub App MUST be a bypass actor on every
 ruleset that targets the default branch**, not only on `pr-quality`. GitHub
 evaluates bypass eligibility independently per ruleset — having bypass in
 `pr-quality` does NOT grant bypass in `protect-branches`, `main`, or any other
@@ -197,12 +197,12 @@ ruleset applied to the same branch. Every such ruleset must include:
 
 | Actor | Type | `bypass_mode` | Reason |
 |-------|------|--------------|--------|
-| `dependabot-automerge-petry` | GitHub App | `always` | Merges Dependabot PRs via API; rejected without bypass in every active ruleset |
+| `combsmith-dependabot-automrg` | GitHub App | `always` | Merges Dependabot PRs via API; rejected without bypass in every active ruleset |
 | `OrganizationAdmin` | Role | `always` | Emergency admin override |
 
 **Why `bypass_mode: always`:** `pull_request` bypass mode only works when the
 bypass actor *opens* the PR. Dependabot opens its own PRs, so the
-`dependabot-automerge-petry` app cannot use that mode — its merge API calls are
+`combsmith-dependabot-automrg` app cannot use that mode — its merge API calls are
 rejected. `always` mode is safe here because the rebase workflow explicitly
 verifies CI pass and `MERGEABLE` state before calling the merge API.
 
@@ -281,7 +281,7 @@ unchanged. See the [Ruleset Remediation Runbook §6](ruleset-remediation-runbook
 #### Bypass Actors
 
 See [Bypass Actors — Required on Every Ruleset Targeting `main`](#bypass-actors--required-on-every-ruleset-targeting-main) above.
-The same `dependabot-automerge-petry` + `OrganizationAdmin` bypass actors MUST appear in `pr-quality` and in every other ruleset that targets `main`.
+The same `combsmith-dependabot-automrg` + `OrganizationAdmin` bypass actors MUST appear in `pr-quality` and in every other ruleset that targets `main`.
 
 #### CODEOWNERS Approval Timing
 
@@ -324,17 +324,19 @@ The following are **intentionally NOT** in `code-quality.json` today:
 | Check | Status | Check Name(s) | Why |
 |-------|--------|---------------|-----|
 | **Secret Scan** | ⏳ Template / new repos; not yet fleet-wide | `Secret scan (gitleaks)` | Produced by the template [`ci.yml`](workflows/ci.yml) (see [Push Protection Standard](push-protection.md#layer-3--ci-secret-scanning-secondary-defense)). Added to the ruleset fleet-wide only once existing repos produce it |
-| **Coverage** | ⏳ Template / new repos; not yet fleet-wide | `coverage` | **Not produced by the template [`ci.yml`](workflows/ci.yml) out of the box** — the template ships a single `build-and-test` job; a separate `coverage` check must be explicitly configured when adopting the template (see [ci-standards.md](ci-standards.md)). Requiring it fleet-wide before repos produce it would brick every PR — backfill first, then add the context |
+| **Coverage** | ⏳ Template / new repos; not yet fleet-wide | `coverage` | Produced by the template [`ci.yml`](workflows/ci.yml)'s `coverage` job, which stays green until tests exist (#578). Existing repos get it from the fleet backfill (`scripts/backfill-ci-quality-jobs.sh`, #581). Requiring it fleet-wide before repos produce it would block every PR, so backfill first, then add the context |
 | **Dev-Lead Agent** | ❌ Not a required context | `Dev-Lead Agent / dev-lead` | Per-PR AI review, not a merge gate: the agent's GitHub App refuses to mint a token for any PR touching workflow files, so requiring it would deadlock every workflow-modifying PR |
 | **CI Pipeline** | Repo-specific (not a fixed org context) | e.g. `build-and-test`, `TypeScript`, `Go` | Lint/format/typecheck/test; the job name is repo-defined, so it is required per-repo by declaring it in the repo's `.github/required-checks.json` (see [Repo-declared required checks](#repo-declared-required-checks)), not as a codified org-wide context |
 
 **Sequencing (why Secret Scan + Coverage are staged).** Adding a required context
 to `code-quality.json` makes it a merge gate on **every** repo the ruleset targets;
-a repo that does not *produce* that check is bricked. Neither context is produced by
-the template `ci.yml` out of the box — repos must explicitly add a coverage job and
-the gitleaks secret-scan step before those check names appear. Both are added to the
-shared ruleset only **after** a fleet backfill. Until then, keep them scoped to repos
-that already produce them. See [combsmith/.github#575](https://github.com/combsmith/.github/issues/575).
+a repo that does not *produce* that check is bricked. Both contexts are produced by
+the template `ci.yml` since #578, but existing repos produce them once the fleet
+backfill (`scripts/backfill-ci-quality-jobs.sh`) has added the jobs to their `ci.yml`, unless they already define them.
+Both are added to the shared ruleset only **after** `backfill-ci-quality-jobs.sh --verify --all`
+exits 0. Until then, keep them scoped to repos that already produce them. See
+[combsmith/.github#575](https://github.com/combsmith/.github/issues/575) and
+[#581](https://github.com/combsmith/.github/issues/581).
 
 > **Check names must match exactly.** GitHub-managed CodeQL produces a check named
 > `CodeQL` — **not** `Analyze (actions)`, `Analyze (javascript-typescript)`, or
@@ -511,7 +513,7 @@ stricter.
 | App | Purpose | Installed |
 |-----|---------|-----------|
 | **Claude** | AI code review and PR assistance via Claude Code Action (default dev-lead engine) | 2026-03-20 |
-| **dependabot-automerge-petry** | Provides approving review for Dependabot auto-merge | 2026-03-23 |
+| **combsmith-dependabot-automrg** | Provides approving review for Dependabot auto-merge | 2026-03-23 |
 | **petry-projects-pr-review-agent** | (deprecated) GitHub App formerly used for PR review — replaced by `donpetry-bot` machine user in `@combsmith/org-leads` because Apps cannot be CODEOWNERS | 2026-04-01 |
 | **donpetry-bot** | Machine-user account in `@combsmith/org-leads`; satisfies CODEOWNERS for automated PR review | 2026-05-04 |
 | **SonarQube Cloud (SonarCloud)** | Code quality, security hotspots, coverage tracking | 2026-03-25 |
@@ -692,7 +694,7 @@ Summary:
 
 - The default owner line MUST be `* @combsmith/org-leads`
 - Direct listings of users or bot accounts (e.g.,
-  `@petry-projects-pr-review-agent`, `@dependabot-automerge-petry`) are
+  `@petry-projects-pr-review-agent`, `@combsmith-dependabot-automrg`) are
   **forbidden** — manage membership through the team instead
 - GitHub Apps cannot be code owners (platform limitation); use machine-user
   accounts added to the team
@@ -784,7 +786,7 @@ This tool is essential for detecting CI flakiness, performance degradation, and 
 sweep (now enforced by `check_ruleset_bypass_actors()` and
 `check_legacy_rulesets()`) found `.github-private` already compliant and every
 other repo carrying findings — `code-quality` rulesets missing the
-`dependabot-automerge-petry` bypass, `pr-quality` rulesets granting
+`combsmith-dependabot-automrg` bypass, `pr-quality` rulesets granting
 `RepositoryAdmin` where `OrganizationAdmin` is required, and four deprecated
 legacy rulesets still active. **All have been remediated.** A re-audit reports
 **zero ruleset findings** across the fleet.

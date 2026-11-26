@@ -1,0 +1,61 @@
+# Tests for the CodeQL SARIF filter that drops `actions/unpinned-tag` results on
+# the org's own refs (scripts/codeql-filter-org-pins.sh) and for its place in
+# codeql.yml. Gates: shellcheck + bats.
+name: CodeQL Filter Tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/codeql-filter-org-pins.sh'
+      - 'test/scripts/codeql-filter-org-pins/**'
+      - '.github/workflows/codeql.yml'
+      - '.github/workflows/codeql-filter-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/codeql-filter-org-pins.sh'
+      - 'test/scripts/codeql-filter-org-pins/**'
+      - '.github/workflows/codeql.yml'
+      - '.github/workflows/codeql-filter-tests.yml'
+
+permissions: {}
+
+concurrency:
+  group: codeql-filter-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and bats
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install bats and shellcheck (jq is preinstalled on the runner)
+        run: |
+          set -euo pipefail
+          # Bounded retries with a per-attempt timeout, so an apt mirror blip
+          # does not fail the check.
+          for attempt in 1 2 3; do
+            if timeout 120 sudo apt-get update -qq &&
+              timeout 120 sudo apt-get install -y --no-install-recommends bats shellcheck; then
+              break
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "::error::apt-get failed after $attempt attempts" >&2
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+
+      - name: shellcheck
+        run: shellcheck --severity=warning -x scripts/codeql-filter-org-pins.sh
+
+      - name: bats
+        run: bats --print-output-on-failure test/scripts/codeql-filter-org-pins/

@@ -367,6 +367,7 @@ filename doesn't carry the `-reusable.yml` suffix (grandfathered exception:
 | [`dependabot-automerge.yml`](workflows/dependabot-automerge.yml) | 1 | Auto-approve and squash-merge eligible Dependabot PRs |
 | [`auto-rebase.yml`](workflows/auto-rebase.yml) | 1 | Keep non-Dependabot PRs up-to-date with the base branch on every push to `main` |
 | [`dependabot-rebase.yml`](workflows/dependabot-rebase.yml) | 1 | Update and auto-merge eligible Dependabot PRs on every push to `main` |
+| [`dismiss-stale-bot-reviews.yml`](workflows/dismiss-stale-bot-reviews.yml) | 1 | Automatically dismiss stale allow-listed bot reviews on superseded commits (#1115); a PR carrying a hold label (`needs-human-review`, `dev-lead:needs-human`, `dev-lead:hands-off`) is skipped |
 | [`dependency-audit.yml`](workflows/dependency-audit.yml) | 1 | Multi-ecosystem audit (npm, pnpm, gomod, cargo, pip) |
 | [`feature-ideation.yml`](workflows/feature-ideation.yml) | 1 | Weekly ideation pipeline — **required org-wide** (#844). Its `project_context` MUST be a real per-repo description, not the seed `TODO:`/`Example:` placeholder. |
 | [`pr-auto-review.yml`](workflows/pr-auto-review.yml) | 1 | Automated AI code review on PRs — **required org-wide** (#844) |
@@ -705,6 +706,20 @@ setup can never merge through the queue. Such a repo runs an inline `codeql.yml`
 that triggers on `push`, `pull_request` and `merge_group`, keeps the language
 set, query suite and weekly `schedule` default setup had, and ends in a job
 named `CodeQL` so the required context is unchanged.
+
+**Org channel pins are filtered out of the upload.** An inline `codeql.yml`
+analyzes with `upload: failure-only`, runs the base branch's copy of
+[`scripts/codeql-filter-org-pins.sh`](../scripts/codeql-filter-org-pins.sh) on
+the SARIF (a pull request's edit to it counts only after merge), and uploads
+the result with `github/codeql-action/upload-sarif` at the same pinned commit
+and category. The script drops only `actions/unpinned-tag`
+results on `combsmith/` refs, which the
+[exception for internal reusable workflow references](#exception-internal-reusable-workflow-references)
+makes deliberate, and keeps every other result, third-party tag pins included. A
+SARIF it cannot read fails the job, so nothing is uploaded, and a step in the
+workflow itself checks that only org-ref `actions/unpinned-tag` results went
+missing. Default setup cannot filter results; its default suite does not run
+this query, and the CodeQL audit files no issue for these alerts.
 
 **Recording an exception.** The approved repos are listed once, in
 `CODEQL_ADVANCED_EXCEPTIONS` in
@@ -1446,7 +1461,12 @@ skipping the bot's own creations, and run only when the author has write access
 (read from the repository permission API; the event's `author_association` does
 not mark private org members as maintainers) — re-invokes the workflow via
 `workflow_dispatch` with the job's `GITHUB_TOKEN` (`actions: write`; this needs no
-personal token), forwarding the Discussion number as the `target_discussion` input. The re-dispatched run puts the reusable in
+personal token), forwarding the Discussion number as the `target_discussion` input.
+The dispatched run is titled `Feature ideation for Discussion <n>` (the stub's
+`run-name:`); the bridge then links that run on the Idea with a comment, using
+`discussions: write` granted to the `redispatch` job only. It links only when exactly
+one run has that exact title, and otherwise warns. A failed lookup or post warns and
+does not fail the job. The re-dispatched run puts the reusable in
 **single-idea enhancement mode**: it researches and refines that one new idea and
 posts a single enhancement comment, rather than running the broad scan.
 Enhancement is a comment (which does not re-fire `created`), so there is no

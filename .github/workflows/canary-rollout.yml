@@ -92,6 +92,7 @@ on:
           - initiative-planner
           - persona-mention
           - pr-auto-review
+          - pr-body-markers
           - pr-review
           - pr-review-mention
         default: dev-lead
@@ -164,7 +165,7 @@ jobs:
       # id/key secrets are missing or the token cannot be minted — no silent fallback.
       - name: Mint GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc  # v3.4.0
         with:
           # client-id (not the deprecated app-id, #1025 P3). This is the App's client ID,
           # a distinct value from the numeric app id — set vars.RELEASE_MANAGER_APP_CLIENT_ID.
@@ -203,7 +204,7 @@ jobs:
       # integration" while an admin-token PATCH of the same ref succeeded.
       - name: Mint repo-scoped write token (tag moves)
         id: write-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc  # v3.4.0
         with:
           client-id: ${{ vars.RELEASE_MANAGER_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_MANAGER_APP_KEY }}

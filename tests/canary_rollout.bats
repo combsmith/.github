@@ -183,6 +183,32 @@ setup() {
   [ "$(promotion_failure_next_count '' failed)" -eq 1 ]
   [ "$(promotion_failure_next_count 'x' failed)" -eq 1 ]
 }
+@test "promotion_failure_should_escalate: zero-padded operands compare as decimal" {
+  run promotion_failure_should_escalate 8 08
+  [ "$status" -eq 0 ]
+  [[ "$output" == "1" ]]
+  run promotion_failure_should_escalate 08 09
+  [ "$status" -eq 0 ]
+  [[ "$output" == "0" ]]
+}
+
+@test "_ingress_run_limit: an oversized (>9 digit) value falls back to 5000 instead of wrapping" {
+  run env CANARY_INGRESS_RUN_LIMIT=99999999999999999999 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "5000" ]]
+  run env CANARY_INGRESS_RUN_LIMIT=010 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [[ "$output" == "10" ]]
+}
+
+@test "_ingress_run_limit: a long zero-padded value is normalized before the length guard" {
+  run env CANARY_INGRESS_RUN_LIMIT=00000000001 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "1" ]]
+  run env CANARY_INGRESS_RUN_LIMIT=0000000000 bash -c "source '$ORCH'; _ingress_run_limit; echo \"\$_INGRESS_RUN_LIMIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == "5000" ]]
+}
+
 @test "promotion_failure_should_escalate: fires only at/after the threshold" {
   [ "$(promotion_failure_should_escalate 1 2)" -eq 0 ]
   [ "$(promotion_failure_should_escalate 2 2)" -eq 1 ]
@@ -384,6 +410,71 @@ YML
   [ "$(classify_failure unknown comment-cap)" = "PRE_EXISTING" ]
   [ "$(classify_failure unknown infra)" = "PRE_EXISTING" ]
 }
+# ── classify_failure: failure signature also seen on an older release (#1590) ──────────────────
+# 4th arg pre_existing_sig: 1 = every counted failure's signature also failed on a run of an older
+# release within the window — the candidate cannot have introduced it.
+@test "classify_failure: a signature that also fails on the previous release is PRE_EXISTING, not REGRESSION (#1590)" {
+  [ "$(classify_failure 1 unknown 0 1)" = "PRE_EXISTING" ]
+  [ "$(classify_failure 1 unknown 0 0)" = "REGRESSION" ]
+  [ "$(classify_failure 1 unknown 0)" = "REGRESSION" ]   # flag absent → unchanged
+}
+@test "classify_failure: a pre-existing signature also clears SUSPECT (#1590)" {
+  [ "$(classify_failure 1 unknown 2 1)" = "PRE_EXISTING" ]
+  [ "$(classify_failure 1 unknown 2 0)" = "SUSPECT" ]
+}
+@test "classify_failure: a pre-existing signature does not turn an uncompared reusable into a verdict (#1590)" {
+  [ "$(classify_failure unknown unknown 0 1)" = "-" ]
+}
+@test "classify_failure: a malformed pre-existing flag is treated as 0 (#1590)" {
+  [ "$(classify_failure 1 unknown 0 yes)" = "REGRESSION" ]
+  [ "$(classify_failure 1 unknown 0 '')" = "REGRESSION" ]
+}
+
+# ── signatures_pre_existing <counted_sigs> <old_sigs> (#1590) ───────────────────────────────────
+@test "signatures_pre_existing: every counted signature also failed on the old release → yes (#1590)" {
+  [ "$(signatures_pre_existing $'Push changes\nPush changes' $'Compile\nPush changes')" = "yes" ]
+}
+@test "signatures_pre_existing: one counted signature never seen on the old release → no (#1590)" {
+  [ "$(signatures_pre_existing $'Push changes\nCompile TypeScript' 'Push changes')" = "no" ]
+}
+@test "signatures_pre_existing: an empty/unknown counted signature fails closed → no (#1590)" {
+  [ "$(signatures_pre_existing $'Push changes\n' 'Push changes')" = "no" ]
+  [ "$(signatures_pre_existing '' 'Push changes')" = "no" ]
+}
+@test "signatures_pre_existing: no old-release failures → no (#1590)" {
+  [ "$(signatures_pre_existing 'Push changes' '')" = "no" ]
+  [ "$(signatures_pre_existing 'Push changes' $'\n\n')" = "no" ]
+}
+@test "signatures_pre_existing: signatures match exactly, never by substring (#1590)" {
+  [ "$(signatures_pre_existing 'Push' 'Push changes')" = "no" ]
+  [ "$(signatures_pre_existing 'Push changes' 'Push')" = "no" ]
+}
+
+@test "_run_only_on_release: a run mixing the previous release with another release is no baseline (#1590)" {
+  run bash -c "source '$ORCH'
+    _run_reusable_sha() { case \"\$3\" in 1) printf 'bbbb\\n';; 2) printf 'bbbb\\naaaa\\n';; 3) return 1;; esac; }
+    _run_only_on_release agent-shield bbbb r 1 || exit 11
+    _run_only_on_release agent-shield bbbb r 2 && exit 12
+    _run_on_release agent-shield bbbb r 2 || exit 13
+    _run_only_on_release agent-shield bbbb r 3 && exit 14
+    _run_only_on_release agent-shield - r 1 && exit 15
+    exit 0"
+  [ "$status" -eq 0 ]
+}
+
+@test "_suspect_class_counts: candidate window drops old-release runs from numerator and denominator (#1590)" {
+  run bash -c "source '$ORCH'
+    _agent_run_json() { echo '[{\"databaseId\":1,\"conclusion\":\"success\",\"createdAt\":\"2026-01-02\"},{\"databaseId\":2,\"conclusion\":\"failure\",\"createdAt\":\"2026-01-02\",\"workflowName\":\"w\"},{\"databaseId\":3,\"conclusion\":\"failure\",\"createdAt\":\"2026-01-02\",\"workflowName\":\"w\"}]'; }
+    _run_reusable_sha() { case \"\$3\" in 1|2) printf 'aaaa\\n';; 3) printf 'cccc\\n';; esac; }
+    _run_signature() { echo 'Stage timeout'; }
+    benign_match() { echo yes; }
+    [ \"\$(_suspect_class_counts agent-shield 2026-01-01 - cccc w 'Stage timeout' r)\" = '1 1 0' ] || exit 11
+    [ \"\$(_suspect_class_counts agent-shield 2026-01-01 - - w 'Stage timeout' r)\" = '2 3 0' ] || exit 12
+    exit 0"
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
+
 @test "triage_label: '-' reads INDETERMINATE where a human sees it; every other triage is itself (#1249)" {
   [ "$(triage_label -)" = "INDETERMINATE" ]
   [ "$(triage_label "")" = "INDETERMINATE" ]
@@ -1707,15 +1798,161 @@ GITEOF
   [[ "$output" == *"target-ring health"* ]]
 }
 
-@test "orchestrator: old-release failures on the SOURCE tier still BLOCK — attribution only applies to tiers not yet on the candidate (#1176)" {
-  # The source tier's sample still counts runs from before the candidate reached it, so dropping only
-  # their failures would let a candidate with no executions there reach PROMOTE. The host (.github-private)
-  # is the source tier of next->ring0 and its failing run's log names the OLD sha: it must still count.
+@test "orchestrator: old-release failures on the SOURCE tier / host are not counted against the candidate (#1590)" {
+  # #1590 reverses #1176's raw source tier: the host (.github-private) is the source tier of next->ring0 and
+  # its failing runs' logs name the OLD sha — they executed the previous release (e.g. run 45258589824 ran
+  # @dev-lead/v139-ring0 = 4e0a20e9 but was counted against ab469dfd). They are old-release health, not cum_fail.
+  # This deliberately REVERSES the #1176 test "old-release failures on the SOURCE tier still BLOCK": #1590 Ask 1
+  # attributes a failed run to the candidate only when its referenced_workflows SHA matches (host run 45258589824).
+  # The protective part of #1176 stays covered by the candidate-SHA and unknown-release tests.
   _executed_sha_stub bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb failure "repo combsmith/.github-private --workflow"
   run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
   [ "$status" -eq 0 ]
+  [[ "$output" != *"BLOCKED"* ]]
+  [[ "$output" == *"target-ring health"* ]]
+}
+
+@test "orchestrator: a SOURCE-tier failure that executed the candidate SHA still BLOCKS (#1590)" {
+  _executed_sha_stub cccccccccccccccccccccccccccccccccccccccc failure "repo combsmith/.github-private --workflow"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
   [[ "$output" == *"BLOCKED"* ]]
-  [[ "$output" != *"target-ring health"* ]]
+}
+
+@test "orchestrator: a SOURCE-tier failure whose executed release is unknown still BLOCKS — fail closed (#1590)" {
+  _executed_sha_stub none failure "repo combsmith/.github-private --workflow"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+}
+
+# ── orchestrator: referenced_workflows attribution + pre-existing signature triage (#1590) ──────
+# next = candidate (cccc), every ring = prior (bbbb); the reusable blob differs (differs=1).
+# The host (.github-private, source tier of next->ring0) has 3 failed runs; TalkTerm (ring1) has 3 failed
+# runs. `gh api repos/<repo>/actions/runs/<id>` returns referenced_workflows naming the reusable at
+# <host_sha> for the host and bbbb for TalkTerm; the run logs carry NO Uses: line, so attribution can
+# only come from referenced_workflows. Failed step: <host_step> on the host, <old_step> on TalkTerm.
+_refwf_stub() {
+  local host_sha="$1" host_step="$2" old_step="$3" cut_iso run_iso
+  STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
+  cut_iso="$(date -u -d "-3 days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v"-3d" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
+  run_iso="$(date -u -d "-2 days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v"-2d" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
+  cat > "$STUB_BIN/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"git/ref/tags/dev-lead/next"*)   echo "cccccccccccccccccccccccccccccccccccccccc commit" ;;
+  *"git/ref/tags/dev-lead/ring0"*)  echo "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb commit" ;;
+  *"git/ref/tags/dev-lead/ring1"*)  echo "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb commit" ;;
+  *"git/ref/tags/dev-lead/stable"*) echo "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb commit" ;;
+  *"matching-refs/tags/dev-lead/v"*) printf 'refs/tags/dev-lead/v2.0.0\ttagobj\ttag\n' ;;
+  *"git/tags/tagobj"*) printf '%s\t%s\n' "cccccccccccccccccccccccccccccccccccccccc" "$cut_iso" ;;
+  *"ref=cccc"*) echo "reuseCCCC" ;;
+  *"ref=bbbb"*) echo "reuseBBBB" ;;
+  *"run list"*)
+    __c=success
+    case "\$*" in *"repo combsmith/.github-private --workflow"*|*"repo combsmith/TalkTerm --workflow"*) __c=failure ;; esac
+    jq -nc --arg d "$run_iso" --arg c "\$__c" '[range(3)|{conclusion:\$c,createdAt:\$d,databaseId:(1000+.),workflowName:"Dev-Lead Agent"}]' ;;
+  *"repos/combsmith/.github-private/actions/runs/"*)
+    echo '{"referenced_workflows":[{"path":"combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@refs/tags/dev-lead/next","sha":"$host_sha","ref":"refs/tags/dev-lead/next"}]}' ;;
+  *"actions/runs/"*)
+    echo '{"referenced_workflows":[{"path":"combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@refs/tags/dev-lead/v1-ring1","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","ref":"refs/tags/dev-lead/v1-ring1"}]}' ;;
+  *"run view"*"--log"*) printf 'build\tUNKNOWN STEP\t2026-09-25T00:00:00.1Z nothing relevant\n' ;;
+  *"run view"*"combsmith/.github-private"*) jq -nc --arg s "$host_step" '{jobs:[{name:"ideate / run",steps:[{name:\$s,conclusion:"failure"}]}]}' ;;
+  *"run view"*) jq -nc --arg s "$old_step" '{jobs:[{name:"ideate / run",steps:[{name:\$s,conclusion:"failure"}]}]}' ;;
+  *) echo "{}" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+  printf '#!/usr/bin/env bash\n:\n' > "$STUB_BIN/git"; chmod +x "$STUB_BIN/git"
+}
+
+@test "orchestrator: a run whose referenced_workflows sha is an older release is not attributed to the candidate (#1590)" {
+  _refwf_stub bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb "Push changes" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"BLOCKED"* ]]
+  [[ "$output" == *"target-ring health"* ]]
+}
+
+@test "orchestrator: source-tier runs that executed an older release do not satisfy the candidate's sample floor (#1590)" {
+  _refwf_stub bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb "Push changes" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"PROMOTE"* ]]
+  [[ "$output" != *"sample=3/3"* ]]
+}
+
+@test "orchestrator: a candidate failure whose signature also fails on the previous release is PRE_EXISTING, not REGRESSION (#1590)" {
+  # The #2143 push race: the candidate's runs fail at "Push changes", and so do runs still on the old release.
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=PRE_EXISTING"* ]]
+  [[ "$output" != *"triage=REGRESSION"* ]]
+}
+
+@test "orchestrator: a candidate failure whose signature never fails on the previous release stays REGRESSION (#1590)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Compile TypeScript" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=REGRESSION"* ]]
+  [[ "$output" != *"triage=PRE_EXISTING"* ]]
+}
+
+@test "orchestrator: a previous-release failure in a plain job (not the reusable's) is not pre-existing evidence (#1590, #1600)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Compile TypeScript" "Compile TypeScript"
+  # Candidate: the reusable job (named "caller / inner") fails at "Compile TypeScript". Previous release: only an
+  # unrelated plain job ("prep") fails at that same step name; its reusable job succeeded.
+  sed -i -e '/^  \*"run view"\*) jq/s/{jobs:\[{name:"ideate \/ run",steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"prep",steps:[{name:\$s,conclusion:"failure"}]},{name:"ideate \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' "$STUB_BIN/gh"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=REGRESSION"* ]]
+  [[ "$output" != *"triage=PRE_EXISTING"* ]]
+}
+
+@test "orchestrator: a previous-release run with only plain jobs has no reusable signature, so it stays REGRESSION (#1600)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  # Previous-release runs expose only a plain job ("prep") failing at the same step name.
+  sed -i -e '/^  \*"run view"\*) jq/s/{name:"ideate \/ run",steps:/{name:"prep",steps:/' "$STUB_BIN/gh"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=REGRESSION"* ]]
+  [[ "$output" != *"triage=PRE_EXISTING"* ]]
+}
+
+@test "orchestrator: a run calling two reusables is ambiguous, so its signature is unknown and stays REGRESSION (#1590, #1600)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  # Both releases' runs have two reusable-calling jobs from different callers; which one ran the
+  # attributed reusable is unknowable, so no signature may match.
+  sed -i -e '/"run view"\*"combsmith\/.github-private"/s/{jobs:\[{name:"ideate \/ run",steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"ideate \/ run",steps:[{name:\$s,conclusion:"failure"}]},{name:"other \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' \
+    -e '/^  \*"run view"\*) jq/s/{jobs:\[{name:"ideate \/ run",steps:\[{name:\$s,conclusion:"failure"}\]}\]}/{jobs:[{name:"ideate \/ run",steps:[{name:\$s,conclusion:"failure"}]},{name:"other \/ run",steps:[{name:"ok",conclusion:"success"}]}]}/' "$STUB_BIN/gh"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=REGRESSION"* ]]
+  [[ "$output" != *"triage=PRE_EXISTING"* ]]
+}
+
+@test "orchestrator: a same-signature failure on a release OLDER than the previous one is not a pre-existing baseline (#1590)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  # TalkTerm's failed runs executed a third release (aaaa), not the previous one (bbbb).
+  sed -i '/v1-ring1/s/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/g' "$STUB_BIN/gh"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" evaluate dev-lead
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BLOCKED"* ]]
+  [[ "$output" == *"triage=REGRESSION"* ]]
+  [[ "$output" != *"triage=PRE_EXISTING"* ]]
+}
+
+@test "orchestrator: promote --allow-pre-existing advances a block whose signature is pre-existing on the old release (dry-run, #1590)" {
+  _refwf_stub cccccccccccccccccccccccccccccccccccccccc "Push changes" "Push changes"
+  run env CANARY_RINGS="$RINGS" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [[ "$output" == *"PRE_EXISTING"* ]]
+  [[ "$output" != *"candidate regression suspected"* ]]
 }
 
 @test "orchestrator: a short (7-char) candidate SHA in the Uses: line is matched by prefix and BLOCKS (#1176)" {
@@ -1754,6 +1991,22 @@ GITEOF
   [[ "$output" == *"DRY-RUN"* ]]
   [[ "$output" == *"PRE_EXISTING"* ]]
   [[ "$output" != *"not promoting"* ]]
+}
+
+@test "orchestrator: --allow-pre-existing stays soak_unmet on an oversized sample target (no 2^63 wrap)" {
+  _graduated_stub 3 2 failure 0
+  local R="$BATS_TEST_TMPDIR/oversize-target.json"
+  jq '.agents["dev-lead"].gate.transitions["next->ring0"].sample_min = 18446744073709551616' "$RINGS" > "$R"
+  run env CANARY_RINGS="$R" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [[ "$output" != *"DRY-RUN"* ]]
+}
+
+@test "orchestrator: --allow-pre-existing stays soak_unmet on an oversized dwell floor (no 2^63 wrap)" {
+  _graduated_stub 3 2 failure 0
+  local R="$BATS_TEST_TMPDIR/oversize-floor.json"
+  jq '.agents["dev-lead"].gate.transitions["next->ring0"].dwell_hours = 18446744073709551616' "$RINGS" > "$R"
+  run env CANARY_RINGS="$R" bash "$ORCH" promote dev-lead --allow-pre-existing --dry-run
+  [[ "$output" != *"DRY-RUN"* ]]
 }
 
 @test "orchestrator: promote --allow-pre-existing REFUSES a BLOCKED+REGRESSION frontier" {
@@ -5473,7 +5726,8 @@ GITEOF
 
 # ── autocut breaking-change detection (#712, epic #1083 pillar 2) ──────────────
 # When autocut cuts a candidate it now CLASSIFIES the change: a conventional-commit
-# `!`/`BREAKING CHANGE` on a commit touching the reusable, or a workflow_call interface
+# `!` in the subject of a commit touching the reusable (a `BREAKING CHANGE:` body line is not
+# read, #1571), or a workflow_call interface
 # break (removed/renamed/newly-required input, removed secret) auto-produces a MAJOR
 # (seeding a fresh v<newmajor>-next per F4); a non-breaking `feat` → minor, `fix` → patch;
 # any signal-fetch error fails safe to patch. The `.agents[a].autocut.bump` knob overrides.
@@ -5712,8 +5966,8 @@ YML
 # ── autocut bump-signal scoping + pagination + fail-safe (#1023 defect 1) ───────
 # Signals are derived ONLY from commits touching a WATCHED path (reusable + optional
 # .agents[a].autocut.watched_paths[]), and the range is ENUMERATED with pagination + a `since`
-# window instead of trusting one capped response. An unrelated feat!/BREAKING outside the watched
-# paths must NOT raise the bump; a BREAKING beyond the first page's cap MUST still be detected;
+# window instead of trusting one capped response. An unrelated feat! outside the watched
+# paths must NOT raise the bump; a feat! beyond the first page's cap MUST still be detected;
 # and a range that cannot be enumerated fails safe to MAJOR (loudly), never silently to patch.
 #
 # The stub serves the reusable path's commit list PER PAGE (re-<n>.json) and, for any OTHER
@@ -5806,17 +6060,58 @@ _filler_page() { jq -nc '[range(100)|{sha:("f\(.)"),commit:{message:"chore: fill
   grep -q "git/tags .*tag=dev-lead/v3.0.0 " "$GH_LOG"
 }
 
-@test "orchestrator: autocut — a BREAKING CHANGE in a watched-path commit BEYOND the page cap IS detected → major (#1023)" {
+@test "orchestrator: autocut — a breaking feat! in a watched-path commit BEYOND the page cap IS detected → major (#1023)" {
   # Page 1 is a full 100-commit page of fillers (no boundary, no breaking); the boundary and the
-  # BREAKING CHANGE commit are on page 2. If pagination stopped at the cap the break would ship as
+  # `feat!` commit are on page 2. If pagination stopped at the cap the break would ship as
   # a patch — the dangerous direction. Enumerating past the cap ⇒ major.
-  local re2='[{"sha":"breaker000000000000000000000000000000000","commit":{"message":"feat: extend the matrix\n\nBREAKING CHANGE: the matrix input is now required."}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
+  local re2='[{"sha":"breaker000000000000000000000000000000000","commit":{"message":"feat!: make the matrix input required"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
   _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
     "2026-08-01T00:00:00Z" "$(_filler_page)" "$re2"
   run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
   [ "$status" -eq 0 ]
   grep -q "git/tags .*tag=dev-lead/v3.0.0 " "$GH_LOG"
+}
+
+@test "orchestrator: autocut — a BREAKING CHANGE body line WITHOUT a subject ! is NOT a major (#1571)" {
+  # Under a body squash message (#1568) the body is free text, so a `BREAKING CHANGE:` line in it
+  # must not force a major. Only the subject's `!` (or the interface diff) marks a break. The
+  # commit is a `feat` with the footer, so the bump is minor, never major.
+  local re1='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"feat: extend the matrix\n\nBREAKING CHANGE: the matrix input is now required."}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
+    "2026-08-01T00:00:00Z" "$re1"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=dev-lead/v2.2.0 " "$GH_LOG"       # minor, from the feat subject
+  run grep -q "tag=dev-lead/v3" "$GH_LOG"                     # the footer alone is not a major
+  [ "$status" -ne 0 ]
+}
+
+@test "orchestrator: autocut — a BREAKING-CHANGE footer on a fix is a patch, not a major (#1571)" {
+  local re1='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"fix: correct a log line\n\nBREAKING-CHANGE: quoted from an upstream changelog"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
+    "2026-08-01T00:00:00Z" "$re1"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=dev-lead/v2.1.1 " "$GH_LOG"
+  run grep -q "tag=dev-lead/v3" "$GH_LOG"
+  [ "$status" -ne 0 ]
+}
+
+@test "orchestrator: autocut — a type! line below the subject is not read as the subject (#1573)" {
+  # jq anchors `^` at the start of the message, not of each line: a `feat!:` quoted in the body
+  # of a fix must not force a major.
+  local re1='[{"sha":"newcommit0000000000000000000000000000","commit":{"message":"fix: correct a log line\n\nfeat!: quoted from an upstream changelog"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"chore: prior baseline"}}]'
+  _scoped_autocut_stub dev-lead combsmith/.github-private .github/workflows/dev-lead-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "2.1.0" \
+    "2026-08-01T00:00:00Z" "$re1"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$AUTOCUT_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=dev-lead/v2.1.1 " "$GH_LOG"
+  run grep -q "tag=dev-lead/v3" "$GH_LOG"
+  [ "$status" -ne 0 ]
 }
 
 @test "orchestrator: autocut — an UNRESOLVABLE range fails safe to MAJOR (loudly), never silently to patch (#1023)" {
@@ -6026,6 +6321,37 @@ GITEOF
   grep -q "PATCH repos/combsmith/.github/git/refs/tags/persona-mention/v2-next " "$GH_LOG"
 }
 
+@test "orchestrator: autocut — a script-only BREAKING CHANGE body line without ! is a minor, not a major (#1571)" {
+  local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"feat: add a --force retrigger mode\n\nBREAKING CHANGE: pasted from a pull request body"}}]}'
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=persona-mention/v1.3.0 " "$GH_LOG"
+  run grep -q "tag=persona-mention/v2" "$GH_LOG"
+  [ "$status" -ne 0 ]
+}
+
+@test "orchestrator: autocut — a script-only hyphenated type! (ci-fix!:) is a major, as on the scoped path (#1571)" {
+  local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"ci-fix!: drop the legacy retrigger path"}}]}'
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=persona-mention/v2.0.0 " "$GH_LOG"
+}
+
+@test "orchestrator: autocut — a script-only type! line below the subject is not a major (#1573)" {
+  local compare='{"files":[{"filename":"scripts/lib/dev-lead-retrigger.sh"}],"commits":[{"commit":{"message":"fix: tidy the retrigger log\n\nci-fix!: quoted from a pull request body"}}]}'
+  _scriptonly_stub persona-mention combsmith/.github .github/workflows/persona-mention-reusable.yml \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa cccccccccccccccccccccccccccccccccccccccc "1.2.0" "$compare"
+  run env CANARY_AUTO_CUT=true CANARY_RINGS="$SCRIPTONLY_RINGS" bash "$ORCH" autocut
+  [ "$status" -eq 0 ]
+  grep -q "git/tags .*tag=persona-mention/v1.2.1 " "$GH_LOG"
+  run grep -q "tag=persona-mention/v2" "$GH_LOG"
+  [ "$status" -ne 0 ]
+}
+
 # ── _gh_move_tag: create the ref when the PATCH reports 422 "Reference does not exist" ──
 # A promotion into a channel that has never been tagged (e.g. persona-mention/ring0,
 # apply-repo-settings) PATCHes a nonexistent ref, which GitHub answers 422 "Reference does not
@@ -6168,6 +6494,119 @@ GHEOF
   [ "$(jq -r '.agents["pr-review"].rings[] | select(.channel=="next") | .members | join(",")' "$RINGS")" = "\$host" ]
   [ "$(jq -r '.agents["pr-review"].rings[] | select(.channel=="ring0") | .members | join(",")' "$RINGS")" = "\$org_infra" ]
   [ "$(jq -r '.agents["pr-review"].rings[] | select(.channel=="stable") | .members | join(",")' "$RINGS")" = "*" ]
+}
+
+# ── run_workflow_aliases: consumer-ring runs under another display name (#1589) ──
+# pr-review's run_workflow is the .github-private caller stub's name ("PR Review Agent — Trigger"), but
+# ring1/stable consumers call it from the canonical stub standards/workflows/pr-review.yml, whose name is
+# "PR Review Agent". With only run_workflow the gate found nothing there (sample=0/1 while bmad-bgreat-suite
+# had 16 good runs) and promoted only via the idle waiver. run_workflow_aliases lists the names to try, in
+# order, on a member that has no workflow named run_workflow.
+@test "pr-review: run_workflow_aliases names the canonical consumer stub's display name (#1589)" {
+  local stub_name
+  stub_name="$(sed -n 's/^name:[[:space:]]*//p' "$SCRIPT_DIR/standards/workflows/pr-review.yml" | head -1)"
+  [ -n "$stub_name" ]
+  run jq -e --arg n "$stub_name" '.agents["pr-review"].run_workflow_aliases | index($n) != null' "$RINGS"
+  [ "$status" -eq 0 ]
+}
+
+@test "registry lint: every run_workflow_aliases is a list of non-empty display names, never a *.yml filename (#1589)" {
+  # A *.yml filename 404s instead of the graceful "could not find any workflows named …" (#747), which
+  # would fail the gate CLOSED on every repo without that workflow (same guard as run_workflow, #1166).
+  run jq -e '[.agents[] | select(has("run_workflow_aliases")) | .run_workflow_aliases
+              | (type == "array") and all(.[]; type == "string" and length > 0 and (test("\\.ya?ml$") | not))
+                and (index(null) == null)] | all' "$RINGS"
+  [ "$status" -eq 0 ]
+  # An alias never repeats run_workflow (it would be read twice for nothing).
+  run jq -e '[.agents[] | select(has("run_workflow_aliases")) | . as $a | ($a.run_workflow_aliases | index($a.run_workflow)) == null] | all' "$RINGS"
+  [ "$status" -eq 0 ]
+}
+
+# _alias_stub — gh stub:
+#   org/selfhost — "PR Review Agent — Trigger" run 501 (the host's caller stub)
+#   org/ring1    — "PR Review Agent" runs 511 (success), 512 (success), 513 (in flight)
+#   org/both     — both names: 521 under run_workflow, 522 under the alias
+#   org/none     — neither name, no ingress (a non-consumer, #747)
+_alias_stub() {
+  export TMPDIR="$BATS_TEST_TMPDIR"
+  STUB_BIN="$(mktemp -d "$BATS_TEST_TMPDIR/stub.XXXXXX")"; export PATH="$STUB_BIN:$PATH"
+  export GH_LOG="$BATS_TEST_TMPDIR/gh-alias.log"; : > "$GH_LOG"
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+echo "$*" >> "$GH_LOG"
+repo=""; wf=""; st=""; prev=""
+for a in "$@"; do
+  [ "$prev" = "--repo" ] && repo="$a"
+  [ "$prev" = "--workflow" ] && wf="$a"
+  [ "$prev" = "--status" ] && st="$a"
+  prev="$a"
+done
+nf() { echo "could not find any workflows named $wf" >&2; exit 1; }
+rec() { printf '{"conclusion":%s,"createdAt":"2026-11-24T0%s:00:00Z","databaseId":%s,"workflowName":"%s"}' "$1" "$2" "$3" "$wf"; }
+[ "$1 $2" = "run list" ] || { echo '{}'; exit 0; }
+case "$repo|$wf" in
+  "org/selfhost|PR Review Agent — Trigger") body="[$(rec '"success"' 1 501)]" ;;
+  "org/ring1|PR Review Agent") body="[$(rec '"success"' 1 511),$(rec '"success"' 2 512),$(rec null 3 513)]" ;;
+  "org/both|PR Review Agent — Trigger") body="[$(rec '"success"' 1 521)]" ;;
+  "org/both|PR Review Agent") body="[$(rec '"success"' 1 522)]" ;;
+  *) nf ;;
+esac
+case "$st" in
+  "") echo "$body" ;;
+  in_progress) jq -c '[.[] | select(.conclusion == null)]' <<< "$body" ;;
+  *) jq -c --arg s "$st" '[.[] | select(.conclusion == $s)]' <<< "$body" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+  ALIAS_RINGS="$BATS_TEST_TMPDIR/alias-rings.json"
+  jq '.agents["pr-review"].rings = [{"channel":"next","order":0,"members":["org/selfhost"]},
+                                    {"channel":"ring1","order":1,"members":["org/ring1","org/none"]}]' "$RINGS" > "$ALIAS_RINGS"
+  export ALIAS_RINGS
+}
+
+@test "_agent_run_json: a ring1 member running pr-review under the consumer stub name is sampled via run_workflow_aliases (#1589)" {
+  _alias_stub
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _agent_run_json pr-review org/ring1 '2026-11-20T00:00:00Z' | jq -c 'map(.databaseId) | sort'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[511,512,513]" ]
+}
+
+@test "_tier_sample: ring1 pr-review samples under the alias are counted toward the gate (#1589)" {
+  _alias_stub
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 _CANARY_UNRESOLVED_FLAG="$flag" \
+    bash -c "source '$ORCH' && _tier_sample pr-review '2026-11-20T00:00:00Z' org/ring1 org/none"
+  [ "$status" -eq 0 ]
+  # two executed runs (513 is in flight); org/none contributes nothing and is not UNRESOLVED.
+  [ "$output" = "2 2026-11-24T01:00:00Z" ]
+  [ ! -s "$flag" ]
+}
+
+@test "_tier_inflight: an in-flight run under the alias holds the idle waiver (#1589)" {
+  _alias_stub
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _tier_inflight pr-review '2026-11-20T00:00:00Z' org/ring1"
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 1 ]
+}
+
+@test "_agent_run_json: run_workflow wins over an alias when a member has both; neither → graceful [] (#1589, #747)" {
+  _alias_stub
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _agent_run_json pr-review org/selfhost '' | jq -c 'map(.databaseId)'"
+  [ "$status" -eq 0 ]; [ "$output" = "[501]" ]
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 \
+    bash -c "source '$ORCH' && _agent_run_json pr-review org/both '' | jq -c 'map(.databaseId)'"
+  [ "$status" -eq 0 ]; [ "$output" = "[521]" ]
+  # The alias is not read on a member where run_workflow resolved.
+  run grep -c -- "--repo org/both --workflow PR Review Agent -L" "$GH_LOG"
+  [ "$output" = "0" ]
+  local flag="$BATS_TEST_TMPDIR/unresolved"; : > "$flag"
+  run env CANARY_RINGS="$ALIAS_RINGS" CANARY_GH_RETRY_SLEEP=0 CANARY_GH_RETRIES=1 _CANARY_UNRESOLVED_FLAG="$flag" \
+    bash -c "source '$ORCH' && _agent_run_json pr-review org/none ''"
+  [ "$status" -eq 0 ]; [ "$output" = "[]" ]
+  [ ! -s "$flag" ]
 }
 
 @test "canary-rollout.yml: pr-review is a hand-dispatchable agent (#1106 AC3)" {
@@ -6797,6 +7236,31 @@ GHEOF
   [[ "$output" == *"bad=0"* ]]
   # The registry has many agents; make sure the comparison was not vacuous.
   [[ "$output" =~ agents=([0-9]+) ]] && [ "${BASH_REMATCH[1]}" -ge 10 ]
+}
+
+@test "registry preload: the memoized run_workflow + run_workflow_aliases list equals the jq lookup for every agent (#1589)" {
+  local rings="$BATS_TEST_TMPDIR/alias-preload.json"
+  # Add a multi-alias agent (including a duplicate of run_workflow, which must be dropped) to the real registry.
+  jq '.agents["multi"] = (.agents["dev-lead"] | .run_workflow = "A" | .run_workflow_aliases = ["B C", "A", "D — E"])' "$RINGS" > "$rings"
+  run env CANARY_RINGS="$rings" bash -c "source '$ORCH'; set +e
+    declare -A exp
+    for a in \$(jq -r '.agents | keys[]' \"\$CANARY_RINGS\"); do
+      _reg_run_workflows \"\$a\"; exp[\$a]=\"\$(printf '%s|' \"\${_REG_WFS[@]}\")\"
+    done
+    _registry_preload || { echo PRELOAD_FAILED; exit 1; }
+    _reg_loaded || { echo NOT_LOADED; exit 1; }
+    bad=0
+    for a in \"\${!exp[@]}\"; do
+      _reg_run_workflows \"\$a\"; got=\"\$(printf '%s|' \"\${_REG_WFS[@]}\")\"
+      [ \"\$got\" = \"\${exp[\$a]}\" ] || { echo \"MISMATCH \$a: '\$got' vs '\${exp[\$a]}'\"; bad=1; }
+    done
+    _reg_run_workflows multi; echo \"multi=\$(printf '%s|' \"\${_REG_WFS[@]}\")\"
+    _reg_run_workflows pr-review; echo \"pr-review=\$(printf '%s|' \"\${_REG_WFS[@]}\")\"
+    echo \"bad=\$bad\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bad=0"* ]]
+  [[ "$output" == *"multi=A|B C|D — E|"* ]]
+  [[ "$output" == *"pr-review=PR Review Agent — Trigger|PR Review Agent|"* ]]
 }
 
 @test "registry preload: a map built for one registry is ignored once CANARY_RINGS points elsewhere (#1259)" {
@@ -8285,4 +8749,114 @@ GHEOF
   commit_page_done "false" abc 100
   commit_page_done "false" 18446744073709551617 100
   ! commit_page_done "false" 42 100
+}
+
+# ── leading-zero env values are decimal, not octal (review on #1506) ──────────
+@test "CANARY_MAX_COMMIT_PAGES: leading-zero values are read as decimal" {
+  run env CANARY_MAX_COMMIT_PAGES=010 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "10" ]]
+  run env CANARY_MAX_COMMIT_PAGES=08 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "8" ]]
+  run env CANARY_MAX_COMMIT_PAGES=000 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
+  [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "50" ]]
+}
+
+# ── #1594: static lint of per-agent `pin_overrides` ───────────────────────────
+# `.agents[<a>].pin_overrides[<repo>] = {tier, reason}` changes ONLY the channel a
+# consumer stub is expected to PIN (ring-pins.sh ring_tier_for_repo → deploy sweep +
+# audit). It never changes ring membership or canary evidence (resolve_members
+# ignores it). An override must name one of the agent's own ring channels, may only
+# move a repo TOWARD stable (its `order` ≥ the repo's computed ring `order`), and
+# must carry a non-empty `reason`.
+
+# _pin_overrides_lint <registry.json> — prints one "<agent>: <repo>: <problem>" line
+# per violation; exit 1 if any, 0 if none.
+_pin_overrides_lint() {
+  local out
+  out="$(jq -r '
+    (.org_infra_repos // []) as $infra
+    | (.agents // {}) | to_entries[] | .key as $a | .value as $ag
+    | select($ag | has("pin_overrides"))
+    | if ($ag.pin_overrides | type) != "object" then "\($a): pin_overrides: not an object"
+      else
+        ($ag.host | sub(".*/";"")) as $host
+        | ([$infra[] | sub(".*/";"")] - [$host]) as $orginfra
+        | ($ag.rings | sort_by(.order)
+            | map({ channel, order,
+                    m: (reduce (.members[]?) as $x ([];
+                          if   $x == "$host"      then . + [$host]
+                          elif $x == "$org_infra" then . + $orginfra
+                          else . + [($x | sub(".*/";""))] end)) })) as $r
+        | $ag.pin_overrides | to_entries[] | .key as $repo | .value as $ov
+        | ($repo | sub(".*/";"")) as $base
+        | ( ([$r[] | select(.m | index($base))][0]) // ([$r[] | select(.m | index("*"))][0]) ) as $computed
+        | if ($ov | type) != "object" then "\($a): \($repo): override is not an object"
+          else
+            ( (if ($ov.tier | type) != "string" or ([$r[] | select(.channel == $ov.tier)] | length) == 0
+               then "\($a): \($repo): tier \($ov.tier | tojson) is not a channel in this agent'"'"'s rings"
+               elif $computed != null and ([$r[] | select(.channel == $ov.tier)][0].order) < $computed.order
+               then "\($a): \($repo): tier \($ov.tier) is less promoted than its computed ring \($computed.channel) (an override may only move toward stable)"
+               else empty end),
+              (if ($ov.reason | type) != "string" or ($ov.reason | test("\\S") | not)
+               then "\($a): \($repo): missing reason" else empty end) )
+          end
+      end' "$1")" || return 2
+  [[ -z "$out" ]] && return 0
+  printf '%s\n' "$out"
+  return 1
+}
+
+@test "registry lint: every pin_override is a known tier, moves toward stable, and has a reason (#1594)" {
+  run _pin_overrides_lint "$RINGS"
+  [ "$status" -eq 0 ] || { echo "invalid pin_overrides:"; echo "$output"; return 1; }
+}
+
+@test "registry: dev-lead pins its host's own stub to ring0 via pin_overrides (SC2 #503, #1594)" {
+  run jq -e '.agents["dev-lead"].pin_overrides["combsmith/.github-private"]
+             | .tier == "ring0" and (.reason | test("SC2") and test("test_sc2_self_review_channel.bats"))' "$RINGS"
+  [ "$status" -eq 0 ]
+  # dev-lead is the only agent with an override today (per-agent, not fleet-wide)
+  run jq -r '[.agents | to_entries[] | select(.value.pin_overrides) | .key] | join(",")' "$RINGS"
+  [ "$output" = "dev-lead" ]
+  # the top-level note documents that ring membership/canary evidence are unchanged
+  run jq -e '._pin_overrides_note | test("resolve_members") and test("PIN")' "$RINGS"
+  [ "$status" -eq 0 ]
+}
+
+@test "pin_overrides: ring membership is unchanged — resolve_members ignores it (#1594)" {
+  run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead next"
+  [ "$status" -eq 0 ]; [ "$output" = "combsmith/.github-private" ]
+  run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead ring0"
+  [ "$status" -eq 0 ]; [ "$output" = "combsmith/.github" ]
+}
+
+@test "registry lint: pin_overrides rejects an unknown tier, a less-promoted tier, and a missing reason (#1594)" {
+  local reg="$BATS_TEST_TMPDIR/po.json"
+  jq -n '{
+    org_infra_repos: ["combsmith/.github", "combsmith/.github-private"],
+    agents: {
+      "a": { host: "combsmith/.github-private",
+             rings: [ {channel:"next",order:0,members:["$host"]},
+                      {channel:"ring0",order:1,members:["$org_infra"]},
+                      {channel:"ring1",order:2,members:["combsmith/TalkTerm"]},
+                      {channel:"stable",order:3,members:["*"]} ],
+             pin_overrides: {
+               "combsmith/.github-private": {tier:"ring0", reason:"ok: next -> ring0 moves toward stable"},
+               "combsmith/TalkTerm":        {tier:"ring0", reason:"ring1 -> ring0 is LESS promoted"},
+               "combsmith/markets":         {tier:"ring9", reason:"not a channel"},
+               "combsmith/broodly":         {tier:"stable"},
+               "combsmith/blank":           {tier:"stable", reason:"  "} } },
+      "b": { host: "combsmith/.github", rings: [ {channel:"stable",order:0,members:["*"]} ],
+             pin_overrides: ["not-an-object"] },
+      "c": { host: "combsmith/.github", rings: [ {channel:"stable",order:0,members:["*"]} ] } } }' > "$reg"
+  run _pin_overrides_lint "$reg"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"a: combsmith/TalkTerm: tier ring0 is less promoted than its computed ring ring1"* ]]
+  [[ "$output" == *"a: combsmith/markets: tier \"ring9\" is not a channel"* ]]
+  [[ "$output" == *"a: combsmith/broodly: missing reason"* ]]
+  [[ "$output" == *"a: combsmith/blank: missing reason"* ]]
+  [[ "$output" == *"b: pin_overrides: not an object"* ]]
+  [[ "$output" != *".github-private"* ]]
+  [[ "$output" != *"c:"* ]]
+  [ "$(printf '%s\n' "$output" | wc -l)" -eq 5 ]
 }

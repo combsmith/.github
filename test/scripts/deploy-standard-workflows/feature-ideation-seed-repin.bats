@@ -50,15 +50,17 @@ STUB
 }
 
 # A feature-ideation stub with a TUNED project_context sentinel, pinned at <ref>.
+# Derived from the full template so every guarded surface (on/permissions/
+# concurrency, incl. job-level permissions) is canonical (#1576: fleet copies now
+# get surface repair); only the pin and project_context differ.
 fi_stub_pinning() {  # <ref>
-  local body="jobs:
-  ideate:
-    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@$1
-    with:
-      project_context: |
-        TUNED-REPO-CONTEXT-SENTINEL
-    secrets:
-      CLAUDE_CODE_OAUTH_TOKEN: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
+  local body
+  body="$(awk -v ref="$1" '
+    /feature-ideation-reusable\.yml@/ { sub(/@[^ ]+/, "@" ref) }
+    /^      project_context: \|/ { print; print "        TUNED-REPO-CONTEXT-SENTINEL"; skip = 1; next }
+    skip && /^        / { next }
+    { skip = 0; print }
+  ' "${REPO_ROOT}/standards/workflows/feature-ideation.yml")"
   base64 -w 0 <<<"$body" 2>/dev/null || base64 -b 0 <<<"$body"
 }
 
@@ -112,6 +114,21 @@ refs/tags/feature-ideation/v1-ring1"
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'already compliant'
   ! echo "$output" | grep -q 'Would open PR'
+}
+
+@test "feature-ideation: a tuned stub with a stale concurrency group gets the canonical surface, project_context kept" {
+  export GH_MATCHING_REFS="refs/tags/feature-ideation/v1-stable
+refs/tags/feature-ideation/v1-next
+refs/tags/feature-ideation/v1-ring0
+refs/tags/feature-ideation/v1-ring1"
+  local stale
+  stale="$(fi_stub_pinning feature-ideation/v1-stable | base64 -d | sed -E "s/^  group: .*/  group: feature-ideation/")"
+  GH_CONTENT_B64="$(printf '%s\n' "$stale" | base64 -w 0)"; export GH_CONTENT_B64
+  install_gh_stub
+  run env GH_TOKEN=x bash "$SCRIPT" --dry-run --repo markets --workflow feature-ideation.yml
+  [ "$status" -eq 0 ]
+  ! echo "$output" | grep -q 'already compliant'
+  echo "$output" | grep -qE 'Would open PR for markets .* feature-ideation.yml'
 }
 
 # ── initiative-driver: verbatim add (no reusable → no pin) ──────────────────────
