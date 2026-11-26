@@ -52,11 +52,11 @@
     "doc/*"
   ],
 
-  "_linked_issue_patterns_note": "Tunable. Case-insensitive POSIX EREs; a PR body matching any of them is treated as linking an issue, which suppresses small_doc_diff_no_issue.",
+  "_linked_issue_patterns_note": "Tunable. Case-insensitive POSIX EREs (owner/repo runs are length-bounded to GitHub limits so an unbroken run in an untrusted body cannot trigger quadratic backtracking); a PR body matching any of them is treated as linking an issue, which suppresses small_doc_diff_no_issue.",
   "linked_issue_patterns": [
     "(^|[^[:alnum:]&/])#[0-9]+",
     "/issues/[0-9]+",
-    "[[:alnum:]_.-]+/[[:alnum:]_.-]+#[0-9]+"
+    "[[:alnum:]_.-]{1,39}/[[:alnum:]_.-]{1,100}#[0-9]+"
   ],
 
   "_typo_words_note": "Tunable. Common misspellings, lowercase. typo_introduced fires when an ADDED patch line contains one of these as a whole word and no REMOVED line of the same file does (the edit introduces the typo).",

@@ -424,12 +424,21 @@ STUB
 
 @test "glue: a very large PR body does not hit the argument-size limit" {
   make_gh_stub 0
-  # Prose-like (spaced) body: one unbroken alphanumeric run would instead hit the
-  # linked-issue regexes' own quadratic backtracking, which is not under test.
+  # Prose-like (spaced) body; the unbroken-run case has its own test below.
   yes 'lorem ipsum dolor sit amet' | head -c 200000 \
     | jq -Rs '{changed_files:1,title:"Update README.md",body:.,author_association:"NONE",user:{login:"drive-by",type:"User"},head:{ref:"main",repo:{full_name:"drive-by/repo",default_branch:"main"}},base:{repo:{full_name:"acme/repo"}}}' >"$TMP/pr.json"
   sed -i "s|^  \*pulls/7\*).*|  *pulls/7*) cat '$TMP/pr.json' ;;|" "$TMP/bin/gh"
   run env PATH="$TMP/bin:$PATH" SPS_NOW="2026-11-22T12:00:00Z" "$SCRIPT" --repo acme/repo --pr 7
+  [ "$status" -eq 0 ]
+}
+
+@test "glue: an unbroken alphanumeric PR body does not stall the linked-issue regexes" {
+  make_gh_stub 0
+  # The owner/repo#N pattern is length-bounded, so one long unbroken run is linear, not quadratic.
+  head -c 30000 /dev/zero | tr '\0' 'a' \
+    | jq -Rs '{changed_files:1,title:"Update README.md",body:.,author_association:"NONE",user:{login:"drive-by",type:"User"},head:{ref:"main",repo:{full_name:"drive-by/repo",default_branch:"main"}},base:{repo:{full_name:"acme/repo"}}}' >"$TMP/pr.json"
+  sed -i "s|^  \*pulls/7\*).*|  *pulls/7*) cat '$TMP/pr.json' ;;|" "$TMP/bin/gh"
+  run timeout 20 env PATH="$TMP/bin:$PATH" SPS_NOW="2026-11-22T12:00:00Z" "$SCRIPT" --repo acme/repo --pr 7
   [ "$status" -eq 0 ]
 }
 
