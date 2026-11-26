@@ -8378,3 +8378,103 @@ GHEOF
   run env CANARY_MAX_COMMIT_PAGES=000 bash -c "source '$ORCH' && echo \"\$CANARY_MAX_COMMIT_PAGES\""
   [[ "$status" -eq 0 ]]; [[ "${lines[-1]}" = "50" ]]
 }
+
+# ── #1594: static lint of per-agent `pin_overrides` ───────────────────────────
+# `.agents[<a>].pin_overrides[<repo>] = {tier, reason}` changes ONLY the channel a
+# consumer stub is expected to PIN (ring-pins.sh ring_tier_for_repo → deploy sweep +
+# audit). It never changes ring membership or canary evidence (resolve_members
+# ignores it). An override must name one of the agent's own ring channels, may only
+# move a repo TOWARD stable (its `order` ≥ the repo's computed ring `order`), and
+# must carry a non-empty `reason`.
+
+# _pin_overrides_lint <registry.json> — prints one "<agent>: <repo>: <problem>" line
+# per violation; exit 1 if any, 0 if none.
+_pin_overrides_lint() {
+  local out
+  out="$(jq -r '
+    (.org_infra_repos // []) as $infra
+    | (.agents // {}) | to_entries[] | .key as $a | .value as $ag
+    | select($ag | has("pin_overrides"))
+    | if ($ag.pin_overrides | type) != "object" then "\($a): pin_overrides: not an object"
+      else
+        ($ag.host | sub(".*/";"")) as $host
+        | ([$infra[] | sub(".*/";"")] - [$host]) as $orginfra
+        | ($ag.rings | sort_by(.order)
+            | map({ channel, order,
+                    m: (reduce (.members[]?) as $x ([];
+                          if   $x == "$host"      then . + [$host]
+                          elif $x == "$org_infra" then . + $orginfra
+                          else . + [($x | sub(".*/";""))] end)) })) as $r
+        | $ag.pin_overrides | to_entries[] | .key as $repo | .value as $ov
+        | ($repo | sub(".*/";"")) as $base
+        | ( ([$r[] | select(.m | index($base))][0]) // ([$r[] | select(.m | index("*"))][0]) ) as $computed
+        | if ($ov | type) != "object" then "\($a): \($repo): override is not an object"
+          else
+            ( (if ($ov.tier | type) != "string" or ([$r[] | select(.channel == $ov.tier)] | length) == 0
+               then "\($a): \($repo): tier \($ov.tier | tojson) is not a channel in this agent'"'"'s rings"
+               elif $computed != null and ([$r[] | select(.channel == $ov.tier)][0].order) < $computed.order
+               then "\($a): \($repo): tier \($ov.tier) is less promoted than its computed ring \($computed.channel) (an override may only move toward stable)"
+               else empty end),
+              (if ($ov.reason | type) != "string" or ($ov.reason | test("\\S") | not)
+               then "\($a): \($repo): missing reason" else empty end) )
+          end
+      end' "$1")" || return 2
+  [[ -z "$out" ]] && return 0
+  printf '%s\n' "$out"
+  return 1
+}
+
+@test "registry lint: every pin_override is a known tier, moves toward stable, and has a reason (#1594)" {
+  run _pin_overrides_lint "$RINGS"
+  [ "$status" -eq 0 ] || { echo "invalid pin_overrides:"; echo "$output"; return 1; }
+}
+
+@test "registry: dev-lead pins its host's own stub to ring0 via pin_overrides (SC2 #503, #1594)" {
+  run jq -e '.agents["dev-lead"].pin_overrides["combsmith/.github-private"]
+             | .tier == "ring0" and (.reason | test("SC2") and test("test_sc2_self_review_channel.bats"))' "$RINGS"
+  [ "$status" -eq 0 ]
+  # dev-lead is the only agent with an override today (per-agent, not fleet-wide)
+  run jq -r '[.agents | to_entries[] | select(.value.pin_overrides) | .key] | join(",")' "$RINGS"
+  [ "$output" = "dev-lead" ]
+  # the top-level note documents that ring membership/canary evidence are unchanged
+  run jq -e '._pin_overrides_note | test("resolve_members") and test("PIN")' "$RINGS"
+  [ "$status" -eq 0 ]
+}
+
+@test "pin_overrides: ring membership is unchanged — resolve_members ignores it (#1594)" {
+  run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead next"
+  [ "$status" -eq 0 ]; [ "$output" = "combsmith/.github-private" ]
+  run bash -c "source '$ORCH' && CANARY_RINGS='$RINGS' resolve_members dev-lead ring0"
+  [ "$status" -eq 0 ]; [ "$output" = "combsmith/.github" ]
+}
+
+@test "registry lint: pin_overrides rejects an unknown tier, a less-promoted tier, and a missing reason (#1594)" {
+  local reg="$BATS_TEST_TMPDIR/po.json"
+  jq -n '{
+    org_infra_repos: ["combsmith/.github", "combsmith/.github-private"],
+    agents: {
+      "a": { host: "combsmith/.github-private",
+             rings: [ {channel:"next",order:0,members:["$host"]},
+                      {channel:"ring0",order:1,members:["$org_infra"]},
+                      {channel:"ring1",order:2,members:["combsmith/TalkTerm"]},
+                      {channel:"stable",order:3,members:["*"]} ],
+             pin_overrides: {
+               "combsmith/.github-private": {tier:"ring0", reason:"ok: next -> ring0 moves toward stable"},
+               "combsmith/TalkTerm":        {tier:"ring0", reason:"ring1 -> ring0 is LESS promoted"},
+               "combsmith/markets":         {tier:"ring9", reason:"not a channel"},
+               "combsmith/broodly":         {tier:"stable"},
+               "combsmith/blank":           {tier:"stable", reason:"  "} } },
+      "b": { host: "combsmith/.github", rings: [ {channel:"stable",order:0,members:["*"]} ],
+             pin_overrides: ["not-an-object"] },
+      "c": { host: "combsmith/.github", rings: [ {channel:"stable",order:0,members:["*"]} ] } } }' > "$reg"
+  run _pin_overrides_lint "$reg"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"a: combsmith/TalkTerm: tier ring0 is less promoted than its computed ring ring1"* ]]
+  [[ "$output" == *"a: combsmith/markets: tier \"ring9\" is not a channel"* ]]
+  [[ "$output" == *"a: combsmith/broodly: missing reason"* ]]
+  [[ "$output" == *"a: combsmith/blank: missing reason"* ]]
+  [[ "$output" == *"b: pin_overrides: not an object"* ]]
+  [[ "$output" != *".github-private"* ]]
+  [[ "$output" != *"c:"* ]]
+  [ "$(printf '%s\n' "$output" | wc -l)" -eq 5 ]
+}
