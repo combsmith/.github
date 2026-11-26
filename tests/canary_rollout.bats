@@ -450,6 +450,18 @@ YML
   [ "$(signatures_pre_existing 'Push changes' 'Push')" = "no" ]
 }
 
+@test "_run_only_on_release: a run mixing the previous release with another release is no baseline (#1590)" {
+  run bash -c "source '$ORCH'
+    _run_reusable_sha() { case \"\$3\" in 1) printf 'bbbb\\n';; 2) printf 'bbbb\\naaaa\\n';; 3) return 1;; esac; }
+    _run_only_on_release agent-shield bbbb r 1 || exit 11
+    _run_only_on_release agent-shield bbbb r 2 && exit 12
+    _run_on_release agent-shield bbbb r 2 || exit 13
+    _run_only_on_release agent-shield bbbb r 3 && exit 14
+    _run_only_on_release agent-shield - r 1 && exit 15
+    exit 0"
+  [ "$status" -eq 0 ]
+}
+
 @test "triage_label: '-' reads INDETERMINATE where a human sees it; every other triage is itself (#1249)" {
   [ "$(triage_label -)" = "INDETERMINATE" ]
   [ "$(triage_label "")" = "INDETERMINATE" ]

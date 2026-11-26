@@ -1671,6 +1671,23 @@ _run_on_release() {
   return 1
 }
 
+# _run_only_on_release <agent> <sha> <repo> <run_id> — like _run_on_release, but 0 only when EVERY
+# SHA the run's calls resolved to matches <sha>. A run that called the reusable at the previous
+# release AND another release has a run-wide failure signature (_run_signature) that may come from
+# the other release, so it must not be baseline evidence for the previous release.
+_run_only_on_release() {
+  local agent="$1" want="$2" repo="$3" id="$4" sha shas seen=0
+  { [[ -z "$want" ]] || [[ "$want" = "-" ]]; } && return 1
+  shas="$(_run_reusable_sha "$agent" "$repo" "$id")" || return 1
+  while IFS= read -r sha; do
+    [[ -z "$sha" ]] && continue
+    case "$want" in "$sha"*) seen=1; continue ;; esac
+    case "$sha" in "$want"*) seen=1; continue ;; esac
+    return 1
+  done <<< "$shas"
+  [[ "$seen" = "1" ]]
+}
+
 # _cumulative_health <agent> <since_z> <differs 0|1> <cand|-> <repo...> — failures +
 # startup_failures across EVERY given tier repo since the candidate cut. Only runs that executed
 # the candidate count (#1176): a failure from a run provably on an OLDER release (see
@@ -1707,7 +1724,7 @@ _cumulative_health() {
           stale=$(( stale + 1 ))
           # Only the PREVIOUS release's failures are signature evidence (_CANARY_PRIOR); a run on any
           # other non-candidate release still never counts against the candidate, but is no baseline.
-          if [[ -n "${_CANARY_FAIL_LOG:-}" ]] && _run_on_release "$agent" "${_CANARY_PRIOR:-}" "$repo" "$rid"; then
+          if [[ -n "${_CANARY_FAIL_LOG:-}" ]] && _run_only_on_release "$agent" "${_CANARY_PRIOR:-}" "$repo" "$rid"; then
             printf 'stale\t%s\t%s\t%s\n' "$repo" "$rid" "$rrole" >> "$_CANARY_FAIL_LOG" 2>/dev/null || true
           fi
         elif [[ -n "$patterns" ]] && _failure_benign "$repo" "$rid" "$rwf" "$patterns" "$rrole"; then
