@@ -1197,6 +1197,10 @@
       "reusable": ".github/workflows/pr-review.yml",
       "caller_stub": ".github/workflows/pr-review-trigger.yml",
       "run_workflow": "PR Review Agent — Trigger",
+      "_run_workflow_aliases_note": "combsmith/.github#1589 — ring1/stable consumers call pr-review from the canonical stub standards/workflows/pr-review.yml, whose display name is `PR Review Agent`, not run_workflow. With run_workflow alone the gate found no runs there (sample=0 while ring1 had good runs) and promoted only via the idle waiver. run_workflow_aliases are further display names, tried IN ORDER on a member that has no workflow named run_workflow; the first one present is that member's run history. A member with none of them still gets the graceful 'could not find any workflows named …' (→ ingress / [], #747). Display names only, never *.yml filenames (same reason as run_workflow above).",
+      "run_workflow_aliases": [
+        "PR Review Agent"
+      ],
       "ingress_job": "pr-review",
       "rings": [
         {
