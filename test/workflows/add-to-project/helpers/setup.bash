@@ -18,7 +18,7 @@ tt_make_tmpdir() {
 }
 
 tt_cleanup_tmpdir() {
-  if [ -n "${TT_TMP:-}" ] && [ -d "${TT_TMP}" ]; then
+  if [[ -n "${TT_TMP:-}" && -d "${TT_TMP}" ]]; then
     rm -rf "${TT_TMP}"
   fi
 }
