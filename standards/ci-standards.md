@@ -893,7 +893,7 @@ Decision record: [`docs/initiatives/sonarcloud-suppression-adr.md`](../docs/init
   scope or ignore-issue settings, and do not assign custom quality profiles or
   gates. Any SonarCloud state that does not come from Git is drift.
 - **Suppress with an inline marker** on the offending line, always rule-scoped
-  and with a reason: `# NOSONAR(<repo>:<rule>) <reason>`. A bare `NOSONAR` and
+  and with a reason: `# NOSONAR(<analyzer>:<rule>) <reason>`. A bare `NOSONAR` and
   file- or block-wide disables are not allowed. Fix the finding first.
 - **`sonar-project.properties` sets analysis scope only** (project key,
   organization, report paths, and `sonar.exclusions` for vendored or generated

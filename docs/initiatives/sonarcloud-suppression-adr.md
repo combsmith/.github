@@ -52,7 +52,7 @@ per-repo configuration. This ADR makes that the rule for every finding.
    subprocess.run(cmd, shell=False)  # NOSONAR(pythonsecurity:S4721) cmd is a fixed argv list, no user input
    ```
 
-   - Always name the rule (`NOSONAR(<repo>:<key>)`). A bare `NOSONAR` silences
+   - Always name the rule (`NOSONAR(<analyzer>:<rule_key>)`). A bare `NOSONAR` silences
      every rule on the line and is not allowed.
    - Always give a short reason after the marker.
    - One line, one marker. No file-wide or block-wide disables.
