@@ -731,6 +731,42 @@ _only_real_step() {
   grep -q -- '-X PATCH repos/.*/acme/code-scanning/default-setup' "$CALLS"
 }
 
+@test "apply_codeql_default_setup resets a configured repo on the extended suite to default (#1617)" {
+  # `extended` runs actions/unpinned-tag, which flags every first-party channel
+  # pin; the standard is the `default` suite.
+  gh() {
+    printf 'gh %s\n' "$*" >> "$CALLS"
+    [[ "$*" == *"-X PATCH"* ]] && return 0
+    printf 'configured\textended\n'
+  }
+  : > "$CALLS"
+  run apply_codeql_default_setup acme
+  [ "$status" -eq 0 ]
+  grep -q -- '-X PATCH repos/.*/acme/code-scanning/default-setup -F query_suite=default' "$CALLS"
+  ! grep -q -- 'state=' "$CALLS"
+}
+
+@test "apply_codeql_default_setup leaves a configured repo on the default suite unchanged (#1617)" {
+  gh() { printf 'gh %s\n' "$*" >> "$CALLS"; printf 'configured\tdefault\n'; }
+  : > "$CALLS"
+  run apply_codeql_default_setup acme
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already configured"* ]]
+  ! grep -q -- 'PATCH' "$CALLS"
+}
+
+@test "apply_codeql_default_setup returns non-zero when the query-suite reset fails (#1617)" {
+  gh() {
+    if [[ "$*" == *"-X PATCH"* ]]; then
+      printf 'gh: Resource not accessible by personal access token (HTTP 403)\n'
+      return 1
+    fi
+    printf 'configured\textended\n'
+  }
+  run apply_codeql_default_setup acme
+  [ "$status" -eq 1 ]
+}
+
 @test "a failing apply_codeql_default_setup propagates its name into FAILED_STEPS (AC6c/AC6d)" {
   _only_real_step apply_codeql_default_setup
   gh() {

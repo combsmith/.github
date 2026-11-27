@@ -674,6 +674,17 @@ the file and enable default setup. The two configurations are mutually
 exclusive at the GitHub level — leaving the workflow file behind after
 flipping default setup on causes both to run and double-bills CI minutes.
 
+The same check files `codeql-default-setup-query-suite` (warning) when default
+setup is `configured` on a query suite other than `default`, and
+`apply-repo-settings.sh` resets such a repo to `default`. The `extended` suite
+adds `actions/unpinned-tag`, which raises a medium-severity alert on every
+first-party channel-tag caller stub. The
+[exception for internal reusable workflow references](#exception-internal-reusable-workflow-references)
+requires those pins, and default setup cannot filter the results out, so the
+alerts can never be fixed and they count against the `code_scanning` merge
+floor (#1617). A repo that needs `extended` for a documented threat model
+records the exception here before changing the suite.
+
 **Status check name:** GitHub publishes default setup results under the
 required-status-check context name **`CodeQL`** (single context, regardless
 of how many languages are detected). The codified `code-quality` ruleset

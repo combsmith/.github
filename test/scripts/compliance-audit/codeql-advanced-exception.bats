@@ -159,3 +159,46 @@ exit 0'
       || { echo "${repo} is listed but not recorded in ci-standards.md §2"; return 1; }
   done < <(bash -c 'source "'"$REPO_ROOT"'/scripts/lib/codeql-advanced.sh"; printf "%s\n" "${CODEQL_ADVANCED_EXCEPTIONS[@]}"')
 }
+
+# ── Query suite drift (#1617) ────────────────────────────────────────────────
+# The standard is default setup on the `default` suite. Five repos ran
+# `extended`, whose `actions/unpinned-tag` query flags every first-party
+# channel-tag caller stub — alerts the standard makes unfixable and that
+# default setup cannot filter. The check used to read only `state`.
+
+_suite_mock() {
+  printf 'case "$args" in
+  *code-scanning/default-setup*) echo %q; exit 0 ;;
+  *workflows/codeql.yml*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+esac
+exit 0' "$1"
+}
+
+@test "default setup on the extended suite → codeql-default-setup-query-suite warning" {
+  run _run_check "demo-repo" "$(_suite_mock '{"state":"configured","query_suite":"extended"}')"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codeql-default-setup-query-suite"* ]]
+  [[ "$output" == *"warning"* ]]
+  [[ "$output" == *"query_suite=default"* ]]
+  [[ "$output" != *"codeql-default-setup-not-configured"* ]]
+}
+
+@test "default setup on the default suite → no query-suite finding" {
+  run _run_check "demo-repo" "$(_suite_mock '{"state":"configured","query_suite":"default"}')"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"codeql-default-setup-query-suite"* ]]
+  [[ "$output" != *"codeql-default-setup-not-configured"* ]]
+}
+
+@test "default setup with no query_suite in the response → no query-suite finding" {
+  run _run_check "demo-repo" "$(_suite_mock '{"state":"configured"}')"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"codeql-default-setup-query-suite"* ]]
+}
+
+@test "default setup not configured → only the not-configured finding, no query-suite finding" {
+  run _run_check "demo-repo" "$(_suite_mock '{"state":"not-configured","query_suite":"extended"}')"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"codeql-default-setup-not-configured"* ]]
+  [[ "$output" != *"codeql-default-setup-query-suite"* ]]
+}
