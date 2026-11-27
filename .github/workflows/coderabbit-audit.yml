@@ -1,0 +1,85 @@
+# Weekly org-wide CodeRabbit Deep Scan audit.
+#
+# Reads the org's Deep Scan findings from the CodeRabbit API, routes each one to
+# the repo that owns the code, and idempotently creates/updates/closes one GitHub
+# issue per finding. Findings are unverified LLM output, so issues get
+# needs-verification and never dev-lead; a person adds dev-lead after confirming.
+#
+# Runs Thursdays, after the Wednesday CodeQL audit and before the Friday
+# compliance audit, so no two audits file into the same repos on the same day.
+# The API only reads results: Deep Scans run on CodeRabbit's own schedule.
+#
+# Every org repo is public, so this run's logs, summary and artifact are too. The
+# script writes only opaque ids, severities and counts to any of them.
+#
+# Idempotency, labeling, routing and lifecycle live in scripts/coderabbit-audit.sh.
+# Standard: standards/ci-standards.md#coderabbit-audit-coderabbit-audityml
+name: CodeRabbit Audit
+
+on:
+  schedule:
+    # Minute 1 = cron_offset_minute coderabbit-audit.yml (scripts/lib/cron-timing.sh).
+    - cron: '1 17 * * 4'    # Every Thursday at 17:01 UTC
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Limit to a specific repo (owner/name or name). Leave blank to read all.'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run — read and report only, skip issue writes'
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: coderabbit-audit
+  cancel-in-progress: false   # let a running audit finish to avoid partial issue state
+
+jobs:
+  audit:
+    name: CodeRabbit Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout .github repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run CodeRabbit audit
+        env:
+          # Needs, on every org repo: Contents (read), Issues (read/write),
+          # Metadata (read); plus Organization metadata (read) to list repos.
+          GH_TOKEN: ${{ secrets.ORG_SCORECARD_TOKEN }}
+          # Non-agentic key with security:read.
+          CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
+          ORG: ${{ github.repository_owner }}
+          REPORT_DIR: ${{ runner.temp }}/coderabbit-report
+          TARGET_REPO: ${{ inputs.target_repo || '' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: bash scripts/coderabbit-audit.sh
+
+      - name: Write step summary
+        if: always()
+        env:
+          SUMMARY: ${{ runner.temp }}/coderabbit-report/summary.md
+        run: |
+          if [ -f "$SUMMARY" ]; then
+            cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "CodeRabbit audit did not produce a summary." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coderabbit-report
+          # Summary only: this repo is public, and the summary holds counts alone.
+          path: ${{ runner.temp }}/coderabbit-report/summary.md
+          retention-days: 90
