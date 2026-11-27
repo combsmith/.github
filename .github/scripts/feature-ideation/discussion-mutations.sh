@@ -77,7 +77,7 @@ mutation($repoId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
     title: $title,
     body: $body
   }) {
-    discussion { id number url viewerDidAuthor }
+    discussion { id number url }
   }
 }
 GRAPHQL
@@ -116,7 +116,7 @@ mutation($discussionId: ID!, $body: String!) {
     discussionId: $discussionId,
     body: $body
   }) {
-    comment { id url viewerDidAuthor }
+    comment { id url }
   }
 }
 GRAPHQL

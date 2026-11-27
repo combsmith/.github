@@ -17,10 +17,11 @@ EXEC="${TT_SCRIPTS_DIR}/publish-mutation-plan.sh"
 # lookup reads .data.repository.discussion; the context lookup reads
 # .data.repository.{id,discussionCategories} and .data.nodes; create reads
 # .data.createDiscussion.discussion.id; comment/label only need non-null data.
-# Discussions: D_target/D_existing/D_a/D_b are Ideas in this repo (R_1),
+# Discussions: D_target/D_existing/D_a/D_b/D_new are Ideas in this repo (R_1)
+# (D_new is the one a create returns),
 # D_annc is an Announcement in this repo, D_foreign is an Idea elsewhere.
 CATS_IDEAS='[{"id":"C_ideas","slug":"ideas","name":"Ideas"},{"id":"C_ann","slug":"announcements","name":"Announcements"},{"id":"C_general","slug":"general","name":"General"}]'
-NODES='[{"id":"D_target","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},{"id":"D_existing","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},{"id":"D_a","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},{"id":"D_b","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},{"id":"D_annc","category":{"id":"C_ann"},"repository":{"id":"R_1"}},{"id":"D_foreign","category":{"id":"C_ideas"},"repository":{"id":"R_other"}}]'
+NODES='[{"id":"D_target","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},{"id":"D_existing","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},{"id":"D_a","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},{"id":"D_b","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},{"id":"D_new","category":{"id":"C_ideas"},"repository":{"id":"R_1"}},{"id":"D_annc","category":{"id":"C_ann"},"repository":{"id":"R_1"}},{"id":"D_foreign","category":{"id":"C_ideas"},"repository":{"id":"R_other"}}]'
 # response <categories-json> — the universal stub response.
 response() {
   jq -nc --argjson cats "$1" --argjson nodes "$NODES" '{data: {
@@ -64,6 +65,10 @@ EOF
   export TARGET_DISCUSSION=""
   export ENHANCE_BACKLOG=0
   export PUBLISH_WRITE_DELAY_SECONDS=0
+  # Re-run ledgers (#1456): earlier attempts' artifacts, and this attempt's.
+  export PUBLISH_LEDGER_IN="${TT_TMP}/ledger-in"
+  export PUBLISH_LEDGER_OUT="${TT_TMP}/ledger-out/ledger.jsonl"
+  mkdir -p "$PUBLISH_LEDGER_IN"
   unset DRY_RUN GITHUB_STEP_SUMMARY
 }
 
@@ -571,14 +576,50 @@ quiet() {
 }
 
 # ---------------------------------------------------------------------------
-# Review follow-up: re-running a failed publish job is safe (#1389)
+# Re-running a failed publish job is safe (#1389), and is recognised from
+# state only this workflow run holds (#1456)
 # ---------------------------------------------------------------------------
+# Each attempt appends what it published to PUBLISH_LEDGER_OUT, which the
+# workflow uploads as an artifact of the run (if: always()). A re-run attempt
+# downloads the earlier attempts' ledgers into PUBLISH_LEDGER_IN and skips
+# exactly those entries. Markers in published text are for display only and
+# are never read: github-actions[bot] is shared by every workflow of the
+# calling repository, so a marker proves nothing about who wrote it.
 
 # marker_of <entry index> — the hidden marker the executor sent for that entry.
 marker_of() { grep -ohE "feature-ideation:op=[0-9a-f]+:$1([^0-9]|\$)" "$GH_STUB_LOG" | grep -oE "feature-ideation:op=[0-9a-f]+:$1" | head -1; }
 reset_logs() { : >"$GH_STUB_LOG"; : >"$GH_STDIN_LOG"; }
+# plan_hash — the id the executor gives the current plan.
+plan_hash() { sha256sum "$PLAN_PATH" | cut -c1-16; }
+# next_attempt — hand this attempt's ledger to the next one, as the workflow
+# does: one directory per earlier attempt's artifact.
+next_attempt() {
+  local n
+  n=$(find "$PUBLISH_LEDGER_IN" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+  n=$((n + 1))
+  mkdir -p "${PUBLISH_LEDGER_IN}/feature-ideation-publish-ledger-${n}"
+  if [ -f "$PUBLISH_LEDGER_OUT" ]; then
+    mv "$PUBLISH_LEDGER_OUT" "${PUBLISH_LEDGER_IN}/feature-ideation-publish-ledger-${n}/ledger.jsonl"
+  fi
+  reset_logs
+}
+# earlier_ledger <line>... — a ledger an earlier attempt left.
+earlier_ledger() {
+  mkdir -p "${PUBLISH_LEDGER_IN}/feature-ideation-publish-ledger-1"
+  printf '%s\n' "$@" >>"${PUBLISH_LEDGER_IN}/feature-ideation-publish-ledger-1/ledger.jsonl"
+}
+# Lookups that read published bodies (what the marker scheme needed).
+body_lookups() { jq -s '[.[] | select(.query? // "" | test("body|viewerDidAuthor|comments\\(|discussions\\("))] | length' "$GH_STDIN_LOG"; }
+# The four-entry plan: a Discussion, a comment on an existing one, and a
+# follow-up comment and label on the new one.
+full_plan() {
+  plan_add "$(create planned-discussion-1)"
+  plan_add "$(comment D_existing)"
+  plan_add "$(comment planned-discussion-1)"
+  plan_add "$(label planned-discussion-1)"
+}
 
-@test "re-run: every created Discussion and comment carries a hidden marker for its plan entry" {
+@test "re-run: every created Discussion and comment still carries a display marker for its plan entry" {
   plan_add "$(create planned-discussion-1)"
   plan_add "$(comment D_existing)"
   run "$EXEC"
@@ -587,162 +628,171 @@ reset_logs() { : >"$GH_STUB_LOG"; : >"$GH_STDIN_LOG"; }
   [ -n "$(marker_of 1)" ]
 }
 
-@test "re-run: what an earlier attempt published is skipped, and the rest is published" {
-  plan_add "$(create planned-discussion-1)"
-  plan_add "$(comment D_existing)"
-  plan_add "$(comment planned-discussion-1)"
-  plan_add "$(label planned-discussion-1)"
+@test "re-run: each attempt records what it published in its ledger, labels excepted" {
+  full_plan
   run "$EXEC"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  local m0 m1
-  m0="$(marker_of 0)"; m1="$(marker_of 1)"
-  [ -n "$m0" ] && [ -n "$m1" ]
-  # The earlier attempt created the Discussion (as D_earlier) and the first
-  # comment, then failed before the second comment.
+  local pid
+  pid="$(plan_hash)"
+  jq -se --arg p "$pid" '. == [
+    {plan: $p, index: 0, op: "create_discussion", id: "D_new"},
+    {plan: $p, index: 1, op: "comment_on_discussion", id: "D_existing"},
+    {plan: $p, index: 2, op: "comment_on_discussion", id: "D_new"}]' "$PUBLISH_LEDGER_OUT" >/dev/null \
+    || { cat "$PUBLISH_LEDGER_OUT"; return 1; }
+}
+
+@test "re-run: a partial first attempt records exactly the entries it published" {
+  full_plan
+  # The follow-up comment on the new Discussion fails.
+  export GH_FAIL_MATCH='discussionId=D_new'
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  [ "$(mutations createDiscussion)" -eq 1 ]
+  jq -se '[.[] | .index] == [0, 1]' "$PUBLISH_LEDGER_OUT" >/dev/null || { cat "$PUBLISH_LEDGER_OUT"; return 1; }
+}
+
+@test "re-run: a re-run attempt finishes the plan, skipping exactly what the earlier attempt published" {
+  full_plan
+  export GH_FAIL_MATCH='discussionId=D_new'
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  unset GH_FAIL_MATCH
+  next_attempt
+  # The earlier attempt's Discussion is the one the re-run's follow-ups target,
+  # whatever id a create would return now.
   export GH_STUB_STDOUT
-  GH_STUB_STDOUT="$(jq -c --arg m0 "<!-- $m0 -->" --arg m1 "<!-- $m1 -->" '
-    .data.repository.discussions.nodes = [{id: "D_earlier", body: ("idea\n\n" + $m0), viewerDidAuthor: true}]
-    | .data.nodes |= map(if .id == "D_existing" then . + {comments: {nodes: [{body: ("note\n\n" + $m1), viewerDidAuthor: true}]}} else . end)' <<<"$OK_RESPONSE")"
-  reset_logs
+  GH_STUB_STDOUT="$(jq -c '.data.createDiscussion.discussion.id = "D_second"' <<<"$OK_RESPONSE")"
   run "$EXEC"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ "$(mutations createDiscussion)" -eq 0 ]
   [ "$(mutations addDiscussionComment)" -eq 1 ]
-  # The one comment went to the Discussion the earlier attempt created.
-  grep -E 'addDiscussionComment' "$GH_STUB_LOG" | grep -qF 'D_earlier'
+  grep -E 'addDiscussionComment' "$GH_STUB_LOG" | grep -qF 'discussionId=D_new'
   if grep -E 'addDiscussionComment' "$GH_STUB_LOG" | grep -qF 'D_existing'; then
     echo "the comment already posted was posted again"; return 1
   fi
   [ "$(mutations addLabelsToLabelable)" -eq 1 ]
-  jq -se '[.[] | select(.query | contains("addLabelsToLabelable"))] | .[0].variables.labelableId == "D_earlier"' "$GH_STDIN_LOG" >/dev/null
+  jq -se '[.[] | select(.query | contains("addLabelsToLabelable"))] | .[0].variables.labelableId == "D_new"' "$GH_STDIN_LOG" >/dev/null
+  # Recognised from the ledger alone: no comment or Discussion body was read.
+  [ "$(body_lookups)" -eq 0 ]
+  # This attempt's ledger holds only what this attempt published.
+  jq -se '[.[] | .index] == [2]' "$PUBLISH_LEDGER_OUT" >/dev/null || { cat "$PUBLISH_LEDGER_OUT"; return 1; }
+
+  # A third attempt has nothing left to post (labels are re-applied).
+  next_attempt
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(mutations createDiscussion)" -eq 0 ]
+  [ "$(mutations addDiscussionComment)" -eq 0 ]
+  [[ "$output" == *"already created D_new"* ]]
 }
 
-@test "re-run: a marker from a different plan does not count" {
-  plan_add "$(comment D_existing)"
+@test "re-run: a marker planted as the publish token's own identity has no effect" {
+  full_plan
+  local pid
+  pid="$(plan_hash)"
+  # Another workflow posting as github-actions[bot] planted markers for every
+  # entry: a Discussion of its own (to capture the follow-up comment and
+  # label) and a comment (to suppress the planned one). GitHub reports both as
+  # written by the viewer, since the identity is shared.
   export GH_STUB_STDOUT
-  GH_STUB_STDOUT="$(jq -c '.data.nodes |= map(. + {comments: {nodes: [{body: "<!-- feature-ideation:op=0000000000000000:0 -->", viewerDidAuthor: true}]}})' <<<"$OK_RESPONSE")"
+  GH_STUB_STDOUT="$(jq -c --arg m0 "<!-- feature-ideation:op=${pid}:0 -->" --arg m1 "<!-- feature-ideation:op=${pid}:1 -->" '
+    .data.repository.discussions.nodes = [{id: "D_planted", body: ("bait\n\n" + $m0), viewerDidAuthor: true}]
+    | .data.nodes |= map(if .id == "D_existing" then . + {comments: {nodes: [{body: ("x\n\n" + $m1), viewerDidAuthor: true}]}} else . end)' <<<"$OK_RESPONSE")"
+  run "$EXEC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(mutations createDiscussion)" -eq 1 ]
+  [ "$(mutations addDiscussionComment)" -eq 2 ]
+  if grep -qF 'D_planted' "$GH_STUB_LOG" "$GH_STDIN_LOG"; then
+    echo "a write went to the planted Discussion"; return 1
+  fi
+  [ "$(body_lookups)" -eq 0 ]
+}
+
+@test "re-run: ledger entries of another plan, and malformed lines, are ignored" {
+  plan_add "$(comment D_existing)"
+  local pid
+  pid="$(plan_hash)"
+  earlier_ledger \
+    '{"plan":"0000000000000000","index":0,"op":"comment_on_discussion","id":"D_existing"}' \
+    'not json' \
+    "{\"plan\":\"${pid}\",\"index\":\"0\",\"op\":\"comment_on_discussion\"}" \
+    "{\"plan\":\"${pid}\",\"index\":-1,\"op\":\"comment_on_discussion\"}" \
+    "[\"${pid}\",0]"
   run "$EXEC"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ "$(mutations addDiscussionComment)" -eq 1 ]
 }
 
-@test "re-run: a marker on content someone else wrote is ignored" {
-  plan_add "$(create planned-discussion-1)"
-  plan_add "$(comment D_existing)"
-  plan_add "$(comment planned-discussion-1)"
-  plan_add "$(label planned-discussion-1)"
-  run "$EXEC"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  local m0 m1
-  m0="$(marker_of 0)"; m1="$(marker_of 1)"
-  # Someone who learnt the plan hash planted both markers: a Discussion of
-  # their own (to capture the follow-up comment and label) and a comment (to
-  # suppress the planned one). Neither was written by the publish token.
-  export GH_STUB_STDOUT
-  GH_STUB_STDOUT="$(jq -c --arg m0 "<!-- $m0 -->" --arg m1 "<!-- $m1 -->" '
-    .data.repository.discussions.nodes = [{id: "D_attacker", body: ("bait\n\n" + $m0), viewerDidAuthor: false}]
-    | .data.nodes |= map(if .id == "D_existing" then . + {comments: {nodes: [{body: ("x\n\n" + $m1), viewerDidAuthor: false}]}} else . end)' <<<"$OK_RESPONSE")"
-  reset_logs
-  run "$EXEC"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [ "$(mutations createDiscussion)" -eq 1 ]
-  [ "$(mutations addDiscussionComment)" -eq 2 ]
-  if grep -qF 'D_attacker' "$GH_STUB_LOG" "$GH_STDIN_LOG"; then
-    echo "a write went to the planted Discussion"; return 1
-  fi
-}
-
-@test "re-run: the lookup asks GitHub whether the publish token wrote each item" {
-  plan_add "$(create planned-discussion-1)"
-  plan_add "$(comment D_existing)"
-  run "$EXEC"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [ "$(jq -s '[.[] | select(.query | contains("viewerDidAuthor"))] | length' "$GH_STDIN_LOG")" -eq 2 ]
-}
-
-@test "mp_done_ops: only items the viewer authored count" {
-  # shellcheck source=/dev/null
-  . "${TT_SCRIPTS_DIR}/lib/mutation-plan.sh"
-  local m='<!-- feature-ideation:op=abcdef0123456789:0 -->' out
-  out="$(mp_done_ops abcdef0123456789 \
-    "[{\"id\":\"D_mine\",\"body\":\"$m\",\"viewerDidAuthor\":true},{\"id\":\"D_theirs\",\"body\":\"$m\",\"viewerDidAuthor\":false},{\"id\":\"D_unknown\",\"body\":\"$m\"}]" \
-    "[{\"comments\":{\"nodes\":[{\"body\":\"<!-- feature-ideation:op=abcdef0123456789:1 -->\",\"viewerDidAuthor\":false},{\"body\":\"<!-- feature-ideation:op=abcdef0123456789:2 -->\"}]}}]")"
-  [ "$(jq -c . <<<"$out")" = '{"created":{"0":"D_mine"},"commented":[]}' ]
-}
-
-# with_authored <create-flag> <comment-flag> — the stub response with
-# viewerDidAuthor set on the create and comment results ("absent" drops it).
-with_authored() {
-  jq -c --arg c "$1" --arg m "$2" '
-    def flag($v): if $v == "absent" then del(.viewerDidAuthor) else .viewerDidAuthor = ($v == "true") end;
-    .data.createDiscussion.discussion |= flag($c)
-    | .data.addDiscussionComment.comment |= flag($m)' <<<"$OK_RESPONSE"
-}
-
-@test "authorship: content the token reports writing publishes normally" {
-  export GH_STUB_STDOUT
-  GH_STUB_STDOUT="$(with_authored true true)"
-  plan_add "$(create planned-discussion-1)"
-  plan_add "$(comment D_existing)"
-  run "$EXEC"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-}
-
-@test "authorship: a created Discussion not reported as the token's own fails the job loudly" {
-  local flag
-  for flag in false absent; do
-    export GH_STUB_STDOUT
-    GH_STUB_STDOUT="$(with_authored "$flag" true)"
+@test "re-run: a recorded Discussion that is not an Ideas Discussion of this repository stops the publish" {
+  local bad
+  for bad in D_annc D_foreign D_nowhere; do
     : >"$PLAN_PATH"
-    plan_add "$(create planned-discussion-1)"
-    plan_add "$(comment D_existing)"
+    rm -rf "$PUBLISH_LEDGER_IN"; mkdir -p "$PUBLISH_LEDGER_IN"
     reset_logs
+    full_plan
+    earlier_ledger "{\"plan\":\"$(plan_hash)\",\"index\":0,\"op\":\"create_discussion\",\"id\":\"${bad}\"}"
     run "$EXEC"
-    [ "$status" -ne 0 ] || { echo "passed with viewerDidAuthor=$flag"; return 1; }
-    [[ "$output" == *"::error::"*"viewerDidAuthor"* ]]
-    # It stops at once: the comment after it is not posted.
-    [ "$(mutations addDiscussionComment)" -eq 0 ]
+    [ "$status" -ne 0 ] || { echo "accepted ${bad}"; return 1; }
+    [[ "$output" == *"earlier attempt"* ]]
+    no_writes || { echo "wrote with ${bad}"; return 1; }
   done
 }
 
-@test "authorship: a posted comment not reported as the token's own fails the job loudly" {
-  local flag
-  for flag in false absent; do
-    export GH_STUB_STDOUT
-    GH_STUB_STDOUT="$(with_authored true "$flag")"
-    : >"$PLAN_PATH"
-    plan_add "$(comment D_existing)"
-    run "$EXEC"
-    [ "$status" -ne 0 ] || { echo "passed with viewerDidAuthor=$flag"; return 1; }
-    [[ "$output" == *"::error::"*"viewerDidAuthor"* ]]
-  done
+@test "re-run: two ids recorded for the same created entry stop the publish" {
+  full_plan
+  local pid
+  pid="$(plan_hash)"
+  earlier_ledger \
+    "{\"plan\":\"${pid}\",\"index\":0,\"op\":\"create_discussion\",\"id\":\"D_a\"}" \
+    "{\"plan\":\"${pid}\",\"index\":0,\"op\":\"create_discussion\",\"id\":\"D_b\"}"
+  run "$EXEC"
+  [ "$status" -ne 0 ]
+  no_writes
 }
 
-@test "re-run: if the check for earlier work fails, nothing is published" {
-  plan_add "$(create planned-discussion-1)"
-  export GH_FAIL_MATCH='discussions(first'
+@test "re-run: if the check of recorded Discussions fails, nothing is published" {
+  full_plan
+  earlier_ledger "{\"plan\":\"$(plan_hash)\",\"index\":0,\"op\":\"create_discussion\",\"id\":\"D_a\"}"
+  export GH_FAIL_MATCH='LedgerCreated'
   run "$EXEC"
   [ "$status" -ne 0 ]
   [[ "$output" == *"earlier attempt"* ]]
   no_writes
+}
 
-  : >"$PLAN_PATH"
+@test "re-run: a live publish with nowhere to record its ledger writes nothing" {
+  unset PUBLISH_LEDGER_OUT
   plan_add "$(comment D_existing)"
-  export GH_FAIL_MATCH='comments(last'
   run "$EXEC"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"earlier attempt"* ]]
+  [[ "$output" == *"PUBLISH_LEDGER_OUT"* ]]
   no_writes
 }
 
-@test "re-run: a dry run does not look for earlier work" {
+@test "re-run: a dry run reads no earlier work and records no ledger" {
   export CALLER_DRY_RUN=1
   plan_add "$(comment D_existing)"
+  earlier_ledger "{\"plan\":\"$(plan_hash)\",\"index\":0,\"op\":\"create_discussion\",\"id\":\"D_a\"}"
   run "$EXEC"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  if grep -qF 'comments(last' "$GH_STDIN_LOG"; then
+  [ ! -e "$PUBLISH_LEDGER_OUT" ]
+  if grep -qF 'LedgerCreated' "$GH_STDIN_LOG"; then
     echo "dry run looked for earlier work"; return 1
   fi
+}
+
+@test "mp_ledger_done: reads entries of the given plan from every ledger" {
+  # shellcheck source=/dev/null
+  . "${TT_SCRIPTS_DIR}/lib/mutation-plan.sh"
+  local a="${TT_TMP}/a.jsonl" b="${TT_TMP}/b.jsonl" out
+  { mp_ledger_entry abcdef0123456789 0 create_discussion D_mine; echo
+    mp_ledger_entry 0000000000000000 1 comment_on_discussion D_x; echo; } >"$a"
+  { mp_ledger_entry abcdef0123456789 2 comment_on_discussion D_mine; echo
+    echo '{"plan":"abcdef0123456789","index":3,"op":"create_discussion","id":"bad id"}'; } >"$b"
+  out="$(mp_ledger_done abcdef0123456789 "$a" "$b")"
+  [ "$(jq -c . <<<"$out")" = '{"created":{"0":"D_mine"},"commented":["2"]}' ] || { echo "$out"; return 1; }
+  out="$(mp_ledger_done abcdef0123456789)"
+  [ "$(jq -c . <<<"$out")" = '{"created":{},"commented":[]}' ]
 }
 
 # ---------------------------------------------------------------------------

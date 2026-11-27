@@ -29,13 +29,20 @@
 #       → the validated plan with @mentions neutralised in titles and bodies,
 #         so a prompt-injected model cannot ping anyone
 #   mp_op_marker <plan-id> <entry-index>
-#       → the hidden marker the executor appends to what it publishes
-#   mp_done_ops <plan-id> <discussions-json> <comment-nodes-json>
+#       → the hidden marker the executor appends to what it publishes. For
+#         display only: nothing reads it back (#1456)
+#   mp_ledger_entry <plan-id> <entry-index> <op> <node-id>
+#       → one line of the publish ledger: the executor appends it right after
+#         the write it records succeeds
+#   mp_ledger_done <plan-id> [ledger.jsonl...]
 #       → {"created":{"<index>":"<node id>"},"commented":["<index>"]}: the plan
-#         entries an earlier attempt already published, from their markers.
-#         Only items with viewerDidAuthor == true count: a marker anyone else
-#         planted (say, after reading the plan hash in a log) is ignored, so it
-#         can neither suppress a planned write nor redirect one to their item.
+#         entries earlier attempts of this workflow run published, from their
+#         ledgers (artifacts of the run, #1456). Entries of other plans and
+#         malformed lines are ignored; rc 1 when one created entry is recorded
+#         with two different ids. Re-run recognition rests on these ledgers
+#         alone, never on markers found in published text: the publish token's
+#         identity (github-actions[bot]) is shared by every workflow of the
+#         calling repository, so anyone posting as it could plant a marker.
 #   mp_validate_plan <plan.jsonl> <mode> [target_node_id] [context-json]
 #       → stdout: the plan as one compact JSON array; rc 0
 #         stderr: one line per reason the plan is rejected; rc 1
@@ -138,13 +145,33 @@ mp_op_marker() {
   printf '<!-- feature-ideation:op=%s:%s -->' "$1" "$2"
 }
 
-mp_done_ops() {
-  jq -nc --arg pid "$1" --argjson discussions "$2" --argjson comments "$3" '
-    def indexes: [scan("feature-ideation:op=" + $pid + ":([0-9]+)")[0]];
-    {created: ([$discussions[] | objects | select(.viewerDidAuthor == true) | .id as $id
-                | (.body | strings | indexes[]) | {(.): $id}] | add // {}),
-     commented: ([$comments[] | objects | .comments.nodes[]? | objects
-                  | select(.viewerDidAuthor == true) | .body | strings | indexes[]] | unique)}'
+mp_ledger_entry() {
+  jq -nc --arg pid "$1" --argjson i "$2" --arg op "$3" --arg id "$4" \
+    '{plan: $pid, index: $i, op: $op, id: $id}'
+}
+
+mp_ledger_done() {
+  local pid="$1"
+  shift
+  local recorded
+  # `inputs` with -n reads every file; `-R` + `fromjson?` skips lines that are
+  # not JSON instead of failing on them. A missing or unreadable file fails.
+  recorded=$(jq -nRc --arg pid "$pid" '
+    [inputs | fromjson? | objects
+     | select(.plan == $pid and (.index | type) == "number"
+              and .index >= 0 and .index == (.index | floor))] as $e
+    | ([$e[] | select(.op == "create_discussion" and (.id | type) == "string"
+                      and (.id | test("\\A[A-Za-z0-9_=+-]+\\z")))]
+       | group_by(.index)) as $creates
+    | {conflict: ([$creates[] | map(.id) | unique | length > 1] | any),
+       created: ([$creates[] | {(.[0].index | tostring): .[0].id}] | add // {}),
+       commented: ([$e[] | select(.op == "comment_on_discussion") | .index | tostring] | unique)}' \
+    "$@" </dev/null) || return 1
+  if [[ "$(printf '%s' "$recorded" | jq -r '.conflict')" = "true" ]]; then
+    printf '[mutation-plan] a ledger records two ids for one created Discussion\n' >&2
+    return 1
+  fi
+  printf '%s' "$recorded" | jq -c 'del(.conflict)'
 }
 
 mp_validate_plan() {

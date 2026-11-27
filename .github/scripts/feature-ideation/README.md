@@ -97,10 +97,19 @@ prompt-injected model cannot ping anyone, and the only label it applies is the
 repository's `enhancement` label.
 
 Publishing is not atomic: if a GitHub call fails, what was already published
-stays. Re-running the failed `publish` job is safe. Each published Discussion
-and comment carries a hidden marker for its plan entry (a hash of the plan plus
-the entry's index), and entries already marked are skipped. The check reads the
-100 newest Discussions in the category and the last 100 comments of each target.
+stays. Re-running the failed `publish` job is safe (#1456). Each attempt
+records every Discussion it creates and every comment it posts in a ledger,
+keyed by a hash of the plan and the entry's index. The ledger is uploaded as an
+artifact of the workflow run (`feature-ideation-publish-ledger-<attempt>`,
+`if: always()`). A re-run attempt downloads the earlier attempts' ledgers and
+skips exactly those entries. It reads no comment or Discussion bodies, and it
+checks each recorded Discussion only for being an Ideas Discussion of this
+repository. Published text still carries a hidden marker for its plan entry,
+but only for display. Nothing reads it back, because the publish token's
+identity (`github-actions[bot]`) is shared by every workflow of the repository,
+and any of them could plant one. Labels are re-applied, which GitHub treats as
+a no-op. A write that GitHub applied but whose response was lost is not
+recorded, and a re-run would repeat it.
 
 ## Schema as contract
 

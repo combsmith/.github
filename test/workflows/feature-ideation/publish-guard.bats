@@ -104,3 +104,42 @@ model_jobs() {
   run yq -r '.on.workflow_call.secrets | keys | join(",")' "$WF"
   [ "$output" = "CLAUDE_CODE_OAUTH_TOKEN" ]
 }
+
+# Re-run recognition is bound to the workflow run (#1456): each attempt saves
+# what it published as an artifact of the run, even when it fails, and a re-run
+# attempt reads the earlier attempts' ledgers instead of markers in comments.
+@test "publish job: each attempt uploads its re-run ledger as an artifact of the run, even on failure" {
+  local up='.jobs.publish.steps[] | select(.uses != null and (.uses | test("^actions/upload-artifact@")))'
+  run yq -r "${up} | .if" "$WF"
+  [ "$output" = "always()" ]
+  run yq -r "${up} | .with.name" "$WF"
+  [ "$output" = "feature-ideation-publish-ledger-\${{ github.run_attempt }}" ]
+  local step='.jobs.publish.steps[] | select(.run != null and (.run | test("publish-mutation-plan.sh")))'
+  run yq -r "${step} | .env.PUBLISH_LEDGER_OUT" "$WF"
+  local out="$output"
+  [ -n "$out" ] && [ "$out" != "null" ]
+  run yq -r "${up} | .with.path" "$WF"
+  [ "$output" = "$out" ]
+}
+
+@test "publish job: a re-run attempt downloads the earlier attempts' ledgers, before publishing" {
+  local dl='.jobs.publish.steps[] | select(.with.pattern == "feature-ideation-publish-ledger-*")'
+  run yq -r "${dl} | .uses" "$WF"
+  [[ "$output" == actions/download-artifact@* ]]
+  # Only a re-run has earlier attempts: a first attempt trusts no ledger at all.
+  run yq -r "${dl} | .if" "$WF"
+  [ "$output" = "github.run_attempt != '1'" ]
+  # One directory per artifact, so no attempt's ledger overwrites another's.
+  run yq -r "${dl} | .with.merge-multiple // false" "$WF"
+  [ "$output" = "false" ]
+  run yq -r "${dl} | .with.path" "$WF"
+  local dir="$output"
+  local step='.jobs.publish.steps[] | select(.run != null and (.run | test("publish-mutation-plan.sh")))'
+  run yq -r "${step} | .env.PUBLISH_LEDGER_IN" "$WF"
+  [ "$output" = "$dir" ]
+  # The download comes before the publish step.
+  local at_download at_publish
+  at_download=$(yq -r '.jobs.publish.steps | to_entries[] | select(.value.with.pattern == "feature-ideation-publish-ledger-*") | .key' "$WF")
+  at_publish=$(yq -r '.jobs.publish.steps | to_entries[] | select(.value.run != null and (.value.run | test("publish-mutation-plan.sh"))) | .key' "$WF")
+  [ -n "$at_download" ] && [ -n "$at_publish" ] && [ "$at_download" -lt "$at_publish" ]
+}

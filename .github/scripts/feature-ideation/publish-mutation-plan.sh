@@ -20,14 +20,23 @@
 #   GH_TOKEN           token with discussions: write (read is enough on dry run)
 #   PUBLISH_WRITE_DELAY_SECONDS  pause after each write (default 1), to stay
 #                      under GitHub's secondary rate limit for mutations
+#   PUBLISH_LEDGER_IN  directory of the ledgers earlier attempts of this
+#                      workflow run uploaded (any *.jsonl below it); missing =
+#                      no earlier attempt
+#   PUBLISH_LEDGER_OUT this attempt's ledger, appended to after each write;
+#                      required unless dry run. The workflow uploads it as an
+#                      artifact of the run with if: always().
 #
 # Exit: 0 published (or dry run / nothing to do); 1 plan rejected; other
 # non-zero = a GitHub call failed. Publishing is not atomic, so mutations before
-# the failure stay applied, but a re-run of the job is safe: each published
-# Discussion and comment carries a hidden marker for its plan entry, and entries
-# already marked are skipped. Labels are re-applied, which GitHub treats as a
-# no-op. The check reads the 100 newest Discussions in the category and the last
-# 100 comments of each target, so an entry older than that would be repeated.
+# the failure stay applied, but a re-run of the job is safe (#1456): every
+# Discussion created and comment posted is recorded in the ledger as soon as it
+# succeeds, and a re-run attempt skips the entries the earlier attempts'
+# ledgers record — state only this workflow run holds, not markers in comments,
+# which anyone posting as github-actions[bot] could plant. Labels are not
+# recorded; they are re-applied, which GitHub treats as a no-op. A write whose
+# response was lost (GitHub applied it, the call still failed) is not recorded
+# and would be repeated by a re-run.
 
 set -euo pipefail
 
@@ -134,20 +143,8 @@ _pace() {
   sleep "${PUBLISH_WRITE_DELAY_SECONDS:-1}"
 }
 
-# The re-run markers trust only items GitHub reports this token wrote
-# (viewerDidAuthor). If that flag were wrong for the token, every marker would
-# be ignored and a re-run would post duplicates without a word. So check it on
-# what was just published, and stop loudly the first time it is not true.
-_require_authored() {
-  local resp="$1" path="$2" what="$3"
-  if [[ "$(printf '%s' "$resp" | jq -r "${path}.viewerDidAuthor // \"missing\"")" != "true" ]]; then
-    echo "::error::GitHub did not report viewerDidAuthor=true for the ${what} this job just published, so re-runs could not recognise it and would post it again. Stopping; check the token identity before re-running."
-    return 1
-  fi
-}
-
-# A stable id for this plan, so a re-run of the job recognises its own work.
-# Hashing the plan means a model cannot write the marker into its own plan.
+# A stable id for this plan: ledger entries count only for the plan they were
+# recorded for, so a re-run attempt with a new plan starts afresh.
 _plan_id() {
   local hash
   hash=$({ sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | cut -c1-16)
@@ -155,50 +152,58 @@ _plan_id() {
   printf '%s' "$hash"
 }
 
-# What an earlier attempt of this plan already published: mp_done_ops JSON.
-# A marker counts only on an item GitHub says this token's identity wrote
-# (viewerDidAuthor), so nobody else can plant one.
-# Returns non-zero when that cannot be established, so nothing is repeated
-# blindly.
+# What earlier attempts of this workflow run already published: mp_ledger_done
+# JSON, from the ledgers in PUBLISH_LEDGER_IN. No comment or Discussion body is
+# read. A ledger is an artifact of this run, so only a job of this run could
+# have written one; still, every Discussion it says was created is checked to be
+# an Ideas Discussion of this repository (metadata only), so a ledger cannot send
+# a follow-up comment or label anywhere the plan rules would not allow.
+# Returns non-zero when that cannot be established, so nothing is repeated or
+# misdirected blindly.
 _resolve_done() {
-  local plan="$1" plan_id="$2" category_id="$3" query body nodes discussions='[]' comments='[]' earlier ids
-  if [[ "$(printf '%s' "$plan" | jq '[.[] | select(.op == "create_discussion")] | length')" -gt 0 ]]; then
-    read -r -d '' query <<'GRAPHQL' || true
-query($owner: String!, $name: String!, $category: ID!) {
-  repository(owner: $owner, name: $name) {
-    discussions(first: 100, categoryId: $category, orderBy: {field: CREATED_AT, direction: DESC}) {
-      nodes { id body viewerDidAuthor }
-    }
-  }
-}
-GRAPHQL
-    body=$(jq -nc --arg q "$query" --arg o "${REPO%%/*}" --arg n "${REPO##*/}" --arg c "$category_id" \
-      '{query: $q, variables: {owner: $o, name: $n, category: $c}}')
-    nodes=$(gh_safe_graphql_input "$body") || return 1
-    discussions=$(printf '%s' "$nodes" | jq -ce '.data.repository.discussions.nodes | arrays') || return 1
+  local plan="$1" plan_id="$2" context="$3" files=() f recorded ids query body nodes bad
+  if [[ -n "${PUBLISH_LEDGER_IN:-}" ]] && [[ -d "$PUBLISH_LEDGER_IN" ]]; then
+    while IFS= read -r -d '' f; do
+      files+=("$f")
+    done < <(find "$PUBLISH_LEDGER_IN" -type f -name '*.jsonl' -print0 | sort -z)
   fi
+  recorded=$(mp_ledger_done "$plan_id" ${files[@]+"${files[@]}"}) || return 1
 
-  # Comment targets, with Discussions the earlier attempt created mapped to
-  # their real ids. A planned Discussion that does not exist yet has no comments.
-  earlier=$(mp_done_ops "$plan_id" "$discussions" '[]') || return 1
-  ids=$(printf '%s' "$plan" | jq -c --argjson created "$(printf '%s' "$earlier" | jq -c '.created')" '
-    (to_entries | map(select(.value.planned_id != null and $created[.key | tostring] != null)
-                      | {(.value.planned_id): $created[.key | tostring]}) | add // {}) as $map
-    | [.[] | select(.op == "comment_on_discussion") | .discussion_id
-       | if startswith("planned-") then $map[.] else . end | strings] | unique')
+  # Only the ids of entries that are creates in this plan matter.
+  ids=$(printf '%s' "$plan" | jq -c --argjson recorded "$recorded" '
+    [to_entries[] | select(.value.op == "create_discussion")
+     | $recorded.created[.key | tostring] | strings] | unique')
   if [[ "$(printf '%s' "$ids" | jq 'length')" -gt 0 ]]; then
     read -r -d '' query <<'GRAPHQL' || true
-query($ids: [ID!]!) {
+query LedgerCreated($ids: [ID!]!) {
   nodes(ids: $ids) {
-    ... on Discussion { comments(last: 100) { nodes { body viewerDidAuthor } } }
+    ... on Discussion { id category { id } repository { id } }
   }
 }
 GRAPHQL
     body=$(jq -nc --arg q "$query" --argjson ids "$ids" '{query: $q, variables: {ids: $ids}}')
     nodes=$(_lookup_nodes "$body") || return 1
-    comments=$(printf '%s' "$nodes" | jq -ce '.data.nodes | arrays') || return 1
+    bad=$(printf '%s' "$nodes" | jq -r --argjson ids "$ids" --argjson ctx "$context" '
+      ([.data.nodes[]? | objects
+        | select((.id | type) == "string"
+                 and (($ctx.repo_id // "") | test("\\S")) and .repository.id == $ctx.repo_id
+                 and (($ctx.category_id // "") | test("\\S")) and .category.id == $ctx.category_id)
+        | .id]) as $ok
+      | [$ids[] | select(. as $i | $ok | index($i) | not)] | length')
+    if [[ "$bad" -ne 0 ]]; then
+      echo "a ledger records ${bad} created Discussion(s) that are not Ideas Discussions of this repository" >&2
+      return 1
+    fi
   fi
-  mp_done_ops "$plan_id" "$discussions" "$comments"
+  printf '%s' "$recorded"
+}
+
+# Record a published entry in this attempt's ledger, before the next write.
+_record() {
+  if ! mp_ledger_entry "$@" >>"$PUBLISH_LEDGER_OUT" || ! printf '\n' >>"$PUBLISH_LEDGER_OUT"; then
+    echo "::error::Could not record a published entry in the re-run ledger; stopping so a re-run cannot repeat more than this one entry."
+    return 1
+  fi
 }
 
 # Resolve the caller's target number to its node id (empty unless it is an
@@ -282,9 +287,15 @@ main() {
     return 0
   fi
 
+  if [[ -z "${PUBLISH_LEDGER_OUT:-}" ]] \
+    || ! mkdir -p "$(dirname -- "$PUBLISH_LEDGER_OUT")" || ! : >>"$PUBLISH_LEDGER_OUT"; then
+    echo "::error::PUBLISH_LEDGER_OUT must name a writable file for the re-run ledger; nothing was published."
+    return 1
+  fi
+
   local plan_id done_ops
   if ! plan_id=$(_plan_id "$plan_path") \
-    || ! done_ops=$(_quiet_stderr _resolve_done "$plan" "$plan_id" "$(printf '%s' "$context" | jq -r '.category_id // ""')"); then
+    || ! done_ops=$(_quiet_stderr _resolve_done "$plan" "$plan_id" "$context"); then
     echo "::error::Could not check what an earlier attempt already published; nothing was published on this attempt."
     return 1
   fi
@@ -316,7 +327,7 @@ main() {
             echo "::error::createDiscussion returned no id"
             return 1
           fi
-          _require_authored "$resp" '.data.createDiscussion.discussion' "Discussion ${id}" || return 1
+          _record "$plan_id" "$index" create_discussion "$id" || return 1
           echo "created Discussion ${id}"
         fi
         planned=$(printf '%s' "$planned" | jq -c \
@@ -333,9 +344,9 @@ main() {
             echo "already commented on ${id} on an earlier attempt"
             skipped=$((skipped + 1))
           else
-            resp=$(comment_on_discussion "$id" "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker")
+            comment_on_discussion "$id" "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker" >/dev/null
             _pace
-            _require_authored "$resp" '.data.addDiscussionComment.comment' "comment on ${id}" || return 1
+            _record "$plan_id" "$index" comment_on_discussion "$id" || return 1
             echo "commented on ${id}"
           fi
         else
