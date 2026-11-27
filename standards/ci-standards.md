@@ -884,6 +884,22 @@ green. A download blip still gets its single retry, and the job fails when
 both attempts fail. `test/workflows/required-checks/sonarcloud-quality-gate.bats` guards this
 wiring in both the repo workflow and the template.
 
+#### SonarCloud Suppression Policy
+
+Decision record: [`docs/initiatives/sonarcloud-suppression-adr.md`](../docs/initiatives/sonarcloud-suppression-adr.md).
+
+- **Never customize SonarCloud in the web UI.** Do not mark issues or hotspots
+  *Accepted* / *False positive* / *Safe*, do not change a project's analysis
+  scope or ignore-issue settings, and do not assign custom quality profiles or
+  gates. Any SonarCloud state that does not come from Git is drift.
+- **Suppress with an inline marker** on the offending line, always rule-scoped
+  and with a reason: `# NOSONAR(<repo>:<rule>) <reason>`. A bare `NOSONAR` and
+  file- or block-wide disables are not allowed. Fix the finding first.
+- **`sonar-project.properties` sets analysis scope only** (project key,
+  organization, report paths, and `sonar.exclusions` for vendored or generated
+  code such as `node_modules/**`). `sonar.issue.ignore.*` criteria are
+  deprecated and must not be added.
+
 #### SonarCloud Exemption: First-Party Reusable-Ref S7637
 
 SonarCloud's GitHub Actions rule **`githubactions:S7637`** ("pin actions to a
@@ -935,7 +951,9 @@ and the marker comes with it.
 **Legacy (per-file `sonar-project.properties` — optional, transitional):** the
 older mechanism suppressed S7637 **only on the individual caller-stub workflow
 files** via one `sonar.issue.ignore.multicriteria` criterion per file path. It
-still works and is **accepted during the transition**, but is no longer required
+still works and is **accepted during the transition**, but is **deprecated** by the
+[suppression policy](#sonarcloud-suppression-policy): migrate it to the inline
+marker and do not add new entries. It is no longer required
 once the stubs carry the inline marker — the inline marker is the canonical
 mechanism and auto-covers any newly added channel-pinned stub without a per-repo
 edit. A blanket `resourceKey` such as `**/.github/workflows/*.yml`, `*.yml`, or
