@@ -1,0 +1,62 @@
+# Tests for the SonarCloud suppression-marker checker (#1613): the shared rule in
+# scripts/lib/nosonar-markers.sh and the PR-time gate
+# scripts/check-nosonar-markers.sh that ci.yml's Lint job runs. The compliance
+# audit's check_nosonar_markers is tested by compliance-audit-tests.yml.
+# Gates: shellcheck + bats (marker rule, diff/tree gate modes, and the guard that
+# this repo's own tree has no invalid markers).
+name: NOSONAR Markers Tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/check-nosonar-markers.sh'
+      - 'scripts/lib/nosonar-markers.sh'
+      - 'test/scripts/nosonar-markers/**'
+      - '.github/workflows/nosonar-markers-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/check-nosonar-markers.sh'
+      - 'scripts/lib/nosonar-markers.sh'
+      - 'test/scripts/nosonar-markers/**'
+      - '.github/workflows/nosonar-markers-tests.yml'
+
+permissions: {}
+
+concurrency:
+  group: nosonar-markers-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and bats
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install bats and shellcheck
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if timeout 120 sudo apt-get update -qq \
+              && timeout 120 sudo apt-get install -y --no-install-recommends bats shellcheck; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Apt install failed after 3 attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
+
+      - name: shellcheck
+        run: shellcheck --severity=warning -x scripts/check-nosonar-markers.sh scripts/lib/nosonar-markers.sh
+
+      - name: bats
+        run: bats --print-output-on-failure test/scripts/nosonar-markers/

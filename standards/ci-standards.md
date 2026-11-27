@@ -884,6 +884,44 @@ green. A download blip still gets its single retry, and the job fails when
 both attempts fail. `test/workflows/required-checks/sonarcloud-quality-gate.bats` guards this
 wiring in both the repo workflow and the template.
 
+#### SonarCloud Suppression Policy
+
+Decision record: [`docs/initiatives/sonarcloud-suppression-adr.md`](../docs/initiatives/sonarcloud-suppression-adr.md).
+
+- **Never customize SonarCloud in the web UI.** Do not mark issues or hotspots
+  *Accepted* / *False positive* / *Safe*, do not change a project's analysis
+  scope or ignore-issue settings, and do not assign custom quality profiles or
+  gates. Any SonarCloud state that does not come from Git is drift.
+- **Suppress with an inline marker** on the offending line that names the rule
+  and gives a reason, in the syntax the analyzer accepts: GitHub Actions YAML
+  `# NOSONAR(githubactions:S7637) <reason>` (the analyzer ignores the
+  parentheses, so the marker hides every issue on the line); Python
+  `# NOSONAR(S4721) <reason>` (bare rule ID only, no `python:` prefix). A bare
+  `NOSONAR` and file- or block-wide disables are not allowed. Fix the finding
+  first. Details in the ADR.
+- **`sonar-project.properties` sets analysis scope only** (project key,
+  organization, report paths, and `sonar.exclusions` for vendored or generated
+  code such as `node_modules/**`). `sonar.issue.ignore.*` criteria are
+  deprecated and must not be added.
+
+**Enforcement.** Both checks share one rule,
+[`scripts/lib/nosonar-markers.sh`](../scripts/lib/nosonar-markers.sh):
+
+| Where | What it checks | Result |
+|-------|----------------|--------|
+| PR time: [`scripts/check-nosonar-markers.sh --base HEAD^1`](../scripts/check-nosonar-markers.sh), run by this repo's `ci.yml` **Lint** job | Only lines the change adds: each new marker, and any new `sonar.issue.ignore.*` key | Fails the `Lint` check |
+| Org-wide: the compliance audit's `check_nosonar_markers` | Every file that mentions the keyword, in each SonarCloud-gated repo | `nosonar-marker-invalid` (warning) and `sonar-issue-ignore-deprecated` (warning) |
+
+A marker is any comment that contains the keyword, so prose comments must not
+use it either: a bare or malformed mention fails the check. Refer to "the S7637
+suppression marker" instead. Strings are not
+comments: code that greps for a marker is not flagged. Downstream repos adopt
+the PR-time check by copying `scripts/check-nosonar-markers.sh` and
+`scripts/lib/nosonar-markers.sh` into their `scripts/` directory (keep both
+files in sync with this repo) and adding the same step to their `ci.yml` Lint
+job (checkout with `fetch-depth: 0`). Running `scripts/check-nosonar-markers.sh` without
+`--base` checks a whole tree.
+
 #### SonarCloud Exemption: First-Party Reusable-Ref S7637
 
 SonarCloud's GitHub Actions rule **`githubactions:S7637`** ("pin actions to a
@@ -907,7 +945,8 @@ jobs:
     uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR(githubactions:S7637) first-party channel ref
 ```
 
-SonarCloud honors the inline comment and suppresses S7637 on exactly that line,
+SonarCloud honors the inline comment and suppresses issues on exactly that line
+(every issue on it: the analyzer ignores the rule key in parentheses),
 so the exemption travels **with the stub file** — adopters who copy the template
 verbatim inherit it with **zero** per-repo `sonar-project.properties` entries and
 **no file rename**. Spike-validated on `bmad-bgreat-suite#334` (`3cbfa005`):
@@ -935,7 +974,9 @@ and the marker comes with it.
 **Legacy (per-file `sonar-project.properties` — optional, transitional):** the
 older mechanism suppressed S7637 **only on the individual caller-stub workflow
 files** via one `sonar.issue.ignore.multicriteria` criterion per file path. It
-still works and is **accepted during the transition**, but is no longer required
+still works and is **accepted during the transition**, but is **deprecated** by the
+[suppression policy](#sonarcloud-suppression-policy): migrate it to the inline
+marker and do not add new entries. It is no longer required
 once the stubs carry the inline marker — the inline marker is the canonical
 mechanism and auto-covers any newly added channel-pinned stub without a per-repo
 edit. A blanket `resourceKey` such as `**/.github/workflows/*.yml`, `*.yml`, or
@@ -977,7 +1018,7 @@ jobs:
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
 ```
 
-Like the S7637 marker, SonarCloud suppresses S7635 on exactly that line, so the
+Like the S7637 marker, SonarCloud suppresses every issue on exactly that line, so the
 exemption travels **with the stub file** — verbatim adopters inherit it with
 **zero** per-repo `sonar-project.properties` entries. The grandfathered existing
 deployments pass because they are not "new code"; the rule only bites a stub the

@@ -298,6 +298,12 @@ RULESETS_SRC_DIR="${RULESETS_SRC_DIR:-$SCRIPT_DIR/../standards/rulesets}"
 # shellcheck source=lib/ring-pins.sh
 . "$SCRIPT_DIR/lib/ring-pins.sh"
 
+# Inline SonarCloud suppression-marker rule (#1613) — nosonar_scan_content() and
+# nosonar_issue_ignore_lines(). Shared with the PR-time gate
+# scripts/check-nosonar-markers.sh so the sweep and the gate apply one rule.
+# shellcheck source=lib/nosonar-markers.sh
+. "$SCRIPT_DIR/lib/nosonar-markers.sh"
+
 # Repos outside the org standard by the Maintainer's decision — NOT_SERVED_REPOS
 # and is_not_served_repo(). Shared with deploy-standard-workflows.sh: the audit
 # files no findings or issues where the sweep deploys nothing (#1343, #1352).
@@ -1652,7 +1658,7 @@ classify_sonar_s7637_exemption() {
 }
 
 # ---------------------------------------------------------------------------
-# Inline NOSONAR S7637 marker on first-party caller stubs (#549)
+# Inline S7637 suppression marker on first-party caller stubs (#549)
 #
 # Canonical mechanism (supersedes the per-file sonar-project.properties approach):
 # the inline `# NOSONAR(githubactions:S7637)` marker on the channel-pinned
@@ -1776,6 +1782,122 @@ check_sonar_s7637_exemption() {
         "standards/ci-standards.md#sonarcloud-exemption-first-party-reusable-ref-s7637"
       ;;
   esac
+}
+
+# ---------------------------------------------------------------------------
+# Check: inline SonarCloud suppression markers (#1613)
+#
+# The SonarCloud suppression ADR (docs/initiatives/sonarcloud-suppression-adr.md)
+# allows suppressions only as inline markers that name the rule in the
+# analyzer's syntax and give a reason. Two findings, both warnings:
+#
+#   nosonar-marker-invalid        a comment marker is bare, uses the wrong
+#                                 rule-key syntax for its analyzer (e.g. a
+#                                 python:S1234 key, which sonar-python
+#                                 silently ignores), or has no reason.
+#   sonar-issue-ignore-deprecated sonar-project.properties carries
+#                                 sonar.issue.ignore.* keys (deprecated; the
+#                                 legacy S7637 entries are migrated to markers).
+#
+# Candidate files come from one code-search call per repo (only files that
+# mention the keyword), then each hit is fetched and checked with the shared
+# nosonar_scan_content. Code search allows ~10 requests a minute, so each call
+# is paced by SONAR_MARKER_SEARCH_DELAY seconds. A failed search marks the repo
+# inconclusive rather than reporting it clean.
+# ---------------------------------------------------------------------------
+SONAR_MARKER_SEARCH_DELAY="${SONAR_MARKER_SEARCH_DELAY:-7}"
+NOSONAR_STANDARD_REF="standards/ci-standards.md#sonarcloud-suppression-policy"
+
+# nosonar_gh_read <api-path> <jq>: print the jq result. Returns 0 on success,
+# 44 on a confirmed 404 (absent), 1 on any other failure (403, rate limit, 5xx).
+# Non-404 failures are retried a few times before giving up.
+nosonar_gh_read() {
+  local out attempt
+  for attempt in 1 2 3; do
+    if out=$(timeout 120 gh api "$1" --jq "$2" 2>&1); then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    if response_is_http_404 "$out"; then
+      return 44
+    fi
+    [[ "$attempt" -lt 3 ]] && sleep $((attempt * 2))
+  done
+  return 1
+}
+
+check_nosonar_markers() {
+  local repo="$1"
+
+  # Only relevant when the repo actually runs SonarCloud analysis. A confirmed
+  # 404 means it does not; any other failure leaves the repo unaudited.
+  local rc=0
+  nosonar_gh_read "repos/$ORG/$repo/contents/.github/workflows/sonarcloud.yml" '.name' > /dev/null || rc=$?
+  if [[ "$rc" -eq 44 ]]; then
+    return 0
+  elif [[ "$rc" -ne 0 ]]; then
+    warn "check_nosonar_markers: cannot read sonarcloud.yml for $repo; marking inconclusive"
+    mark_repo_inconclusive "$repo"
+    return 0
+  fi
+
+  local props props_decoded ignore_hits
+  rc=0
+  props=$(nosonar_gh_read "repos/$ORG/$repo/contents/sonar-project.properties" '.content') || rc=$?
+  if [[ "$rc" -ne 0 && "$rc" -ne 44 ]]; then
+    warn "check_nosonar_markers: cannot read sonar-project.properties for $repo; marking inconclusive"
+    mark_repo_inconclusive "$repo"
+    return 0
+  fi
+  [[ "$rc" -eq 0 ]] || props=""
+  if [[ -n "$props" ]]; then
+    props_decoded=$(echo "$props" | base64 -d 2>/dev/null || echo "")
+    ignore_hits=$(nosonar_issue_ignore_lines "$props_decoded")
+    if [[ -n "$ignore_hits" ]]; then
+      add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "sonar-issue-ignore-deprecated" "warning" \
+        "\`sonar-project.properties\` carries $(wc -l <<< "$ignore_hits" | tr -d ' ') \`sonar.issue.ignore.*\` key(s). These are deprecated: suppress each finding with an inline \`NOSONAR(<rule>) <reason>\` marker on its line and delete the keys." \
+        "$NOSONAR_STANDARD_REF"
+    fi
+  fi
+
+  [[ "$SONAR_MARKER_SEARCH_DELAY" == "0" ]] || sleep "$SONAR_MARKER_SEARCH_DELAY"
+  local paths
+  if ! paths=$(gh_api "search/code?q=NOSONAR+repo:$ORG/$repo&per_page=100" --paginate --jq '.items[].path'); then
+    warn "check_nosonar_markers: code search failed for $repo; marking inconclusive"
+    mark_repo_inconclusive "$repo"
+    return 0
+  fi
+
+  local path content decoded violations="" count=0 v
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    [[ -n "$(nosonar_comment_style "$path")" ]] || continue
+    case "$path" in node_modules/* | */node_modules/* | vendor/* | */vendor/*) continue ;; esac
+    rc=0
+    content=$(nosonar_gh_read "repos/$ORG/$repo/contents/$path" '.content') || rc=$?
+    if [[ "$rc" -eq 44 ]]; then continue; fi  # file removed since indexed
+    if [[ "$rc" -ne 0 ]]; then
+      warn "check_nosonar_markers: cannot read $path in $repo; marking inconclusive"
+      mark_repo_inconclusive "$repo"
+      return 0
+    fi
+    [[ -n "$content" ]] || continue
+    decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
+    [[ -n "$decoded" ]] || continue
+    while IFS= read -r v; do
+      [[ -n "$v" ]] || continue
+      count=$((count + 1))
+      [[ "$count" -le 10 ]] && violations+=$'\n'"- \`${v%%: *}\`: ${v#*: }"
+    done < <(nosonar_scan_content "$path" "$decoded")
+  done <<< "$paths"
+
+  if [[ "$count" -gt 0 ]]; then
+    local more=""
+    [[ "$count" -gt 10 ]] && more=$'\n'"- …and $((count - 10)) more"
+    add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "nosonar-marker-invalid" "warning" \
+      "$count inline NOSONAR marker(s) do not follow the suppression policy. Each marker must name the rule in the analyzer's syntax (YAML \`NOSONAR(githubactions:S1234)\`, Python \`NOSONAR(S1234)\`) and give a reason after it. Run \`scripts/check-nosonar-markers.sh\` from combsmith/.github locally to list them all.${violations}${more}" \
+      "$NOSONAR_STANDARD_REF"
+  fi
 }
 
 # Standard section every CodeQL finding below points at.
@@ -3789,6 +3911,7 @@ main() {
     check_codeowners "$repo"
     check_sonarcloud "$repo"
     check_sonar_s7637_exemption "$repo"
+    check_nosonar_markers "$repo"
     check_codeql_default_setup "$repo"
     check_workflow_permissions "$repo"
     check_ci_concurrency "$repo"

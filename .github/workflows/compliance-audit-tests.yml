@@ -67,7 +67,7 @@ jobs:
       - name: shellcheck
         run: |
           set -euo pipefail
-          shellcheck --severity=warning -x scripts/compliance-audit.sh scripts/lib/health-alerts.sh
+          shellcheck --severity=warning -x scripts/compliance-audit.sh scripts/lib/health-alerts.sh scripts/lib/nosonar-markers.sh
 
       - name: Install PyYAML for the fleet-pause suite
         run: 'pip install --quiet --require-hashes --only-binary :all: -r scripts/feature-ideation-tests-requirements.txt'
