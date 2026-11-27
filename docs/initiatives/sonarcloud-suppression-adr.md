@@ -72,8 +72,8 @@ per-repo configuration. This ADR makes that the rule for every finding.
    is not ours and cannot carry a marker (vendored or generated code, e.g.
    `node_modules/**`). It must not add suppressions for first-party code:
    `sonar.issue.ignore.*` criteria are deprecated. The existing legacy
-   per-stub S7637 entries stay accepted only until they are migrated to inline
-   markers (see Follow-up); no new ones are added.
+   per-stub S7637 and S7635 entries stay accepted only until they are migrated
+   to inline markers (see Follow-up); no new ones are added.
 
 ## Consequences
 
@@ -87,10 +87,10 @@ per-repo configuration. This ADR makes that the rule for every finding.
 
 ## Follow-up
 
-- Migrate this repo's legacy `sonar.issue.ignore.multicriteria` S7637 entries in
-  `sonar-project.properties` to inline markers and delete them.
+- Migrate this repo's legacy `sonar.issue.ignore.multicriteria` S7637 and S7635
+  entries in `sonar-project.properties` to inline markers and delete them.
 - Stop the compliance audit (`check_sonar_s7637_exemption`) from counting the
-  legacy properties exemption as compliant.
+  legacy properties exemption (S7637 or S7635) as compliant.
 - Enforce the marker rule (named rule in the analyzer's syntax, plus a reason)
   in the compliance audit and as a PR-time CI check:
   [#1613](https://github.com/combsmith/.github/issues/1613). See

@@ -50,8 +50,14 @@ is_excluded() {
 
 # added_lines <ref> <path>: the new-side line numbers a diff adds to <path>.
 added_lines() {
-  git diff -U0 --no-color "$1" HEAD -- "$2" | awk '
-    /^@@/ {
+  # Diff the whole change with rename detection (-M), then filter by the new path,
+  # so a pure rename pairs old/new and adds no lines.
+  git -c core.quotePath=false diff -U0 --no-color --no-ext-diff -M --src-prefix=a/ --dst-prefix=b/ "$1" HEAD | awk -v target="$2" '
+    /^\+\+\+ / {
+      file = substr($0, 5); sub(/\t.*$/, "", file); sub(/^b\//, "", file)
+      next
+    }
+    /^@@/ && file == target {
       split($3, a, ","); start = substr(a[1], 2); n = (a[2] == "") ? 1 : a[2]
       for (i = 0; i < n; i++) print start + i
     }'
