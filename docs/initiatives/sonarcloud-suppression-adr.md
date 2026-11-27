@@ -89,6 +89,8 @@ per-repo configuration. This ADR makes that the rule for every finding.
 
 - Migrate this repo's legacy `sonar.issue.ignore.multicriteria` S7637 entries in
   `sonar-project.properties` to inline markers and delete them.
-- Tighten the compliance audit (`check_sonar_s7637_exemption`) so the legacy
-  properties exemption no longer counts as compliant, and flag any
-  `sonar.issue.ignore.*` key and any bare (rule-less) `NOSONAR`.
+- Stop the compliance audit (`check_sonar_s7637_exemption`) from counting the
+  legacy properties exemption as compliant.
+- Enforce the marker rule (named rule in the analyzer's syntax, plus a reason)
+  in the compliance audit and as a PR-time CI check:
+  [#1613](https://github.com/combsmith/.github/issues/1613).
