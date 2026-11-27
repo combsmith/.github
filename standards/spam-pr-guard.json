@@ -1,0 +1,138 @@
+{
+  "_schema_version": 1,
+  "_note": "Config for the deterministic, metadata-only spam-PR scorer scripts/spam-pr-score.sh (epic #1200, story #1203; signal table per discussion #1198). Every number and list here is DATA, not code — the scorer hardcodes none of them. ALL values below are CONSERVATIVE STARTING DEFAULTS and are explicitly TUNABLE (Phase 5 tunes them against the frozen fixtures under tests/fixtures/spam-pr-guard/). Rides standards/v1-stable, so every consumer reads the same config as the scorer at the same cut.",
+
+  "_thresholds_note": "Tunable. A scored PR's raw points total maps to a level: >= high -> high, >= medium -> medium, else low. Only `high` without escalation is auto-close eligible.",
+  "thresholds": {
+    "medium": 4,
+    "high": 6
+  },
+
+  "_weights_note": "Tunable. Points added when each signal fires (discussion #1198). empty_template fires when sc_description_missing (scripts/lib/safety-checks.sh) reports >= signals.empty_template_min_missing missing sections; the scorer multiplies that 0/1 indicator by the weight.",
+  "weights": {
+    "empty_template": 3,
+    "bare_title": 2,
+    "small_doc_diff_no_issue": 2,
+    "typo_introduced": 1,
+    "fork_default_branch": 1,
+    "new_account_no_activity": 1,
+    "burst": 3
+  },
+
+  "_signals_note": "Tunable signal parameters. burst_limit is N: the burst signal fires when the author has MORE THAN N open PRs created org-wide in the last 24h. new_account_days: accounts younger than this many days count as new. no_activity_max_public_repos / no_activity_max_followers: a new account at or below both counts as having no activity (public_repos defaults to 1 because the PR's own fork is a public repo). small_doc_diff_max_lines: the docs-only diff fires when max(total additions, total deletions) is at or below this.",
+  "signals": {
+    "empty_template_min_missing": 5,
+    "burst_limit": 3,
+    "new_account_days": 30,
+    "no_activity_max_public_repos": 1,
+    "no_activity_max_followers": 0,
+    "small_doc_diff_max_lines": 3
+  },
+
+  "_associations_note": "Gate (story #1203 AC2). Bots (author type `Bot`) and exempt associations score 0 and are never flagged or escalated. Otherwise a PR is scored when its author_association is in `scored`, or when it comes from a fork. Any author_association in neither list, on a non-fork PR, is not scored.",
+  "associations": {
+    "scored": ["NONE", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER"],
+    "exempt": ["OWNER", "MEMBER", "COLLABORATOR"]
+  },
+
+  "_bare_title_patterns_note": "Tunable. Case-insensitive POSIX EREs matched against the trimmed PR title; any match fires bare_title. They target titles that are just a file name or a generic verb plus a single token (e.g. `Update README.md`), not descriptive titles.",
+  "bare_title_patterns": [
+    "^((update|updated|edit|edited|change|changed|modify|modified|create|created|add|added|fix|fixed)[[:space:]]+)?[[:alnum:]_./-]+$"
+  ],
+
+  "_doc_paths_note": "Tunable. Bash glob patterns (`*` also matches `/`) for README/docs files. The small-docs-diff signal fires only when EVERY changed file matches one of these.",
+  "doc_paths": [
+    "README",
+    "README.*",
+    "*/README",
+    "*/README.*",
+    "*.md",
+    "*.rst",
+    "docs/*",
+    "doc/*"
+  ],
+
+  "_linked_issue_patterns_note": "Tunable. Case-insensitive POSIX EREs (owner/repo runs are length-bounded to GitHub limits so an unbroken run in an untrusted body cannot trigger quadratic backtracking); a PR body matching any of them is treated as linking an issue, which suppresses small_doc_diff_no_issue.",
+  "linked_issue_patterns": [
+    "(^|[^[:alnum:]&/])#[0-9]+",
+    "/issues/[0-9]+",
+    "[[:alnum:]_.-]{1,39}/[[:alnum:]_.-]{1,100}#[0-9]+"
+  ],
+
+  "_typo_words_note": "Tunable. Common misspellings, lowercase. typo_introduced fires when an ADDED patch line contains one of these as a whole word and no REMOVED line of the same file does (the edit introduces the typo).",
+  "typo_words": [
+    "teh",
+    "recieve",
+    "recieved",
+    "seperate",
+    "occured",
+    "occurence",
+    "definately",
+    "wich",
+    "adress",
+    "enviroment",
+    "dependancy",
+    "accross",
+    "untill",
+    "succesful",
+    "sucessful",
+    "existance",
+    "refered",
+    "begining",
+    "neccessary",
+    "neccesary",
+    "documention",
+    "comunity",
+    "lenght",
+    "thier",
+    "becuase",
+    "installtion"
+  ],
+
+  "_security_sensitive_paths_note": "Tunable list, same intent as standards/workflow-exemptions.json: paths agents must never act on unreviewed. Bash glob patterns (`*` also matches `/`). A scored PR that changes ANY matching path gets escalate=true and is NEVER auto-close eligible, whatever its score (story #1203 AC6). Covers workflows/actions, secrets/credentials, and install/bootstrap scripts.",
+  "security_sensitive_paths": [
+    ".github/workflows/*",
+    ".github/actions/*",
+    ".github/scripts/*",
+    "*/.github/scripts/*",
+    "*/.github/workflows/*",
+    "*/.github/actions/*",
+    ".github/CODEOWNERS",
+    "CODEOWNERS",
+    ".github/dependabot.yml",
+    ".env",
+    ".env.*",
+    "*/.env",
+    "*/.env.*",
+    "*secret*",
+    "*Secret*",
+    "*SECRET*",
+    "*credential*",
+    "*Credential*",
+    "*CREDENTIAL*",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "*id_rsa*",
+    "install.sh",
+    "*/install.sh",
+    "install-*.sh",
+    "*/install-*.sh",
+    "setup.sh",
+    "*/setup.sh",
+    "bootstrap.sh",
+    "*/bootstrap.sh",
+    "scripts/*",
+    "Makefile",
+    "*/Makefile",
+    "package.json",
+    "*/package.json",
+    "setup.py",
+    "*/setup.py",
+    "pyproject.toml",
+    "*/pyproject.toml",
+    ".npmrc",
+    ".pypirc"
+  ]
+}

