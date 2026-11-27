@@ -892,9 +892,13 @@ Decision record: [`docs/initiatives/sonarcloud-suppression-adr.md`](../docs/init
   *Accepted* / *False positive* / *Safe*, do not change a project's analysis
   scope or ignore-issue settings, and do not assign custom quality profiles or
   gates. Any SonarCloud state that does not come from Git is drift.
-- **Suppress with an inline marker** on the offending line, always rule-scoped
-  and with a reason: `# NOSONAR(<analyzer>:<rule>) <reason>`. A bare `NOSONAR` and
-  file- or block-wide disables are not allowed. Fix the finding first.
+- **Suppress with an inline marker** on the offending line that names the rule
+  and gives a reason, in the syntax the analyzer accepts: GitHub Actions YAML
+  `# NOSONAR(githubactions:S7637) <reason>` (the analyzer ignores the
+  parentheses, so the marker hides every issue on the line); Python
+  `# NOSONAR(S4721) <reason>` (bare rule ID only, no `python:` prefix). A bare
+  `NOSONAR` and file- or block-wide disables are not allowed. Fix the finding
+  first. Details in the ADR.
 - **`sonar-project.properties` sets analysis scope only** (project key,
   organization, report paths, and `sonar.exclusions` for vendored or generated
   code such as `node_modules/**`). `sonar.issue.ignore.*` criteria are
@@ -923,7 +927,8 @@ jobs:
     uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR(githubactions:S7637) first-party channel ref
 ```
 
-SonarCloud honors the inline comment and suppresses S7637 on exactly that line,
+SonarCloud honors the inline comment and suppresses issues on exactly that line
+(every issue on it: the analyzer ignores the rule key in parentheses),
 so the exemption travels **with the stub file** — adopters who copy the template
 verbatim inherit it with **zero** per-repo `sonar-project.properties` entries and
 **no file rename**. Spike-validated on `bmad-bgreat-suite#334` (`3cbfa005`):
@@ -995,7 +1000,7 @@ jobs:
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
 ```
 
-Like the S7637 marker, SonarCloud suppresses S7635 on exactly that line, so the
+Like the S7637 marker, SonarCloud suppresses every issue on exactly that line, so the
 exemption travels **with the stub file** — verbatim adopters inherit it with
 **zero** per-repo `sonar-project.properties` entries. The grandfathered existing
 deployments pass because they are not "new code"; the rule only bites a stub the

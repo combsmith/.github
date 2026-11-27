@@ -42,18 +42,26 @@ per-repo configuration. This ADR makes that the rule for every finding.
    - custom quality profiles, deactivated rules, or custom quality gates
      assigned to a project. Projects use the org default profile and gate.
 2. **Suppress with an inline NOSONAR marker.** A finding that is not fixed is
-   suppressed on its own line with a rule-scoped marker and a reason:
+   suppressed on its own line with a marker that names the rule and gives a
+   reason. The rule-key syntax inside the parentheses depends on the analyzer:
+
+   | Analyzer | Syntax | Scope of the marker |
+   |----------|--------|---------------------|
+   | GitHub Actions / IaC YAML | `# NOSONAR(githubactions:S7635) <reason>` | Every issue on the line. The analyzer only looks for the text `NOSONAR` and ignores the parentheses ([`NoSonarVisitor`](https://github.com/SonarSource/sonar-iac/blob/master/iac-common/src/main/java/org/sonar/iac/common/extension/visitors/NoSonarVisitor.java)); the rule key is there for reviewers and the audit. |
+   | Python | `# NOSONAR(S4721) <reason>` | Only the named rules. The key must be the bare rule ID: a `python:` or `pythonsecurity:` prefix is an invalid key ([`NoSonarInfoParser`](https://github.com/SonarSource/sonar-python/blob/master/python-frontend/src/main/java/org/sonar/plugins/python/api/nosonar/NoSonarInfoParser.java)). |
+   | Other languages | The analyzer's documented `NOSONAR` syntax | As documented by that analyzer. |
 
    ```yaml
    secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
    ```
 
    ```python
-   subprocess.run(cmd, shell=False)  # NOSONAR(pythonsecurity:S4721) cmd is a fixed argv list, no user input
+   subprocess.run(cmd, shell=False)  # NOSONAR(S4721) cmd is a fixed argv list, no user input
    ```
 
-   - Always name the rule (`NOSONAR(<analyzer>:<rule_key>)`). A bare `NOSONAR` silences
-     every rule on the line and is not allowed.
+   - Always name the rule. A bare `NOSONAR` hides what was suppressed and why,
+     and is not allowed. Where the marker covers the whole line (YAML), keep
+     the line to the one construct being suppressed.
    - Always give a short reason after the marker.
    - One line, one marker. No file-wide or block-wide disables.
 3. **Fix first.** A marker is for a finding that is wrong for this code or
@@ -62,10 +70,10 @@ per-repo configuration. This ADR makes that the rule for every finding.
 4. **`sonar-project.properties` is for analysis scope only.** It may set the
    project key, organization, report paths, and `sonar.exclusions` for code that
    is not ours and cannot carry a marker (vendored or generated code, e.g.
-   `node_modules/**`). It must not suppress findings in first-party code:
-   `sonar.issue.ignore.*` criteria are deprecated. Existing ones (the legacy
-   per-stub S7637 entries) are migrated to inline markers and removed; no new
-   ones are added.
+   `node_modules/**`). It must not add suppressions for first-party code:
+   `sonar.issue.ignore.*` criteria are deprecated. The existing legacy
+   per-stub S7637 entries stay accepted only until they are migrated to inline
+   markers (see Follow-up); no new ones are added.
 
 ## Consequences
 
@@ -76,9 +84,6 @@ per-repo configuration. This ADR makes that the rule for every finding.
 - Any SonarCloud state that does not come from Git is drift. If a UI-side
   suppression or setting is found, it is reverted and, if still justified,
   replaced by an inline marker in a PR.
-- Some languages or analyzers may not honour inline markers for a given rule.
-  If that happens, fix the code; if it cannot be fixed, raise a standards PR
-  that amends this ADR with the specific exception rather than using the UI.
 
 ## Follow-up
 
