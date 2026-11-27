@@ -1814,11 +1814,11 @@ NOSONAR_STANDARD_REF="standards/ci-standards.md#sonarcloud-suppression-policy"
 nosonar_gh_read() {
   local out attempt
   for attempt in 1 2 3; do
-    if out=$(gh api "$1" --jq "$2" 2>&1); then
+    if out=$(timeout 120 gh api "$1" --jq "$2" 2>&1); then
       printf '%s\n' "$out"
       return 0
     fi
-    if [[ "$out" == *"HTTP 404"* || "$out" == *"Not Found"* ]]; then
+    if response_is_http_404 "$out"; then
       return 44
     fi
     [[ "$attempt" -lt 3 ]] && sleep $((attempt * 2))

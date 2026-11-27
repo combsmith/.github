@@ -104,10 +104,10 @@ if [[ -n "$base" ]]; then
         fail=1
       fi
     done < <(nosonar_scan_file "$f")
-  done < <(git diff --name-only --diff-filter=AMR "$base" HEAD)
+  done < <(git -c core.quotePath=false diff --name-only --diff-filter=AMR "$base" HEAD)
 else
   if [[ ${#paths[@]} -eq 0 ]]; then
-    mapfile -t paths < <(git ls-files)
+    mapfile -t paths < <(git -c core.quotePath=false ls-files)
   fi
   for f in "${paths[@]}"; do
     is_excluded "$f" && continue
