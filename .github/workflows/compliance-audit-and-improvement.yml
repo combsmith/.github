@@ -333,7 +333,10 @@ jobs:
         env:
           UNREADABLE: ${{ steps.preflight.outputs.unreadable }}
         run: |
-          echo "::error::Health survey: ORG_SCORECARD_TOKEN cannot read these alert kinds: $UNREADABLE. Their counts are unknown on every repo. Grant the token the matching alerts read permission org-wide, then re-run."
+          msg="Health survey: ORG_SCORECARD_TOKEN cannot read these alert kinds: $UNREADABLE."
+          msg="$msg Their counts are unknown on every repo."
+          msg="$msg Grant the token the matching alerts read permission org-wide, then re-run."
+          echo "::error::$msg"
           exit 1
 
   # -----------------------------------------------------------------------
