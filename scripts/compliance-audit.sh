@@ -2845,8 +2845,8 @@ supply_chain_publishes_artifacts() {
     -e '^  release:' \
     -e '^on:.*[^A-Za-z0-9_-]release([^A-Za-z0-9_-]|$)' \
     -e 'uses:[[:space:]]*(softprops/action-gh-release|ncipollo/release-action|goreleaser/goreleaser-action|docker/build-push-action|pypa/gh-action-pypi-publish|JS-DevTools/npm-publish)@' \
-    -e '(^|[^A-Za-z0-9_-])(npm|pnpm|yarn( npm)?|cargo) publish([^A-Za-z0-9_-]|$)' \
-    -e '(^|[^A-Za-z0-9_-])(twine upload|docker push|goreleaser release|gh release (create|upload))([^A-Za-z0-9_-]|$)'
+    -e '(^|[^A-Za-z0-9_-])(npm|pnpm|yarn([[:space:]]+npm)?|cargo)[[:space:]]+publish([^A-Za-z0-9_-]|$)' \
+    -e '(^|[^A-Za-z0-9_-])(twine[[:space:]]+upload|docker[[:space:]]+push|goreleaser[[:space:]]+release|gh[[:space:]]+release[[:space:]]+(create|upload))([^A-Za-z0-9_-]|$)'
 }
 
 # supply_chain_missing_controls <workflows-text>: print each absent control, one
@@ -2858,7 +2858,7 @@ supply_chain_missing_controls() {
     || echo "dependency-review"
   printf '%s\n' "$body" | grep -qE \
     -e 'uses:[[:space:]]*(anchore/sbom-action|actions/attest-sbom|CycloneDX/[A-Za-z0-9_.-]+)@' \
-    -e '(^|[^A-Za-z0-9_-])(syft|cdxgen|cyclonedx-[a-z]+)[[:space:]]' \
+    -e '(^|[^A-Za-z0-9_-])(syft|cdxgen|cyclonedx-[a-z]+)([^A-Za-z0-9_-]|$)' \
     || echo "sbom"
   printf '%s\n' "$body" | grep -qE \
     -e 'uses:[[:space:]]*(actions/attest-build-provenance|actions/attest)@' \
