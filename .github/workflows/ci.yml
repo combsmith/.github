@@ -28,6 +28,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Two commits so the suppression-marker step can diff against HEAD^1: on a
+          # pull_request the checkout is the merge commit, whose first parent is
+          # the base tip; on a push to main it is the previous commit.
+          fetch-depth: 2
 
       - name: Lint Markdown
         uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34 # v25.0.0
@@ -91,6 +96,22 @@ jobs:
         # Fail any workflow whose cron fires on the top of the hour (minute 0).
         # Standard: standards/ci-standards.md → "Scheduled Workflow Timing".
         run: bash scripts/check-cron-timing.sh
+
+      - name: Lint NOSONAR markers
+        if: always()
+        # Fail when the change adds an inline SonarCloud suppression marker that
+        # does not name its rule in the analyzer's syntax or give a reason, or adds
+        # a deprecated sonar.issue.ignore.* key. Only added lines are checked, so
+        # existing markers never block an unrelated PR (the compliance audit
+        # sweeps those). Standard: standards/ci-standards.md →
+        # "SonarCloud Suppression Policy".
+        run: |
+          if git rev-parse --verify --quiet HEAD^1 > /dev/null; then
+            bash scripts/check-nosonar-markers.sh --base HEAD^1
+          else
+            echo "No parent commit to diff against; checking the whole tree."
+            bash scripts/check-nosonar-markers.sh
+          fi
 
   shellcheck:
     name: ShellCheck
