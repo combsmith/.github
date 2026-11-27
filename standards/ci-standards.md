@@ -913,10 +913,13 @@ Decision record: [`docs/initiatives/sonarcloud-suppression-adr.md`](../docs/init
 | Org-wide: the compliance audit's `check_nosonar_markers` | Every file that mentions the keyword, in each SonarCloud-gated repo | `nosonar-marker-invalid` (warning) and `sonar-issue-ignore-deprecated` (warning) |
 
 A marker is any comment that contains the keyword, so prose comments must not
-use it either. Refer to "the S7637 suppression marker" instead. Strings are not
+use it either: a bare or malformed mention fails the check. Refer to "the S7637
+suppression marker" instead. Strings are not
 comments: code that greps for a marker is not flagged. Downstream repos adopt
-the PR-time check by adding the same step to their `ci.yml` Lint job (checkout
-with `fetch-depth: 2`). Running `scripts/check-nosonar-markers.sh` without
+the PR-time check by copying `scripts/check-nosonar-markers.sh` and
+`scripts/lib/nosonar-markers.sh` into their `scripts/` directory (keep both
+files in sync with this repo) and adding the same step to their `ci.yml` Lint
+job (checkout with `fetch-depth: 0`). Running `scripts/check-nosonar-markers.sh` without
 `--base` checks a whole tree.
 
 #### SonarCloud Exemption: First-Party Reusable-Ref S7637

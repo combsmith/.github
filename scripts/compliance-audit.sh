@@ -1808,14 +1808,48 @@ check_sonar_s7637_exemption() {
 SONAR_MARKER_SEARCH_DELAY="${SONAR_MARKER_SEARCH_DELAY:-7}"
 NOSONAR_STANDARD_REF="standards/ci-standards.md#sonarcloud-suppression-policy"
 
+# nosonar_gh_read <api-path> <jq>: print the jq result. Returns 0 on success,
+# 44 on a confirmed 404 (absent), 1 on any other failure (403, rate limit, 5xx).
+# Non-404 failures are retried a few times before giving up.
+nosonar_gh_read() {
+  local out attempt
+  for attempt in 1 2 3; do
+    if out=$(gh api "$1" --jq "$2" 2>&1); then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    if [[ "$out" == *"HTTP 404"* || "$out" == *"Not Found"* ]]; then
+      return 44
+    fi
+    [[ "$attempt" -lt 3 ]] && sleep $((attempt * 2))
+  done
+  return 1
+}
+
 check_nosonar_markers() {
   local repo="$1"
 
-  # Only relevant when the repo actually runs SonarCloud analysis.
-  gh_api "repos/$ORG/$repo/contents/.github/workflows/sonarcloud.yml" --jq '.name' > /dev/null 2>&1 || return 0
+  # Only relevant when the repo actually runs SonarCloud analysis. A confirmed
+  # 404 means it does not; any other failure leaves the repo unaudited.
+  local rc=0
+  nosonar_gh_read "repos/$ORG/$repo/contents/.github/workflows/sonarcloud.yml" '.name' > /dev/null || rc=$?
+  if [[ "$rc" -eq 44 ]]; then
+    return 0
+  elif [[ "$rc" -ne 0 ]]; then
+    warn "check_nosonar_markers: cannot read sonarcloud.yml for $repo; marking inconclusive"
+    mark_repo_inconclusive "$repo"
+    return 0
+  fi
 
   local props props_decoded ignore_hits
-  props=$(gh_api "repos/$ORG/$repo/contents/sonar-project.properties" --jq '.content' 2>/dev/null || echo "")
+  rc=0
+  props=$(nosonar_gh_read "repos/$ORG/$repo/contents/sonar-project.properties" '.content') || rc=$?
+  if [[ "$rc" -ne 0 && "$rc" -ne 44 ]]; then
+    warn "check_nosonar_markers: cannot read sonar-project.properties for $repo; marking inconclusive"
+    mark_repo_inconclusive "$repo"
+    return 0
+  fi
+  [[ "$rc" -eq 0 ]] || props=""
   if [[ -n "$props" ]]; then
     props_decoded=$(echo "$props" | base64 -d 2>/dev/null || echo "")
     ignore_hits=$(nosonar_issue_ignore_lines "$props_decoded")
@@ -1828,7 +1862,7 @@ check_nosonar_markers() {
 
   [[ "$SONAR_MARKER_SEARCH_DELAY" == "0" ]] || sleep "$SONAR_MARKER_SEARCH_DELAY"
   local paths
-  if ! paths=$(gh_api "search/code?q=NOSONAR+repo:$ORG/$repo&per_page=100" --jq '.items[].path'); then
+  if ! paths=$(gh_api "search/code?q=NOSONAR+repo:$ORG/$repo&per_page=100" --paginate --jq '.items[].path'); then
     warn "check_nosonar_markers: code search failed for $repo; marking inconclusive"
     mark_repo_inconclusive "$repo"
     return 0
@@ -1839,7 +1873,14 @@ check_nosonar_markers() {
     [[ -n "$path" ]] || continue
     [[ -n "$(nosonar_comment_style "$path")" ]] || continue
     case "$path" in node_modules/* | */node_modules/* | vendor/* | */vendor/*) continue ;; esac
-    content=$(gh_api "repos/$ORG/$repo/contents/$path" --jq '.content' 2>/dev/null || echo "")
+    rc=0
+    content=$(nosonar_gh_read "repos/$ORG/$repo/contents/$path" '.content') || rc=$?
+    if [[ "$rc" -eq 44 ]]; then continue; fi  # file removed since indexed
+    if [[ "$rc" -ne 0 ]]; then
+      warn "check_nosonar_markers: cannot read $path in $repo; marking inconclusive"
+      mark_repo_inconclusive "$repo"
+      return 0
+    fi
     [[ -n "$content" ]] || continue
     decoded=$(echo "$content" | base64 -d 2>/dev/null || echo "")
     [[ -n "$decoded" ]] || continue

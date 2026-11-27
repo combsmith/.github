@@ -43,8 +43,17 @@ jobs:
       - name: Install bats and shellcheck
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends bats shellcheck
+          for attempt in 1 2 3; do
+            if timeout 120 sudo apt-get update -qq \
+              && timeout 120 sudo apt-get install -y --no-install-recommends bats shellcheck; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Apt install failed after 3 attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
 
       - name: shellcheck
         run: shellcheck --severity=warning -x scripts/check-nosonar-markers.sh scripts/lib/nosonar-markers.sh

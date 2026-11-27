@@ -139,3 +139,13 @@ scan() { # <path> <content>
   [ "${lines[1]}" = "4: sonar.issue.ignore.multicriteria.a.ruleKey" ]
   [ "${#lines[@]}" -eq 2 ]
 }
+
+@test "a bare mention before a valid marker is flagged" {
+  scan a.js '// NOSONAR then NOSONAR(S1234) reason'
+  [[ "$output" == *"a.js:1: bare NOSONAR"* ]]
+}
+
+@test "shell comment after a control operator is scanned" {
+  scan a.sh 'echo hi;# NOSONAR'
+  [[ "$output" == *"a.sh:1: bare NOSONAR"* ]]
+}

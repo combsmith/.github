@@ -87,7 +87,7 @@ per-repo configuration. This ADR makes that the rule for every finding.
 
 ## Follow-up
 
-- Migrate this repo's legacy `sonar.issue.ignore.multicriteria` S7637 and S7635
+- Migrate this repo's legacy `sonar.issue.ignore.multicriteria` S7637
   entries in `sonar-project.properties` to inline markers and delete them.
 - Stop the compliance audit (`check_sonar_s7637_exemption`) from counting the
   legacy properties exemption (S7637 or S7635) as compliant.

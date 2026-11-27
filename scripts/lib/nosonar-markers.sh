@@ -60,10 +60,22 @@ nosonar_scan_content() {
   printf '%s\n' "$content" | awk -v path="$path" -v style="$style" '
     function report(msg) { printf "%s:%d: %s\n", path, NR, msg }
 
-    function check(cmt,    pos, rest, keys, n, i, k, inner) {
+    function check(cmt,    pos, rest, keys, n, i, k, inner, tmp, nk, np) {
       if (index(cmt, "NOSONAR") == 0) return
       if (style == "python" && cmt !~ /^#[ \t]*NOSONAR/) {
         report("NOSONAR must open the comment in Python (sonar-python ignores it anywhere else)")
+        return
+      }
+      # Every occurrence must be a parenthesized marker: a bare or prose mention
+      # ahead of a valid one must not pass.
+      tmp = cmt; nk = 0; np = 0
+      while ((pos = index(tmp, "NOSONAR")) > 0) {
+        nk++
+        tmp = substr(tmp, pos + 7)
+        if (tmp ~ /^\([^)]*\)/) np++
+      }
+      if (np > 0 && nk > np) {
+        report("bare NOSONAR: every mention must name the rule, e.g. NOSONAR(" (style == "python" ? "S1234" : style == "yaml" ? "githubactions:S1234" : "S1234") ") <reason>")
         return
       }
       if (!match(cmt, /NOSONAR\([^)]*\)/)) {
@@ -123,7 +135,7 @@ nosonar_scan_content() {
             if (e == 0) { check(substr(line, i)); in_block = 1; break }
             check(substr(line, i, e + 3)); i = i + e + 2; continue
           }
-        } else if (c == "#" && (style == "python" || i == 1 || p ~ /[ \t]/)) {
+        } else if (c == "#" && (style == "python" || i == 1 || p ~ /[ \t]/ || (style == "shell" && p ~ /[;&|(]/))) {
           check(substr(line, i)); break
         }
       }

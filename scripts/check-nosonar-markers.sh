@@ -33,9 +33,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Escape text for a GitHub Actions workflow command so PR-controlled paths and
+# messages cannot inject a second command. $2 = 1 also escapes property delimiters.
+gha_escape() {
+  local s="$1"
+  s="${s//'%'/'%25'}"; s="${s//$'\r'/'%0D'}"; s="${s//$'\n'/'%0A'}"
+  if [[ "${2:-0}" == 1 ]]; then s="${s//':'/'%3A'}"; s="${s//','/'%2C'}"; fi
+  printf '%s' "$s"
+}
+
 annotate() { # <level> <path> <line> <message>
   if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::$1 file=$2,line=$3::$4"
+    echo "::$1 file=$(gha_escape "$2" 1),line=$(gha_escape "$3" 1)::$(gha_escape "$4")"
   else
     echo "$2:$3: $1: $4"
   fi
@@ -53,7 +62,9 @@ added_lines() {
   # Diff the whole change with rename detection (-M), then filter by the new path,
   # so a pure rename pairs old/new and adds no lines.
   git -c core.quotePath=false diff -U0 --no-color --no-ext-diff -M --src-prefix=a/ --dst-prefix=b/ "$1" HEAD | awk -v target="$2" '
-    /^\+\+\+ / {
+    /^diff --git / { hdr = 1; next }
+    hdr && /^\+\+\+ / {
+      hdr = 0
       file = substr($0, 5); sub(/\t.*$/, "", file); sub(/^b\//, "", file)
       next
     }

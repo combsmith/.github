@@ -29,10 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Two commits so the suppression-marker step can diff against HEAD^1: on a
-          # pull_request the checkout is the merge commit, whose first parent is
-          # the base tip; on a push to main it is the previous commit.
-          fetch-depth: 2
+          # The suppression-marker step diffs against HEAD^1 on a pull_request (the
+          # checkout is the merge commit, whose first parent is the base tip) and
+          # against the push event's `before` SHA on a push, so a multi-commit
+          # push is checked in full. Full history keeps `before` reachable.
+          fetch-depth: 0
 
       - name: Lint Markdown
         uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34 # v25.0.0
@@ -105,9 +106,18 @@ jobs:
         # existing markers never block an unrelated PR (the compliance audit
         # sweeps those). Standard: standards/ci-standards.md →
         # "SonarCloud Suppression Policy".
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
-          if git rev-parse --verify --quiet HEAD^1 > /dev/null; then
-            bash scripts/check-nosonar-markers.sh --base HEAD^1
+          base=HEAD^1
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] \
+            && [ -n "${PUSH_BEFORE:-}" ] \
+            && [ "${PUSH_BEFORE}" != "0000000000000000000000000000000000000000" ] \
+            && git rev-parse --verify --quiet "${PUSH_BEFORE}^{commit}" > /dev/null; then
+            base="${PUSH_BEFORE}"
+          fi
+          if git rev-parse --verify --quiet "${base}^{commit}" > /dev/null; then
+            bash scripts/check-nosonar-markers.sh --base "${base}"
           else
             echo "No parent commit to diff against; checking the whole tree."
             bash scripts/check-nosonar-markers.sh
