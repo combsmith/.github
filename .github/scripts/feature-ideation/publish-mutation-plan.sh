@@ -167,7 +167,7 @@ _resolve_done() {
       files+=("$f")
     done < <(find "$PUBLISH_LEDGER_IN" -type f -name '*.jsonl' -print0 | sort -z)
   fi
-  recorded=$(mp_ledger_done "$plan_id" ${files[@]+"${files[@]}"}) || return 1
+  recorded=$(mp_ledger_done "$plan_id" "${files[@]+"${files[@]}"}") || return 1
 
   # Only the ids of entries that are creates in this plan matter.
   ids=$(printf '%s' "$plan" | jq -c --argjson recorded "$recorded" '
@@ -200,7 +200,7 @@ GRAPHQL
 
 # Record a published entry in this attempt's ledger, before the next write.
 _record() {
-  if ! mp_ledger_entry "$@" >>"$PUBLISH_LEDGER_OUT" || ! printf '\n' >>"$PUBLISH_LEDGER_OUT"; then
+  if ! mp_ledger_entry "$@" >>"$PUBLISH_LEDGER_OUT"; then
     echo "::error::Could not record a published entry in the re-run ledger; stopping so a re-run cannot repeat more than this one entry."
     return 1
   fi
