@@ -149,11 +149,36 @@ jobs:
     outputs:
       report: ${{ steps.collect.outputs.report }}
       has_findings: ${{ steps.collect.outputs.has_findings }}
+      alerts_unreadable: ${{ steps.preflight.outputs.unreadable }}
     steps:
       - name: Checkout .github repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # Preflight (#1616): probe each alert endpoint once before the per-repo
+      # reads. A token that may not read a kind (401/403) is named here, once,
+      # with an ::error::, instead of as one warning per repo. The step never
+      # fails: the survey still collects its CI/PR telemetry, and
+      # `fail-on-unreadable-alerts` turns the job red after the report output
+      # is written. Probes the target repo when one is given, else this repo.
+      - name: Preflight — alert endpoint permissions
+        id: preflight
+        env:
+          PROBE_REPO: ${{ inputs.target_repo || github.repository }}
+          ORG: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=scripts/lib/health-alerts.sh
+          source scripts/lib/health-alerts.sh
+          if [[ "$PROBE_REPO" != */* ]]; then
+            PROBE_REPO="$ORG/$PROBE_REPO"
+          fi
+          UNREADABLE=$(health_alert_preflight "$PROBE_REPO")
+          echo "unreadable=$UNREADABLE" >> "$GITHUB_OUTPUT"
+          if [ -n "$UNREADABLE" ]; then
+            echo "- **❌ Preflight:** ORG_SCORECARD_TOKEN cannot read alerts on \`$PROBE_REPO\`: $UNREADABLE — grant it the matching alerts read permission org-wide." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Collect runtime health telemetry
         id: collect
@@ -299,6 +324,18 @@ jobs:
 
           rm -f "$REPORT_FILE"
 
+      # Runs after `collect` wrote the report output, so `analyze` still gets
+      # the survey (it reads the output, not the job result) while the run is
+      # red: an org-wide unreadable alert kind is a broken token, not data.
+      - name: Fail on unreadable alert endpoints
+        id: fail-on-unreadable-alerts
+        if: steps.preflight.outputs.unreadable != ''
+        env:
+          UNREADABLE: ${{ steps.preflight.outputs.unreadable }}
+        run: |
+          echo "::error::Health survey: ORG_SCORECARD_TOKEN cannot read these alert kinds: $UNREADABLE. Their counts are unknown on every repo. Grant the token the matching alerts read permission org-wide, then re-run."
+          exit 1
+
   # -----------------------------------------------------------------------
   # Job 3: Combined analysis — Claude reviews both datasets
   # Creates actionable issues in the appropriate repo with the dev-lead label.
@@ -324,19 +361,57 @@ jobs:
       - name: Checkout .github repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # A failed download must not stop the job silently: `input_status` below
+      # reports the missing report and the prompt files an issue for it (#1616).
       - name: Download compliance audit report
         if: needs.audit.result == 'success'
+        continue-on-error: true
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: compliance-report
           path: ${{ runner.temp }}/compliance-report
 
+      # Written whenever the survey produced a report — also when the job was
+      # failed by its alert-permission preflight after collecting (#1616).
       - name: Write health survey report
-        if: needs.health-survey.result == 'success'
+        if: needs.health-survey.outputs.report != ''
         run: |
           cat <<'REPORT_EOF' > ${{ runner.temp }}/health-survey.json
           ${{ needs.health-survey.outputs.report }}
           REPORT_EOF
+
+      # Input check (#1616): state each input's status before the model runs,
+      # so a missing one is reported (and filed) instead of silently absent.
+      # With neither input there is nothing to analyse: fail fast.
+      - name: Check analysis inputs
+        id: input_status
+        env:
+          REPORT_ROOT: ${{ runner.temp }}
+          AUDIT_RESULT: ${{ needs.audit.result }}
+          SURVEY_RESULT: ${{ needs.health-survey.result }}
+          ALERTS_UNREADABLE: ${{ needs.health-survey.outputs.alerts_unreadable }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=scripts/lib/analysis-inputs.sh
+          source scripts/lib/analysis-inputs.sh
+          COMPLIANCE=$(analysis_input_status "$REPORT_ROOT/compliance-report/findings.json" "$AUDIT_RESULT")
+          SURVEY=$(analysis_input_status "$REPORT_ROOT/health-survey.json" "$SURVEY_RESULT")
+          if [ -n "$ALERTS_UNREADABLE" ]; then
+            SURVEY="$SURVEY; preflight: token cannot read $ALERTS_UNREADABLE alerts"
+          fi
+          echo "compliance_report=$COMPLIANCE" >> "$GITHUB_OUTPUT"
+          echo "health_survey=$SURVEY" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Analysis inputs"
+            echo "- Compliance report: $COMPLIANCE"
+            echo "- Health survey: $SURVEY"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$COMPLIANCE" = "present" ] || echo "::warning::Compliance report $COMPLIANCE — findings cannot be correlated this run."
+          [ "${SURVEY%%;*}" = "present" ] || echo "::warning::Health survey $SURVEY — runtime telemetry is missing this run."
+          if [ "$COMPLIANCE" != "present" ] && [ "${SURVEY%%;*}" != "present" ]; then
+            echo "::error::Neither the compliance report nor the health survey is available — nothing to analyse."
+            exit 1
+          fi
 
       - name: Run Claude Code for combined analysis
         env:
@@ -381,6 +456,16 @@ jobs:
               `${{ github.repository }}` about the health-survey telemetry gap (which counts, how
               many repos, likely cause), deduplicated against existing open issues. That repo's
               `finding_score` excludes the unknown counts, so it is a lower bound.
+
+            ### Input Status (checked before this prompt — #1616)
+            - Compliance report: ${{ steps.input_status.outputs.compliance_report }}
+            - Health survey: ${{ steps.input_status.outputs.health_survey }}
+            - **A missing input is a telemetry gap, not a clean result.** For each input that is
+              not `present` (or a survey whose preflight names unreadable alert kinds), file ONE
+              issue in `${{ github.repository }}` titled `fix: compliance audit telemetry gap — …`
+              naming the input, the status above and this run's URL, deduplicated against
+              existing open issues (comment on a matching one instead). Do not read a missing
+              input's absence as "no findings".
 
             ## Phase 1: Load and Understand
 
