@@ -586,7 +586,7 @@ merge_guarded_surfaces() {
 # is_already_compliant <existing_content> <template> <repo> -> 0 if the deployed
 # stub needs no re-deploy. A stub is compliant only when it is BOTH pin-compliant
 # (is_pin_compliant, below) AND — when its template carries a real `secrets: inherit`
-# line — still carries the S7635 NOSONAR marker on that line. A pin-correct stub that
+# line — still carries the S7635 suppression marker on that line. A pin-correct stub that
 # dropped the marker is DRIFT (#877): #875/#876 restored the marker in the templates
 # but not the driver, so a re-sweep skipped already-pinned consumers (broodminder-
 # export, bmad-bgreat-suite, …) whose stubs merged marker-less during #857. Flagging

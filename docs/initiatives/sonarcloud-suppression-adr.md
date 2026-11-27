@@ -93,4 +93,5 @@ per-repo configuration. This ADR makes that the rule for every finding.
   legacy properties exemption as compliant.
 - Enforce the marker rule (named rule in the analyzer's syntax, plus a reason)
   in the compliance audit and as a PR-time CI check:
-  [#1613](https://github.com/combsmith/.github/issues/1613).
+  [#1613](https://github.com/combsmith/.github/issues/1613). See
+  [Enforcement](../../standards/ci-standards.md#sonarcloud-suppression-policy).

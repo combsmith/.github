@@ -904,6 +904,21 @@ Decision record: [`docs/initiatives/sonarcloud-suppression-adr.md`](../docs/init
   code such as `node_modules/**`). `sonar.issue.ignore.*` criteria are
   deprecated and must not be added.
 
+**Enforcement.** Both checks share one rule,
+[`scripts/lib/nosonar-markers.sh`](../scripts/lib/nosonar-markers.sh):
+
+| Where | What it checks | Result |
+|-------|----------------|--------|
+| PR time: [`scripts/check-nosonar-markers.sh --base HEAD^1`](../scripts/check-nosonar-markers.sh), run by this repo's `ci.yml` **Lint** job | Only lines the change adds: each new marker, and any new `sonar.issue.ignore.*` key | Fails the `Lint` check |
+| Org-wide: the compliance audit's `check_nosonar_markers` | Every file that mentions the keyword, in each SonarCloud-gated repo | `nosonar-marker-invalid` (warning) and `sonar-issue-ignore-deprecated` (warning) |
+
+A marker is any comment that contains the keyword, so prose comments must not
+use it either. Refer to "the S7637 suppression marker" instead. Strings are not
+comments: code that greps for a marker is not flagged. Downstream repos adopt
+the PR-time check by adding the same step to their `ci.yml` Lint job (checkout
+with `fetch-depth: 2`). Running `scripts/check-nosonar-markers.sh` without
+`--base` checks a whole tree.
+
 #### SonarCloud Exemption: First-Party Reusable-Ref S7637
 
 SonarCloud's GitHub Actions rule **`githubactions:S7637`** ("pin actions to a
