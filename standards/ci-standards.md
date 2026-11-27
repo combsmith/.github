@@ -579,7 +579,7 @@ The primary build-and-test workflow. Structure varies by tech stack but must inc
 | **Integration tests** | Backend/API integration | If applicable |
 | **E2E tests** | End-to-end functional tests | If applicable |
 | **Build / Docker build** | Verify the artifact builds | If applicable |
-| **Dependency review** | `dependency-review` job: block new high-severity / denied-license dependencies on PRs ([supply-chain.md](supply-chain.md)) | Yes (warn mode) |
+| **Dependency review** | `dependency-review` job: report new high-severity / denied-license dependencies on PRs; blocking begins in enforce mode ([supply-chain.md](supply-chain.md)) | Yes (warn mode) |
 
 **Standard triggers:**
 

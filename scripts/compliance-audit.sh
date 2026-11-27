@@ -2841,8 +2841,17 @@ supply_chain_publishes_artifacts() {
   local body
   body=$(supply_chain_strip_comments "$1")
   [[ -z "$body" ]] && return 1
+  # A `release:` key counts only inside the top-level `on:` block (not a job
+  # named `release`); display-only `name:` lines never count as publish steps.
+  if printf '%s\n' "$body" | awk '
+      /^on:/ { inon = 1; next }
+      /^[^[:space:]]/ { inon = 0 }
+      inon && /^[[:space:]]+release:/ { found = 1 }
+      END { exit !found }'; then
+    return 0
+  fi
+  body=$(printf '%s\n' "$body" | grep -vE '^[[:space:]]*-?[[:space:]]*name:' || true)
   printf '%s\n' "$body" | grep -qE \
-    -e '^  release:' \
     -e '^on:.*[^A-Za-z0-9_-]release([^A-Za-z0-9_-]|$)' \
     -e 'uses:[[:space:]]*(softprops/action-gh-release|ncipollo/release-action|goreleaser/goreleaser-action|docker/build-push-action|pypa/gh-action-pypi-publish|JS-DevTools/npm-publish)@' \
     -e '(^|[^A-Za-z0-9_-])(npm|pnpm|yarn([[:space:]]+npm)?|cargo)[[:space:]]+publish([^A-Za-z0-9_-]|$)' \
@@ -2854,7 +2863,9 @@ supply_chain_publishes_artifacts() {
 supply_chain_missing_controls() {
   local body
   body=$(supply_chain_strip_comments "$1")
-  printf '%s\n' "$body" | grep -qE 'uses:[[:space:]]*actions/dependency-review-action@' \
+  # The action must sit in a workflow that also runs on pull requests.
+  { printf '%s\n' "$body" | grep -qE 'uses:[[:space:]]*actions/dependency-review-action@' \
+    && printf '%s\n' "$body" | grep -qE '(^|[^A-Za-z0-9_-])pull_request([^A-Za-z0-9_-]|$)'; } \
     || echo "dependency-review"
   printf '%s\n' "$body" | grep -qE \
     -e 'uses:[[:space:]]*(anchore/sbom-action|actions/attest-sbom|CycloneDX/[A-Za-z0-9_.-]+)@' \
@@ -2873,9 +2884,9 @@ supply_chain_exempt_controls() {
   local file="$1" repo="$2"
   [[ -r "$file" ]] || return 0
   jq -r --arg r "$repo" '
-    (.supply_chain_exemptions // [])[]
-    | select(.repo == $r and ((.reason // "") | type == "string" and length > 0))
-    | (.controls // [])[]' "$file" 2>/dev/null \
+    (.supply_chain_exemptions // []) | select(type == "array") | .[]
+    | select(type == "object" and .repo == $r and ((.reason // "") | type == "string" and length > 0))
+    | (.controls // []) | select(type == "array") | .[] | select(type == "string")' "$file" 2>/dev/null \
     || warn "Could not parse supply-chain exemptions in $file — none applied"
 }
 

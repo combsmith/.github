@@ -46,7 +46,7 @@ Every published build artifact gets a signed SLSA provenance attestation from
 
 ### 3. PR-time dependency review
 
-Every pull request runs `actions/dependency-review-action`. It fails on newly
+Every pull request to `main` runs `actions/dependency-review-action`. It fails on newly
 introduced dependencies with a **high** or **critical** advisory, or with a
 denied license.
 

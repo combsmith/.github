@@ -40,7 +40,7 @@ to_json() {
 @test "ci.yml: dependency-review runs only on pull_request events" {
   run bash -c "$(declare -f to_json); to_json '$CI' | jq -r '.jobs[\"dependency-review\"].if'"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"github.event_name == 'pull_request'"* ]]
+  [ "$output" = "github.event_name == 'pull_request'" ]
 }
 
 @test "ci.yml: dependency-review has least-privilege contents: read only" {
@@ -57,7 +57,7 @@ to_json() {
   local with
   with="$(bash -c "$(declare -f to_json); to_json '$CI'" | jq -c '.jobs["dependency-review"].steps[] | select(.uses // "" | startswith("actions/dependency-review-action@")) | .with')"
   [ "$(echo "$with" | jq -r '."fail-on-severity"')" = "high" ]
-  [ -n "$(echo "$with" | jq -r '."deny-licenses" // empty')" ]
+  [ "$(echo "$with" | jq -r '."deny-licenses"')" = "AGPL-1.0-only, AGPL-1.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, SSPL-1.0, BUSL-1.1" ]
   [ "$(echo "$with" | jq -r '."warn-only"')" = "true" ]
 }
 

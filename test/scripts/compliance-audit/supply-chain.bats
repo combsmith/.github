@@ -116,7 +116,7 @@ teardown() {
 }
 
 @test "missing: CycloneDX and SLSA generator alternatives are accepted" {
-  missing "$(printf 'jobs:\n  a:\n    steps:\n      - uses: actions/dependency-review-action@abc\n      - uses: CycloneDX/gh-node-module-generatebom@abc\n  b:\n    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2\n')"
+  missing "$(printf 'on: [pull_request]\njobs:\n  a:\n    steps:\n      - uses: actions/dependency-review-action@abc\n      - uses: CycloneDX/gh-node-module-generatebom@abc\n  b:\n    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2\n')"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -171,6 +171,22 @@ JSON
   exempt "$TT_TMP/ex.json" foo
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+@test "exemptions: object-valued supply_chain_exemptions or controls fail closed" {
+  echo '{"supply_chain_exemptions": {"repo": "foo", "controls": ["sbom"], "reason": "r"}}' > "$TT_TMP/ex1.json"
+  exempt "$TT_TMP/ex1.json" foo
+  [ -z "$output" ]
+  echo '{"supply_chain_exemptions": [{"repo": "foo", "controls": {"a": "sbom"}, "reason": "r"}]}' > "$TT_TMP/ex2.json"
+  exempt "$TT_TMP/ex2.json" foo
+  [ -z "$output" ]
+}
+
+@test "exemptions: a malformed file yields no exemptions" {
+  echo '{not json' > "$TT_TMP/bad.json"
+  exempt "$TT_TMP/bad.json" foo
+  [ "$status" -eq 0 ]
+  [[ "$output" != *sbom* ]]
 }
 
 @test "exemptions: a missing or unreadable file yields no exemptions" {
