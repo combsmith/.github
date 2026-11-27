@@ -1864,7 +1864,7 @@ check_codeql_default_setup() {
         "$CODEQL_STANDARD_REF"
     else
       local suite
-      suite=$(echo "$raw_response" | jq -r '.query_suite // ""' 2>/dev/null || echo "")
+      suite=$(jq -r '.query_suite // ""' <<< "$raw_response" 2>/dev/null || true)
       if [[ -n "$suite" && "$suite" != "default" ]]; then
         add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-default-setup-query-suite" "warning" \
           "CodeQL default setup runs the \`$suite\` query suite (the standard is \`default\`). The \`extended\` suite adds \`actions/unpinned-tag\`, which raises a code scanning alert on every first-party channel-tag caller stub — pins the standard requires and default setup cannot filter out. Run \`apply-repo-settings.sh $repo\` or \`gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -F query_suite=default\`." \
