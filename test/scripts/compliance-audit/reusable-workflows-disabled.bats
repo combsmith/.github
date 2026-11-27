@@ -15,17 +15,21 @@ bats_require_minimum_version 1.5.0
 _extract_triggers() {
   local decoded="$1"
   local on_line
+  decoded=$(sed -E "s/^([\"']on[\"'])[[:space:]]*:/on:/" <<<"$decoded")
   on_line=$(echo "$decoded" | grep -m1 '^on:')
-  if echo "$on_line" | grep -qE '^on:[[:space:]]+[a-zA-Z_]+[[:space:]]*(#.*)?$'; then
-    echo "$on_line" | sed 's/^on:[[:space:]]*//' | sed 's/[[:space:]]*#.*//' | tr -d '[:space:]'
+  if echo "$on_line" | grep -qE '^on:[[:space:]]+["'"'"']?[a-zA-Z_]+["'"'"']?[[:space:]]*(#.*)?$'; then
+    echo "$on_line" | sed 's/^on:[[:space:]]*//' | sed 's/[[:space:]]*#.*//' | tr -d "[:space:]\"'"
   elif echo "$on_line" | grep -qE '^on:[[:space:]]*\['; then
     echo "$on_line" | sed 's/^on:[[:space:]]*//' | tr -d '[]"'"'"' ' | tr ',' '\n' | tr -d '[:space:]'
   else
     echo "$decoded" | awk '
       /^on:/                     { inblock=1; next }
       inblock && /^[^[:space:]#]/ { exit }
-      inblock && /^  [a-zA-Z_]/  {
-        key=$1; sub(/:.*/,"",key); gsub(/[[:space:]]/,"",key); print key
+      inblock && /^[[:space:]]+["'"'"'a-zA-Z_]/ {
+        match($0, /^[[:space:]]+/); ind=RLENGTH
+        if (base == 0) base=ind
+        if (ind != base) next
+        key=$1; sub(/:.*/,"",key); gsub(/[[:space:]"'"'"']/,"",key); print key
       }
     '
   fi
@@ -60,6 +64,44 @@ _should_flag() {
   wf=$(printf 'on:\n  workflow_call:\n    inputs:\n      repo:\n        type: string\n')
   run _is_pure_reusable "$wf"
   [ "$status" -eq 0 ]
+}
+
+@test "quoted key: '\"on\":' workflow_call-only is a pure reusable" {
+  local wf
+  wf=$(printf '"on":\n  workflow_call:\n    inputs:\n      repo:\n        type: string\n')
+  _is_pure_reusable "$wf"
+}
+
+@test "quoted key + quoted scalar value: '\"on\": \"workflow_call\"' is a pure reusable" {
+  local wf
+  wf=$(printf '"on": "workflow_call"\njobs:\n  call:\n    steps: []\n')
+  _is_pure_reusable "$wf"
+}
+
+@test "quoted key + quoted event key: pure reusable" {
+  local wf
+  wf=$(printf '"on":\n  "workflow_call":\n    inputs:\n      repo:\n        type: string\n')
+  _is_pure_reusable "$wf"
+}
+
+@test "quoted event keys: workflow_call + push is a hybrid" {
+  local wf
+  wf=$(printf '"on":\n  "workflow_call":\n  "push":\n')
+  run _is_pure_reusable "$wf"
+  [ "$status" -eq 1 ]
+}
+
+@test "four-space event-key indentation: quoted on + workflow_call is a pure reusable" {
+  local wf
+  wf=$(printf '"on":\n    "workflow_call":\n        inputs:\n            repo:\n                type: string\n')
+  _is_pure_reusable "$wf"
+}
+
+@test "four-space event-key indentation: workflow_call + push is a hybrid" {
+  local wf
+  wf=$(printf 'on:\n    workflow_call:\n    push:\n        branches: [main]\n')
+  run _is_pure_reusable "$wf"
+  [ "$status" -eq 1 ]
 }
 
 @test "block form: workflow_call + push is a hybrid (not pure reusable)" {
