@@ -280,7 +280,7 @@ _preflight() {
   [[ "$stderr" != *"::error::"* ]]
 }
 
-@test "preflight: a 404 / 5xx is inconclusive (warning only)" {
+@test "preflight: a 5xx error is inconclusive (warning only)" {
   _preflight_stub
   export GH_CODE_RC=1 GH_CODE_STDERR='gh: Server Error (HTTP 502)'
   _preflight combsmith/.github

@@ -88,11 +88,17 @@ health_alert_preflight() {
     case "$(printf '%s' "$msg" | tr '[:upper:]' '[:lower:]')" in
       *"rate limit"*) status="rate-limited ($status)" ;;
     esac
-    if [[ "$status" = "401" || "$status" = "403" ]]; then
+    if [[ "$status" = "403" ]]; then
       unreadable+=("$kind")
-      echo "::error::Preflight: the survey token cannot read $kind alerts on $repo (HTTP $status) — every repo's $kind count will be unknown. Grant ORG_SCORECARD_TOKEN '$kind alerts: read' org-wide. $(printf '%s' "$msg" | tr '\n' ' ' | cut -c1-200)" >&2
+      msg_safe=$(printf '%s' "$msg" | tr '\n' ' ' | sed 's/%/%25/g' | cut -c1-200)
+      echo "::error::Preflight: the survey token cannot read $kind alerts on $repo (HTTP 403) — every repo's $kind count will be unknown. Grant ORG_SCORECARD_TOKEN '$kind alerts: read' org-wide. $msg_safe" >&2
+    elif [[ "$status" = "401" ]]; then
+      unreadable+=("$kind")
+      msg_safe=$(printf '%s' "$msg" | tr '\n' ' ' | sed 's/%/%25/g' | cut -c1-200)
+      echo "::error::Preflight: the survey token cannot read $kind alerts on $repo (HTTP 401) — every repo's $kind count will be unknown. ORG_SCORECARD_TOKEN is invalid or expired. Replace or renew the token and re-run. $msg_safe" >&2
     else
-      echo "::warning::Preflight: $kind alerts probe on $repo failed (HTTP $status) — inconclusive, not treated as a permission gap. $(printf '%s' "$msg" | tr '\n' ' ' | cut -c1-200)" >&2
+      msg_safe=$(printf '%s' "$msg" | tr '\n' ' ' | sed 's/%/%25/g' | cut -c1-200)
+      echo "::warning::Preflight: $kind alerts probe on $repo failed (HTTP $status) — inconclusive, not treated as a permission gap. $msg_safe" >&2
     fi
   done
   if [[ "${#unreadable[@]}" -gt 0 ]]; then

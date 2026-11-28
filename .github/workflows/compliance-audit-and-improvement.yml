@@ -352,8 +352,9 @@ jobs:
     # nothing after it can bypass the pause (the `||` stays inside its
     # parentheses). `always()` still lets the job run when one of the two jobs
     # above failed: GitHub looks for a status-check function anywhere in the
-    # expression, not only at its start.
-    if: vars.AGENTS_PAUSED != 'true' && always() && (needs.audit.result == 'success' || needs.health-survey.result == 'success')
+    # expression, not only at its start. The `input_status` step determines
+    # whether usable data are available before analysis proceeds.
+    if: vars.AGENTS_PAUSED != 'true' && always()
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -368,7 +369,6 @@ jobs:
       # reports the missing report and the prompt files an issue for it (#1616).
       - name: Download compliance audit report
         if: needs.audit.result == 'success'
-        continue-on-error: true
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: compliance-report

@@ -19,7 +19,11 @@
 #   `missing (producing job result: <job_result>)` (`unknown` when empty).
 analysis_input_status() {
   local file="$1" result="${2:-}"
-  if [[ -f "$file" ]] && grep -q '[^[:space:]]' "$file"; then
+  if [[ ! -f "$file" ]]; then
+    echo "missing (producing job result: ${result:-unknown})"
+    return 0
+  fi
+  if grep -q '[^[:space:]]' "$file" 2>/dev/null; then
     echo "present"
   else
     echo "missing (producing job result: ${result:-unknown})"
