@@ -192,3 +192,98 @@ _count() {
   run _ha "health_findings_score 0 '$sec' 0 false"
   [ "$output" = "5" ]
 }
+
+# ── health_alert_http_status (#1616) ────────────────────────────────────────
+@test "http_status: extracts the status gh prints" {
+  run _ha "health_alert_http_status 'gh: Resource not accessible by integration (HTTP 403)'"
+  [ "$output" = "403" ]
+}
+
+@test "http_status: no status in the message → unknown" {
+  run _ha "health_alert_http_status 'connection reset by peer'"
+  [ "$output" = "unknown" ]
+}
+
+@test "count: the unreadable warning names the HTTP status (403 vs 404 vs 429)" {
+  export GH_RC=1 GH_STDERR='gh: Resource not accessible by personal access token (HTTP 403)'
+  _count combsmith/repo dependabot
+  [ "$output" = "null" ]
+  [[ "$stderr" == *"dependabot alerts unreadable (HTTP 403)"* ]]
+}
+
+# ── health_alert_preflight (#1616) ──────────────────────────────────────────
+# A stub gh that answers per alert kind: $GH_DEPENDABOT_*, $GH_SECRET_*,
+# $GH_CODE_* (RC and STDERR). A kind with no RC set answers `[]`.
+_preflight_stub() {
+  cat > "$STUB_DIR/gh" <<'EOF2'
+#!/usr/bin/env bash
+echo "$*" >> "$GH_LOG"
+case "$*" in
+  *dependabot/alerts*)      rc="${GH_DEPENDABOT_RC:-0}" err="${GH_DEPENDABOT_STDERR:-}" ;;
+  *secret-scanning/alerts*) rc="${GH_SECRET_RC:-0}"     err="${GH_SECRET_STDERR:-}" ;;
+  *code-scanning/alerts*)   rc="${GH_CODE_RC:-0}"       err="${GH_CODE_STDERR:-}" ;;
+  *) rc=0 err="" ;;
+esac
+if [ "$rc" -eq 0 ]; then printf '[]'; fi
+printf '%s' "$err" >&2
+exit "$rc"
+EOF2
+  chmod +x "$STUB_DIR/gh"
+}
+
+_preflight() {
+  run --separate-stderr env PATH="$STUB_DIR:$PATH" bash -c "set -euo pipefail; source '$LIB'; health_alert_preflight $*"
+}
+
+@test "preflight: every endpoint readable → no unreadable kinds, no error" {
+  _preflight_stub
+  _preflight combsmith/.github
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -z "$stderr" ]
+  # One probe per kind, one page of one alert — not a full paginated read.
+  [ "$(grep -c 'per_page=1$' "$GH_LOG")" -eq 3 ]
+  ! grep -q -- '--paginate' "$GH_LOG"
+}
+
+@test "preflight: Dependabot 403 'not accessible' → dependabot named, clear ::error::" {
+  _preflight_stub
+  export GH_DEPENDABOT_RC=1 GH_DEPENDABOT_STDERR='gh: Resource not accessible by personal access token (HTTP 403)'
+  _preflight combsmith/.github
+  [ "$status" -eq 0 ]
+  [ "$output" = "dependabot" ]
+  [[ "$stderr" == *"::error::"*"dependabot alerts"*"HTTP 403"*"ORG_SCORECARD_TOKEN"* ]]
+}
+
+@test "preflight: several unreadable kinds are all named, in order" {
+  _preflight_stub
+  export GH_DEPENDABOT_RC=1 GH_DEPENDABOT_STDERR='gh: Resource not accessible by integration (HTTP 403)' \
+    GH_CODE_RC=1 GH_CODE_STDERR='gh: Bad credentials (HTTP 401)'
+  _preflight combsmith/.github
+  [ "$output" = "dependabot code-scanning" ]
+}
+
+@test "preflight: a disabled feature is not a permission gap" {
+  _preflight_stub
+  export GH_DEPENDABOT_RC=1 GH_DEPENDABOT_STDERR='gh: Dependabot alerts are disabled for this repository. (HTTP 403)'
+  _preflight combsmith/.github
+  [ -z "$output" ]
+  [ -z "$stderr" ]
+}
+
+@test "preflight: a rate limit is not a permission gap (warning only)" {
+  _preflight_stub
+  export GH_SECRET_RC=1 GH_SECRET_STDERR='gh: API rate limit exceeded for user ID 1. (HTTP 403)'
+  _preflight combsmith/.github
+  [ -z "$output" ]
+  [[ "$stderr" == *"::warning::"*"secret-scanning"* ]]
+  [[ "$stderr" != *"::error::"* ]]
+}
+
+@test "preflight: a 5xx error is inconclusive (warning only)" {
+  _preflight_stub
+  export GH_CODE_RC=1 GH_CODE_STDERR='gh: Server Error (HTTP 502)'
+  _preflight combsmith/.github
+  [ -z "$output" ]
+  [[ "$stderr" == *"::warning::"*"code-scanning"*"HTTP 502"* ]]
+}

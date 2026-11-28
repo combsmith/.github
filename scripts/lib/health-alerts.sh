@@ -13,6 +13,9 @@
 # The code-scanning case mirrors alerts_error_kind() in scripts/codeql-audit.sh.
 #
 #   health_alert_error_kind  — pure: classify a failed read (none | error)
+#   health_alert_http_status — pure: the HTTP status in gh's error (or unknown)
+#   health_alert_preflight   — probe each alert endpoint once; name the kinds
+#                              the token cannot read (#1616)
 #   health_alert_page_count  — pure: count alerts in `gh api --paginate` output
 #   health_alert_count       — the one gh call: echo a count, or `null`
 #   health_security_json     — pure: the per-repo `security` object
@@ -46,6 +49,59 @@ health_alert_error_kind() {
       esac ;;
   esac
   echo "error"
+}
+
+# health_alert_http_status <message>
+#   gh ends a failed read with `(HTTP <status>)`. Echo that status (the last one
+#   in <message>), or `unknown` when there is none (network error, no response).
+#   It tells a permission gap (401/403) from a missing resource (404) and from
+#   throttling (429), which the audit could not do in run 46072704625 (#1616).
+health_alert_http_status() {
+  local status
+  status=$(printf '%s' "$1" | grep -oE 'HTTP [0-9]{3}' | tail -n 1 | cut -d' ' -f2 || true)
+  echo "${status:-unknown}"
+}
+
+# health_alert_preflight <owner/repo>
+#   Read one alert of each kind (dependabot, secret-scanning, code-scanning)
+#   from <owner/repo> and echo, space-separated on one line, the kinds the token
+#   is NOT ALLOWED to read: a 401/403 that is neither a "feature disabled"
+#   answer (health_alert_error_kind) nor a rate limit. Each such kind gets a
+#   `::error::` naming the status and the fix; any other failed probe (404,
+#   5xx, rate limit, no status) is inconclusive and only gets a `::warning::`.
+#   Echo nothing when no permission gap was seen. Always returns 0: the caller
+#   decides what a gap costs. One page of one alert per kind, not a full read.
+#
+#   Run 46072704625 read no Dependabot count on 15/15 repos and said so only in
+#   per-repo warnings; this names the token gap once, up front (#1616).
+health_alert_preflight() {
+  local repo="$1" kind rc msg status unreadable=()
+  for kind in dependabot secret-scanning code-scanning; do
+    rc=0
+    msg=$(gh api "repos/$repo/$kind/alerts?state=open&per_page=1" 2>&1) || rc=$?
+    [[ "$rc" -eq 0 ]] && continue
+    [[ "$(health_alert_error_kind "$kind" "$msg")" = "none" ]] && continue
+    status=$(health_alert_http_status "$msg")
+    case "$(printf '%s' "$msg" | tr '[:upper:]' '[:lower:]')" in
+      *"rate limit"*) status="rate-limited ($status)" ;;
+    esac
+    if [[ "$status" = "403" ]]; then
+      unreadable+=("$kind")
+      msg_safe=$(printf '%s' "$msg" | tr '\n' ' ' | sed 's/%/%25/g' | cut -c1-200)
+      echo "::error::Preflight: the survey token cannot read $kind alerts on $repo (HTTP 403) — every repo's $kind count will be unknown. Grant ORG_SCORECARD_TOKEN '$kind alerts: read' org-wide. $msg_safe" >&2
+    elif [[ "$status" = "401" ]]; then
+      unreadable+=("$kind")
+      msg_safe=$(printf '%s' "$msg" | tr '\n' ' ' | sed 's/%/%25/g' | cut -c1-200)
+      echo "::error::Preflight: the survey token cannot read $kind alerts on $repo (HTTP 401) — every repo's $kind count will be unknown. ORG_SCORECARD_TOKEN is invalid or expired. Replace or renew the token and re-run. $msg_safe" >&2
+    else
+      msg_safe=$(printf '%s' "$msg" | tr '\n' ' ' | sed 's/%/%25/g' | cut -c1-200)
+      echo "::warning::Preflight: $kind alerts probe on $repo failed (HTTP $status) — inconclusive, not treated as a permission gap. $msg_safe" >&2
+    fi
+  done
+  if [[ "${#unreadable[@]}" -gt 0 ]]; then
+    echo "${unreadable[*]}"
+  fi
+  return 0
 }
 
 # health_alert_page_count <paginated_json>
@@ -82,7 +138,7 @@ health_alert_count() {
     echo "0"
     return 0
   fi
-  echo "::warning::$repo: $kind alerts unreadable — count unknown: $(printf '%s' "$msg" | tr '\n' ' ' | cut -c1-200)" >&2
+  echo "::warning::$repo: $kind alerts unreadable (HTTP $(health_alert_http_status "$msg")) — count unknown: $(printf '%s' "$msg" | tr '\n' ' ' | cut -c1-200)" >&2
   echo "null"
 }
 

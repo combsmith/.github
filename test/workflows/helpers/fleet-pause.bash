@@ -113,7 +113,7 @@ def truthy(value):
 
 class Parser:
     """`||`, `&&`, `==`, `!=`, `!`, parentheses, string literals, `vars.*`,
-    `always()` and `needs.<job>.result`: the subset a pause gate and the job
+    `always()`, `cancelled()` and `needs.<job>.result`: the subset a pause gate and the job
     conditions beside it need. Anything else raises Unsupported."""
 
     def __init__(self, expr, variables, needs):
@@ -176,6 +176,9 @@ class Parser:
             return text == "true"
         if kind == "fn" and text.split("(")[0].strip() == "always":
             return True
+        if kind == "fn" and text.split("(")[0].strip() == "cancelled":
+            # The table models a run that was not cancelled by hand.
+            return False
         if kind == "ctx" and text.startswith("vars."):
             # An unset configuration variable reads as the empty string.
             return self.vars.get(text[len("vars."):], "")
