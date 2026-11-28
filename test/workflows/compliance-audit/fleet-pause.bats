@@ -235,7 +235,7 @@ yaml.safe_dump(doc, sys.stdout)' > "$WF"
 @test "evaluator: refuses a function, a context or a dependency it does not model" {
   local expr
   local -a exprs=(
-    "vars.AGENTS_PAUSED != 'true' && !cancelled()"
+    "vars.AGENTS_PAUSED != 'true' && success()"
     "vars.AGENTS_PAUSED != 'true' && failure()"
     "vars.AGENTS_PAUSED != 'true' && contains(needs.audit.result, 'success')"
     "vars.AGENTS_PAUSED != 'true' && needs.audit.outputs.findings_count != '0'"
