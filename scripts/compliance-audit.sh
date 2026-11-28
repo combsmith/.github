@@ -2863,9 +2863,13 @@ supply_chain_publishes_artifacts() {
 supply_chain_missing_controls() {
   local body
   body=$(supply_chain_strip_comments "$1")
-  # The action must sit in a workflow that also runs on pull requests.
-  { printf '%s\n' "$body" | grep -qE 'uses:[[:space:]]*actions/dependency-review-action@' \
-    && printf '%s\n' "$body" | grep -qE '(^|[^A-Za-z0-9_-])pull_request([^A-Za-z0-9_-]|$)'; } \
+  # The action and a `pull_request` trigger must sit in the SAME workflow file.
+  # check_supply_chain separates files with a form-feed line, so test each
+  # file (awk record) on its own rather than the merged blob.
+  printf '%s\n' "$body" | awk -v RS='\f' '
+      /uses:[[:space:]]*actions\/dependency-review-action@/ &&
+      /(^|[^A-Za-z0-9_-])pull_request([^A-Za-z0-9_-]|$)/ { found = 1 }
+      END { exit !found }' \
     || echo "dependency-review"
   printf '%s\n' "$body" | grep -vE '^[[:space:]]*-[[:space:]]*name:' | grep -E \
     -e 'uses:[[:space:]]*(anchore/sbom-action|actions/attest-sbom|CycloneDX/[A-Za-z0-9_.-]+)@' \
@@ -2908,7 +2912,7 @@ check_supply_chain() {
       mark_repo_inconclusive "$repo"
       return 0
     fi
-    all+="$decoded"$'\n'
+    all+="$decoded"$'\n\f\n'   # form-feed line separates files (per-file checks)
   done <<< "$names"
 
   supply_chain_publishes_artifacts "$all" || return 0

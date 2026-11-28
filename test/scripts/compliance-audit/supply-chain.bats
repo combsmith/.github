@@ -109,6 +109,18 @@ teardown() {
   [ -z "$output" ]
 }
 
+@test "missing: dependency-review action and pull_request in different files do not satisfy the control" {
+  missing "$(printf 'on: [push]\njobs:\n  a:\n    steps:\n      - uses: actions/dependency-review-action@abc\n\f\non: [pull_request]\njobs:\n  b:\n    steps:\n      - run: echo hi\n')"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *dependency-review* ]]
+}
+
+@test "missing: dependency-review action and pull_request in the same file satisfy the control" {
+  missing "$(printf 'on: [push]\n\f\non: [pull_request]\njobs:\n  a:\n    steps:\n      - uses: actions/dependency-review-action@abc\n')"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *dependency-review* ]]
+}
+
 @test "missing: ci.yml alone still lacks sbom and provenance" {
   missing "$(cat "$REPO_ROOT/standards/workflows/ci.yml")"
   [ "$status" -eq 0 ]
