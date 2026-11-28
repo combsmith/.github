@@ -732,8 +732,10 @@ results on `combsmith/` refs, which the
 makes deliberate, and keeps every other result, third-party tag pins included. A
 SARIF it cannot read fails the job, so nothing is uploaded, and a step in the
 workflow itself checks that only org-ref `actions/unpinned-tag` results went
-missing. Default setup cannot filter results; its default suite does not run
-this query, and the CodeQL audit files no issue for these alerts.
+missing. Default setup on the standard `default` suite cannot filter results
+(a custom configuration file can exclude queries, but the standard does not
+use one, as described above); that suite does not run this query, and the
+CodeQL audit files no issue for these alerts.
 
 **Recording an exception.** The approved repos are listed once, in
 `CODEQL_ADVANCED_EXCEPTIONS` in
