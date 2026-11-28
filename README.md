@@ -49,6 +49,7 @@ The `standards/` directory contains the authoritative policy documents for this 
 |----------|-------|------------|
 | [`advanced-security`](standards/advanced-security.md) | GitHub Advanced Security configuration | Code Security Configurations, push-protection live-fire test (canary), licensing & billing, verification, compliance audit checks |
 | [`agent-rate-limits`](standards/agent-rate-limits.md) | Agent token-budget and rate-limit policy | What is limited, token-budget breaker, daily budget as per-agent cost bound, exempt actors, operator runbook |
+| [`supply-chain`](standards/supply-chain.md) | SBOM, build provenance and dependency review | Scope (artifact-publishing repos), release-attest template, PR-time dependency review, exemptions, warn → enforce rollout |
 | [`agent-standards`](standards/agent-standards.md) | Copilot and agentic workflow standards | Required files, agent configuration security, AgentShield CI workflow, Decision-Making Reusables, BMAD Method Workflows |
 | [`ci-standards`](standards/ci-standards.md) | CI pipeline conventions and enforcement | Staged promotion through concentric rings, reusable workflow versioning (`stable` channel), action pinning policy, permissions policy, required workflows |
 | [`codeowners-standard`](standards/codeowners-standard.md) | CODEOWNERS file policy | Rule, team composition, required setup for new bots, branch protection |

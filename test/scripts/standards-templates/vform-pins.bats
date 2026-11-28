@@ -9,7 +9,7 @@
 # major-scope tooling and silently rides whatever the tip of the channel is).
 #
 # The verbatim templates (ci, copilot-setup-steps, initiative-driver, sonarcloud,
-# dismiss-stale-bot-reviews) have no first-party reusable `uses:` line and are
+# dismiss-stale-bot-reviews, release-attest) have no first-party reusable `uses:` line and are
 # exempt — they are self-contained workflows, not thin callers for a reusable.
 
 REPO_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/../../.." && pwd)"
@@ -19,7 +19,9 @@ WF_DIR="${REPO_ROOT}/standards/workflows"
 # dismiss-stale-bot-reviews.yml (#1115) is self-contained: a reusable-backed stub
 # would have to pin a <agent>/v<M>-stable channel tag that can only be cut after
 # the reusable merges, so it lands as the verbatim class like initiative-driver.
-VERBATIM="ci.yml copilot-setup-steps.yml initiative-driver.yml sonarcloud.yml dismiss-stale-bot-reviews.yml"
+# release-attest.yml (#1618) is a customize-per-stack template like ci.yml: the
+# build is repo-specific, so there is no reusable to pin.
+VERBATIM="ci.yml copilot-setup-steps.yml initiative-driver.yml sonarcloud.yml dismiss-stale-bot-reviews.yml release-attest.yml"
 
 # Emit each first-party channel-ref line in a file (marker-tagged uses lines).
 channel_ref_lines() {

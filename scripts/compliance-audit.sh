@@ -345,6 +345,10 @@ RULESETS_SRC_DIR="${RULESETS_SRC_DIR:-$SCRIPT_DIR/../standards/rulesets}"
 # surface-drift guard (check_stub_surface_drift) compares deployed stubs against.
 STANDARDS_WF_DIR="$SCRIPT_DIR/../standards/workflows"
 
+# Supply-chain exemptions (standards/supply-chain.md#exemptions): the
+# `supply_chain_exemptions` array in workflow-exemptions.json. Overridable for tests.
+SUPPLY_CHAIN_EXEMPTIONS_FILE="${SUPPLY_CHAIN_EXEMPTIONS_FILE:-$SCRIPT_DIR/../standards/workflow-exemptions.json}"
+
 # Caller-stub surface-drift helpers + enrolled-shim map. Shared with
 # deploy-standard-workflows.sh so the audit's surface-drift findings and the deploy
 # sweep's re-sync agree (#1236).
@@ -2809,6 +2813,126 @@ check_copilot_instructions() {
 }
 
 # ---------------------------------------------------------------------------
+# Check: supply-chain controls in artifact-publishing repos (WARN MODE)
+#
+# standards/supply-chain.md (#1618): a repo that publishes a build artifact must
+# run a PR-time dependency review, generate an SBOM, and attest build
+# provenance. The check reads every workflow in the repo as one text blob,
+# ignoring full-line comments, and decides:
+#   1. scope:   supply_chain_publishes_artifacts (release trigger or publish step)
+#   2. gaps:    supply_chain_missing_controls (dependency-review / sbom / provenance)
+#   3. waivers: supply_chain_exempt_controls (workflow-exemptions.json)
+# Each remaining gap is a `warning` finding. Rollout phase 1 is warn mode: the
+# standard's timeline raises the severity to `error` at enforcement.
+# ---------------------------------------------------------------------------
+SUPPLY_CHAIN_CATEGORY="supply-chain"
+
+# supply_chain_strip_comments <text>: drop full-line YAML comments so a signal
+# that only appears in a comment (a commented-out step) never counts.
+supply_chain_strip_comments() {
+  printf '%s\n' "$1" | grep -vE '^[[:space:]]*#' || true
+}
+
+# supply_chain_publishes_artifacts <workflows-text>: return 0 when the workflows
+# publish a build artifact. Signals: a `release` trigger, a known
+# release/publish action, or a publish command in a run step. Consuming a
+# release (`gh release download`) does not count.
+supply_chain_publishes_artifacts() {
+  local body
+  body=$(supply_chain_strip_comments "$1")
+  [[ -z "$body" ]] && return 1
+  # A `release:` key counts only inside the top-level `on:` block (not a job
+  # named `release`); display-only `name:` lines never count as publish steps.
+  if printf '%s\n' "$body" | awk '
+      /^on:/ { inon = 1; next }
+      /^[^[:space:]]/ { inon = 0 }
+      inon && /^[[:space:]]+release:/ { found = 1 }
+      END { exit !found }'; then
+    return 0
+  fi
+  body=$(printf '%s\n' "$body" | grep -vE '^[[:space:]]*-?[[:space:]]*name:' || true)
+  printf '%s\n' "$body" | grep -qE \
+    -e '^on:.*[^A-Za-z0-9_-]release([^A-Za-z0-9_-]|$)' \
+    -e 'uses:[[:space:]]*(softprops/action-gh-release|ncipollo/release-action|goreleaser/goreleaser-action|docker/build-push-action|pypa/gh-action-pypi-publish|JS-DevTools/npm-publish)@' \
+    -e '(^|[^A-Za-z0-9_-])(npm|pnpm|yarn([[:space:]]+npm)?|cargo)[[:space:]]+publish([^A-Za-z0-9_-]|$)' \
+    -e '(^|[^A-Za-z0-9_-])(twine[[:space:]]+upload|docker[[:space:]]+push|goreleaser[[:space:]]+release|gh[[:space:]]+release[[:space:]]+(create|upload))([^A-Za-z0-9_-]|$)'
+}
+
+# supply_chain_missing_controls <workflows-text>: print each absent control, one
+# per line, in the fixed order dependency-review, sbom, provenance.
+supply_chain_missing_controls() {
+  local body
+  body=$(supply_chain_strip_comments "$1")
+  # The action and a `pull_request` trigger must sit in the SAME workflow file.
+  # check_supply_chain separates files with a form-feed line, so test each
+  # file (awk record) on its own rather than the merged blob.
+  printf '%s\n' "$body" | awk -v RS='\f' '
+      /uses:[[:space:]]*actions\/dependency-review-action@/ &&
+      /(^|[^A-Za-z0-9_-])pull_request([^A-Za-z0-9_-]|$)/ { found = 1 }
+      END { exit !found }' \
+    || echo "dependency-review"
+  printf '%s\n' "$body" | grep -vE '^[[:space:]]*-[[:space:]]*name:' | grep -E \
+    -e 'uses:[[:space:]]*(anchore/sbom-action|actions/attest-sbom|CycloneDX/[A-Za-z0-9_.-]+)@' \
+    -e '(^|[^A-Za-z0-9_-])(syft|cdxgen|cyclonedx-[a-z]+)([^A-Za-z0-9_-]|$)' >/dev/null \
+    || echo "sbom"
+  printf '%s\n' "$body" | grep -qE \
+    -e 'uses:[[:space:]]*(actions/attest-build-provenance|actions/attest)@' \
+    -e 'uses:[[:space:]]*slsa-framework/slsa-github-generator/' \
+    || echo "provenance"
+}
+
+# supply_chain_exempt_controls <exemptions-file> <repo>: print the controls
+# exempted for <repo>. An entry with no `reason` is not honoured. A missing or
+# unparsable file yields no exemptions (the gap is reported, never hidden).
+supply_chain_exempt_controls() {
+  local file="$1" repo="$2"
+  [[ -r "$file" ]] || return 0
+  jq -r --arg r "$repo" '
+    (.supply_chain_exemptions // []) | select(type == "array") | .[]
+    | select(type == "object" and .repo == $r and ((.reason // "") | type == "string" and length > 0))
+    | (.controls // []) | select(type == "array") | .[] | select(type == "string")' "$file" 2>/dev/null \
+    || warn "Could not parse supply-chain exemptions in $file — none applied"
+}
+
+check_supply_chain() {
+  local repo="$1" names rc=0 wf content decoded all="" exempted control detail
+  # A missing or unreadable workflows dir is already reported (and marked
+  # inconclusive) by check_required_workflows.
+  names=$(list_workflow_files "$repo") || rc=$?
+  [[ "$rc" -ne 0 ]] && return 0
+
+  while IFS= read -r wf; do
+    [[ "$wf" == *.yml || "$wf" == *.yaml ]] || continue
+    content=$(gh_api "repos/$ORG/$repo/contents/.github/workflows/$wf" --jq '.content' 2>/dev/null || echo "")
+    decoded=$(printf '%s' "$content" | base64 -d 2>/dev/null || echo "")
+    if [[ -z "$decoded" ]]; then
+      # An unread workflow could hold the missing control: don't guess, and keep
+      # any existing finding open rather than letting it auto-close.
+      warn "Could not read $repo/.github/workflows/$wf — supply-chain check inconclusive"
+      mark_repo_inconclusive "$repo"
+      return 0
+    fi
+    all+="$decoded"$'\n\f\n'   # form-feed line separates files (per-file checks)
+  done <<< "$names"
+
+  supply_chain_publishes_artifacts "$all" || return 0
+
+  exempted=$(supply_chain_exempt_controls "$SUPPLY_CHAIN_EXEMPTIONS_FILE" "$repo")
+  while IFS= read -r control; do
+    [[ -z "$control" ]] && continue
+    grep -qxF "$control" <<< "$exempted" && continue
+    case "$control" in
+      dependency-review) detail="This repo publishes build artifacts but no workflow runs \`actions/dependency-review-action\` on pull requests. Adopt the \`dependency-review\` job from \`standards/workflows/ci.yml\`." ;;
+      sbom)              detail="This repo publishes build artifacts but no workflow generates an SBOM (SPDX or CycloneDX). Adopt \`standards/workflows/release-attest.yml\`." ;;
+      provenance)        detail="This repo publishes build artifacts but no workflow attests build provenance (\`actions/attest-build-provenance\`). Adopt \`standards/workflows/release-attest.yml\`." ;;
+    esac
+    add_finding "$repo" "$SUPPLY_CHAIN_CATEGORY" "supply-chain-missing-$control" "warning" \
+      "$detail Warn mode: see the rollout timeline. To exempt the repo, add an entry with a reason to \`supply_chain_exemptions\` in \`standards/workflow-exemptions.json\`." \
+      "standards/supply-chain.md"
+  done < <(supply_chain_missing_controls "$all")
+}
+
+# ---------------------------------------------------------------------------
 # Check: check-suite auto-trigger disabled for Claude and CodeRabbit
 # ---------------------------------------------------------------------------
 check_check_suite_prefs() {
@@ -3802,6 +3926,7 @@ main() {
     check_copilot_setup_steps "$repo"
     check_copilot_instructions "$repo"
     check_check_suite_prefs "$repo"
+    check_supply_chain "$repo"
     pp_run_all_checks "$repo"
 
     # Record that this repo's checks actually ran (AC2). Reached only past the

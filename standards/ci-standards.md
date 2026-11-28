@@ -376,6 +376,7 @@ filename doesn't carry the `-reusable.yml` suffix (grandfathered exception:
 | [`persona-mention.yml`](workflows/persona-mention.yml) | 1 | Route `@combsmith/<role>` mentions to the addressed persona — one router for **all** personas ([persona-standards.md §4.1](persona-standards.md)) |
 | [`apply-repo-settings.yml`](workflows/apply-repo-settings.yml) | 1 | Weekly branch-policy compliance self-heal — applies standard repo settings + `pr-quality`/`code-quality` rulesets ([github-settings.md](github-settings.md), [ruleset-remediation-runbook.md](ruleset-remediation-runbook.md)). Requires org secret `GH_PAT_DON_PETRY`. |
 | [`copilot-setup-steps.yml`](workflows/copilot-setup-steps.yml) | 2 | Pre-install tools and dependencies for Copilot cloud agent sessions |
+| [`release-attest.yml`](workflows/release-attest.yml) | 2 | SBOM (SPDX) + build provenance attestation on published releases. Required in repos that publish artifacts ([supply-chain.md](supply-chain.md)) |
 
 **Adapt only when the template genuinely requires repo-specific content** (e.g., a
 project name in a comment, a different cron schedule for a known reason). Anything
@@ -578,6 +579,7 @@ The primary build-and-test workflow. Structure varies by tech stack but must inc
 | **Integration tests** | Backend/API integration | If applicable |
 | **E2E tests** | End-to-end functional tests | If applicable |
 | **Build / Docker build** | Verify the artifact builds | If applicable |
+| **Dependency review** | `dependency-review` job: report new high-severity / denied-license dependencies on PRs; blocking begins in enforce mode ([supply-chain.md](supply-chain.md)) | Yes (warn mode) |
 
 **Standard triggers:**
 

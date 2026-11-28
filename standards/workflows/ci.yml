@@ -14,6 +14,8 @@
 #      (gitleaks)` (per push-protection.md; needs a .gitleaks.toml at root, seeded
 #      by repo-template tooling) and `coverage` (green until your stack emits coverage).
 #      Keep their job names stable so the required checks stay satisfied.
+#   5. `dependency-review` runs on pull requests only (standards/supply-chain.md). It
+#      is NOT a required check and ships in warn mode; keep it — do not delete it.
 #
 # CONVENTIONS (enforced by the standard):
 #   • permissions: {} at top, least-privilege per job (CI needs contents: read)
@@ -123,3 +125,28 @@ jobs:
       #    Go:     go test ./... -coverprofile=coverage.out && go tool cover -func=coverage.out
       #    Python: pytest --cov
       #    Rust:   cargo llvm-cov --workspace
+
+  # PR-time dependency review — standards/supply-chain.md#2-pr-time-dependency-review.
+  # Blocks newly introduced dependencies with high/critical advisories or a denied
+  # license before merge (Dependabot only alerts after the fact). Runs on
+  # pull_request only: the action diffs the PR's base and head, which a push event
+  # does not have.
+  #
+  # WARN MODE (rollout phase 1): `warn-only: true` reports findings in the job
+  # summary but always passes, and `continue-on-error: true` keeps the job green on
+  # a private repo whose dependency graph is not enabled yet. The enforce phase
+  # (see the standard's timeline) removes both lines. Not a required status check.
+  dependency-review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Dependency review
+        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        continue-on-error: true
+        with:
+          fail-on-severity: high
+          deny-licenses: AGPL-1.0-only, AGPL-1.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, SSPL-1.0, BUSL-1.1
+          warn-only: true

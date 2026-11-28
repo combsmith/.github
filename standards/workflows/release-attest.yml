@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/release-attest.yml
+# Standard:        combsmith/.github/standards/supply-chain.md
+#
+# ADOPTING THIS WORKFLOW:
+#   1. Required in every repo that publishes a build artifact (release assets,
+#      packages, container images). See the standard's "Scope" section. Repos
+#      that publish nothing do not need it.
+#   2. It is a CUSTOMIZE-PER-STACK template: replace the placeholder build step
+#      with your stack's real build, and point SUBJECT_PATH at what it produces.
+#      Until you do, the build step fails on purpose. A release must never ship
+#      an attestation for a placeholder.
+#   3. If your release job already builds the artifact, copy the SBOM and
+#      attestation steps into that job instead. Keep the permissions below.
+#
+# WHAT IT PRODUCES (per published release):
+#   • an SPDX SBOM of the repository (anchore/sbom-action), uploaded as a workflow
+#     artifact (attaching it to the release as well is opt-in, see the step)
+#   • a signed SLSA build-provenance attestation for every file matching
+#     SUBJECT_PATH (actions/attest-build-provenance). Verify with:
+#       gh attestation verify <file> --repo combsmith/<repo>
+#
+# CONVENTIONS (enforced by the standard):
+#   • permissions: {} at top, least-privilege per job
+#   • SHA-pin every third-party action (never a tag/branch)
+# ─────────────────────────────────────────────────────────────────────────────
+name: Release SBOM & Provenance
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+concurrency:
+  group: release-attest-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sbom-and-provenance:
+    name: sbom-and-provenance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write      # OIDC token for Sigstore signing of the attestation
+      attestations: write  # persist the attestation to the repo
+    env:
+      # Glob of the build outputs to attest. Must match at least one file.
+      SUBJECT_PATH: dist/*
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # ── Replace the step below with your stack's build ────────────────────────
+      # It must write the release artifacts to the SUBJECT_PATH location.
+      - name: Placeholder — replace with the real build
+        run: |
+          echo "::error::release-attest.yml placeholder build — replace it with your stack's build (see standards/supply-chain.md)."
+          exit 1
+
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@dfcb83b97731532d72be422cbc51ee64adb6fd56 # v0.24.4
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom.spdx.json
+          # Attaching to the release needs contents: write. Grant it to this job
+          # and set this to true if the SBOM should appear as a release asset.
+          upload-release-assets: false
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ env.SUBJECT_PATH }}

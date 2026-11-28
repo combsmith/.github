@@ -5,6 +5,7 @@
       "reason": "Security boundary — agents cannot weaken security scanning",
       "requires_human_review": true
     }
-  ]
+  ],
+  "supply_chain_exemptions": []
 }
 
