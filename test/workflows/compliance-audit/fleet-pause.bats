@@ -30,7 +30,7 @@ WF="$REAL_WF"
 
 # The condition `analyze` had before the gate. Everything after the gate must
 # still be exactly this, or an unset variable no longer means "as before".
-BEFORE="always() && (needs.audit.result == 'success' || needs.health-survey.result == 'success')"
+BEFORE="always() && !cancelled()"
 
 setup() { fp_setup; }
 
@@ -91,12 +91,12 @@ setup() { fp_setup; }
 
 # ── the dependencies: one success is enough, and no result beats the pause ───
 
-@test "dependencies: not paused, analyze runs when at least one of audit and health-survey succeeded" {
+@test "dependencies: not paused, analyze runs whatever audit and health-survey did (input_status decides, #1616)" {
   local audit survey want value
   for audit in success failure cancelled skipped; do
     for survey in success failure cancelled skipped; do
       load_table "audit=$audit" "health-survey=$survey"
-      if [ "$audit" = success ] || [ "$survey" = success ]; then want=runs; else want=skipped; fi
+      want=runs
       for value in unset false; do
         [ "$(outcome analyze "$value")" = "$want" ] || {
           echo "audit=$audit health-survey=$survey AGENTS_PAUSED=$value: $(outcome analyze "$value"), want $want"; return 1; }

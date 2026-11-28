@@ -75,13 +75,10 @@ health_alert_http_status() {
 #   Run 46072704625 read no Dependabot count on 15/15 repos and said so only in
 #   per-repo warnings; this names the token gap once, up front (#1616).
 health_alert_preflight() {
-  local repo="$1" kind out err rc msg status unreadable=()
+  local repo="$1" kind rc msg status unreadable=()
   for kind in dependabot secret-scanning code-scanning; do
-    err=$(mktemp)
     rc=0
-    out=$(gh api "repos/$repo/$kind/alerts?state=open&per_page=1" 2>"$err") || rc=$?
-    msg="$(cat "$err") $out"
-    rm -f "$err"
+    msg=$(gh api "repos/$repo/$kind/alerts?state=open&per_page=1" 2>&1) || rc=$?
     [[ "$rc" -eq 0 ]] && continue
     [[ "$(health_alert_error_kind "$kind" "$msg")" = "none" ]] && continue
     status=$(health_alert_http_status "$msg")
