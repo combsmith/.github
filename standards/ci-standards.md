@@ -680,9 +680,13 @@ setup is `configured` on a query suite other than `default`, and
 adds `actions/unpinned-tag`, which raises a medium-severity alert on every
 first-party channel-tag caller stub. The
 [exception for internal reusable workflow references](#exception-internal-reusable-workflow-references)
-requires those pins, and default setup cannot filter the results out, so the
-alerts can never be fixed and they count against the `code_scanning` merge
-floor (#1617).
+requires those pins, so the alerts can never be fixed. Default setup can
+take a custom configuration file (`github-codeql-config-file`) that excludes
+queries, but excluding `actions/unpinned-tag` also drops its third-party
+findings, so the standard resets to the `default` suite instead. An open alert
+blocks a pull request under the `code_scanning` merge floor only when every line
+the alert identifies is in that pull request's diff, so an alert on an
+unchanged caller stub does not block an unrelated pull request (#1617).
 
 **Status check name:** GitHub publishes default setup results under the
 required-status-check context name **`CodeQL`** (single context, regardless
