@@ -682,8 +682,7 @@ first-party channel-tag caller stub. The
 [exception for internal reusable workflow references](#exception-internal-reusable-workflow-references)
 requires those pins, and default setup cannot filter the results out, so the
 alerts can never be fixed and they count against the `code_scanning` merge
-floor (#1617). A repo that needs `extended` for a documented threat model
-records the exception here before changing the suite.
+floor (#1617).
 
 **Status check name:** GitHub publishes default setup results under the
 required-status-check context name **`CodeQL`** (single context, regardless
