@@ -127,6 +127,48 @@ teardown() {
   [ "$output" = "$(printf 'dependency-review\nsbom\nprovenance')" ]
 }
 
+@test "missing: a step named 'syft' without run does not suppress sbom finding" {
+  missing "$(printf 'jobs:\n  r:\n    steps:\n      - name: syft\n        run: echo hello\n')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'dependency-review\nsbom\nprovenance')" ]
+}
+
+@test "missing: syft at end of line in run step is detected" {
+  missing "$(printf 'jobs:\n  r:\n    steps:\n      - run: syft\n')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'dependency-review\nprovenance')" ]
+}
+
+@test "missing: cdxgen at end of line in run step is detected" {
+  missing "$(printf 'jobs:\n  r:\n    steps:\n      - run: cdxgen\n')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'dependency-review\nprovenance')" ]
+}
+
+@test "missing: syft in multiline run block is detected" {
+  missing "$(printf 'jobs:\n  r:\n    steps:\n      - run: |\n          syft packages -o sbom.json\n')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'dependency-review\nprovenance')" ]
+}
+
+@test "missing: publish with multiple spaces is detected" {
+  missing "$(printf 'jobs:\n  r:\n    steps:\n      - run: npm    publish\n')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'dependency-review\nsbom\nprovenance')" ]
+}
+
+@test "missing: publish with tab is detected" {
+  missing "$(printf 'jobs:\n  r:\n    steps:\n      - run: npm\tpublish\n')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'dependency-review\nsbom\nprovenance')" ]
+}
+
+@test "missing: cyclonedx-npm at end of line is detected" {
+  missing "$(printf 'jobs:\n  r:\n    steps:\n      - run: cyclonedx-npm\n')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'dependency-review\nprovenance')" ]
+}
+
 # ---------------------------------------------------------------------------
 # Exemptions
 # ---------------------------------------------------------------------------
