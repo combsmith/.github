@@ -321,13 +321,13 @@ main() {
             "$(printf '%s' "$op" | jq -r '.category_id')" \
             "$(printf '%s' "$op" | jq -r '.title')" \
             "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker")
-          _pace
           id=$(printf '%s' "$resp" | jq -r '.data.createDiscussion.discussion.id // empty')
           if [[ -z "$id" ]]; then
             echo "::error::createDiscussion returned no id"
             return 1
           fi
           _record "$plan_id" "$index" create_discussion "$id" || return 1
+          _pace
           echo "created Discussion ${id}"
         fi
         planned=$(printf '%s' "$planned" | jq -c \
@@ -345,8 +345,8 @@ main() {
             skipped=$((skipped + 1))
           else
             comment_on_discussion "$id" "$(printf '%s' "$op" | jq -r '.body')"$'\n\n'"$marker" >/dev/null
-            _pace
             _record "$plan_id" "$index" comment_on_discussion "$id" || return 1
+            _pace
             echo "commented on ${id}"
           fi
         else

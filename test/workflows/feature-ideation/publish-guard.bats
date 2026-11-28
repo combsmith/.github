@@ -120,6 +120,14 @@ model_jobs() {
   [ -n "$out" ] && [ "$out" != "null" ]
   run yq -r "${up} | .with.path" "$WF"
   [ "$output" = "$out" ]
+  # Verify upload step runs after publish step to ensure the ledger captures all mutations
+  run yq -r '[.jobs.publish.steps | to_entries[] | select(.value.uses != null and (.value.uses | test("^actions/upload-artifact@"))) | .key] | .[0]' "$WF"
+  local upload_idx="$output"
+  run yq -r '[.jobs.publish.steps | to_entries[] | select(.value.run != null and (.value.run | test("publish-mutation-plan.sh"))) | .key] | .[0]' "$WF"
+  local publish_idx="$output"
+  [ -n "$upload_idx" ] && [ "$upload_idx" != "null" ] && [ "$upload_idx" != "0" ]
+  [ -n "$publish_idx" ] && [ "$publish_idx" != "null" ]
+  [ "$upload_idx" -gt "$publish_idx" ]
 }
 
 @test "publish job: a re-run attempt downloads the earlier attempts' ledgers, before publishing" {

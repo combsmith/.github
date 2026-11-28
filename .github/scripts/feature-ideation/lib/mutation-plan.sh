@@ -161,11 +161,12 @@ mp_ledger_done() {
      | select(.plan == $pid and (.index | type) == "number"
               and .index >= 0 and .index == (.index | floor))] as $e
     | ([$e[] | select(.op == "create_discussion" and (.id | type) == "string"
-                      and (.id | test("\\A[A-Za-z0-9_=+-]+\\z")))]
+                      and (.id | test("\\A[A-Za-z0-9_=+-/]+\\z"))]
        | group_by(.index)) as $creates
     | {conflict: ([$creates[] | map(.id) | unique | length > 1] | any),
        created: ([$creates[] | {(.[0].index | tostring): .[0].id}] | add // {}),
-       commented: ([$e[] | select(.op == "comment_on_discussion") | .index | tostring] | unique)}' \
+       commented: ([$e[] | select(.op == "comment_on_discussion" and (.id | type) == "string"
+                                   and (.id | test("\\A[A-Za-z0-9_=+-/]+\\z"))) | .index | tostring] | unique)}' \
     "$@" </dev/null) || return 1
   if [[ "$(printf '%s' "$recorded" | jq -r '.conflict')" = "true" ]]; then
     printf '[mutation-plan] a ledger records two ids for one created Discussion\n' >&2
