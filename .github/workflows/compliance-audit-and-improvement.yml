@@ -350,9 +350,11 @@ jobs:
     # paused it is skipped (neutral, not red) and `fleet-paused` below reports
     # why. Keep the gate as the FIRST term, followed only by `&&` terms, so
     # nothing after it can bypass the pause (the `||` stays inside its
-    # parentheses). Allow analysis when dependencies fail — the `input_status`
-    # step determines whether usable data are available before proceeding.
-    if: vars.AGENTS_PAUSED != 'true' && !cancelled()
+    # parentheses). `always()` still lets the job run when one of the two jobs
+    # above failed: GitHub looks for a status-check function anywhere in the
+    # expression, not only at its start. The `input_status` step determines
+    # whether usable data are available before analysis proceeds.
+    if: vars.AGENTS_PAUSED != 'true' && always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
