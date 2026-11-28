@@ -935,6 +935,20 @@ jobs:
           name: mutation-plan
           path: ${{ runner.temp }}/mutation-plan
 
+      # Re-run recognition (#1456): each attempt saves what it published as an
+      # artifact of this run, and a re-run attempt skips exactly those entries.
+      # Markers in published text are never trusted: github-actions[bot] is
+      # shared by every workflow of the calling repository. Artifacts belong to
+      # the run, not the attempt, so earlier attempts' ledgers are readable
+      # here; a first attempt has none and trusts none. No match is not an
+      # error, but a failed download stops the job before anything is posted.
+      - name: Download earlier attempts' publish ledgers
+        if: github.run_attempt != '1'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: feature-ideation-publish-ledger-*
+          path: ${{ runner.temp }}/publish-ledger/earlier
+
       - name: Validate and publish the plan
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -943,9 +957,22 @@ jobs:
           TARGET_DISCUSSION: ${{ inputs.target_discussion || '' }}
           ENHANCE_BACKLOG: ${{ inputs.enhance_backlog && '1' || '0' }}
           REPO: ${{ github.repository }}
+          PUBLISH_LEDGER_IN: ${{ runner.temp }}/publish-ledger/earlier
+          PUBLISH_LEDGER_OUT: ${{ runner.temp }}/publish-ledger/attempt/ledger.jsonl
         run: |
           set -euo pipefail
           bash .feature-ideation-tooling/.github/scripts/feature-ideation/publish-mutation-plan.sh
+
+      # Always, so an attempt that fails part-way still saves what it published.
+      # One name per attempt: artifact names are unique within a run.
+      - name: Upload this attempt's publish ledger
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: feature-ideation-publish-ledger-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publish-ledger/attempt/ledger.jsonl
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ---------------------------------------------------------------------------
   # Job 4: Fleet pause notice — what a paused run does instead (#1295)
