@@ -648,7 +648,7 @@ detects automatically outweighed the marginal supply-chain benefit.
 |---|---|
 | Code scanning → Default setup | **Configured** (state = `"configured"`) |
 | Languages | All CodeQL-supported languages auto-detected from the default branch |
-| Query suite | `default` (use `extended` only when a documented threat model justifies the noise) |
+| Query suite | `default` |
 | Schedule | Weekly (managed by GitHub; not configurable) |
 | Triggers | Push to default branch and PRs targeting it (managed by GitHub) |
 
@@ -673,6 +673,20 @@ still ships an inline `codeql.yml` workflow file as a remediation: delete
 the file and enable default setup. The two configurations are mutually
 exclusive at the GitHub level — leaving the workflow file behind after
 flipping default setup on causes both to run and double-bills CI minutes.
+
+The same check files `codeql-default-setup-query-suite` (warning) when default
+setup is `configured` on a query suite other than `default`, and
+`apply-repo-settings.sh` resets such a repo to `default`. The `extended` suite
+adds `actions/unpinned-tag`, which raises a medium-severity alert on every
+first-party channel-tag caller stub. The
+[exception for internal reusable workflow references](#exception-internal-reusable-workflow-references)
+requires those pins, so the alerts can never be fixed. Default setup can
+take a custom configuration file (`github-codeql-config-file`) that excludes
+queries, but excluding `actions/unpinned-tag` also drops its third-party
+findings, so the standard resets to the `default` suite instead. An open alert
+blocks a pull request under the `code_scanning` merge floor only when every line
+the alert identifies is in that pull request's diff, so an alert on an
+unchanged caller stub does not block an unrelated pull request (#1617).
 
 **Status check name:** GitHub publishes default setup results under the
 required-status-check context name **`CodeQL`** (single context, regardless
@@ -718,8 +732,10 @@ results on `combsmith/` refs, which the
 makes deliberate, and keeps every other result, third-party tag pins included. A
 SARIF it cannot read fails the job, so nothing is uploaded, and a step in the
 workflow itself checks that only org-ref `actions/unpinned-tag` results went
-missing. Default setup cannot filter results; its default suite does not run
-this query, and the CodeQL audit files no issue for these alerts.
+missing. Default setup on the standard `default` suite cannot filter results
+(a custom configuration file can exclude queries, but the standard does not
+use one, as described above); that suite does not run this query, and the
+CodeQL audit files no issue for these alerts.
 
 **Recording an exception.** The approved repos are listed once, in
 `CODEQL_ADVANCED_EXCEPTIONS` in

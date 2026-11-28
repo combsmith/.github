@@ -1793,6 +1793,13 @@ CODEQL_STANDARD_REF="standards/ci-standards.md#2-codeql-analysis-github-managed-
 #          -F state=configured -F query_suite=default
 #      (or by running scripts/apply-repo-settings.sh against the repo).
 #
+#   1b. codeql-default-setup-query-suite (warning): default setup is configured
+#      on a query suite other than `default` (#1617). `extended` runs
+#      actions/unpinned-tag, which flags every first-party channel-tag pin.
+#      Remediate with apply-repo-settings.sh or
+#        gh api -X PATCH repos/<org>/<repo>/code-scanning/default-setup \
+#          -F query_suite=default
+#
 #   2. stray-codeql-workflow (error): the repo still ships a codeql.yml
 #      workflow file. Default setup and an inline workflow are mutually
 #      exclusive at the GitHub level — leaving the file behind double-bills
@@ -1855,6 +1862,14 @@ check_codeql_default_setup() {
       add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-default-setup-not-configured" "error" \
         "CodeQL default setup is in state \`$state\` (expected \`configured\`). Run \`apply-repo-settings.sh $repo\` or \`gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -F state=configured -F query_suite=default\`." \
         "$CODEQL_STANDARD_REF"
+    else
+      local suite
+      suite=$(jq -r '.query_suite // ""' <<< "$raw_response" 2>/dev/null || true)
+      if [[ -n "$suite" && "$suite" != "default" ]]; then
+        add_finding "$repo" "$CI_WORKFLOWS_CATEGORY" "codeql-default-setup-query-suite" "warning" \
+          "CodeQL default setup runs the \`$suite\` query suite (the standard is \`default\`). The \`extended\` suite adds \`actions/unpinned-tag\`, which raises a code scanning alert on every first-party channel-tag caller stub — pins the standard requires and default setup cannot filter out. Run \`apply-repo-settings.sh $repo\` or \`gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -F query_suite=default\`." \
+          "$CODEQL_STANDARD_REF"
+      fi
     fi
   fi
 

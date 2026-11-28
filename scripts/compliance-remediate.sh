@@ -864,6 +864,10 @@ remediate_finding() {
       report_skip "$repo" "$check" \
         "Enable via: gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -F state=configured -F query_suite=default"
       ;;
+    ci-workflows/codeql-default-setup-query-suite)
+      report_skip "$repo" "$check" \
+        "Reset via: gh api -X PATCH repos/$ORG/$repo/code-scanning/default-setup -F query_suite=default (or run apply-repo-settings.sh $repo)"
+      ;;
     ci-workflows/stray-codeql-workflow)
       report_skip "$repo" "$check" \
         "Deleting workflow files requires \`workflow\` token scope — remove .github/workflows/codeql.yml using a PAT"

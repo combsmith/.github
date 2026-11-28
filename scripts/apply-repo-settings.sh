@@ -307,9 +307,10 @@ apply_settings() {
 # CodeQL is configured via the code-scanning/default-setup endpoint, not a
 # per-repo workflow file. Languages are auto-detected from the default branch.
 #
-# Idempotent: if state is already "configured", we no-op. If "not-configured",
-# we PATCH to enable. Repos listed in CODEQL_ADVANCED_EXCEPTIONS
-# (scripts/lib/codeql-advanced.sh) are skipped: they are approved to keep an
+# Idempotent: if state is already "configured" on the `default` query suite, we
+# no-op; configured on another suite (e.g. `extended`), we PATCH the suite back
+# to `default` (#1617). If "not-configured", we PATCH to enable. Repos listed
+# in CODEQL_ADVANCED_EXCEPTIONS (scripts/lib/codeql-advanced.sh) are skipped: they are approved to keep an
 # inline codeql.yml (see the escape hatch in ci-standards.md §2), and enabling
 # default setup there makes GitHub reject the workflow's upload. The API rejects
 # updates on repos without code scanning capability (e.g. private repos without
@@ -336,12 +337,32 @@ apply_codeql_default_setup() {
     return 0
   fi
 
-  local current_state
-  current_state=$(gh api "repos/$ORG/$repo/code-scanning/default-setup" --jq '.state' 2>/dev/null || echo "")
+  local current_state="" current_suite="" setup_tsv
+  setup_tsv=$(gh api "repos/$ORG/$repo/code-scanning/default-setup" \
+    --jq '[(.state // ""), (.query_suite // "")] | @tsv' 2>/dev/null || echo "")
+  IFS=$'\t' read -r current_state current_suite <<< "$setup_tsv" || true
 
   if [[ "$current_state" = "configured" ]]; then
-    ok "  CodeQL default setup already configured"
-    return 0
+    # The standard suite is `default`. `extended` adds actions/unpinned-tag,
+    # which flags every first-party channel-tag caller stub (pins the standard
+    # requires) and which default setup cannot filter out (#1617). An unread
+    # suite is left alone: only a definite other value is changed.
+    if [[ -z "$current_suite" || "$current_suite" = "default" ]]; then
+      ok "  CodeQL default setup already configured"
+      return 0
+    fi
+    if [[ "$DRY_RUN" = "true" ]]; then
+      skip "DRY_RUN=true — would set CodeQL default setup query suite to default (current: $current_suite)"
+      return 0
+    fi
+    local suite_err
+    if suite_err=$(gh api -X PATCH "repos/$ORG/$repo/code-scanning/default-setup" \
+         -F query_suite=default 2>&1); then
+      ok "  CodeQL default setup query suite reset to default (was: $current_suite)"
+      return 0
+    fi
+    err "  Failed to reset CodeQL default setup query suite for $repo (current: $current_suite) — manual review required. API response: $suite_err"
+    return 1
   fi
 
   if [[ "$DRY_RUN" = "true" ]]; then
