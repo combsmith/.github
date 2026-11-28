@@ -2867,9 +2867,9 @@ supply_chain_missing_controls() {
   { printf '%s\n' "$body" | grep -qE 'uses:[[:space:]]*actions/dependency-review-action@' \
     && printf '%s\n' "$body" | grep -qE '(^|[^A-Za-z0-9_-])pull_request([^A-Za-z0-9_-]|$)'; } \
     || echo "dependency-review"
-  printf '%s\n' "$body" | grep -vE '^[[:space:]]*-[[:space:]]*name:' | grep -qE \
+  printf '%s\n' "$body" | grep -vE '^[[:space:]]*-[[:space:]]*name:' | grep -E \
     -e 'uses:[[:space:]]*(anchore/sbom-action|actions/attest-sbom|CycloneDX/[A-Za-z0-9_.-]+)@' \
-    -e '(^|[^A-Za-z0-9_-])(syft|cdxgen|cyclonedx-[a-z]+)([^A-Za-z0-9_-]|$)' \
+    -e '(^|[^A-Za-z0-9_-])(syft|cdxgen|cyclonedx-[a-z]+)([^A-Za-z0-9_-]|$)' >/dev/null \
     || echo "sbom"
   printf '%s\n' "$body" | grep -qE \
     -e 'uses:[[:space:]]*(actions/attest-build-provenance|actions/attest)@' \
