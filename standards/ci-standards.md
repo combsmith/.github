@@ -648,7 +648,7 @@ detects automatically outweighed the marginal supply-chain benefit.
 |---|---|
 | Code scanning → Default setup | **Configured** (state = `"configured"`) |
 | Languages | All CodeQL-supported languages auto-detected from the default branch |
-| Query suite | `default` (use `extended` only when a documented threat model justifies the noise) |
+| Query suite | `default` |
 | Schedule | Weekly (managed by GitHub; not configurable) |
 | Triggers | Push to default branch and PRs targeting it (managed by GitHub) |
 
